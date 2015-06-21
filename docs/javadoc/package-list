@@ -1,0 +1,14 @@
+com.BombingGames.WurfelEngine
+com.BombingGames.WurfelEngine.Core
+com.BombingGames.WurfelEngine.Core.BasicMainMenu
+com.BombingGames.WurfelEngine.Core.CVar
+com.BombingGames.WurfelEngine.Core.Gameobjects
+com.BombingGames.WurfelEngine.Core.LightEngine
+com.BombingGames.WurfelEngine.Core.Loading
+com.BombingGames.WurfelEngine.Core.Map
+com.BombingGames.WurfelEngine.Core.Map.Generators
+com.BombingGames.WurfelEngine.Core.Map.Iterators
+com.BombingGames.WurfelEngine.Core.SoundEngine
+com.BombingGames.WurfelEngine.Extensions
+com.BombingGames.WurfelEngine.MapEditor
+com.BombingGames.WurfelEngine.shooting
