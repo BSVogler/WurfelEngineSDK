@@ -26,11 +26,14 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-package com.bombinggames.wurfelengine.core.Gameobjects;
+package com.bombinggames.wurfelengine.extension;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Vector3;
+import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
+import com.bombinggames.wurfelengine.core.Gameobjects.AbstractEntity;
+import com.bombinggames.wurfelengine.core.Gameobjects.MovableEntity;
 import com.bombinggames.wurfelengine.core.Map.Point;
 import com.bombinggames.wurfelengine.extension.shooting.Weapon;
 
@@ -57,6 +60,7 @@ public class PlayerWithWeapon extends MovableEntity {
 		Gdx.app.debug("Player", "Creating player");
 
 		setObstacle(true);
+		setFriction((float) WE.getCvars().get("playerfriction").getValue());
 		setDimensionZ(height);
 	}
 
@@ -100,6 +104,7 @@ public class PlayerWithWeapon extends MovableEntity {
 	public void update(float dt) {
 		super.update(dt);
 		if (weapon != null) {
+			weapon.getPosition().setValues(getPosition());
 			weapon.update(dt);
 		}
 	}
@@ -136,6 +141,9 @@ public class PlayerWithWeapon extends MovableEntity {
 	 * @param weapon
 	 */
 	public void equipWeapon(Weapon weapon) {
+		if (this.weapon != null) {
+			this.weapon.disposeFromMap();
+		}
 		this.weapon = weapon;
 		weapon.reload();
 	}
