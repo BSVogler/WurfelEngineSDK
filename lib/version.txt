@@ -1,1 +1,1 @@
-libGDX v1.5.6
+v1.6.5 nightly
