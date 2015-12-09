@@ -6,6 +6,7 @@ import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.Gameobjects.AbstractGameObject;
+import com.bombinggames.wurfelengine.extension.shooting.Weapon;
 import java.util.ArrayList;
 
 /**
@@ -35,7 +36,8 @@ public class SpinningWheel extends ArrayList<CustomWeapon> {
 	public void spin() {
 		Sound dudeldi = (Sound) WE.getAsset("com/bombinggames/WeaponOfChoice/Sounds/dudeldi.ogg");
 		dudeldi.play();
-		WE.getCvars().get("music").setValue(0.2f);
+		if (WE.getCvars().getValueF("music") > 0)
+			WE.getCvars().get("music").setValue(0.2f);
 
 		visible = true;
 		timer = spintime;
@@ -52,9 +54,12 @@ public class SpinningWheel extends ArrayList<CustomWeapon> {
 				visible = false;
 				timer = spintime;
 				current = currentRandom;
-				controller.getPlayer().equipWeapon(new CustomWeapon(current, controller.getPlayer()));
+				controller.getPlayer().equipWeapon(
+					(Weapon) new CustomWeapon(current, controller.getPlayer()).spawn(controller.getPlayer().getPosition().cpy())
+				);
 				WE.getCvars().get("timespeed").setValue(1.0f);
-				WE.getCvars().get("music").setValue(1f);
+				if (WE.getCvars().getValueF("music") > 0)
+					WE.getCvars().get("music").setValue(1f);
 			}
 
 			wheelSpeed *= 1 + delta / 400f;//time to pass before new random item get's bigger
@@ -73,7 +78,7 @@ public class SpinningWheel extends ArrayList<CustomWeapon> {
 	public void render(GameView view) {
 		if (visible) {
 			Sprite sprite;
-			sprite = new Sprite(AbstractGameObject.getSprite('i', (byte) 5, (byte) 0)); // "canvas")
+			sprite = new Sprite(AbstractGameObject.getSprite('i', (byte) 14, (byte) 0)); // "canvas")
 			sprite.flip(false, true);
 			sprite.setX(Gdx.graphics.getWidth() / 2 - sprite.getWidth() / 2);
 			sprite.setY(Gdx.graphics.getHeight() / 2 - 30);
@@ -81,9 +86,9 @@ public class SpinningWheel extends ArrayList<CustomWeapon> {
 			sprite.draw(WE.getEngineView().getSpriteBatch());
 
 			if (controller.getRound() == 1) {
-				sprite = new Sprite(AbstractGameObject.getSprite('i', (byte) 6, (byte) 0));//warmup
+				sprite = new Sprite(AbstractGameObject.getSprite('i', (byte) 13, (byte) 0));//warmup
 			} else {
-				sprite = new Sprite(AbstractGameObject.getSprite('i', (byte) 7, (byte) 0));//newround
+				sprite = new Sprite(AbstractGameObject.getSprite('i', (byte) 12, (byte) 0));//newround
 			}
 			sprite.setX(Gdx.graphics.getWidth() / 2 - sprite.getWidth() / 2);
 			sprite.setY(Gdx.graphics.getHeight() / 2 - 200);
