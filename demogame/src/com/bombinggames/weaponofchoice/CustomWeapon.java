@@ -2,10 +2,9 @@ package com.bombinggames.weaponofchoice;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.g2d.Sprite;
-import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.GameView;
-import com.bombinggames.wurfelengine.core.Gameobjects.AbstractGameObject;
-import com.bombinggames.wurfelengine.core.Gameobjects.MovableEntity;
+import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
+import com.bombinggames.wurfelengine.core.gameobjects.MovableEntity;
 import com.bombinggames.wurfelengine.extension.shooting.Weapon;
 
 /**
@@ -80,6 +79,6 @@ public class CustomWeapon extends Weapon {
 		sprite.setX(Gdx.graphics.getWidth() / 2 - sprite.getWidth() / 2);
 		sprite.setY(Gdx.graphics.getHeight() / 2 - 30);
 		//sprite.scale(CustomWeapon.getScaling());
-		sprite.draw(WE.getEngineView().getSpriteBatch());
+		sprite.draw(view.getSpriteBatch());
 	}
 }

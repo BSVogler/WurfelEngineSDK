@@ -1,8 +1,8 @@
 package com.bombinggames.weaponofchoice;
 
 import com.badlogic.gdx.math.Vector2;
-import com.bombinggames.wurfelengine.core.Gameobjects.Controllable;
-import com.bombinggames.wurfelengine.core.Gameobjects.MovableEntity;
+import com.bombinggames.wurfelengine.core.gameobjects.Controllable;
+import com.bombinggames.wurfelengine.core.gameobjects.MovableEntity;
 import com.bombinggames.wurfelengine.extension.PlayerWithWeapon;
 
 /**

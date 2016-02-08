@@ -33,12 +33,12 @@ public class CustomGameView extends GameView {
 		super.init(controller, oldView);
 		WE.getEngineView().addInputProcessor(new InputListener());
 		Camera camera = new Camera(
-			this.controller.getPlayer(),
+			this,
 			0, //left
 			0, //top
 			Gdx.graphics.getWidth(), //width 
-			Gdx.graphics.getHeight(),//height
-			this
+			Gdx.graphics.getHeight(), //height
+			this.controller.getPlayer()
 		);
 
 		addCamera(camera);
@@ -49,20 +49,20 @@ public class CustomGameView extends GameView {
 	public void render() {
 		super.render();
 
-		WE.getEngineView().getSpriteBatch().begin();
-		controller.getSpinningWheel().render(this);
-		WE.getEngineView().getSpriteBatch().end();
-		
-		Weapon weapon = controller.getPlayer().getWeapon();
-		if (weapon != null) {
-			drawString(
-				"Shots: " + weapon.getShotsLoaded() + "/" + weapon.getShots(),
-				Gdx.graphics.getWidth() - 100,
-				Gdx.graphics.getHeight() - 100,
-				Color.WHITE.cpy()
-			);
-		}
+		getSpriteBatch().begin();
+			controller.getSpinningWheel().render(this);
 
+			Weapon weapon = controller.getPlayer().getWeapon();
+			if (weapon != null) {
+				drawString(
+					"Shots: " + weapon.getShotsLoaded() + "/" + weapon.getShots(),
+					Gdx.graphics.getWidth() - 100,
+					Gdx.graphics.getHeight() - 100,
+					Color.WHITE.cpy()
+				);
+			}
+		getSpriteBatch().end();
+		
 		ShapeRenderer sh = WE.getEngineView().getShapeRenderer();
 		//health
 		sh.begin(ShapeRenderer.ShapeType.Filled);
@@ -140,7 +140,7 @@ public class CustomGameView extends GameView {
 			if (!WE.getConsole().isActive()) {
 				//toggle fullscreen
 				if (keycode == Input.Keys.F) {
-					WE.setFullscreen(!WE.isFullscreen());
+					WE.setFullscreen(!Gdx.graphics.isFullscreen());
 				}
 
 				//reload

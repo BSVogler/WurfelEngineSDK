@@ -2,8 +2,8 @@ package com.bombinggames.weaponofchoice;
 
 import com.bombinggames.weaponofchoice.mainmenu.MainMenuScreen;
 import com.bombinggames.wurfelengine.WE;
-import com.bombinggames.wurfelengine.core.Gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.WorkingDirectory;
+import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 
 /**
  *Main class for game Weapon of Choice. This game was an entry for Ludum Dare #??.

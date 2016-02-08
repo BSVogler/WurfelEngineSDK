@@ -5,9 +5,9 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.audio.Sound;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Controller;
-import com.bombinggames.wurfelengine.core.Gameobjects.Block;
-import com.bombinggames.wurfelengine.core.Map.Chunk;
-import com.bombinggames.wurfelengine.core.Map.Coordinate;
+import com.bombinggames.wurfelengine.core.gameobjects.Block;
+import com.bombinggames.wurfelengine.core.map.Chunk;
+import com.bombinggames.wurfelengine.core.map.Coordinate;
 
 /**
  * The <i>CustomGameController</i> is for the game code. Put engine code into
@@ -65,7 +65,7 @@ public class CustomGameController extends Controller {
 	public void update(float dt) {
 		super.update(dt);
 		if (!gameOver) {
-			float origidelta = dt / WE.getCvars().getValueF("timespeed");
+			float origidelta = dt / WE.getCVars().getValueF("timespeed");
 			//get input and do actions
 			Input input = Gdx.input;
 

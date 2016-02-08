@@ -5,7 +5,7 @@ import com.badlogic.gdx.backends.lwjgl.audio.Ogg.Sound;
 import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.GameView;
-import com.bombinggames.wurfelengine.core.Gameobjects.AbstractGameObject;
+import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.extension.shooting.Weapon;
 import java.util.ArrayList;
 
@@ -36,12 +36,12 @@ public class SpinningWheel extends ArrayList<CustomWeapon> {
 	public void spin() {
 		Sound dudeldi = (Sound) WE.getAsset("com/bombinggames/WeaponOfChoice/Sounds/dudeldi.ogg");
 		dudeldi.play();
-		if (WE.getCvars().getValueF("music") > 0)
-			WE.getCvars().get("music").setValue(0.2f);
+		if (WE.getCVars().getValueF("music") > 0)
+			WE.getCVars().get("music").setValue(0.2f);
 
 		visible = true;
 		timer = spintime;
-		WE.getCvars().get("timespeed").setValue(0.3f);
+		WE.getCVars().get("timespeed").setValue(0.3f);
 		wheelSpeed = 1;
 		wheelTimer = 1;
 	}
@@ -57,9 +57,9 @@ public class SpinningWheel extends ArrayList<CustomWeapon> {
 				controller.getPlayer().equipWeapon(
 					(Weapon) new CustomWeapon(current, controller.getPlayer()).spawn(controller.getPlayer().getPosition().cpy())
 				);
-				WE.getCvars().get("timespeed").setValue(1.0f);
-				if (WE.getCvars().getValueF("music") > 0)
-					WE.getCvars().get("music").setValue(1f);
+				WE.getCVars().get("timespeed").setValue(1.0f);
+				if (WE.getCVars().getValueF("music") > 0)
+					WE.getCVars().get("music").setValue(1f);
 			}
 
 			wheelSpeed *= 1 + delta / 400f;//time to pass before new random item get's bigger
@@ -83,7 +83,7 @@ public class SpinningWheel extends ArrayList<CustomWeapon> {
 			sprite.setX(Gdx.graphics.getWidth() / 2 - sprite.getWidth() / 2);
 			sprite.setY(Gdx.graphics.getHeight() / 2 - 30);
 			//sprite.scale(CustomWeapon.getScaling());
-			sprite.draw(WE.getEngineView().getSpriteBatch());
+			sprite.draw(view.getSpriteBatch());
 
 			if (controller.getRound() == 1) {
 				sprite = new Sprite(AbstractGameObject.getSprite('i', (byte) 13, (byte) 0));//warmup
@@ -94,7 +94,7 @@ public class SpinningWheel extends ArrayList<CustomWeapon> {
 			sprite.setY(Gdx.graphics.getHeight() / 2 - 200);
 			// sprite.scale(CustomWeapon.getScaling());
 			sprite.flip(false, true);
-			sprite.draw(WE.getEngineView().getSpriteBatch());
+			sprite.draw(view.getSpriteBatch());
 
 			get(currentRandom).renderHUD(
 				view,
@@ -120,6 +120,7 @@ public class SpinningWheel extends ArrayList<CustomWeapon> {
 	}
 
 	@Override
+	@SuppressWarnings("CloneDeclaresCloneNotSupported")
 	public Object clone() {
 		return super.clone();
 	}
