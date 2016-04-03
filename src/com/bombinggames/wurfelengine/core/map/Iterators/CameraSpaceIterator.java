@@ -31,7 +31,7 @@
 package com.bombinggames.wurfelengine.core.map.Iterators;
 
 import com.bombinggames.wurfelengine.core.map.Chunk;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderBlock;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
 import java.util.NoSuchElementException;
@@ -46,10 +46,10 @@ public class CameraSpaceIterator {
 	/**
 	 * Always points to a block. Iterates over a chunk.
 	 */
-	private DataIterator<RenderBlock> blockIterator;
+	private DataIterator<RenderCell> blockIterator;
 	private final int centerChunkX;
 	private final int centerChunkY;
-	private RenderChunk current;
+	private RenderChunk currentChunk;
 
 	private int topLevel;
 	private final int startingZ;
@@ -90,30 +90,34 @@ public class CameraSpaceIterator {
 	 *
 	 * @return
 	 */
-	public RenderBlock next() throws NoSuchElementException {
+	public RenderCell next() throws NoSuchElementException {
 		if (blockIterator == null || !blockIterator.hasNext()) {
 			//reached end of chunk, move to next chunk
-			current = null;
-			while (hasNextChunk() && current == null) {//if has one move to next
+			currentChunk = null;
+			blockIterator = null;
+			while (currentChunk == null && hasNextChunk()) {//if has one move to next
+				currentChunk = getNextChunk(chunkNum);
 				chunkNum++;
-				current = renderStorage.getChunk(
-					centerChunkX - 1 + chunkNum % 3,
-					centerChunkY - 1 + chunkNum / 3
-				);
 			}
-			if (current != null) {
-				blockIterator = current.getIterator(startingZ, topLevel);//reset chunkIterator
+			//found chunk
+			if (currentChunk != null) {
+				blockIterator = currentChunk.getIterator(startingZ, topLevel);//reset chunkIterator
+			}
+			//could not find a new  block iterator
+			if (blockIterator == null) {
+				return null;
 			}
 		}
 
-		if (chunkNum >= 9 || blockIterator == null) {
+		if (chunkNum < 9) {
+			return blockIterator.next();
+		} else {
 			return null;
 		}
-		return blockIterator.next();
 	}
 
 	/**
-	 * get the indices position inside the chunk/data matrix
+	 * get the indices position relative to a 3x3 chunk matrix.
 	 *
 	 * @return copy safe
 	 */
@@ -126,26 +130,22 @@ public class CameraSpaceIterator {
 		};
 	}
 
-	public boolean hasNextChunk() {
+	private boolean hasNextChunk() {
 		return getNextChunk(chunkNum) != null;
 	}
 
 	/**
 	 * 
-	 * @param current 0-8
+	 * @param current starting index: [0-8]
 	 * @return 
 	 */
 	private RenderChunk getNextChunk(int current) {
-		int i = current;
-		if (i < 0) {
-			i = 0;
-		}
-		while (i < 8) { //if has one move to next
+		while (current < 8) { //if has one move to next
+			current++;
 			RenderChunk chunk = renderStorage.getChunk(
-				centerChunkX - 1 + i % 3,
-				centerChunkY - 1 + i / 3
+				centerChunkX - 1 + current % 3,
+				centerChunkY - 1 + current / 3
 			);
-			i++;
 			if (chunk != null) {
 				return chunk;
 			}
@@ -155,9 +155,5 @@ public class CameraSpaceIterator {
 
 	public boolean hasNext() {
 		return chunkNum < 9 && ((blockIterator != null && blockIterator.hasNext()) || hasNextChunk());
-	}
-
-	public boolean hasAnyBlock() {
-		return getNextChunk(0) != null;
 	}
 }

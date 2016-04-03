@@ -38,11 +38,11 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.gameobjects.Cursor;
 import com.bombinggames.wurfelengine.core.gameobjects.EntityShadow;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderBlock;
 import com.bombinggames.wurfelengine.core.lightengine.LightEngine;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -71,16 +71,16 @@ public class Controller implements GameManager {
 	}
 
 	/**
-	 * Tries loading a map.
+	 * Tries loading a new map instance.
 	 *
 	 * @param path
 	 * @param saveslot this saveslot will become the active
 	 * @return returns true if the map could be loaded and false if it failed
 	 */
 	public static boolean loadMap(File path, int saveslot) {
+		//dispose old instance
 		if (map != null) {
 			map.dispose(false);
-			//if loading another map, save linked objects
 		}
 		try {
 			map = new Map(path, saveslot);
@@ -139,7 +139,7 @@ public class Controller implements GameManager {
 	public static void staticDispose() {
 		Gdx.app.debug("ControllerClass", "Disposing.");
 		AbstractGameObject.staticDispose();
-		RenderBlock.staticDispose();
+		RenderCell.staticDispose();
 		map.dispose(false);
 		map = null;
 		lightEngine = null;
@@ -151,7 +151,7 @@ public class Controller implements GameManager {
 	private String mapName = "default";
 	private final Cursor cursor = new Cursor();
 	private ArrayList<AbstractEntity> selectedEntities = new ArrayList<>(4);
-	private final Command[] commandHistory = new Command[WE.getCVars().getValueI("historySize")];
+	private final Command[] commandHistory = new Command[WE.getCVars().getValueI("undohistorySize")];
 	private int lastCommandPos = -1;
 
 	/**
@@ -302,16 +302,25 @@ public class Controller implements GameManager {
 			if (devtools == null) {
 				devtools = new DevTools(10, 50);
 			}
-			devtools.update(Gdx.graphics.getRawDeltaTime() * 1000f);
+			devtools.update();
 		} else {
 			devtools = null;
 		}
 
+		
+	}
+	
+	public void showCursor(){
 		if (!cursor.hasPosition()) {
 			cursor.spawn(
 				new Point(0, 0, Chunk.getBlocksZ() - 1)
 			);
 		}
+		cursor.setHidden(false);
+	}
+	
+	public void hideCursor(){
+		cursor.setHidden(true);
 	}
 
 	/**

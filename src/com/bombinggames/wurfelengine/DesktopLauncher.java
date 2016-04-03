@@ -31,9 +31,9 @@
 package com.bombinggames.wurfelengine;
 
 import com.bombinggames.wurfelengine.core.Controller;
-import com.bombinggames.wurfelengine.core.basicmainmenu.BasicMainMenu;
-import com.bombinggames.wurfelengine.core.basicmainmenu.BasicMenuItem;
-import com.bombinggames.wurfelengine.core.basicmainmenu.GameViewWithCamera;
+import com.bombinggames.wurfelengine.extension.basicmainmenu.BasicMainMenu;
+import com.bombinggames.wurfelengine.extension.basicmainmenu.BasicMenuItem;
+import com.bombinggames.wurfelengine.extension.basicmainmenu.GameViewWithCamera;
 import com.bombinggames.wurfelengine.mapeditor.EditorView;
 
 /**

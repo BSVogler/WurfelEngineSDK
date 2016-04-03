@@ -37,9 +37,10 @@ import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Events;
 import com.bombinggames.wurfelengine.core.GameView;
-import static com.bombinggames.wurfelengine.core.gameobjects.Block.GAME_EDGELENGTH;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Point;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
 import com.bombinggames.wurfelengine.extension.AimBand;
 import java.util.ArrayList;
 
@@ -47,7 +48,7 @@ import java.util.ArrayList;
  *A clas used mainly for characters or object which can walk around. To control the character you should use a {@link Controllable} or modify the movemnet via {@link #setMovement(com.badlogic.gdx.math.Vector3) }.
  * @author Benedikt
  */
-public class MovableEntity extends AbstractEntity implements Cloneable  {
+public class MovableEntity extends AbstractEntity  {
 	private static final long serialVersionUID = 4L;
 	
 	private transient static String waterSound = "splash";
@@ -217,10 +218,10 @@ public class MovableEntity extends AbstractEntity implements Cloneable  {
 	}
    
 	/**
-	 * Jump with a specific speed
+	 * Jump with a specific speed. Can jump if in air.
 	 *
 	 * @param velo the velocity in m/s
-	 * @param playSound
+	 * @param playSound plays jump sound if <i>true</i>
 	 */
 	public void jump(float velo, boolean playSound) {
 		final Vector2 horMov = getMovementHor();
@@ -250,8 +251,9 @@ public class MovableEntity extends AbstractEntity implements Cloneable  {
 		super.update(dt);
 
 		/*Here comes the stuff where the character interacts with the environment*/
-		if (hasPosition() && getPosition().isInMemoryAreaHorizontal()) {
+		if (hasPosition()) {
 			float t = dt * 0.001f; //t = time in s
+			Vector3 movement = this.movement;
 			
 			if (moveToAi != null) {
 				moveToAi.update(dt);
@@ -285,109 +287,104 @@ public class MovableEntity extends AbstractEntity implements Cloneable  {
 			//apply gravity
 			if (!floating && !isOnGround()) {
 				addMovement(
-					new Vector3(0, 0, -WE.getCVars().getValueF("gravity") * t) //in m/s
+					0, 0, -WE.getCVars().getValueF("gravity") * t //in m/s
 				);
 			}
 			
-			newPos = getPosition().cpy().add(getMovement().scl(GAME_EDGELENGTH * t));
+			newPos = newPos.set(getPosition()).add(movement.cpy().scl(GAME_EDGELENGTH * t));
 			
 			if (collider && movement.z > 0 && isOnCeil(newPos)) {
 				movement.z = 0;
-				newPos = getPosition().cpy().add(getMovement().scl(GAME_EDGELENGTH * t));
+				newPos = newPos.set(getPosition()).add(movement.cpy().scl(GAME_EDGELENGTH * t));
 			}
 			
 			//check collision with other entities
 			checkEntColl();
 			
 			//apply movement
-			getPosition().setValues(newPos);
+			getPosition().set(newPos);
 
 			//save orientation
 			updateOrientation();
 
 			//movement has applied, now maybe outside memory area 
-			if (getPosition().isInMemoryAreaHorizontal()) {
-				//check new height for colission            
-				//land if standing in or under 0-level or there is an obstacle
-				if (movement.z < 0 && isOnGround()) {
-					
-					//stop movement
-					if (collider)
-						movement.z = 0;
+			//check new height for colission            
+			//land if standing in or under 0-level or there is an obstacle
+			if (movement.z < 0 && isOnGround()) {
 
-					//set on ground level of blockl
-					//send event
-					MessageManager.getInstance().dispatchMessage(this, Events.collided.getId());
+				//stop movement
+				if (collider) {
+					movement.z = 0;
+				}
+
+				//set on ground level of block
+				//send event
+				MessageManager.getInstance().dispatchMessage(this, Events.collided.getId());
+				if (!hasPosition()) {
+					return;//object may be destroyed during colission event
+				}
+
+				if (!floating) {
+					MessageManager.getInstance().dispatchMessage(this, Events.landed.getId());
 					if (!hasPosition()) {
-						return;//object may be destroyed during colission event
+						return;//object may be destroyed during colission
 					}
-					
-					if (!floating) {
-						MessageManager.getInstance().dispatchMessage(this, Events.landed.getId());
-						if (!hasPosition()) {
-							return;//object may be destroyed during colission
+				}
+				if (collider) {
+					getPosition().setZ((int) (oldHeight / GAME_EDGELENGTH) * GAME_EDGELENGTH);
+				}
+			}
+			
+			//if entering water
+			if (!inLiquid && RenderCell.isLiquid(getPosition().getBlockId()) && getMass() > 1f) {
+				if (waterSound != null) {
+					WE.SOUND.play(waterSound, getPosition(), getMass() > 5 ? 1 : 0.5f);
+				}
+				inLiquid = RenderCell.isLiquid(getPosition().getBlockId());//save if in water
+			} else {
+				inLiquid = false;
+			}
+
+			if (!walkingPaused) {
+				//walking cycle
+				if (walkOnTheSpot > 0) {
+					walkingCycle += dt * walkOnTheSpot;//multiply by factor to make the animation fit the movement speed
+				} else if (floating || isOnGround()) {
+					walkingCycle += dt * getSpeed() * WE.getCVars().getValueF("walkingAnimationSpeedCorrection");//multiply by factor to make the animation fit the movement speed
+				}
+
+				if (walkingCycle >= 1000) {
+					walkingCycle %= 1000;
+					stepSoundPlayedInCiclePhase = false;//reset variable
+				}
+
+				//make a step
+				if (floating || isOnGround()) {
+					//play sound twice a cicle
+					if (walkingCycle < 250) {
+						if (stepSound1Grass != null && !stepSoundPlayedInCiclePhase && isOnGround()) {
+							step();
+						}
+					} else if (walkingCycle < 500) {
+						stepSoundPlayedInCiclePhase = false;
+					} else if (walkingCycle > 500) {
+						if (stepSound1Grass != null && !stepSoundPlayedInCiclePhase && isOnGround()) {
+							step();
 						}
 					}
-					if (collider)
-						getPosition().setZ((int) (oldHeight / GAME_EDGELENGTH) * GAME_EDGELENGTH);
-				}
-				
-				Block block = getPosition().getBlock();
-				//if entering water
-				if (!inLiquid && block != null && block.isLiquid() && getMass() > 1f) {
-					if (waterSound != null) {
-						WE.SOUND.play(waterSound, getPosition(), getMass() > 5 ? 1 : 0.5f);
-					}
 				}
 
-				if (block != null) {
-					inLiquid = block.isLiquid();//save if in water
-				} else {
-					inLiquid = false;
+				//slow walking down
+				if (isOnGround()) {
+					//stop at a threshold
+					if (movement.x * movement.x + movement.y * movement.y > 0.1f) {
+						setHorMovement(getMovementHor().scl(1f / (dt * friction + 1f)));//with this formula this fraction is always <1
+					} else {
+						setHorMovement(new Vector2());
+					}
 				}
 
-				if (!walkingPaused) {
-					//walking cycle
-					if(walkOnTheSpot > 0) {
-						walkingCycle += dt*walkOnTheSpot;//multiply by factor to make the animation fit the movement speed
-					} else if (floating || isOnGround()) {
-						walkingCycle += dt * getSpeed() * WE.getCVars().getValueF("walkingAnimationSpeedCorrection");//multiply by factor to make the animation fit the movement speed
-					}
-
-					if (walkingCycle >= 1000) {
-						walkingCycle %= 1000;
-						stepSoundPlayedInCiclePhase = false;//reset variable
-					}
-
-					//make a step
-					if (floating || isOnGround()) {
-						//play sound twice a cicle
-						if (walkingCycle < 250) {
-							if (stepSound1Grass != null && !stepSoundPlayedInCiclePhase && isOnGround()) {
-								step();
-							}
-						} else if (walkingCycle < 500) {
-							stepSoundPlayedInCiclePhase = false;
-						} else if (walkingCycle > 500) {
-							if (stepSound1Grass != null && !stepSoundPlayedInCiclePhase && isOnGround()) {
-								step();
-							}
-						}
-					}
-
-					//slow walking down
-					if (isOnGround()) {
-						//stop at a threshold
-						if (getMovementHor().len() > 0.1f) {
-							setHorMovement(getMovementHor().scl(1f / (dt * friction + 1f)));//with this formula this fraction is always <1
-						} else {
-							setHorMovement(new Vector2());
-						}
-					}
-
-
-					updateSprite();
-				}
+				updateSprite();
 			}
 
             /* SOUNDS */
@@ -508,10 +505,9 @@ public class MovableEntity extends AbstractEntity implements Cloneable  {
 			sh.begin(ShapeRenderer.ShapeType.Filled);
 			sh.setColor(Color.GREEN);
 			//life bar
-			sh.rect(
-				xPos - Block.VIEW_WIDTH2,
-				yPos + Block.VIEW_HEIGHT,
-				getHealth() * Block.VIEW_WIDTH / 1000,
+			sh.rect(xPos - RenderCell.VIEW_WIDTH2,
+				yPos + RenderCell.VIEW_HEIGHT,
+				getHealth() * RenderCell.VIEW_WIDTH / 1000,
 				5
 			);
 			sh.end();
@@ -526,55 +522,62 @@ public class MovableEntity extends AbstractEntity implements Cloneable  {
 	 * @return true if colliding
 	 */
 	private boolean checkCollisionCorners(final Point pos) {
-		Point checkPos = pos.cpy();
-		Block block = checkPos.add(0, -colissionRadius, 0).getBlock();
+		int colRad = colissionRadius;
+		int block = (byte) pos.add(0, -colRad, 0).getBlock();
 		//back corner top
-		if (block != null && block.isObstacle()) {
+		if (RenderCell.isObstacle(block)) {
+			pos.add(0, colRad, 0);
 			return true;
 		}
 		//front corner
-		block = checkPos.add(0, 2 * colissionRadius, 0).getBlock();
-		if (block != null && block.isObstacle()) {
+		block = pos.add(0, 2 * colRad, 0).getBlock();
+		if (RenderCell.isObstacle(block)) {
+			pos.add(0, -colRad, 0);
 			return true;
 		}
 
 		//check X
 		//left
-		block = checkPos.add(-colissionRadius, -colissionRadius, 0).getBlock();
-		if (block != null && block.isObstacle()) {
+		block = pos.add(-colRad, -colRad, 0).getBlock();
+		if (RenderCell.isObstacle(block)) {
+			pos.add(colRad, 0, 0);
 			return true;
 		}
 		//bottom corner
-		block = checkPos.add(2 * colissionRadius, 0, 0).getBlock();
-		return block != null && block.isObstacle();
+		block = pos.add(2 * colRad, 0, 0).getBlock();
+		pos.add(-colRad, 0, 0);
+		return RenderCell.isObstacle(block);
 	}
 	
 	/**
 	 * check for horizontal colission (x and y)<br>
 	 * O(1)
 	 *
-	 * @param pos the new position
+	 * @param pos the new position, not modified
 	 * @param colissionRadius
 	 * @return true if colliding horizontal
 	 */
 	public boolean collidesWithWorld(final Point pos, final float colissionRadius) {
-		Point checkPoint = pos.cpy();
-		if (checkCollisionCorners(checkPoint)) {
+		if (checkCollisionCorners(pos)) {
 			return true;
 		}
 
+		float heightBefore = pos.z;
+		int dimZ = getDimensionZ();
 		//chek in the middle if bigger then a block
-		if (getDimensionZ() > Block.GAME_EDGELENGTH) {
-			checkPoint.add(0, 0, getDimensionZ() / 2);
-			if (checkCollisionCorners(checkPoint)) {
+		if (dimZ > RenderCell.GAME_EDGELENGTH) {
+			pos.add(0, 0, dimZ / 2);
+			if (checkCollisionCorners(pos)) {
+				pos.add(0, 0, -dimZ / 2);
 				return true;
 			}
-			checkPoint.add(0, 0, getDimensionZ() / 2);
+			pos.add(0, 0, dimZ / 2);
 		} else {
-			checkPoint.add(0, 0, getDimensionZ());
+			pos.add(0, 0, dimZ);
 		}
+		pos.z = heightBefore;
 		//check top
-		return checkCollisionCorners(checkPoint);
+		return checkCollisionCorners(pos);
 	}
     
 	/**
@@ -587,8 +590,10 @@ public class MovableEntity extends AbstractEntity implements Cloneable  {
 		if (pos == null || pos.getZ() <= 0 || pos.getZ() > Chunk.getGameHeight()) {
 			return false;
 		}
-
-		return checkCollisionCorners(new Point(pos.getX(), pos.getY(), pos.getZ() + getDimensionZ()));
+		pos.z += getDimensionZ();
+		boolean result = checkCollisionCorners(pos);
+		pos.z -= getDimensionZ();
+		return result;
 	}
 	
    /**
@@ -631,7 +636,7 @@ public class MovableEntity extends AbstractEntity implements Cloneable  {
 	 * Direction of movement. Normalized.
 	 * @return unit vector for x and y component. copy safe
 	 */
-	public Vector2 getOrientation() {
+	public final Vector2 getOrientation() {
 		return orientation.cpy();
 	}
 	
@@ -639,7 +644,7 @@ public class MovableEntity extends AbstractEntity implements Cloneable  {
 	 * Get the movement vector as the product of direction and speed.
 	 * @return in m/s. copy safe
 	 */
-	public Vector3 getMovement(){
+	public final Vector3 getMovement(){
 		return movement.cpy();
 	}
 	
@@ -647,7 +652,7 @@ public class MovableEntity extends AbstractEntity implements Cloneable  {
 	 *Get the movement vector as the product of direction and speed.
 	 * @return in m/s. copy safe
 	 */
-	public Vector2 getMovementHor(){
+	public final Vector2 getMovementHor(){
 		return new Vector2(movement.x, movement.y);
 	}
 
@@ -687,6 +692,17 @@ public class MovableEntity extends AbstractEntity implements Cloneable  {
 	 */
 	public void addMovement(Vector3 movement){
 		this.movement.add(movement);
+		updateOrientation();
+	}
+	
+	/**
+	 * Adds speed and direction.
+	 * @param x
+	 * @param y
+	 * @param z
+	 */
+	public void addMovement(float x, float y, float z){
+		this.movement.add(x,y,z);
 		updateOrientation();
 	}
 	
@@ -796,16 +812,12 @@ public class MovableEntity extends AbstractEntity implements Cloneable  {
 
 	/**
 	 * Should the object be affected by gravity?
-	 * @param floating 
+	 * @param floating if true then not affacted
 	 */
 	public void setFloating(boolean floating) {
 		this.floating = floating;
 	}
 	
-    /**
-     * Checks if standing on blocks. overrides the method by checking with a radius.
-     * @return 
-     */
     @Override
     public boolean isOnGround() {
 		Point pos = getPosition();
@@ -818,8 +830,7 @@ public class MovableEntity extends AbstractEntity implements Cloneable  {
 				}
 				pos.setZ(pos.getZ() - 1);//move one down for check
 
-				Block block = pos.getBlock();
-				boolean colission = (block != null && block.isObstacle()) || collidesWithWorld(pos, colissionRadius);
+				boolean colission = pos.isObstacle() || collidesWithWorld(pos, colissionRadius);
 				pos.setZ(pos.getZ() + 1);//reverse
 
 				return colission;
@@ -853,11 +864,6 @@ public class MovableEntity extends AbstractEntity implements Cloneable  {
 		this.friction = friction;
 	}
 	
-	@Override
-	public MovableEntity clone() throws CloneNotSupportedException{
-		return new MovableEntity(this);
-	}
-
 	/**
 	 * performs a step. Plays a sound.
 	 */

@@ -31,9 +31,6 @@
 package com.bombinggames.wurfelengine.core;
 
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.ai.msg.MessageManager;
-import com.badlogic.gdx.ai.msg.Telegram;
-import com.badlogic.gdx.ai.msg.Telegraph;
 import com.badlogic.gdx.graphics.Color;
 import static com.badlogic.gdx.graphics.GL20.GL_BLEND;
 import com.badlogic.gdx.graphics.Texture;
@@ -46,15 +43,13 @@ import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
-import com.bombinggames.wurfelengine.core.gameobjects.Block;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderBlock;
 import com.bombinggames.wurfelengine.core.gameobjects.Renderable;
-import com.bombinggames.wurfelengine.core.map.rendering.SideSprite;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Iterators.CameraSpaceIterator;
-import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator;
 import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import com.bombinggames.wurfelengine.core.map.rendering.SideSprite;
 import java.util.ArrayList;
 import java.util.LinkedList;
 
@@ -63,19 +58,12 @@ import java.util.LinkedList;
  *
  * @author Benedikt Vogler
  */
-public class Camera implements Telegraph {
+public class Camera {
 
 	/**
 	 * top limit in game space
 	 */
 	private float zRenderingLimit = Float.POSITIVE_INFINITY;
-
-	/**
-	 * A 3d array which has the blocks in it which are possibly rendered. Shoudl be 3x3 chunks. Only the relevant portion of the map is moved to this array.
-	 * Has the ground layer in 0, therefore offset in z of one
-	 * 
-	 */
-	private final RenderBlock[][][] cameraContent = new RenderBlock[Chunk.getBlocksX()*3][Chunk.getBlocksY()*3][Chunk.getBlocksZ() + 1];//z +1  because of ground layer
 
 	/**
 	 * the position of the camera in view space. Y-up. Read only field.
@@ -144,6 +132,14 @@ public class Camera implements Telegraph {
 	private int objectsToBeRendered = 0;
 	private int renderResWidth;
 	private int maxsprites;
+	private final Point center = new Point(0, 0, 0);
+	private final ArrayList<RenderCell> modifiedCells = new ArrayList<>(30);
+	private final LinkedList<AbstractEntity> renderAppendix = new LinkedList<>();
+	/**
+	 * The radius which is used for loading the chunks around the center. May be reduced after the first time to a smaller value.
+	 */
+	private int loadingRadius = 10;
+	private int id;
 
 	/**
 	 * Updates the needed chunks after recaclucating the center chunk of the
@@ -163,7 +159,6 @@ public class Camera implements Telegraph {
 	 * @param view
 	 */
 	public Camera(final GameView view) {
-		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
 		gameView = view;
 		screenWidth = Gdx.graphics.getBackBufferWidth();
 		screenHeight = Gdx.graphics.getBackBufferHeight();
@@ -190,7 +185,6 @@ public class Camera implements Telegraph {
 	 * @param view
 	 */
 	public Camera(final GameView view, final int x, final int y, final int width, final int height) {
-		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
 		zRenderingLimit = Chunk.getBlocksZ()-1;
 
 		gameView = view;
@@ -224,7 +218,6 @@ public class Camera implements Telegraph {
 	 * @param view
 	 */
 	public Camera(final GameView view, final int x, final int y, final int width, final int height, final Point center) {
-		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
 		gameView = view;
 		screenWidth = width;
 		screenHeight = height;
@@ -253,7 +246,6 @@ public class Camera implements Telegraph {
 	 * @param view
 	 */
 	public Camera(final GameView view, final int x, final int y, final int width, final int height, final AbstractEntity focusentity) {
-		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
 		gameView = view;
 		screenWidth = width;
 		screenHeight = height;
@@ -271,7 +263,7 @@ public class Camera implements Telegraph {
 		}
 		position.x = focusEntity.getPosition().getViewSpcX();
 		position.y = (int) (focusEntity.getPosition().getViewSpcY()
-						+ focusEntity.getDimensionZ() * Block.ZAXISSHORTENING/2);//have middle of object in center
+						+ focusEntity.getDimensionZ() * RenderCell.ZAXISSHORTENING/2);//have middle of object in center
 		initFocus();
 	}
 
@@ -287,7 +279,7 @@ public class Camera implements Telegraph {
 				Vector2 newPos = new Vector2(
 					focusEntity.getPosition().getViewSpcX(),
 					(int) (focusEntity.getPosition().getViewSpcY()
-						+ focusEntity.getDimensionZ() * Block.ZAXISSHORTENING/2)//have middle of object in center
+						+ focusEntity.getDimensionZ() * RenderCell.ZAXISSHORTENING/2)//have middle of object in center
 				);
 
 				//only follow if outside leap radius
@@ -369,7 +361,7 @@ public class Camera implements Telegraph {
 
 		if (
 			getVisibleRightBorder()
-			>
+			>=
 			(centerChunkX+2)*Chunk.getBlocksX()
 			//&& centerChunkX-1==//calculated xIndex -1
 			) {
@@ -387,7 +379,7 @@ public class Camera implements Telegraph {
 //		if (
 //		getVisibleBackBorder()
 //		<
-//		chunkMap.getChunk(centerChunkX, centerChunkY-1).getTopLeftCoordinate().getX()
+//		chunkMap.getChunkContaining(centerChunkX, centerChunkY-1).getTopLeftCoordinate().getX()
 //		//&& centerChunkX-1==//calculated xIndex -1
 //		) {
 //		centerChunkY--;
@@ -396,9 +388,9 @@ public class Camera implements Telegraph {
 //		if (
 //		position.y- getHeightInProjSpc()/2
 //		<
-//		map.getBlocksZ()*Block.VIEW_HEIGHT
-//		-Block.VIEW_DEPTH2*(
-//		chunkMap.getChunk(centerChunkX, centerChunkY+1).getTopLeftCoordinate().getY()+Chunk.getBlocksY()//bottom coordinate
+//		map.getBlocksZ()*RenderCell.VIEW_HEIGHT
+//		-RenderCell.VIEW_DEPTH2*(
+//		chunkMap.getChunkContaining(centerChunkX, centerChunkY+1).getTopLeftCoordinate().getY()+Chunk.getBlocksY()//bottom coordinate
 //		)
 //		//&& centerChunkX-1==//calculated xIndex -1
 //		) {
@@ -417,10 +409,18 @@ public class Camera implements Telegraph {
 	private void checkNeededChunks() {
 		//check every chunk
 		if (centerChunkX == 0 && centerChunkY == 0 || WE.getCVars().getValueB("mapChunkSwitch")) {
-			for (int x = -2; x <= 2; x++) {
-				for (int y = -2; y <= 2; y++) {
+			for (int x = -loadingRadius; x <= loadingRadius; x++) {
+				int lRad = loadingRadius/2;
+				if (lRad <= 2) {
+					lRad = 2;
+				}
+				for (int y = -lRad; y <= lRad; y++) {
 					checkChunk(centerChunkX + x, centerChunkY + y);
 				}
+			}
+			//after the first time reduce
+			if (loadingRadius > 2) {
+				loadingRadius = 2;
 			}
 		}
 	}
@@ -515,7 +515,7 @@ public class Camera implements Telegraph {
 			AbstractGameObject.getTextureDiffuse().bind(0);
 
 			//settings for this frame
-			RenderBlock.setStaticShade(WE.getCVars().getValueB("enableAutoShade"));
+			RenderCell.setStaticShade(WE.getCVars().getValueB("enableAutoShade"));
 			SideSprite.setAO(WE.getCVars().getValueF("ambientOcclusion"));
 			
 			//render vom bottom to top
@@ -564,100 +564,89 @@ public class Camera implements Telegraph {
 	 * @return the depthlist
 	 */
 	private void createDepthList() {
-		//register memory space only once then reuse
 		depthlist.clear();
 		maxsprites = WE.getCVars().getValueI("MaxSprites");
 
+		//inverse dirty flag
+		AbstractGameObject.inverseMarkedFlag(id);
+		
 		//add entitys which should be rendered
 		ArrayList<AbstractEntity> ents = Controller.getMap().getEntities();
-		ArrayList<AbstractEntity> entsToRender = new ArrayList<>(40);//assume that we have 40 entities on  camera
-		for (AbstractEntity entity : ents) {
-			if (entity.hasPosition()
-				&& !entity.isHidden()
-				&& inViewFrustum(
-					entity.getPosition().getViewSpcX(),
-					entity.getPosition().getViewSpcY()
-				)
-				&& entity.getPosition().getZ() < zRenderingLimit
-			) {
-				entsToRender.add(entity);
-			}
-		}
-		
-		//sort valid in order of depth
-		entsToRender.sort((AbstractEntity o1, AbstractEntity o2) -> {
-			float d1 = o1.getDepth();
-			float d2 = o2.getDepth();
-			if (d1 > d2) {
-				return 1;
-			} else {
-				if (d1==d2) return 0;
-				return -1;
-			}
-		});
-		
+				
 		//add entities to renderstorage
-		ArrayList<RenderBlock> modifiedCells = new ArrayList<>(entsToRender.size());
-		ArrayList<AbstractEntity> renderAppendix = new ArrayList<>(3);
-		for (AbstractEntity ent : entsToRender) {
-			RenderBlock block = gameView.getRenderStorage().getBlock(ent.getPosition().toCoord().add(0, 0, 1));//add in cell above
-			if (block != null) {
-				block.addCoveredEnts(ent);
-				modifiedCells.add(block);
-			} else {
-				//add at end of renderList
-				renderAppendix.add(ent);
+		ArrayList<RenderCell> modifiedCells = this.modifiedCells;
+		modifiedCells.clear();
+		modifiedCells.ensureCapacity(ents.size());
+		LinkedList<AbstractEntity> renderAppendix = this.renderAppendix;
+		renderAppendix.clear();
+		
+		for (AbstractEntity ent : ents) {
+			if (ent.hasPosition()
+				&& !ent.isHidden()
+				&& inViewFrustum(ent.getPosition().getViewSpcX(),
+					ent.getPosition().getViewSpcY()
+				)
+				&& ent.getPosition().getZ() < zRenderingLimit
+			) {
+				RenderCell cell = gameView.getRenderStorage().getCell(ent.getPosition().add(0, 0, RenderCell.GAME_EDGELENGTH));//add in cell above
+				ent.getPosition().add(0, 0, -RenderCell.GAME_EDGELENGTH);//reverse change in line above
+				if (cell != null) {
+					cell.addCoveredEnts(ent);
+					modifiedCells.add(cell);
+				} else {
+					//add at end of renderList
+					renderAppendix.add(ent);
+				}
 			}
 		}
 		
+		//iterate over renderstorage
 		objectsToBeRendered = 0;
 		//clear/reset flags
-		DataIterator<RenderBlock> iterator = new DataIterator<>(
-			cameraContent,//iterate over camera content
-			0, //from layer0 which is aeqeuivalent to -1
-			(int) (zRenderingLimit/Block.GAME_EDGELENGTH)//one more because of ground layer
+		CameraSpaceIterator iterator = new CameraSpaceIterator(
+			gameView.getRenderStorage(),
+			centerChunkX,
+			centerChunkY,
+			0,
+			Chunk.getBlocksZ() - 1
 		);
-		iterator.setBorders(
-			getVisibleLeftBorder() - getCoveredLeftBorder(),
-			getVisibleRightBorder() - getCoveredLeftBorder(),
-			getVisibleBackBorder() - getCoveredBackBorder(),
-			getVisibleFrontBorderHigh() - getCoveredBackBorder()
-		);
-		
-		AbstractGameObject.inverseDirtyFlag();
-		//check every block
+		//check/visit every visible cell
 		while (iterator.hasNext()) {
-			RenderBlock cell = iterator.next();
+			RenderCell cell = iterator.next();
 
-			if (cell != null && !cell.isMarked()) {
-				visit(cell);
+			if (cell != null) {
+				if (inViewFrustum(
+					cell.getPosition().getViewSpcX(),
+					cell.getPosition().getViewSpcY()
+				)) {
+					visit(cell);
+				}
 			}
 		}
-		depthlist.addAll(renderAppendix);
-		
-		//cleanup
-		for (RenderBlock cell : modifiedCells) {
-			cell.fillCoveredList(gameView.getRenderStorage());
+		for (RenderCell modifiedCell : modifiedCells) {
+			modifiedCell.clearCoveredEnts();
 		}
+		depthlist.addAll(renderAppendix);//render every entity which has not parent block at the end
 	}
 	
 	/**
 	 * topological sort
-	 * @param n 
+	 * @param n root node
 	 */
-	private void visit(Renderable n) {
-		if (n.isMarkedTemporarily()) {
-			//throw new Error("Found a circle. Not a DAG");
-			return;
-		}
-		if (!n.isMarked()) {
-			n.markTemporarily();
-			ArrayList<Renderable> covered = n.getCovered(gameView.getRenderStorage());
-			for (Renderable m : covered) {
-				visit(m);
+	private void visit(AbstractGameObject n) {
+		if (!n.isMarkedDS(id)) {
+			LinkedList<AbstractGameObject> covered = n.getCovered(gameView.getRenderStorage());
+			if (covered.size() > 0) {
+				n.markPermanentDS(id);
+					for (AbstractGameObject m : covered) {
+						if (inViewFrustum(
+							m.getPosition().getViewSpcX(),
+							m.getPosition().getViewSpcY()
+						)) {
+							visit(m);
+						}
+					}
 			}
-			n.markPermanent();
-			n.unmarkTemporarily();
 			if (n.shouldBeRendered(this)) {
 				if (objectsToBeRendered < maxsprites) {
 					//fill only up to available size
@@ -679,63 +668,20 @@ public class Camera implements Telegraph {
 		return
 				(position.y + getHeightInProjSpc() / 2)
 				>
-				(proY - Block.VIEW_HEIGHT * 2)//bottom of sprite
+				(proY - RenderCell.VIEW_HEIGHT * 2)//bottom of sprite
 			&&
-				(proY + Block.VIEW_HEIGHT2 + Block.VIEW_DEPTH)//top of sprite
+				(proY + RenderCell.VIEW_HEIGHT2 + RenderCell.VIEW_DEPTH)//top of sprite
 				>
 				position.y - getHeightInProjSpc() / 2
 			&&
-				(proX + Block.VIEW_WIDTH2)//right side of sprite
+				(proX + RenderCell.VIEW_WIDTH2)//right side of sprite
 				>
 				position.x - getWidthInProjSpc() / 2
 			&&
-				(proX - Block.VIEW_WIDTH2)//left side of sprite
+				(proX - RenderCell.VIEW_WIDTH2)//left side of sprite
 				<
 				position.x + getWidthInProjSpc() / 2
 		;
-	}
-
-	/**
-	 * Fill the viewMat frustum {@link #cameraContent} with {@link RenderBlock}s. Should only be performed when content in the map changes.
-	 */
-	public void fillCameraContentBlocks() {
-		//1. put every block in the viewMat frustum
-		CameraSpaceIterator csIter = new CameraSpaceIterator(
-			gameView.getRenderStorage(),
-			centerChunkX,
-			centerChunkY,
-			0,
-			Chunk.getBlocksZ() - 1
-		);
-		
-		if (csIter.hasAnyBlock()) {
-			while (csIter.hasNext()) {
-				RenderBlock block = csIter.next();
-				int[] ind = csIter.getCurrentIndex();
-				cameraContent[ind[0]][ind[1]][ind[2] + 1] = block;
-			}
-		}
-
-//		//2. add ground layer
-//		for (int x = 0; x < cameraContent.length; x++) {
-//			for (int y = 0; y < cameraContent[x].length; y++) {
-//				cameraContent[x][y][0] = new RenderBlock(Controller.getMap().getNewGroundBlockInstance());
-//				cameraContent[x][y][0].setClippedLeft();//always clipped left
-//				//chek if clipped top
-//				if (cameraContent[x][y][1] != null && !cameraContent[x][y][1].isTransparent()) {
-//					cameraContent[x][y][0].setClippedTop();
-//				}
-//				cameraContent[x][y][0].setClippedRight();//always clipped right
-//				cameraContent[x][y][0].setPosition(
-//					new Coordinate(
-//						getCoveredLeftBorder() + x,
-//						getCoveredBackBorder() + y,
-//						-1
-//					)
-//				);
-//				cameraContent[x][y][0].fillCovered(gameView);
-//			}
-//		}
 	}
 
 	/**
@@ -793,6 +739,15 @@ public class Camera implements Telegraph {
 			}
 		}
 	}
+	
+	/**
+	 * Returns the left border of the actual visible area.
+	 *
+	 * @return left x position in view space
+	 */
+	public float getVisibleLeftBorderVS() {
+		return (position.x - getWidthInProjSpc() / 2)- RenderCell.VIEW_WIDTH2;
+	}
 
 	/**
 	 * Returns the left border of the actual visible area.
@@ -800,16 +755,7 @@ public class Camera implements Telegraph {
 	 * @return the left (X) border coordinate
 	 */
 	public int getVisibleLeftBorder() {
-		return (int) ((position.x - getWidthInProjSpc() / 2) / Block.VIEW_WIDTH - 1);
-	}
-
-	/**
-	 * Get the leftmost block-coordinate covered by the camera cache.
-	 *
-	 * @return the left (X) border coordinate
-	 */
-	public int getCoveredLeftBorder() {
-		return (centerChunkX - 1) * Chunk.getBlocksX();
+		return (int) ((position.x - getWidthInProjSpc() / 2) / RenderCell.VIEW_WIDTH - 1);
 	}
 
 	/**
@@ -819,16 +765,17 @@ public class Camera implements Telegraph {
 	 * @return measured in grid-coordinates
 	 */
 	public int getVisibleRightBorder() {
-		return (int) ((position.x + getWidthInProjSpc() / 2) / Block.VIEW_WIDTH + 1);
+		return (int) ((position.x + getWidthInProjSpc() / 2) / RenderCell.VIEW_WIDTH + 1);
 	}
-
+	
 	/**
-	 * Get the rightmost block-coordinate covered by the camera viewFrustum.
+	 * Returns the right seight border of the camera covered area currently
+	 * visible.
 	 *
-	 * @return the right (X) border coordinate
+	 * @return measured in grid-coordinates
 	 */
-	public int getCoveredRightBorder() {
-		return (centerChunkX + 1) * Chunk.getBlocksX() - 1;
+	public float getVisibleRightBorderVS() {
+		return position.x + getWidthInProjSpc() / 2 + RenderCell.VIEW_WIDTH2;
 	}
 
 	/**
@@ -839,21 +786,12 @@ public class Camera implements Telegraph {
 	public int getVisibleBackBorder() {
 		//TODO verify
 		return (int) ((position.y + getHeightInProjSpc() / 2)//camera top border
-			/ -Block.VIEW_DEPTH2//back to game space
+			/ -RenderCell.VIEW_DEPTH2//back to game space
 		);
 	}
 
 	/**
-	 * Clipping
-	 *
-	 * @return the top/back (Y) border coordinate
-	 */
-	public int getCoveredBackBorder() {
-		return (centerChunkY - 1) * Chunk.getBlocksY();
-	}
-
-	/**
-	 * Returns the bottom seight border y-coordinate of the lowest block
+	 * Returns the bottom seight border y-coordinate of the lowest cell
 	 *
 	 * @return measured in grid-coordinates
 	 * @see #getVisibleFrontBorderHigh()
@@ -861,29 +799,21 @@ public class Camera implements Telegraph {
 	public int getVisibleFrontBorderLow() {
 		return (int) (
 			(position.y- getHeightInProjSpc()/2) //bottom camera border
-			/ -Block.VIEW_DEPTH2 //back to game coordinates
+			/ -RenderCell.VIEW_DEPTH2 //back to game coordinates
 		);
 	}
 
 	/**
-	 * Returns the bottom seight border y-coordinate of the highest block
+	 * Returns the bottom seight border y-coordinate of the highest cell
 	 *
 	 * @return measured in grid-coordinates
 	 * @see #getVisibleFrontBorderLow()
 	 */
 	public int getVisibleFrontBorderHigh() {
 		return (int) ((position.y - getHeightInProjSpc() / 2) //bottom camera border
-			/ -Block.VIEW_DEPTH2 //back to game coordinates
-			+ Chunk.getBlocksY()*3 * Block.VIEW_HEIGHT / Block.VIEW_DEPTH2 //todo verify, try to add z component
+			/ -RenderCell.VIEW_DEPTH2 //back to game coordinates
+			+ Chunk.getBlocksY()*3 * RenderCell.VIEW_HEIGHT / RenderCell.VIEW_DEPTH2 //todo verify, try to add z component
 			);
-	}
-
-	/**
-	 *
-	 * @return the bottom/front (Y) border coordinate
-	 */
-	public int getCoveredFrontBorder() {
-		return (centerChunkY + 1) * Chunk.getBlocksY() - 1;
 	}
 
 	/**
@@ -1084,7 +1014,7 @@ public class Camera implements Telegraph {
 	 * @return in game space, copy safe
 	 */
 	public Point getCenter() {
-		return new Point(
+		return (Point) center.set(
 			position.x,
 			-position.y * 2,
 			0
@@ -1108,10 +1038,9 @@ public class Camera implements Telegraph {
 	public void setFocusEntity(AbstractEntity focusEntity) {
 		if (this.focusEntity != focusEntity) {
 			this.focusEntity = focusEntity;
-			position.set(
-				focusEntity.getPosition().getViewSpcX(),
+			position.set(focusEntity.getPosition().getViewSpcX(),
 				(int) (focusEntity.getPosition().getViewSpcY()
-					+ focusEntity.getDimensionZ() * Block.ZAXISSHORTENING/2)//have middle of object in center
+					+ focusEntity.getDimensionZ() * RenderCell.ZAXISSHORTENING/2)//have middle of object in center
 			);
 		}
 	}
@@ -1127,7 +1056,6 @@ public class Camera implements Telegraph {
 			if (WE.getCVars().getValueB("mapUseChunks")) {
 				checkNeededChunks();
 			}
-			fillCameraContentBlocks();
 		}
 
 		this.active = active;
@@ -1179,19 +1107,12 @@ public class Camera implements Telegraph {
 		return active;
 	}
 
-	@Override
-	public boolean handleMessage(Telegram msg) {
-		if (msg.message == Events.mapChanged.getId()){
-			if (active) {
-				fillCameraContentBlocks();
-			}
-			return true;
-		}
-		return false;
+	public void setId(int id){
+		this.id = id;
 	}
-
+	
+	
 	void dispose() {
-		MessageManager.getInstance().removeListener(this, Events.mapChanged.getId());
 	}
 
 }

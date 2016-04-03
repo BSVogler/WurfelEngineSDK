@@ -31,7 +31,6 @@
 package com.bombinggames.wurfelengine.core.map.rendering;
 
 import com.badlogic.gdx.graphics.Color;
-import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import static com.badlogic.gdx.graphics.g2d.Batch.C1;
 import static com.badlogic.gdx.graphics.g2d.Batch.C2;
@@ -57,7 +56,6 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.NumberUtils;
-import com.bombinggames.wurfelengine.core.gameobjects.Block;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
 import com.bombinggames.wurfelengine.core.map.Point;
 
@@ -88,106 +86,19 @@ public class SideSprite extends TextureRegion {
 	private Rectangle bounds;
 	private final Side side;
 	private int aoFlags;
-
-	/**
-	 * Creates an uninitialized sprite. The sprite will need a texture region
-	 * and bounds set before it can be drawn.
-	 */
-	public SideSprite() {
-		setColor(1, 1, 1, 1);
-		this.side = Side.TOP;
-	}
-
-	/**
-	 * Creates a sprite with width, height, and texture region equal to the size
-	 * of the texture.
-	 *
-	 * @param texture
-	 */
-	public SideSprite(Texture texture) {
-		this(texture, 0, 0, texture.getWidth(), texture.getHeight());
-	}
-
-	/**
-	 * Creates a sprite with width, height, and texture region equal to the
-	 * specified size. The texture region's upper left corner will be 0,0.
-	 *
-	 * @param texture
-	 * @param srcWidth The width of the texture region. May be negative to flip
-	 * the sprite when drawn.
-	 * @param srcHeight The height of the texture region. May be negative to
-	 * flip the sprite when drawn.
-	 */
-	public SideSprite(Texture texture, int srcWidth, int srcHeight) {
-		this(texture, 0, 0, srcWidth, srcHeight);
-	}
-
-	/**
-	 * Creates a sprite with width, height, and texture region equal to the
-	 * specified size.
-	 *
-	 * @param texture
-	 * @param srcX
-	 * @param srcY
-	 * @param srcWidth The width of the texture region. May be negative to flip
-	 * the sprite when drawn.
-	 * @param srcHeight The height of the texture region. May be negative to
-	 * flip the sprite when drawn.
-	 */
-	public SideSprite(Texture texture, int srcX, int srcY, int srcWidth, int srcHeight) {
-		if (texture == null) {
-			throw new IllegalArgumentException("texture cannot be null.");
-		}
-		this.side = Side.TOP;
-		setTexture(texture);
-		setRegion(srcX, srcY, srcWidth, srcHeight);
-		setColor(1, 1, 1, 1);
-		setSize(Math.abs(srcWidth), Math.abs(srcHeight));
-		setOrigin(width / 2, height / 2);
-	}
-
-	// Note the region is copied.
-	/**
-	 * Creates a sprite based on a specific TextureRegion, the new sprite's
-	 * region is a copy of the parameter region - altering one does not affect
-	 * the other
-	 *
-	 * @param region
-	 */
-	public SideSprite(TextureRegion region) {
-		setRegion(region);
-		setColor(1, 1, 1, 1);
-		setSize(region.getRegionWidth(), region.getRegionHeight());
-		setOrigin(width / 2, height / 2);
-		this.side = Side.TOP;
-	}
 	
+	/**
+	 * An object helping with rendering a blokc made out of sides
+	 * @param region the texture used for rendering this side
+	 * @param side which side does this represent?
+	 * @param aoFlags 
+	 */
 	public SideSprite(TextureRegion region, Side side, int aoFlags) {
 		this.side = side;
 		setRegion(region);
 		this.aoFlags = aoFlags;
 		setColor(1, 1, 1, 1);
 		setSize(region.getRegionWidth(), region.getRegionHeight());
-		setOrigin(width / 2, height / 2);
-	}
-
-	/**
-	 * Creates a sprite with width, height, and texture region equal to the
-	 * specified size, relative to specified sprite's texture region.
-	 *
-	 * @param region
-	 * @param srcX
-	 * @param srcY
-	 * @param srcWidth The width of the texture region. May be negative to flip
-	 * the sprite when drawn.
-	 * @param srcHeight The height of the texture region. May be negative to
-	 * flip the sprite when drawn.
-	 */
-	public SideSprite(TextureRegion region, int srcX, int srcY, int srcWidth, int srcHeight) {
-		this.side = Side.TOP;
-		setRegion(region, srcX, srcY, srcWidth, srcHeight);
-		setColor(1, 1, 1, 1);
-		setSize(Math.abs(srcWidth), Math.abs(srcHeight));
 		setOrigin(width / 2, height / 2);
 	}
 
@@ -502,7 +413,8 @@ public class SideSprite extends TextureRegion {
 	}
 
 	/**
-	 * @param color * @see #setColor(Color)
+	 * Sets the color to each vertice.
+	 * @param color
 	 * @see Color#toFloatBits()
 	 */
 	public void setColor(float color) {
@@ -633,8 +545,8 @@ public class SideSprite extends TextureRegion {
 
 	/**
 	 * Sets the sprite's scale relative to the current scale. for example:
-	 * original scale 2 -> sprite.scale(4) -> final scale 6. The sprite scales
-	 * out from the origin. This will not affect the values returned by
+	 * original scale 2 -&gt; sprite.scale(4) -&gt; final scale 6. The sprite
+	 * scales out from the origin. This will not affect the values returned by
 	 * {@link #getWidth()} and {@link #getHeight()}
 	 *
 	 * @param amount
@@ -747,6 +659,9 @@ public class SideSprite extends TextureRegion {
 		return vertices;
 	}
 	
+	/**
+	 * aply the ao to the vertice color
+	 */
 	protected void applyAO(){
 		//render ambient occlusion
 
@@ -972,7 +887,7 @@ public class SideSprite extends TextureRegion {
 
 	/**
 	 * Returns the color of this sprite. Changing the returned color will have
-	 * no affect, {@link #setColor(Color)} or
+	 * no affect, {@link #setColor(float)} or
 	 * {@link #setColor(float, float, float, float)} must be used.
 	 *
 	 * @return
@@ -998,7 +913,7 @@ public class SideSprite extends TextureRegion {
 	public void setRegion(float u, float v, float u2, float v2) {
 		super.setRegion(u, v, u2, v2);
 
-		final float f = Block.VIEW_WIDTH4/(float) getTexture().getWidth();//s/4096=x, where s is a quarter of the block width which is by default s=50
+		final float f = RenderCell.VIEW_WIDTH4/(float) getTexture().getWidth();//s/4096=x, where s is a quarter of the block width which is by default s=50
 		vertices[U1] = u;
 		vertices[V1] = v2 - ((side == Side.LEFT || side == Side.TOP) ? f : 0f);
 
@@ -1126,5 +1041,9 @@ public class SideSprite extends TextureRegion {
 			vertices[V3] = v;
 			vertices[V4] = v2;
 		}
+	}
+
+	public void setAoFlags(int aoFlags) {
+		this.aoFlags = aoFlags;
 	}
 }

@@ -29,10 +29,12 @@
 package com.bombinggames.wurfelengine.extension;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
+import com.bombinggames.wurfelengine.core.gameobjects.Controllable;
 import com.bombinggames.wurfelengine.core.gameobjects.MovableEntity;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.extension.shooting.Weapon;
@@ -42,7 +44,7 @@ import com.bombinggames.wurfelengine.extension.shooting.Weapon;
  *
  * @author Benedikt
  */
-public class PlayerWithWeapon extends MovableEntity {
+public class UserControlledShooter extends MovableEntity implements Controllable {
 
 	private static final long serialVersionUID = 1L;
 
@@ -55,9 +57,8 @@ public class PlayerWithWeapon extends MovableEntity {
 	 * @param spritesPerDir
 	 * @param height
 	 */
-	public PlayerWithWeapon(int spritesPerDir, int height) {
+	public UserControlledShooter(int spritesPerDir, int height) {
 		super((byte) 30, spritesPerDir);
-		Gdx.app.debug("Player", "Creating player");
 
 		setObstacle(true);
 		setFriction((float) WE.getCVars().get("playerfriction").getValue());
@@ -67,8 +68,21 @@ public class PlayerWithWeapon extends MovableEntity {
 	@Override
 	public AbstractEntity spawn(Point point) {
 		super.spawn(point);
-		weapon.spawn(point.cpy());
+		if (weapon!=null)
+			weapon.spawn(point.cpy());
 		return this;
+	}
+	
+	@Override
+	public void walk(boolean up, boolean down, boolean left, boolean right, float walkingspeed, float dt) {
+		
+		if (up || down || left || right){
+
+			//update the direction vector
+			Vector2 dir = new Vector2(left ? -1 : (right ? 1 : 0f), up ? -1 : (down ? 1 : 0f));
+			dir.nor().scl(walkingspeed);
+			setHorMovement(dir);
+		}
 	}
 
 	/**
@@ -76,7 +90,8 @@ public class PlayerWithWeapon extends MovableEntity {
 	 */
 	@Override
 	public void jump() {
-		jump(5, true);
+		if (isOnGround())
+			jump(5, true);
 	}
 
 	/**
@@ -104,8 +119,9 @@ public class PlayerWithWeapon extends MovableEntity {
 	public void update(float dt) {
 		super.update(dt);
 		if (weapon != null) {
-			if (hasPosition())
-				weapon.getPosition().setValues(getPosition());
+			if (hasPosition()) {
+				weapon.getPosition().set(getPosition());
+			}
 			weapon.update(dt);
 		}
 	}
@@ -121,7 +137,7 @@ public class PlayerWithWeapon extends MovableEntity {
 	}
 
 	/**
-	 *
+	 * Get the camera used to identify the aiming direction.
 	 * @return
 	 */
 	public Camera getCamera() {

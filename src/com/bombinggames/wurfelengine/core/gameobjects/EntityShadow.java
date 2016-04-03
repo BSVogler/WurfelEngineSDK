@@ -32,7 +32,7 @@ import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.graphics.Color;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.GameView;
-import com.bombinggames.wurfelengine.core.map.Coordinate;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 
 /**
  *
@@ -64,16 +64,17 @@ public class EntityShadow extends AbstractEntity {
 			dispose();
 		} else {
 			//find height of shadow surface
-			Coordinate newHeight = character.getPosition().toCoord();//start at same height
-			Block block = newHeight.getBlock();
-			while (newHeight.getZ() > 0
-				&& (block == null || block.isTransparent())) {
-				newHeight.add(0, 0, -1);
-				block = newHeight.getBlock();
+			getPoint().set(character.getPosition());//start at character
+			while (getPoint().getZ() > 0
+				&& (RenderCell.isTransparent(getPoint().getBlock()))
+			) {
+				getPoint().add(0, 0, -RenderCell.GAME_EDGELENGTH);
 			}
-
-			setPosition(character.getPosition().cpy());
-			getPosition().setZ(newHeight.add(0, 0, 1).toPoint().getZ());
+			if (character.getPosition().getZ()<RenderCell.GAME_EDGELENGTH) {
+				getPoint().setZ(0);
+			} else {
+				getPoint().setZ((getPoint().getZGrid()+1)*RenderCell.GAME_EDGELENGTH);
+			}
 		}
 	}
 
@@ -82,13 +83,12 @@ public class EntityShadow extends AbstractEntity {
 		if (character == null || !character.hasPosition() || !hasPosition() || character.isHidden()) {
 			dispose();
 		} else {
-			setScaling(0);
-			setColor(
-				new Color(
+			setScaling(1);
+			setColor(new Color(
 					.5f,
 					.5f,
 					.5f,
-					1 - (character.getPosition().getZ() - getPosition().getZ()) / 2 / Block.GAME_EDGELENGTH+0.1f
+					1 - (character.getPosition().getZ() - getPosition().getZ()) / 2 / RenderCell.GAME_EDGELENGTH+0.1f
 				)
 			);
 			super.render(view, camera);
@@ -97,7 +97,7 @@ public class EntityShadow extends AbstractEntity {
 				setColor(
 					new Color(.5f, .5f, .5f, 0.2f)
 				);
-				setScaling(-0.5f);
+				setScaling(0.5f);
 				super.render(view, camera);
 			}
 		}

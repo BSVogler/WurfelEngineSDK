@@ -34,7 +34,6 @@ import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
-import com.bombinggames.wurfelengine.core.gameobjects.Block;
 import java.io.Serializable;
 import java.util.ArrayList;
 
@@ -56,28 +55,49 @@ public interface Position extends Serializable {
 	
 	
 	/**
-     * Calculates it and creates new instance if not already in correct format then return itself.
+     * Calculates it and creates new instance if not already in correct format then return a copy of itself.
      * @return the point representation. Copy safe.
      */
     public abstract Point toPoint();
     
-    /**
-     * Calculates it and creates new instance if not already in correct format then return itself.
-     * @return the coordinate representation. Copy safe
-     */
-    public abstract Coordinate toCoord();
-	
-     /**
-     * Calculate position in view space.
-     * @return Returns the center of the projected (screen) x-position where the object is rendered without regarding the camera. It also adds the cell offset.
-     */
-    public abstract int getViewSpcX();
-    
-    /**
-     * Calculate position in view space.
-     * @return Returns the center of the projected (view space) y-position where the object is rendered without regarding the camera.
-     */
-    public abstract int getViewSpcY();
+	/**
+	 * May not be copy safe.
+	 *
+	 * @return may not be copy safe
+	 */
+	public Point getPoint();
+
+	/**
+	 * May not be copy safe.
+	 *
+	 * @return may not be copy safe
+	 */
+	public Coordinate getCoord();
+
+	/**
+	 * Calculates it and creates new instance if not already in correct format
+	 * then returns copy of itself.
+	 *
+	 * @return the coordinate representation. Copy safe
+	 */
+	public abstract Coordinate toCoord();
+
+	/**
+	 * Calculate position in view space.
+	 *
+	 * @return Returns the center of the projected (screen) x-position where the
+	 * object is rendered without regarding the camera. It also adds the cell
+	 * offset.
+	 */
+	public abstract int getViewSpcX();
+
+	/**
+	 * Calculate position in view space.
+	 *
+	 * @return Returns the center of the projected (view space) y-position where
+	 * the object is rendered without regarding the camera.
+	 */
+	public abstract int getViewSpcY();
     
 	/**
 	 * maybe I mean screen space
@@ -99,7 +119,7 @@ public interface Position extends Serializable {
      * Get the block at the position.  Clamps positions over the map at topmost layer.
      * @return If the coordiante is not in memory will crash.
      */
-    public abstract Block getBlock();
+    public abstract byte getBlockId();
     
     /**
      *

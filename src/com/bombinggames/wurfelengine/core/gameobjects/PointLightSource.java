@@ -8,6 +8,7 @@ import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Intersection;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 
 /**
  * A light source is an invisible entity which spawns light from one point.
@@ -29,7 +30,7 @@ public class PointLightSource extends AbstractEntity {
 	private final transient Color color;
 	private float brightness;
 	private boolean enabled = true;
-	private Point lastPos;
+	private Point lastPos = new Point(0, 0, 0);
 	private final GameView view;
 
 	/**
@@ -69,12 +70,6 @@ public class PointLightSource extends AbstractEntity {
 	}
 
 	@Override
-	public AbstractEntity spawn(Point point) {
-		super.spawn(point);
-		return this;
-	}
-
-	@Override
 	public void setPosition(Point pos) {
 		super.setPosition(pos);
 		
@@ -102,14 +97,15 @@ public class PointLightSource extends AbstractEntity {
 	public void lightNearbyBlocks(float delta) {
 		if (hasPosition()) {
 			Point origin = getPosition();
-			lastPos = origin.cpy();
+			lastPos.set(origin);
 			
-			//light blocks under the torch
+			//light blocks around
+			Vector3 dir = new Vector3();
 			for (int z = -radius; z < radius; z++) {
 				for (int x = -radius; x < radius; x++) {
 					for (int y = -radius * 2; y < radius * 2; y++) {
 
-						//slowly decrease
+						//reset cell in cache
 						if (lightcache[x + radius][y + radius * 2][z + radius][0] > 0) {
 							lightcache[x + radius][y + radius * 2][z + radius][0] = 0;
 						}
@@ -121,42 +117,42 @@ public class PointLightSource extends AbstractEntity {
 						}
 
 						//send rays
-						Vector3 dir = new Vector3(x + 0.1f, y + 0.2f, z + 0.3f * 2 - 1).nor();
-						if (dir.len2() > 0) {//filter some rays
-							Intersection inters = origin.raycast(
-								dir,
-								floatradius * 2,
-								null,
-								(Block t) -> !t.isTransparent()
-							);
-							if (inters != null && inters.getPoint() != null) {
-								Point impactP = getPosition().toCoord().add(x, y, z).toPoint().add(0, -Block.GAME_DIAGLENGTH2, 0);
-								float pow = origin.distanceTo(impactP) / Block.GAME_EDGELENGTH;
-								float l = (1 + brightness) / (pow * pow);
-								
-								//side 0
-								float lambert = origin.cpy().sub(impactP).nor().dot(Side.LEFT.toVector());
-								
-								float newbright = l *lambert* (0.15f + 0.1f * 0.005f);
-								if (lambert > 0 && newbright > lightcache[x + radius][y + radius * 2][z + radius][0]) {
-									lightcache[x + radius][y + radius * 2][z + radius][0] = newbright;
-								}
-								
-								//side 1
-								lambert = origin.cpy().sub(impactP).nor().dot(Side.TOP.toVector());
+						dir.set(x + 0.1f, y + 0.2f, z - 0.4f).nor();//offset because???
+						Intersection inters = origin.raycast(dir,
+							floatradius * 2,
+							null,
+							(Byte t) -> !RenderCell.isTransparent(t, (byte) 0)
+						);
+						//check if intersected
+						if (inters != null && inters.getPoint() != null) {
+							//get back edge of block
+							Point impactP = getPosition().toCoord().add(x, y, z).toPoint().add(0, -RenderCell.GAME_DIAGLENGTH2, 0);
+							float pow = origin.distanceTo(impactP) / RenderCell.GAME_EDGELENGTH;
+							float l = (1 + brightness) / (pow * pow);
 
-								newbright = l * lambert * (0.15f + 0.2f * 0.005f);
-								if (lambert > 0 && newbright > lightcache[x + radius][y + radius * 2][z + radius][1]) {
-									lightcache[x + radius][y + radius * 2][z + radius][1] = newbright;
-								}
+							Vector3 vecToBlock = origin.cpy().sub(impactP).nor();
+							//side 0
+							float lambert = vecToBlock.dot(Side.LEFT.toVector());
 
-								//side 2
-								lambert = origin.cpy().sub(impactP).nor().dot(Side.RIGHT.toVector());
+							float newbright = l *lambert* (0.15f + 0.1f * 0.005f);
+							if (lambert > 0 && newbright > lightcache[x + radius][y + radius * 2][z + radius][0]) {
+								lightcache[x + radius][y + radius * 2][z + radius][0] = newbright;
+							}
 
-								newbright = l *lambert* (0.15f + 0.25f * 0.005f);
-								if (lambert > 0 && newbright > lightcache[x + radius][y + radius * 2][z + radius][2]) {
-									lightcache[x + radius][y + radius * 2][z + radius][2] = newbright;
-								}
+							//side 1
+							lambert = vecToBlock.dot(Side.TOP.toVector());
+
+							newbright = l * lambert * (0.15f + 0.2f * 0.005f);
+							if (lambert > 0 && newbright > lightcache[x + radius][y + radius * 2][z + radius][1]) {
+								lightcache[x + radius][y + radius * 2][z + radius][1] = newbright;
+							}
+
+							//side 2
+							lambert = vecToBlock.dot(Side.RIGHT.toVector());
+
+							newbright = l *lambert* (0.15f + 0.25f * 0.005f);
+							if (lambert > 0 && newbright > lightcache[x + radius][y + radius * 2][z + radius][2]) {
+								lightcache[x + radius][y + radius * 2][z + radius][2] = newbright;
 							}
 						}
 					}
@@ -170,6 +166,7 @@ public class PointLightSource extends AbstractEntity {
 		super.update(dt);
 
 		if (enabled && hasPosition()) {
+			//check if moved and therefore has to be recalculated
 			if (lastPos == null || !lastPos.equals(getPosition())) {
 				lightNearbyBlocks(dt);
 			}
@@ -185,10 +182,11 @@ public class PointLightSource extends AbstractEntity {
 						//get the light in the cache
 						float[] blocklight = lightcache[x + radius][y + radius * 2][z + radius];
 						tmp.set(xCenter + x, yCenter + y, zCenter + z);
-						if (tmp.getRenderBlock(view.getRenderStorage()) != null) {
-							tmp.addLightlevel(view, color.cpy().mul(blocklight[0]), Side.LEFT);
-							tmp.addLightlevel(view, color.cpy().mul(blocklight[1]), Side.TOP);
-							tmp.addLightlevel(view, color.cpy().mul(blocklight[2]), Side.RIGHT);
+						RenderCell rB = tmp.getRenderBlock(view.getRenderStorage());
+						if (rB != null && !rB.isHidden()) {
+							tmp.addLightToBackEdge(view, Side.LEFT, color.cpy().mul(blocklight[0]));
+							tmp.addLightToBackEdge(view, Side.TOP, color.cpy().mul(blocklight[1]));
+							tmp.addLightToBackEdge(view, Side.RIGHT, color.cpy().mul(blocklight[2]));
 						}
 					}
 				}
@@ -197,21 +195,21 @@ public class PointLightSource extends AbstractEntity {
 	}
 
 	/**
-	 *
+	 *Turn light on.
 	 */
 	public void enable() {
 		enabled = true;
 	}
 
 	/**
-	 *
+	 * Turn light off.
 	 */
 	public void disable() {
 		enabled = false;
 	}
 
 	/**
-	 *
+	 * Is light on?
 	 * @return
 	 */
 	public boolean isEnabled() {
@@ -219,8 +217,8 @@ public class PointLightSource extends AbstractEntity {
 	}
 
 	/**
-	 *
-	 * @param brightness
+	 * 
+	 * @param brightness value  &gt;= 0
 	 */
 	public void setBrightness(float brightness) {
 		this.brightness = brightness;

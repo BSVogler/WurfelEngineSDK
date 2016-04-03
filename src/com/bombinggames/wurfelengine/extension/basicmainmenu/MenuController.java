@@ -28,91 +28,55 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-package com.bombinggames.wurfelengine.core.map.Iterators;
+package com.bombinggames.wurfelengine.extension.basicmainmenu;
 
-import com.bombinggames.wurfelengine.core.gameobjects.Block;
-import com.bombinggames.wurfelengine.core.map.Chunk;
-import com.bombinggames.wurfelengine.core.map.Map;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.NoSuchElementException;
+import com.badlogic.gdx.Gdx;
 
 /**
- * Iterates over the blocks in memory.
+ * The controller of the main Menu manages the data.
  *
- * @author Benedikt Vogler
+ * @author Benedikt
  */
-public class MemoryMapIterator {
+public class MenuController {
+
+	private final BasicMenuItem[] menuItems;
 
 	/**
-	 * use to iterate over chunks
-	 */
-	private Iterator<Chunk> chunkIterator;
-	/**
-	 * Always points to a block. Iterates over a chunk.
-	 */
-	private DataIterator<Block> blockIterator;
-	private int topLevel;
-	private final int startingZ;
-
-	/**
+	 * Creates a new Controller
 	 *
-	 * @param map
-	 * @param startingZ
+	 * @param menuItems
 	 */
-	public MemoryMapIterator(Map map, int startingZ) {
-		this.topLevel = Chunk.getBlocksZ() - 1;
-		this.startingZ = startingZ;
-
-		ArrayList<Chunk> mapdata = map.getData();
-		chunkIterator = mapdata.iterator();
-		blockIterator = mapdata.get(0).getIterator(startingZ, topLevel);
+	public MenuController(BasicMenuItem[] menuItems) {
+		this.menuItems = menuItems;
+		BasicMenuItem.setSound(Gdx.audio.newSound(Gdx.files.internal("com/bombinggames/wurfelengine/extension/BasicMainMenu/click2.wav")));
 	}
 
 	/**
-	 * Loops over the complete map. Also loops over bottom layer
+	 * updates screen logic
 	 *
-	 * @return
+	 * @param dt
 	 */
-	public Block next() throws NoSuchElementException {
-		Block block = blockIterator.next();
-		if (!blockIterator.hasNext()) {
-			//end of chunk, move to next chunk
-			blockIterator = chunkIterator.next().getIterator(startingZ, topLevel);
-		}
-		return block;
-	}
-
-	/**
-	 * Reached end of y row?
-	 *
-	 * @return
-	 */
-	public boolean hasNextChunk() {
-		return chunkIterator.hasNext();
-	}
-
-	public boolean hasNext() {
-		return blockIterator.hasNext() || hasNextChunk();
-	}
-
-	/**
-	 *
-	 * @return
-	 */
-	public int[] getCurrentIndex() {
-		return blockIterator.getCurrentIndex();
-	}
-
-	/**
-	 * set the top/last limit of the iteration (including).
-	 *
-	 * @param zLimit
-	 */
-	public void setTopLimitZ(int zLimit) {
-		this.topLevel = zLimit;
-		if (blockIterator != null) {
-			blockIterator.setTopLimitZ(zLimit);
+	public void update(float dt) {
+		for (BasicMenuItem basicMenuItem : menuItems) {
+			if (basicMenuItem.isClicked()) {
+				basicMenuItem.action();
+			}
 		}
 	}
+
+	/**
+	 *
+	 */
+	public void show() {
+
+	}
+
+	/**
+	 *
+	 * @return
+	 */
+	public BasicMenuItem[] getMenuItems() {
+		return menuItems;
+	}
+
 }

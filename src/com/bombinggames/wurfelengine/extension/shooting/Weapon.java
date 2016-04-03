@@ -38,11 +38,11 @@ import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Events;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
-import com.bombinggames.wurfelengine.core.gameobjects.Block;
 import com.bombinggames.wurfelengine.core.gameobjects.Particle;
 import com.bombinggames.wurfelengine.core.gameobjects.ParticleType;
 import com.bombinggames.wurfelengine.core.gameobjects.PointLightSource;
 import com.bombinggames.wurfelengine.core.map.Point;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.extension.AimBand;
 
 /**
@@ -322,8 +322,7 @@ public class Weapon extends AbstractEntity implements Telegraph {
 				} else {
 					t = bulletDelay/(delayBetweenShots/2f);
 				}
-				this.getPosition().lerp(
-					fixedPos.cpy().add(aimDir.cpy().scl(-Block.GAME_EDGELENGTH2)),
+				this.getPosition().lerp(fixedPos.cpy().add(aimDir.cpy().scl(-RenderCell.GAME_EDGELENGTH2)),
 					t
 				);
 			} else {
@@ -405,8 +404,8 @@ public class Weapon extends AbstractEntity implements Telegraph {
                 aiming.x += Math.random() * (spread*2) -spread;
                 aiming.y += Math.random() * (spread*2) -spread;
 				bullet.setMovement(aiming.scl(40f));
-				bullet.setScaling(-0.8f);
-                bullet.setMaxDistance(distance*Block.GAME_EDGELENGTH);
+				bullet.setScaling(0.2f);
+                bullet.setMaxDistance(distance*RenderCell.GAME_EDGELENGTH);
                 bullet.setDamage(damage);
                 bullet.setExplosive(explode);
                 bullet.setImpactSprite(impactSprite);

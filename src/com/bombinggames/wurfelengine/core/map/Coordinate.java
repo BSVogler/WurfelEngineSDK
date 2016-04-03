@@ -30,26 +30,25 @@
  */
 package com.bombinggames.wurfelengine.core.map;
 
-import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Vector3;
+import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.Events;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
-import com.bombinggames.wurfelengine.core.gameobjects.Block;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderBlock;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
 import java.util.ArrayList;
 
 /**
- * A coordinate is a reference to a specific cell in the map.
- * The coordinate uses a continously height value. The Z coordinate value can be
- * calculated.
+ * A coordinate is a reference to a specific cell in the map. The coordinate
+ * uses a continously height value. The Z coordinate value can be calculated.
  *
  * @author Benedikt Vogler
  */
@@ -119,36 +118,34 @@ public class Coordinate implements Position {
 		return z;
 	}
 
-	public Coordinate set(int[] values) {
-		x = values[0];
-		y = values[1];
-		z = values[2];
-		return this;
-	}
-	
 	public Coordinate set(int x, int y, int z) {
 		this.x = x;
 		this.y = y;
 		this.z = z;
 		return this;
 	}
-	
-	
+
+	public Coordinate set(Coordinate coord) {
+		this.x = coord.x;
+		this.y = coord.y;
+		this.z = coord.z;
+		return this;
+	}
+
 	/**
 	 * avoids a new instance.
+	 *
 	 * @param from
-	 * @return 
-	 * @see #toCoord() 
+	 * @return
+	 * @see #toCoord()
 	 */
 	public Coordinate setFromPoint(Point from) {
-		set(
-			Math.floorDiv((int) from.getX(), Block.GAME_DIAGLENGTH),
-			Math.floorDiv((int) from.getY(), Block.GAME_DIAGLENGTH) *2+1,
-			Math.floorDiv((int) from.getZ(), Block.GAME_EDGELENGTH)
+		set(Math.floorDiv((int) from.getX(), RenderCell.GAME_DIAGLENGTH),
+			Math.floorDiv((int) from.getY(), RenderCell.GAME_DIAGLENGTH) * 2 + 1,
+			Math.floorDiv((int) from.getZ(), RenderCell.GAME_EDGELENGTH)
 		);
-        return goToNeighbour(Coordinate.getNeighbourSide(
-			from.getX() % Block.GAME_DIAGLENGTH,
-			from.getY() % Block.GAME_DIAGLENGTH
+		return goToNeighbour(Coordinate.getNeighbourSide(from.getX() % RenderCell.GAME_DIAGLENGTH,
+			from.getY() % RenderCell.GAME_DIAGLENGTH
 		));
 	}
 
@@ -201,10 +198,20 @@ public class Coordinate implements Position {
 	 *
 	 * @param block the block you want to set.
 	 */
-	public void setBlock(Block block) {
-		Controller.getMap().setBlock(this, block);
+	public void setBlock(int block) {
+		Controller.getMap().setBlock(this, (byte) (block&255), (byte) (block>>8&255));
 	}
 	
+	/**
+	 * Set a block in the map where the coordinate is pointing to.
+	 *
+	 * @param id
+	 * @param value
+	 */
+	public void setBlock(byte id, byte value) {
+		Controller.getMap().setBlock(this, id, value);
+	}
+
 	/**
 	 * Add a vector to the coordinates.
 	 *
@@ -246,22 +253,38 @@ public class Coordinate implements Position {
 		return this;
 	}
 
-	@Override
-	public Block getBlock() {
+	public int getBlock() {
 		if (z < 0) {
-			return Controller.getMap().getNewGroundBlockInstance();
-		} else if (z >= Chunk.getBlocksZ()){
-			return null;
+			return (byte) WE.getCVars().getValueI("groundBlockID");
+		} else if (z >= Chunk.getBlocksZ()) {
+			return 0;
 		} else {
 			return Controller.getMap().getBlock(this);
 		}
 	}
 	
+	
+	@Override
+	public byte getBlockId() {
+		if (z < 0) {
+			return (byte) WE.getCVars().getValueI("groundBlockID");
+		} else if (z >= Chunk.getBlocksZ()) {
+			return 0;
+		} else {
+			return Controller.getMap().getBlockId(this);
+		}
+	}
+	
+	public byte getBlockValue() {
+		return (byte) ((getBlock()>>8)&255);
+	}
+
 	/**
 	 * get the logic to a block.
+	 *
 	 * @return can return null if the block has no logic
 	 */
-	public AbstractBlockLogicExtension getLogic(){
+	public AbstractBlockLogicExtension getLogic() {
 		if (z < 0 || z >= Chunk.getBlocksZ()) {
 			return null;
 		} else {
@@ -285,7 +308,7 @@ public class Coordinate implements Position {
 	 */
 	@Override
 	public boolean isInMemoryAreaHorizontal() {
-		return Controller.getMap().getData().stream().anyMatch((chunk) -> (chunk.hasCoord(this)));
+		return Controller.getMap().getChunkContaining(this)!=null;
 	}
 
 	/**
@@ -297,22 +320,19 @@ public class Coordinate implements Position {
 	@Override
 	public boolean isInMemoryArea() {
 		if (getZ() >= 0 && getZ() < Chunk.getBlocksZ()) {
-			for (Chunk chunk : Controller.getMap().getData()) {
-				if (chunk.hasCoord(this)) {
-					return true;
-				}
-			}
+			return Controller.getMap().getChunkContaining(this) != null;
 		}
 		return false;
 	}
-	
+
 	/**
 	 * Checks wether the coordinate is in a cube spanning by both coordinates.
+	 *
 	 * @param x1 lower one
 	 * @param x2 bigger one.
-	 * @return 
+	 * @return
 	 */
-	public boolean isInCube(Coordinate x1, Coordinate x2){
+	public boolean isInCube(Coordinate x1, Coordinate x2) {
 		return x >= x1.getX() && y >= x1.getY() && z >= x1.getZ()
 			&& x <= x2.getX() && y <= x2.getY() && z <= x2.getZ();
 	}
@@ -339,31 +359,31 @@ public class Coordinate implements Position {
 	public static int getNeighbourSide(float x, float y) {
 		//modulo
 		if (y < 0) {
-			y += Block.GAME_DIAGLENGTH;
+			y += RenderCell.GAME_DIAGLENGTH;
 		}
 		if (x < 0) {
-			x += Block.GAME_DIAGLENGTH;
+			x += RenderCell.GAME_DIAGLENGTH;
 		}
 
 		int result = 8;//standard result
-		if (x + y <= Block.GAME_DIAGLENGTH2) {
+		if (x + y <= RenderCell.GAME_DIAGLENGTH2) {
 			result = 7;
 		}
-		if (x - y >= Block.GAME_DIAGLENGTH2) {
+		if (x - y >= RenderCell.GAME_DIAGLENGTH2) {
 			if (result == 7) {
 				result = 0;
 			} else {
 				result = 1;
 			}
 		}
-		if (x + y >= 3 * Block.GAME_DIAGLENGTH2) {
+		if (x + y >= 3 * RenderCell.GAME_DIAGLENGTH2) {
 			if (result == 1) {
 				result = 2;
 			} else {
 				result = 3;
 			}
 		}
-		if (-x + y >= Block.GAME_DIAGLENGTH2) {
+		if (-x + y >= RenderCell.GAME_DIAGLENGTH2) {
 			switch (result) {
 				case 3:
 					result = 4;
@@ -380,7 +400,8 @@ public class Coordinate implements Position {
 	}
 
 	/**
-	 * Goes to the the neighbour with the specific side. Modifies the coordinate.<br>
+	 * Goes to the the neighbour with the specific side. Modifies the
+	 * coordinate.<br>
 	 * &nbsp;&nbsp;\&nbsp;0/<br>
 	 * 7&nbsp;&nbsp;\/1<br>
 	 * \&nbsp;&nbsp;/\&nbsp;&nbsp;/<br>
@@ -401,28 +422,28 @@ public class Coordinate implements Position {
 				y -= 2;
 				break;
 			case 1:
-				x += getY() % 2 == 0 ? 0 : 1;
+				x += y % 2 == 0 ? 0 : 1;
 				y--;
 				break;
 			case 2:
 				x++;
 				break;
 			case 3:
-				x += getY() % 2 == 0 ? 0 : 1;
+				x += y % 2 == 0 ? 0 : 1;
 				y++;
 				break;
 			case 4:
 				y += 2;
 				break;
 			case 5:
-				x -= getY() % 2 == 0 ? 1 : 0;
+				x -= y % 2 == 0 ? 1 : 0;
 				y++;
 				break;
 			case 6:
 				x--;
 				break;
 			case 7:
-				x -= getY() % 2 == 0 ? 1 : 0;
+				x -= y % 2 == 0 ? 1 : 0;
 				y--;
 				break;
 		}
@@ -430,16 +451,16 @@ public class Coordinate implements Position {
 	}
 
 	/**
-	 * Copy safe.
-	 * O(const)
+	 * Copy safe. Creates new instance. O(const)
+	 *
 	 * @return the coordiante's origin is the center
 	 */
 	@Override
 	public Point toPoint() {
 		return new Point(
-			x * Block.GAME_DIAGLENGTH + (y % 2 != 0 ? Block.VIEW_WIDTH2 : 0),
-			y * Block.GAME_DIAGLENGTH2,
-			z * Block.GAME_EDGELENGTH
+			x * RenderCell.GAME_DIAGLENGTH + (y % 2 != 0 ? RenderCell.VIEW_WIDTH2 : 0),
+			y * RenderCell.GAME_DIAGLENGTH2,
+			z * RenderCell.GAME_EDGELENGTH
 		);
 	}
 
@@ -450,7 +471,8 @@ public class Coordinate implements Position {
 
 	/**
 	 * Get every entity on a coord.<br >
-	 * Loads the chunk if not in memory. Should be used with care with generated content because new chunks can also trigger this recursively.
+	 * Loads the chunk if not in memory. Should be used with care with generated
+	 * content because new chunks can also trigger this recursively.
 	 *
 	 * @return a list with the entitys
 	 */
@@ -463,7 +485,8 @@ public class Coordinate implements Position {
 
 	/**
 	 * Get every entity on this coord of the wanted type.<br>
-	 * Loads the chunk if not in memory. Should be used with care with generated content because new chunks can also trigger this recursively.
+	 * Loads the chunk if not in memory. Should be used with care with generated
+	 * content because new chunks can also trigger this recursively.
 	 *
 	 * @param <type> the class you want to filter.
 	 * @param type the class you want to filter.
@@ -478,24 +501,24 @@ public class Coordinate implements Position {
 
 	@Override
 	public int getViewSpcX() {
-		return x * Block.VIEW_WIDTH //x-coordinate multiplied by the projected size in x direction
+		return x * RenderCell.VIEW_WIDTH //x-coordinate multiplied by the projected size in x direction
 			//+ AbstractGameObject.VIEW_WIDTH2 //add half tile for center
-			+ (y % 2 != 0 ? Block.VIEW_WIDTH2 : 0); //offset by y
+			+ (y % 2 != 0 ? RenderCell.VIEW_WIDTH2 : 0); //offset by y
 	}
 
 	@Override
 	public int getViewSpcY() {
-		return -y * Block.VIEW_DEPTH2 + z * Block.VIEW_HEIGHT;
+		return -y * RenderCell.VIEW_DEPTH2 + z * RenderCell.VIEW_HEIGHT;
 	}
-	
+
 	@Override
 	public int getProjectionSpaceX(GameView view, Camera camera) {
-		return (int) (getViewSpcX()-camera.getViewSpaceX() + camera.getWidthInProjSpc() / 2);
+		return (int) (getViewSpcX() - camera.getViewSpaceX() + camera.getWidthInProjSpc() / 2);
 	}
-	
+
 	@Override
 	public int getProjectionSpaceY(GameView view, Camera camera) {
-		return (int) (getViewSpcY()-camera.getViewSpaceY() + camera.getHeightInProjSpc() / 2);
+		return (int) (getViewSpcY() - camera.getViewSpaceY() + camera.getHeightInProjSpc() / 2);
 	}
 
 	@Override
@@ -527,20 +550,20 @@ public class Coordinate implements Position {
 	public float distanceToHorizontal(Position point) {
 		return toPoint().distanceToHorizontal(point);
 	}
-	
+
 	/**
 	 * destroys the block at the current position, replacing by air.
 	 */
 	public void destroy() {
-		Block block = getBlock();
-		if (block != null && block.getHealth() > 0) {
-			block.setHealth(this, (byte) 0);
-			setBlock((Block) null);
+		int block = getBlock();
+		if ((block&255) != 0&& ((block>>16)&255) > 0) {
+			Controller.getMap().setHealth(this, (byte) 0);
+			setBlock(0);
 			//broadcast event that this block got destroyed
 			MessageManager.getInstance().dispatchMessage(Events.destroyed.getId(), this);
 		}
 	}
-		
+
 	/**
 	 * returns true if block got damaged
 	 *
@@ -548,32 +571,30 @@ public class Coordinate implements Position {
 	 * @return
 	 */
 	public boolean damage(byte amount) {
-		Block block = getBlock();
-		if (block != null && amount > 0) {
-			if (block.getHealth() - amount < 0){
-				block.setHealth(this, (byte) 0);
+		byte block = getBlockId();
+		if (block != 0 && amount > 0) {
+			if (getHealth() - amount < 0) {
+				setHealth((byte) 0);
 			} else {
-				block.setHealth(this, (byte) (block.getHealth() - amount));
+				Controller.getMap().setHealth(this, (byte) (getHealth() - amount));
 			}
-			if (block.getHealth() <= 0 && !block.isIndestructible()) {
+			if (getHealth() <= 0 && !RenderCell.isIndestructible(block, (byte)0)) {
 				//broadcast event that this block got destroyed
 				MessageManager.getInstance().dispatchMessage(Events.destroyed.getId(), this);
-				setBlock((Block) null);
+				setBlock(0);
 			}
 			return true;
 		}
 		return false;
 	}
-	
+
 	@Override
-	@SuppressWarnings("SuspiciousNameCombination")
-	public int getChunkX(){
+	public int getChunkX() {
 		return Math.floorDiv(x, Chunk.getBlocksX());
 	}
-	
+
 	@Override
-	@SuppressWarnings("SuspiciousNameCombination")
-	public int getChunkY(){
+	public int getChunkY() {
 		return Math.floorDiv(y, Chunk.getBlocksY());
 	}
 
@@ -604,7 +625,7 @@ public class Coordinate implements Position {
 
 	@Override
 	public int hashCode() {
-		return 13*(425+ 37*x) + 13*y + 2953*z;
+		return 13 * (425 + 37 * x) + 13 * y + 2953 * z;
 	}
 
 	@Override
@@ -613,11 +634,11 @@ public class Coordinate implements Position {
 	}
 
 	/**
-	 * 
-	 * @param value 
+	 *
+	 * @param value
 	 */
 	public void setValue(byte value) {
-		Controller.getMap().setValue(this,value);
+		Controller.getMap().setValue(this, value);
 	}
 
 	@Override
@@ -633,7 +654,7 @@ public class Coordinate implements Position {
 
 		return result;
 	}
-	
+
 	/**
 	 * get entities in radius (horizontal only)
 	 *
@@ -645,7 +666,7 @@ public class Coordinate implements Position {
 		ArrayList<AbstractEntity> result = new ArrayList<>(5);//defautl size 5
 		ArrayList<AbstractEntity> entityList = Controller.getMap().getEntities();
 		for (AbstractEntity entity : entityList) {
-			if (distanceToHorizontal(entity.getPosition().toPoint()) < radius) {
+			if (distanceToHorizontal(entity.getPoint()) < radius) {
 				result.add(entity);
 			}
 		}
@@ -659,88 +680,156 @@ public class Coordinate implements Position {
 		ArrayList<type> result = new ArrayList<>(5);//default size 5
 		ArrayList<AbstractEntity> entityList = Controller.getMap().getEntities();
 
-        for (AbstractEntity entity : entityList) {//check every entity
-            if (
-				entity.hasPosition()
+		for (AbstractEntity entity : entityList) {//check every entity
+			if (entity.hasPosition()
 				&& type.isInstance(entity) //if the entity is of the wanted type
-				&& distanceToHorizontal(entity.getPosition().toPoint()) < radius//TODO should use squared values for improved speed
-			) {
-                result.add((type) entity);//add it to list
-            }
-        }
+				&& distanceToHorizontal(entity.getPoint()) < radius//TODO should use squared values for improved speed
+				) {
+				result.add((type) entity);//add it to list
+			}
+		}
 
-        return result;
+		return result;
 	}
 
 	@Override
 	public Chunk getChunk() {
-		return Controller.getMap().getChunk(this);
+		return Controller.getMap().getChunkContaining(this);
 	}
-	
+
 	public RenderChunk getRenderChunk(GameView gameView) {
 		return gameView.getRenderStorage().getChunk(this);
 	}
 
 	/**
-	 * 
+	 *
 	 * @param rs
 	 * @return can return null
 	 */
-	public RenderBlock getRenderBlock(RenderStorage rs) {
+	public RenderCell getRenderBlock(RenderStorage rs) {
 		if (z < 0) {
 			return null;
-		} else if (z >= Chunk.getBlocksZ()){
+		} else if (z >= Chunk.getBlocksZ()) {
 			return null;
 		} else {
-			return rs.getBlock(this);
-		}
-	}
-	
-	/**
-	 * Add the coordiante to a list of changed.
-	 * @param view
-	 * @param side
-	 * @param color
-	 * @param vertex 
-	 */
-	public void addLight(GameView view, Side side, Color color,int vertex){
-		RenderBlock neighb = getRenderBlock(view.getRenderStorage());
-		if (neighb != null) {
-			view.getRenderStorage().setLightFlag(neighb);
-			neighb.addLightlevel(color.r, side, 0, vertex);
-			neighb.addLightlevel(color.g, side, 1, vertex);
-			neighb.addLightlevel(color.b, side, 2, vertex);
+			return rs.getCell(this);
 		}
 	}
 
 	/**
-	 * Add light to the top of a coordinate
+	 * Add light to the renderblock at this coordiante
+	 *
+	 * @param view
+	 * @param side
+	 * @param color
+	 * @param vertex
+	 */
+	public void addLight(GameView view, Side side, int vertex, Color color) {
+		RenderCell rB = getRenderBlock(view.getRenderStorage());
+		if (rB != null && !rB.isHidden()) {
+			view.getRenderStorage().setLightFlag(rB);
+			rB.addLightlevel(color.r, side, 0, vertex);
+			rB.addLightlevel(color.g, side, 1, vertex);
+			rB.addLightlevel(color.b, side, 2, vertex);
+		}
+	}
+
+	/**
+	 * Add light to the back edge of a coordinate and it's neighbors-
+	 *
 	 * @param view
 	 * @param color
-	 * @param side 
+	 * @param side
 	 */
-	public void addLightlevel(GameView view, Color color, Side side) {
-		if (side==Side.TOP) {
-			addLight(view, side, color, 1);
-			goToNeighbour(0).addLight(view, side, color, 3);
-			goToNeighbour(3).addLight(view, side, color, 0);
-			goToNeighbour(6).addLight(view, side, color, 2);
+	public void addLightToBackEdge(GameView view, Side side, Color color) {
+		if (side == Side.TOP) {
+			this.addLight(view, side, 1, color);
+			goToNeighbour(0).addLight(view, side, 3, color);
+			goToNeighbour(3).addLight(view, side, 0, color);
+			goToNeighbour(6).addLight(view, side, 2, color);
 			goToNeighbour(3);//go back
 		} else {
-			RenderBlock neighb = getRenderBlock(view.getRenderStorage());
-			view.getRenderStorage().setLightFlag(neighb);
-			neighb.addLightlevel(color.r, side, 0, 0);
-			neighb.addLightlevel(color.g, side, 1, 0);
-			neighb.addLightlevel(color.b, side, 2, 0);
-			neighb.addLightlevel(color.r, side, 0, 1);
-			neighb.addLightlevel(color.g, side, 1, 1);
-			neighb.addLightlevel(color.b, side, 2, 1);
-			neighb.addLightlevel(color.r, side, 0, 2);
-			neighb.addLightlevel(color.g, side, 1, 2);
-			neighb.addLightlevel(color.b, side, 2, 2);
-			neighb.addLightlevel(color.r, side, 0, 3);
-			neighb.addLightlevel(color.g, side, 1, 3);
-			neighb.addLightlevel(color.b, side, 2, 3);
+			RenderCell neighb = getRenderBlock(view.getRenderStorage());
+			if (neighb != null && !neighb.isHidden()) {
+				//view.getRenderStorage().setLightFlag(rB); //in the way this algorthm is used this line is not needed
+				neighb.addLightlevel(color.r, side, 0, 0);
+				neighb.addLightlevel(color.g, side, 1, 0);
+				neighb.addLightlevel(color.b, side, 2, 0);
+				neighb.addLightlevel(color.r, side, 0, 1);
+				neighb.addLightlevel(color.g, side, 1, 1);
+				neighb.addLightlevel(color.b, side, 2, 1);
+				neighb.addLightlevel(color.r, side, 0, 2);
+				neighb.addLightlevel(color.g, side, 1, 2);
+				neighb.addLightlevel(color.b, side, 2, 2);
+				neighb.addLightlevel(color.r, side, 0, 3);
+				neighb.addLightlevel(color.g, side, 1, 3);
+				neighb.addLightlevel(color.b, side, 2, 3);
+			}
 		}
+	}
+
+	boolean contains(Point point) {
+		//bloated in-place code to avoid heap call with toCoord()
+		int xCoord = Math.floorDiv((int) point.x, RenderCell.GAME_DIAGLENGTH);
+		int yCoord = Math.floorDiv((int) point.y, RenderCell.GAME_DIAGLENGTH) * 2 + 1; //maybe dangerous to optimize code here!
+		//find the specific coordinate (detail)
+		switch (Coordinate.getNeighbourSide(point.x % RenderCell.GAME_DIAGLENGTH,
+			point.y % RenderCell.GAME_DIAGLENGTH
+		)) {
+			case 0:
+				yCoord -= 2;
+				break;
+			case 1:
+				xCoord += yCoord % 2 == 0 ? 0 : 1;
+				yCoord--;
+				break;
+			case 2:
+				xCoord++;
+				break;
+			case 3:
+				xCoord += yCoord % 2 == 0 ? 0 : 1;
+				yCoord++;
+				break;
+			case 4:
+				yCoord += 2;
+				break;
+			case 5:
+				xCoord -= yCoord % 2 == 0 ? 1 : 0;
+				yCoord++;
+				break;
+			case 6:
+				xCoord--;
+				break;
+			case 7:
+				xCoord -= yCoord % 2 == 0 ? 1 : 0;
+				yCoord--;
+				break;
+		}
+
+		return !(Math.floorDiv((int) point.z, RenderCell.GAME_EDGELENGTH) != z
+			|| xCoord != x
+			|| yCoord != y);
+	}
+
+	public boolean isObstacle(){
+		return false;
+	}
+
+	private void setHealth(byte health) {
+		Controller.getMap().setHealth(this, health);
+	}
+
+	private byte getHealth() {
+		return Controller.getMap().getHealth(this);
+	}
+
+	@Override
+	public Coordinate getCoord() {
+		return this;
+	}
+
+	@Override
+	public Point getPoint() {
+		return toPoint();
 	}
 }

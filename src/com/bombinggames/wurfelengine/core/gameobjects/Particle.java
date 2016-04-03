@@ -2,6 +2,7 @@ package com.bombinggames.wurfelengine.core.gameobjects;
 
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Interpolation;
+import com.badlogic.gdx.utils.Pool;
 
 /**
  *
@@ -23,9 +24,10 @@ public class Particle extends MovableEntity {
 	private float startingAlpha;
 	private ParticleType type = ParticleType.REGULAR;
 	private boolean rotateRight;
+	private Pool<Particle> pool;
 
 	/**
-	 * With TTL 2000. 
+	 * With TTL 2000.
 	 */
 	public Particle() {
 		this((byte) 22, 2000f);
@@ -33,7 +35,8 @@ public class Particle extends MovableEntity {
 
 	/**
 	 * With TTL 2000
-	 * @param id 
+	 *
+	 * @param id
 	 */
 	public Particle(byte id) {
 		this(id, 2000f);
@@ -46,17 +49,23 @@ public class Particle extends MovableEntity {
 	 */
 	public Particle(byte id, float maxtime) {
 		super(id, 0, false);
+		init(maxtime);
+	}
+	
+	public void init(float maxtime){
 		this.maxtime = maxtime;
 		timeTillDeath = maxtime;
 		setSaveToDisk(false);
-		if (type.isGrowing())
-			setScaling(-1);
-		else setScaling(-0.7f);
+		if (type.isGrowing()) {
+			setScaling(0);
+		} else {
+			setScaling(0.3f);
+		}
 		setFloating(true);
 		setName("Particle");
 		setColor(new Color(0.5f, 0.5f, 0.5f, 1f));
 		setMass(0.0005f);
-		rotateRight = Math.random()>0.5f;
+		rotateRight = Math.random() > 0.5f;
 	}
 
 	/**
@@ -115,15 +124,17 @@ public class Particle extends MovableEntity {
 //		CoreData block = getPosition().getBlock();
 //		if (block!=null && block.isObstacle())
 //			getPosition().addVector(step.scl(-1));//reverse step
-		if (rotateRight)
+		if (rotateRight) {
 			setRotation(getRotation() - dt / 10f);
-		else setRotation(getRotation() + dt / 10f);
+		} else {
+			setRotation(getRotation() + dt / 10f);
+		}
 		if (type.isGrowing()) {
-			setScaling(getScaling() + dt / 700f);
+			setScaling(getScaling() + dt / 800f);
 		}
 		if (type.fade()) {
 			float t = (timeTillDeath) / maxtime;
-			getColor().a = startingAlpha*Interpolation.fade.apply(t);
+			getColor().a = startingAlpha * Interpolation.fade.apply(t);
 		}
 		if (type.fadeToBlack()) {
 			getColor().r = startingColor.r * (timeTillDeath / maxtime);
@@ -132,18 +143,14 @@ public class Particle extends MovableEntity {
 		}
 	}
 
-	@Override
-	public MovableEntity clone() throws CloneNotSupportedException {
-		return super.clone();
-	}
-
 	/**
 	 *
 	 * @return
 	 */
-	public float getPercentageOfLife(){
+	public float getPercentageOfLife() {
 		return timeTillDeath / maxtime;
 	}
+
 	/**
 	 * the amount of time the object lives maximum.
 	 *
@@ -152,4 +159,17 @@ public class Particle extends MovableEntity {
 	public float getLivingTime() {
 		return maxtime;
 	}
+
+	void setPool(Pool<Particle> pool) {
+		this.pool = pool;
+	}
+
+	@Override
+	public void dispose() {
+		super.dispose();
+		if (pool != null) {
+			pool.free(this);
+		}
+	}
+
 }

@@ -34,6 +34,7 @@ package com.bombinggames.wurfelengine.core.gameobjects;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Vector3;
+import com.badlogic.gdx.utils.Pool;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.map.Point;
 
@@ -58,18 +59,47 @@ public class ParticleEmitter extends AbstractEntity {
 	private Vector3 spread = new Vector3(0, 0, 0);
 	private PointLightSource lightsource;
 	private Particle prototype = new Particle((byte) 22);
+	private Pool<Particle> pool;
 
 	/**
+	 * Initializes with defautl size
+	 */
+	public ParticleEmitter() {
+		this(50);
+	}
+	
+	/**
 	 * active by default
+	 * @param size size of pool
 	 */
 	//public Emitter(Class<MovableEntity> emitterClass) {
-	public ParticleEmitter() {
+	public ParticleEmitter(int size) {
 		super((byte) 14);
 		//this.particleClass = Dust.class;
 		disableShadow();
 		setIndestructible(true);
 		setName("Particle Emitter");
 		setActive(true);
+		pool = new Pool<Particle>(size) {
+			@Override
+			protected Particle newObject() {
+				Particle particle = new Particle(prototype.getSpriteId(), prototype.getLivingTime());
+				return particle;
+			}
+
+			@Override
+			public Particle obtain() {
+				boolean init = false;
+				if (getFree() > 0) {
+					init = true;//will obtain from pool
+				}
+				Particle particle = super.obtain();
+				if (init) {
+					particle.init(2000f);
+				}
+				return particle;
+			}
+		};
 	}
 
 	@Override
@@ -93,9 +123,10 @@ public class ParticleEmitter extends AbstractEntity {
 			timer += dt;
 			while (timer >= timeEachSpawn) {
 				timer -= timeEachSpawn;
-				Particle particle = new Particle(prototype.getSpriteId(), prototype.getLivingTime());
+				Particle particle = pool.obtain();
+				particle.setPool(pool);
 				particle.setType(prototype.getType());
-				particle.setColor(prototype.getColor().cpy());
+				particle.getColor().set(prototype.getColor());
 				particle.setRotation((float) (Math.random()*360f));
 				particle.addMovement(
 					startingVector.add(
@@ -104,10 +135,14 @@ public class ParticleEmitter extends AbstractEntity {
 						(float) (Math.random() - 0.5f) * 2 * spread.z
 					)
 				);
-				particle.spawn(getPosition().cpy());
+				if (particle.hasPosition()) {
+					particle.getPosition().set(getPosition());
+				} else {
+					particle.spawn(getPosition().cpy());
+				}
 			}
 		} else {
-			setColor(new Color(0.5f, 0.5f, 0.5f, 1));
+			getColor().set(0.5f, 0.5f, 0.5f, 1);
 		}
 	}
 
@@ -195,7 +230,7 @@ public class ParticleEmitter extends AbstractEntity {
 				lightsource = new PointLightSource(Color.YELLOW, 5, 11, WE.getGameplay().getView());
 				lightsource.setPosition(getPosition().cpy());
 			} else {
-				lightsource.getPosition().setValues(getPosition());
+				lightsource.getPosition().set(getPosition());
 			}
 			lightsource.enable();
 		}

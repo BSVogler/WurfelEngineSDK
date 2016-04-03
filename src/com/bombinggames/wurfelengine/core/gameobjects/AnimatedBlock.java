@@ -28,13 +28,13 @@
  */
 package com.bombinggames.wurfelengine.core.gameobjects;
 
-import com.bombinggames.wurfelengine.core.map.rendering.RenderBlock;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 
 /**
  *A block which has an animation.
  * @author Benedikt
  */
-public class AnimatedBlock extends RenderBlock implements Animatable{
+public class AnimatedBlock extends RenderCell implements Animatable{
 	private static final long serialVersionUID = 1L;
     private final int[] animationsduration;
     private int counter = 0;
@@ -47,14 +47,15 @@ public class AnimatedBlock extends RenderBlock implements Animatable{
 	private boolean runningForth;
     
     /**
-     * Create this RenderBlock with an array wich has the time of every animation step in ms in it.
-     * @param data the data of the block.
+     * Create this RenderCell with an array wich has the time of every animation step in ms in it.
+	 * @param id
+	 * @param value
      * @param animationsinformation  an array wich has the duraion of every animationstep inside
      * @param  autostart True when it should automatically start.
      * @param loop Set to true when it should loop, when false it stops after one time. 
      */
-    public AnimatedBlock(Block data, int[] animationsinformation, boolean autostart, boolean loop){
-        super(data);
+    public AnimatedBlock(byte id, byte value, int[] animationsinformation, boolean autostart, boolean loop){
+        super(id, value);
         this.animationsduration = animationsinformation;
         this.running = autostart;
         this.loop = loop;

@@ -1,7 +1,7 @@
 /*
  * If this software is used for a game the official „Wurfel Engine“ logo or its name must be visible in an intro screen or main menu.
  *
- * Copyright 2015 Benedikt Vogler.
+ * Copyright 2014 Benedikt Vogler.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,75 +28,78 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-package com.bombinggames.wurfelengine.core.map;
+package com.bombinggames.wurfelengine.mapeditor;
 
-import com.badlogic.gdx.ai.pfa.Connection;
-import com.badlogic.gdx.ai.pfa.indexed.IndexedNode;
-import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.ui.Label;
+import com.badlogic.gdx.scenes.scene2d.ui.WidgetGroup;
+import com.bombinggames.wurfelengine.WE;
+import com.bombinggames.wurfelengine.core.gameobjects.Cursor;
+import com.bombinggames.wurfelengine.core.map.Coordinate;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 
 /**
+ * Saves the current "color"(block) selection in the editor.
  *
  * @author Benedikt Vogler
  */
-public class PfNode extends Coordinate implements IndexedNode<PfNode> {
+public class CursorInfo extends WidgetGroup {
 
-	private static final long serialVersionUID = 1L;
-
-	private final int index;
+	private final Label label;
+	/**
+	 * parent stage
+	 */
+	private final Stage stage;
+	private final Cursor cursor;
 
 	/**
 	 *
-	 * @param coord
-	 * @param index
+	 * @param stage parent stage
+	 * @param cursor the selection-Entity where the block comes from
 	 */
-	public PfNode(Coordinate coord, int index) {
-		super(coord);
-		this.index = calculateIndex();
+	public CursorInfo(Stage stage, Cursor cursor) {
+		this.stage = stage;
+		this.cursor = cursor;
+		label = new Label("nothing selected", WE.getEngineView().getSkin());
+		addActor(label);
+
+		setPosition(stage.getWidth() * 0.8f, stage.getHeight() * 0.02f);
+	}
+
+	public void updateFrom(int block, Coordinate coord) {
+		byte id = (byte) (block & 255);
+		byte value = (byte) ((block >> 8) & 255);
+		label.setText(RenderCell.getName(id, value) + " " + id + " - " + value + "@" + cursor.getPosition().toCoord().toString());
 	}
 
 	/**
+	 * Relative movement.
 	 *
-	 * @param coord
+	 * @param amount
 	 */
-	public PfNode(Coordinate coord) {
-		super(coord);
-		this.index = calculateIndex();
+	void moveToCenter(float amount) {
+		if (getX() < stage.getWidth() / 2) {
+			setX(getX() + amount);
+		} else {
+			setX(getX() - amount);
+		}
 	}
 
 	/**
+	 * Absolute position.
 	 *
-	 * @return
+	 * @param amount
 	 */
-	public int calculateIndex() {
-		Chunk chunk = getChunk();
-		return getX() - chunk.getTopLeftCoordinateX()+ (getY() - chunk.getTopLeftCoordinateY()) * Chunk.getBlocksX();
+	void moveToBorder(float amount) {
+		if (getX() < stage.getWidth() / 2) {
+			setX(amount);
+		} else {
+			setX(stage.getWidth() - amount);
+		}
 	}
 
-	
-	@Override
-	public int getIndex() {
-		return index;
+	void hide() {
+		setVisible(false);
 	}
 
-	@Override
-	public Array<Connection<PfNode>> getConnections() {
-		Array<Connection<PfNode>> a = new Array<>(4);
-		PfNode neigh = new PfNode(cpy().add(-1, 0, 0));
-		if (!neigh.isObstacle())
-			a.add(new CoordConnection(this, neigh));
-		
-		neigh = new PfNode(cpy().add(1, 0, 0));
-		if (!neigh.isObstacle())
-			a.add(new CoordConnection(this, neigh));
-		
-		neigh = new PfNode(cpy().add(0, 2, 0));
-		if (!neigh.isObstacle())
-			a.add(new CoordConnection(this, neigh));
-		
-		neigh = new PfNode(cpy().add(0, -2, 0));
-		if (!neigh.isObstacle())
-			a.add(new CoordConnection(this, neigh));
-
-		return a;
-	}
 }

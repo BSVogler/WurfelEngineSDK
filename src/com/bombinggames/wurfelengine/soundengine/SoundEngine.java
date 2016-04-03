@@ -37,7 +37,7 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.GameView;
-import com.bombinggames.wurfelengine.core.gameobjects.Block;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.Position;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -157,7 +157,8 @@ public class SoundEngine {
 	 *
 	 * @param identifier name of sound
 	 * @param volume
-	 * @param pitch the pitch multiplier, 1 == default, >1 == faster, 1 == slower, the value has to be between 0.5 and 2.0
+	 * @param pitch the pitch multiplier, 1 == default, &gt;1 == faster, 1 ==
+	 * slower, the value has to be between 0.5 and 2.0
 	 * @return
 	 */
 	public long play(String identifier, float volume, float pitch) {
@@ -321,7 +322,7 @@ public class SoundEngine {
 			}
 
 			int decay = WE.getCVars().getValueI("soundDecay");
-			volume = decay * Block.GAME_EDGELENGTH / (minDistance * minDistance + decay * Block.GAME_EDGELENGTH);//loose energy radial
+			volume = decay * RenderCell.GAME_EDGELENGTH / (minDistance * minDistance + decay * RenderCell.GAME_EDGELENGTH);//loose energy radial
 			if (volume > 1) {
 				volume = 1;
 			}

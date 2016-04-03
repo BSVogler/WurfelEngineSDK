@@ -32,15 +32,16 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ai.msg.Telegraph;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Controller;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderBlock;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
-import static com.bombinggames.wurfelengine.core.gameobjects.Block.GAME_DIAGLENGTH2;
-import static com.bombinggames.wurfelengine.core.gameobjects.Block.GAME_EDGELENGTH;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_DIAGLENGTH2;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
 import java.util.ArrayList;
+import java.util.LinkedList;
 
 /**
  * An entity is a game object which has the key feature that is has a position.
@@ -62,7 +63,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	}
 	
 	/**
-	 * Register a class of entities.
+	 * Register a class of entities. The class must have a constructor without parameters.
 	 * @param name the name of the entitie. e.g. "Ball"
 	 * @param entityClass the class you want to register
 	 */
@@ -103,6 +104,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	private char category = 'e';
 	private boolean useRawDelta = false;
 	private float mass = 0.4f;
+	private LinkedList<AbstractGameObject> covered = new LinkedList<>();
 	/**
 	 * Create an abstractEntity.
 	 *
@@ -159,7 +161,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	public void setPosition(Point pos) {
 		this.position = pos;
 	}
-	
+
     /**
      * Is the entity laying/standing on the ground?
      * @return true when on the ground. False if in air or not in memory.
@@ -177,8 +179,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 
 				pos.setZ(pos.getZ() - 1);//move one up for check
 
-				Block block = pos.getBlock();
-				boolean colission = (block != null && block.isObstacle());
+				boolean colission = pos.isObstacle();
 				pos.setZ(pos.getZ() + 1);//reverse
 
 				return colission;
@@ -276,18 +277,19 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 		category = c;
 	}
     
-    @Override
-    public String getName() {
-		if (name==null)
+ @Override
+	public String getName() {
+		if (name == null) {
 			return "undefined";
-        return name;
-    }
+		}
+		return name;
+	}
 	
 	/**
 	 *
 	 * @param name
 	 */
-	public void setName(String name){
+	public void setName(String name) {
 		this.name = name;
 	}
 
@@ -299,16 +301,15 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	public void setDimensionZ(int dimensionZ) {
 		this.dimensionZ = dimensionZ;
 	}
-	
+
 	@Override
-    public int getDimensionZ() {
-        return dimensionZ;
-    }
+	public int getDimensionZ() {
+		return dimensionZ;
+	}
 	
 	/**
 	 * Deletes the object from the map. The opposite to
 	 * {@link #spawn(Point)}<br>
-	 * Removes also all the children unless improperly implemented.
 	 *
 	 * @see #dispose()
 	 * @see #spawn(Point)
@@ -362,13 +363,13 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * true if on chunk which is in memory
 	 *
 	 * @return
-	 * @see Coord#isInMemoryAreaHorizontal()
+	 * @see com.bombinggames.wurfelengine.core.map.Coordinate#isInMemoryAreaHorizontal()
 	 */
 	public boolean isInMemoryArea() {
 		if (position == null) {
 			return false;
 		}
-		return position.toCoord().isInMemoryAreaHorizontal();
+		return position.isInMemoryAreaHorizontal();
 	}
 
 	/**
@@ -591,70 +592,58 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 
 	
 	@Override
-	public ArrayList<Renderable> getCovered(RenderStorage rs) {
-		ArrayList<Renderable> res = new ArrayList<>(11);
-		Coordinate pos = position.toCoord();
+	public LinkedList<AbstractGameObject> getCovered(RenderStorage rs) {
+		covered.clear();
+		if (position != null) {
+			Coordinate coord = getCoord();
+			coord.add(0, 0, -1);//go one down because the ents are added one too high
+			RenderCell block;
+//			block = rs.getCell(coord);//draw block in this cell first
+//			if (block != null) {
+//				covered.add(block);
+//			}
+//			block = rs.getCell(coord.goToNeighbour(7));//block behind left
+//			if (block != null) {
+//				covered.add(block);
+//			}
+//			block = rs.getCell(coord.goToNeighbour(1));//block behind
+//			if (block != null) {
+//				covered.add(block);
+//			}
+//			block = rs.getCell(coord.goToNeighbour(3));//block behind right
+//			if (block != null) {
+//				covered.add(block);
+//			}
+//			coord.goToNeighbour(5);
 
-		RenderBlock block;
-		//block = rs.getBlock(pos);//draw block in this cell first
-//		if (block != null) {
-//			res.add(block);
-//		}
-		block = rs.getBlock(pos.goToNeighbour(0));//block behind
-		if (block != null) {
-			res.add(block);
+			//render this ent before blocks below
+			if (coord.getZ()<1){
+				covered.add(rs.getCell(coord));
+			} else {
+				if (coord.getZ() > 0) {
+	//				if (block != null) {
+	//					covered.add(block);
+	//				}
+					block = rs.getCell(coord.add(0, 0, -1).goToNeighbour(4));//front
+					if (block != null) {
+						covered.add(block);
+					}
+				}
+			}
+				
 		}
-		pos.goToNeighbour(4);
-		block = rs.getBlock(pos.goToNeighbour(2));//block behind
-		if (block != null) {
-			res.add(block);
-		}
-		pos.goToNeighbour(6);
-		block = rs.getBlock(pos.goToNeighbour(6));//block behind
-		if (block != null) {
-			res.add(block);
-		}
-		pos.goToNeighbour(2);
-		
-		//render this ent before blocks below
-		if (pos.getZ() > 0) {
-			block = rs.getBlock(pos.add(0, 0, -1));//draw block below first
-			if (block != null) {
-				res.add(block);
-			}
-			block = rs.getBlock(pos.goToNeighbour(7));//back left
-			if (block != null) {
-				res.add(block);
-			}
-			block = rs.getBlock(pos.goToNeighbour(1));//back
-			if (block != null) {
-				res.add(block);
-			}
-			block = rs.getBlock(pos.goToNeighbour(3));//back right
-			if (block != null) {
-				res.add(block);
-			}
-			block = rs.getBlock(pos.goToNeighbour(3));//right
-			if (block != null) {
-				res.add(block);
-			}
-			block = rs.getBlock(pos.goToNeighbour(5));//front right
-			if (block != null) {
-				res.add(block);
-			}
-			block = rs.getBlock(pos.goToNeighbour(5));
-			if (block != null) {
-				res.add(block);
-			}
-			block = rs.getBlock(pos.goToNeighbour(7));
-			if (block != null) {
-				res.add(block);
-			}
-			block = rs.getBlock(pos.goToNeighbour(7));
-			if (block != null) {
-				res.add(block);
-			}
-		}
-		return res;
+		return covered;
 	}
+
+	@Override
+	public Point getPoint() {
+		return position;
+	}
+
+	@Override
+	public Coordinate getCoord() {
+		return position.toCoord();
+	}
+	
+	
 }

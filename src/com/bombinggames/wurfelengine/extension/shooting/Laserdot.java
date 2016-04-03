@@ -33,13 +33,13 @@ package com.bombinggames.wurfelengine.extension.shooting;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Vector3;
-import com.bombinggames.wurfelengine.core.gameobjects.Block;
 import com.bombinggames.wurfelengine.core.gameobjects.SimpleEntity;
 import com.bombinggames.wurfelengine.core.map.Intersection;
 import com.bombinggames.wurfelengine.core.map.Point;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 
 /**
- *
+ * Uses sprite e22-0
  * @author Benedikt Vogler
  */
 public class Laserdot extends SimpleEntity {
@@ -51,7 +51,7 @@ public class Laserdot extends SimpleEntity {
 	public Laserdot() {
 		super((byte) 22);
 		setColor(new Color(1, 0, 0, 1));
-		setScaling(-0.95f);
+		setScaling(0.05f);
 		setSaveToDisk(false);
 		setName("Laser dot");
 		disableShadow();
@@ -67,17 +67,16 @@ public class Laserdot extends SimpleEntity {
 	public void update(Vector3 aimDir, Point origin) {
 		if (hasPosition() && !aimDir.isZero()) {
 			
-			Intersection raycast = origin.rayMarching(
-				aimDir,
+			Intersection raycast = origin.rayMarching(aimDir,
 				12,
 				null,
-				(Block t) -> !t.isTransparent() && t.getId() != ignoreId
+				(Byte t) -> !RenderCell.isTransparent(t,(byte) 0) && t != ignoreId
 			);
 			setHidden(raycast == null);
 			if (raycast != null && raycast.getPoint() != null) {
 				setPosition(raycast.getPoint());
 			} else {
-				getPosition().setValues(getPosition());
+				getPosition().set(getPosition());
 			}
 		}
 	}

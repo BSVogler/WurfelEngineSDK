@@ -34,19 +34,23 @@ import com.badlogic.gdx.Input.Buttons;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.InputListener;
+import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
+import com.badlogic.gdx.scenes.scene2d.ui.TextField;
 import com.badlogic.gdx.scenes.scene2d.ui.Window;
+import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.bombinggames.wurfelengine.Command;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
-import com.bombinggames.wurfelengine.core.gameobjects.Block;
 import com.bombinggames.wurfelengine.core.gameobjects.Cursor;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 
 /**
  * A toolbar for the editor.
@@ -54,8 +58,6 @@ import com.bombinggames.wurfelengine.core.map.Point;
  * @author Benedikt Vogler
  */
 public class Toolbar extends Window {
-
-	private final Cursor cursor;
 
 	/**
 	 * a enum listing the available tools
@@ -124,36 +126,36 @@ public class Toolbar extends Window {
 		public boolean selectFromEntities() {
 			return selectFromEntities;
 		}
-		
+
 		/**
-		 * Get the action when the tool is used in a command object.
-		 * @param view
+		 * 
+		 *
 		 * @param cursor
 		 * @param placableGUI
 		 * @return
 		 */
-		public Command getCommand(GameView view, Cursor cursor, PlacableGUI placableGUI){
+		public Command getCommand(Cursor cursor, PlacableTable placableGUI) {
 			switch (this) {
 				case DRAW:
 					return new Command() {
 						private Coordinate coord;
-						private Block previous;
-						private Block block;
-						
-						public void init(){
-							
+						private int previous;
+						private int block;
+
+						public void init() {
+
 						}
-						
+
 						@Override
 						public void execute() {
-							if (coord==null) {
+							if (coord == null) {
 								coord = cursor.getCoordInNormalDirection();
 								block = placableGUI.getBlock();
 								previous = coord.getBlock();
 							}
 							Controller.getMap().setBlock(coord, block);
 						}
-						
+
 						@Override
 						public void undo() {
 							Controller.getMap().setBlock(coord, previous);
@@ -162,19 +164,19 @@ public class Toolbar extends Window {
 				case REPLACE:
 					return new Command() {
 						private Coordinate coord;
-						private Block previous;
-						private Block block;
-						
+						private int previous;
+						private int block;
+
 						@Override
 						public void execute() {
-							if (coord==null) {
+							if (coord == null) {
 								coord = cursor.getPosition().toCoord();
 								block = placableGUI.getBlock();
 								previous = coord.getBlock();
 							}
 							Controller.getMap().setBlock(coord, block);
 						}
-						
+
 						@Override
 						public void undo() {
 							Controller.getMap().setBlock(coord, previous);
@@ -184,7 +186,7 @@ public class Toolbar extends Window {
 					return new Command() {
 						private AbstractEntity ent = null;
 						private Point point;
-						
+
 						@Override
 						public void execute() {
 							if (point == null) {
@@ -194,7 +196,7 @@ public class Toolbar extends Window {
 							ent = placableGUI.getEntity();
 							ent.spawn(point.cpy());
 						}
-						
+
 						@Override
 						public void undo() {
 							ent.dispose();
@@ -204,16 +206,16 @@ public class Toolbar extends Window {
 				default:
 					//erase
 					return new Command() {
-						private Block previous;
+						private int previous;
 						private Coordinate coord;
 
 						@Override
 						public void execute() {
-							if (coord==null) {
+							if (coord == null) {
 								coord = cursor.getPosition().toCoord();
 								previous = coord.getBlock();
 							}
-							Controller.getMap().setBlock(coord, null);
+							Controller.getMap().setBlock(coord, (byte) 0);
 						}
 
 						@Override
@@ -225,67 +227,64 @@ public class Toolbar extends Window {
 		}
 	}
 
-	private Tool selectionLeft = Tool.DRAW;
-	private Tool selectionRight = Tool.ERASE;
+	private final Cursor cursor;
 
+	private Tool selectionLeft = Tool.DRAW;
+	private final Tool selectionRight = Tool.ERASE;
+	private PlacableTable table;
+	private final TextField valuesActor;
 	private final GameView view;
 
 	private final Image[] items = new Image[Tool.values().length];
-	private final PlacableTable leftTable;
-	private final PlacableTable rightTable;
-	
+
 	/**
 	 * creates a new toolbar
 	 *
 	 * @param view
 	 * @param sprites
-	 * @param left
-	 * @param right
 	 * @param cursor
+	 * @param stage
 	 */
-	public Toolbar(GameView view, TextureAtlas sprites, PlacableTable left, PlacableTable right, Cursor cursor) {
+	public Toolbar(GameView view, TextureAtlas sprites, Cursor cursor, Stage stage) {
 		super("Tools", WE.getEngineView().getSkin());
-		
+
 		this.view = view;
-		
+		this.cursor = cursor;
+
 		setPosition(
 			view.getStage().getWidth() / 2 - items.length * 50 / 2,
 			view.getStage().getHeight() - 100
 		);
 		setWidth(Tool.values().length * 25);
-		setHeight(45);
-		
-		this.leftTable = left;
-		this.rightTable = right;
-		this.cursor = cursor;
+		setHeight(90);
 
+		this.table = new PlacableTable(this);
+        stage.addActor(table);
+		
 		for (int i = 0; i < items.length; i++) {
 			items[Tool.values()[i].id] = new Image(sprites.findRegion(Tool.values()[i].name));
-			items[i].setPosition(i * 25, 2);
+			items[i].setPosition(i * 25, 40);
 			items[i].addListener(new ToolSelectionListener(Tool.values()[i]));
 			addActor(items[i]);
 		}
+		//row();
 
 		//initialize selection
 		if (selectionLeft.selectFromBlocks) { //show entities on leftTable
-			left.showBlocks(view);
-		} else {//show blocks on leftTable
-			if (selectionLeft.selectFromEntities) {
-				left.showEntities(view);
-			} else {
-				left.hide(true);
-			}
+			table.showBlocks(view);
+		} else if (selectionLeft.selectFromEntities) {//show blocks on leftTable
+			table.showEntities(view);
+		} else {
+			table.hide();
 		}
 
-		if (selectionRight.selectFromBlocks) { //show entities on leftTable
-			right.showBlocks(view);
-		} else { //show blocks on leftTable
-			if (selectionRight.selectFromEntities) {
-				right.showEntities(view);
-			} else {
-				right.hide(true);
-			}
-		}
+		valuesActor = new TextField("1", WE.getEngineView().getSkin());
+		valuesActor.setWidth(30);
+		valuesActor.setPosition(2, 2);
+		valuesActor.setMaxLength(1+RenderCell.VALUESNUM/100);
+		valuesActor.setTextFieldFilter((TextField textField, char c) -> Character.isDigit(c));
+		valuesActor.addListener(new ChangeListenerImpl(this));
+		addActor(valuesActor);
 	}
 
 	/**
@@ -326,34 +325,51 @@ public class Toolbar extends Window {
 	}
 	
 	/**
-	 * select a tool
-	 * @param left
-	 * @param tool 
+	 * 
+	 * @return 
 	 */
-	public void selectTool(boolean left, Tool tool){
+	PlacableTable getTable() {
+		return table;
+	}
+
+	/**
+	 * select a tool
+	 *
+	 * @param left
+	 * @param tool
+	 */
+	public void selectTool(boolean left, Tool tool) {
 		selectionLeft = tool;
 		if (left) {
 			if (tool.selectFromBlocks) { //show entities on leftTable
-				this.leftTable.showBlocks(view);
-			} else {//show blocks on leftTable
-				if (tool.selectFromEntities) {
-					this.leftTable.showEntities(view);
-				} else {
-					this.leftTable.hide(true);
-				}
+				this.table.showBlocks(view);
+			} else if (tool.selectFromEntities) { //show blocks on leftTable
+				this.table.showEntities(view);
+			} else {
+				this.table.hide();
 			}
 			cursor.showNormal(tool.showNormal);
-		} else {
-			if (tool.selectFromBlocks) { //show entities on leftTable
-				rightTable.showBlocks(view);
-			} else { //show blocks on leftTable
-				if (tool.selectFromEntities) {
-					rightTable.showEntities(view);
-				} else {
-					rightTable.hide(true);
-				}
-			}
 		}
+	}
+
+	/**
+	 * Get the value of the text field.
+	 * @return -1 if invalid number
+	 */
+	private byte getValue() {
+		if (valuesActor.getText().isEmpty()) {
+			return -1;
+		}
+		byte value;
+		try {
+			value = (byte) (Byte.valueOf(valuesActor.getText()));
+		} catch (NumberFormatException ex) {
+			return -1;
+		}
+		if (value > RenderCell.VALUESNUM || value < 0) {
+			return -1;
+		}
+		return value;
 	}
 
 	//class to detect clicks
@@ -375,6 +391,25 @@ public class Toolbar extends Window {
 
 			return true;
 		}
+	}
 
+	private static class ChangeListenerImpl extends ChangeListener {
+
+		private final Toolbar parent;
+
+		ChangeListenerImpl(Toolbar parent) {
+			this.parent = parent;
+		}
+
+		@Override
+		public void changed(ChangeListener.ChangeEvent event, Actor actor) {
+			//only send value to table if valid
+			if (parent.getValue() > -1) {
+				parent.table.setValue(parent.getValue());
+			}
+			if (parent.valuesActor.getText().length() > 1) {
+				parent.valuesActor.selectAll();
+			}
+		}
 	}
 }

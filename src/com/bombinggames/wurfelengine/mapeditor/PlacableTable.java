@@ -31,14 +31,17 @@
 package com.bombinggames.wurfelengine.mapeditor;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
-import com.bombinggames.wurfelengine.core.gameobjects.Block;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderBlock;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import java.util.ArrayList;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * A table containing all blocks where you can choose your block.
@@ -47,27 +50,31 @@ import java.util.Map;
  */
 public class PlacableTable extends Table {
 
-	private final PlacableGUI placableGUI;
-
 	private boolean placeBlocks = true;
+	/**
+	 * list position
+	 */
+	private byte selected;
+	private byte id;
+	private byte value;
+	private Class<? extends AbstractEntity> entityClass;
+	/**
+	 * stores the block drawables
+	 */
+	private final ArrayList<BlockDrawable> blockDrawables = new ArrayList<>(40);
+	
+	private Toolbar parent;
 
 	/**
 	 *
-	 * @param colorGUI the linked preview of the selection
-	 * @param left
+	 * @param parent
 	 */
-	public PlacableTable(PlacableGUI colorGUI, boolean left) {
-		this.placableGUI = colorGUI;
-
+	public PlacableTable(Toolbar parent) {
 		setWidth(400);
-		setHeight(Gdx.graphics.getHeight() - 100);
+		setHeight(Gdx.graphics.getHeight() * 0.80f);
 		setY(10);
-
-		if (left) {
-			setX(0);
-		} else {
-			setX(1480);
-		}
+		setX(30);
+		this.parent = parent;
 	}
 
 	/**
@@ -76,58 +83,60 @@ public class PlacableTable extends Table {
 	 */
 	public void show(GameView view) {
 		if (!isVisible()) {
-			placableGUI.setVisible(true);
 			setVisible(true);
 		}
-		
-		//setScale(5f);
 
+		//setScale(5f);
 		if (!hasChildren()) {
-			int foundItems = 1;
+			byte foundItems = 0;
 			if (placeBlocks) {//add blocks
+				blockDrawables.clear();
 				//add air
+				BlockDrawable blockDrawable = new BlockDrawable((byte) 0, (byte) 0, 0.35f);
+				blockDrawables.add(blockDrawable);
 				add(
 					new PlacableItem(
-						new BlockDrawable((byte) 0,(byte) 0, -0.7f),
-						new BlockListener((byte) 0)
+						blockDrawable,
+						new BlockListener((byte) 0, (byte) 0)
 					)
 				);
+				foundItems++;
 				//add rest
-				for (byte i = 1; i < Block.OBJECTTYPESNUM; i++) {//add every possible block
-					Block block = Block.getInstance(i);
-					if (block != null) {
-						RenderBlock rBlock = block.toRenderBlock();
-						if (rBlock == null //add air
-							|| RenderBlock.isSpriteDefined(rBlock) //add defined blocks
-							|| !block.getName().equals("undefined")
-						) {
-							add(
-								new PlacableItem(
-									new BlockDrawable(i, (byte) 0, -0.7f),
-									new BlockListener(i)
-								)
-							);
-							foundItems++;
-							if (foundItems % 4 == 0) {
-								row();//make new row
-							}
+				for (byte i = 1; i < RenderCell.OBJECTTYPESNUM; i++) {//add every possible block
+					if (RenderCell.isSpriteDefined(i,(byte)0) //add defined blocks
+						|| !RenderCell.getName(i, (byte) 0).equals("undefined")) {
+						blockDrawable = new BlockDrawable(i, (byte) 0, 0.35f);
+						blockDrawables.add(blockDrawable);
+						add(
+							new PlacableItem(
+								blockDrawable,
+								new BlockListener(foundItems, i)
+							)
+						);
+						foundItems++;
+						if (foundItems % 4 == 0) {
+							row();//make new row
 						}
 					}
 				}
 			} else {
 				//add every registered entity class
-				for (
-					Map.Entry<String, Class<? extends AbstractEntity>> entry
+				for (Map.Entry<String, Class<? extends AbstractEntity>> entry
 					: AbstractEntity.getRegisteredEntities().entrySet()
 				) {
-					PlacableItem button = new PlacableItem(
-						new EntityDrawable(entry.getValue()),
-						new EntityListener(entry.getKey(), entry.getValue())
-					);
-					add(button);
-
+					try {
+						add(
+							new PlacableItem(
+								new EntityDrawable(entry.getValue()),
+								new EntityListener(entry.getKey(), entry.getValue(), foundItems)
+							)
+						);
+					} catch (InstantiationException | IllegalAccessException ex) {
+						Gdx.app.error(this.getClass().getName(), "Please make sure that every registered entity has a construcor without arguments");
+						Logger.getLogger(PlacableTable.class.getName()).log(Level.SEVERE, null, ex);
+					}
 					foundItems++;
-					if (foundItems % 5 == 0) {
+					if (foundItems % 4 == 0) {
 						row();//make new row
 					}
 				}
@@ -137,20 +146,14 @@ public class PlacableTable extends Table {
 
 	/**
 	 *
-	 * @param includingSelection including the colro selection gui
 	 */
-	public void hide(boolean includingSelection) {
+	public void hide() {
 		if (hasChildren()) {
 			clear();
 		}
 
 		if (isVisible()) {
-			placableGUI.moveToBorder(placableGUI.getWidth() + 100);
 			setVisible(false);
-		}
-
-		if (includingSelection) {
-			placableGUI.hide();
 		}
 	}
 
@@ -160,7 +163,6 @@ public class PlacableTable extends Table {
 	 */
 	protected void showBlocks(GameView view) {
 		placeBlocks = true;
-		placableGUI.setMode(placeBlocks);
 		clearChildren();
 		show(view);
 	}
@@ -171,9 +173,8 @@ public class PlacableTable extends Table {
 	 */
 	protected void showEntities(GameView view) {
 		placeBlocks = false;
-		placableGUI.setMode(placeBlocks);
-		if (placableGUI.getEntity() == null) {//no init value for entity
-			placableGUI.setEntity(
+		if (getEntity() == null) {//no init value for entity
+			setEntity(
 				AbstractEntity.getRegisteredEntities().keySet().iterator().next(),
 				AbstractEntity.getRegisteredEntities().values().iterator().next()
 			);
@@ -184,11 +185,86 @@ public class PlacableTable extends Table {
 	}
 
 	/**
+	 * selects the item //TODO needs more generic method including entities
+	 * @param pos the pos of the listener
+	 */
+	void selectBlock(byte pos) {
+		if (pos <= getChildren().size) {
+			selected = pos;
+			for (Actor c : getChildren()) {
+				c.setScale(0.35f);
+			}
+			getChildren().get(selected).setScale(0.4f);
+		}
+	}
+
+	/**
+	 * sets the value of the selected
+	 * @param value 
+	 */
+	void setValue(byte value) {
+		this.value = value;
+		blockDrawables.get(selected).setValue(value);
+	}
+	
+	/**
+	 * Trys returning a new instance of a selected entity class.
+	 * @return if it fails returns null 
+	 */
+	public AbstractEntity getEntity(){
+		if (entityClass == null) {
+			return null;
+		}
+		try {
+			AbstractEntity ent = entityClass.newInstance();
+			if (value > -1) {
+				ent.setSpriteValue(value);
+			}
+			return ent;
+		} catch (InstantiationException | IllegalAccessException ex) {
+			Logger.getLogger(CursorInfo.class.getName()).log(Level.SEVERE, null, ex);
+		}
+		return null;
+	}
+
+	/**
+	 * Sets the current color to this entity class.
+	 * @param name name which gets displayed
+	 * @param entclass
+	 */
+	public void setEntity(String name, Class<? extends AbstractEntity> entclass) {
+		entityClass = entclass;
+		//label.setText(name);
+	}
+	
+	private void setId(byte id) {
+		this.id = id;
+	}
+	/**
 	 *
 	 * @return
 	 */
-	public PlacableGUI getPlacableGUI() {
-		return placableGUI;
+	public byte getId() {
+		return id;
+	}
+		
+	/**
+	 *
+	 * @return
+	 */
+	public byte getValue() {
+		return value;
+	}
+	
+	public int getBlock(){
+		return (value<<8)+id;
+	}
+
+	void select(byte blockId, byte blockValue) {
+//		for (Actor ch : getChildren()) {
+//			((PlacableItem) ch).getget(id);
+//		}
+//		selectBlock(id);
 	}
 
 	/**
@@ -198,36 +274,60 @@ public class PlacableTable extends Table {
 
 		private final Class<? extends AbstractEntity> entclass;
 		private final String name;
-
-		EntityListener(String name, Class<? extends AbstractEntity> entclass) {
-			this.entclass = entclass;
-			this.name = name;
-		}
-
-		@Override
-		public void clicked(InputEvent event, float x, float y) {
-			placableGUI.setEntity(name, entclass);
-		}
-	}
-
-	/**
-	 * detects a click on the RenderBlock in the list
-	 */
-	private class BlockListener extends ClickListener {
-
+		/**
+		 * id of this listener
+		 */
 		private final byte id;
 
-		BlockListener(byte id) {
+		/**
+		 * 
+		 * @param name
+		 * @param entclass
+		 * @param id id of this listener
+		 */
+		EntityListener(String name, Class<? extends AbstractEntity> entclass, byte id) {
+			this.entclass = entclass;
+			this.name = name;
 			this.id = id;
 		}
 
 		@Override
 		public void clicked(InputEvent event, float x, float y) {
-			if (id == 0) {
-				placableGUI.setBlock(null);
-			} else {
-				placableGUI.setBlock(Block.getInstance(id));
+			setEntity(name, entclass);
+			if (id <= getChildren().size) {
+				for (Actor c : getChildren()) {
+					c.setScale(0.5f);
+				}
+				getChildren().get(id).setScale(0.6f);
 			}
+		}
+	}
+
+	/**
+	 * detects a click on the RenderCell in the list
+	 */
+	private class BlockListener extends ClickListener {
+
+		/**
+		 * id of represented block
+		 */
+		private final byte blockId;
+		private final byte id;
+
+		/**
+		 * 
+		 * @param id id of the listener
+		 * @param blockId representing block id
+		 */
+		BlockListener(byte id, byte blockId) {
+			this.blockId = blockId;
+			this.id = id;
+		}
+
+		@Override
+		public void clicked(InputEvent event, float x, float y) {
+			PlacableTable.this.setId(blockId);
+			selectBlock(id);
 		}
 	}
 }

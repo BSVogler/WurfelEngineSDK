@@ -39,11 +39,12 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.GameView;
-import static com.bombinggames.wurfelengine.core.gameobjects.Block.VIEW_DEPTH2;
-import static com.bombinggames.wurfelengine.core.gameobjects.Block.VIEW_HEIGHT2;
-import static com.bombinggames.wurfelengine.core.gameobjects.Block.VIEW_WIDTH2;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_DEPTH2;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_WIDTH2;
 import java.io.Serializable;
 
 /**
@@ -64,10 +65,11 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	/**
 	 * indexed acces to the spritesheet
 	 */
-	private transient static AtlasRegion[][][] sprites = new AtlasRegion['z'][Block.OBJECTTYPESNUM][Block.VALUESNUM];//{category}{id}{value}
+	private transient static AtlasRegion[][][] sprites = new AtlasRegion['z'][RenderCell.OBJECTTYPESNUM][RenderCell.VALUESNUM];//{category}{id}{value}
 	private transient static int drawCalls = 0;
 	private static Texture textureDiff;
 	private static Texture textureNormal;
+	private static int currentMarkedFlag;
 
 	/**
 	 * disposes static fields
@@ -219,16 +221,18 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	}
 
 	/**
-	 * inverses the dirty flag comparison so everything marked is now unmarked
+	 * inverses the dirty flag comparison so everything marked is now unmarked.
+	 * used to mark the visited obejcts with depthsort.
+	 * @param id
 	 */
-	public static void inverseDirtyFlag() {
-		currentDirtyFlag = !currentDirtyFlag;
+	public static void inverseMarkedFlag(int id) {
+		currentMarkedFlag ^= 1 << id;
 	}
 
 	//render information
 	private boolean hidden;
 	private float rotation;
-	private float scaling;
+	private float scaling = 1;
 	private byte spriteId;
 	private byte spriteValue = 0;
 
@@ -236,9 +240,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * default is RGBA 0x808080FF.
 	 */
 	private transient Color tint = new Color(0.5f, 0.5f, 0.5f, 1f);
-	private static boolean currentDirtyFlag;
-	private boolean dirtyFlag;
-	private boolean tmpMarked;
+	private int marked;
 
 	/**
 	 * Creates an object.
@@ -250,22 +252,20 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 		if (id == 0) {
 			setHidden(true);
 		}
+		//markPermanent();//create as marked
 	}
 
 	/**
 	 * Creates an object.
 	 *
 	 * @param id the id of the object which is used for rendering
-	 * @param value
+	 * @param value used for rendering
 	 */
 	protected AbstractGameObject(byte id, byte value) {
-		this.spriteId = id;
-		if (id == 0) {
-			setHidden(true);
-		}
+		this(id);
 		this.spriteValue = value;
 	}
-
+	
 	/**
 	 * Get the category letter for accessing sprites.
 	 *
@@ -279,9 +279,6 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * @return game space
 	 */
 	public abstract int getDimensionZ();
-
-	@Override
-	public abstract Position getPosition();
 
 	/**
 	 * Set the coordinates without safety check. May use different object
@@ -297,8 +294,8 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * @return distance from zero level
 	 */
 	public float getDepth() {
-		Point pos = getPosition().toPoint();
-		return pos.getY() + (pos.getZ() + getDimensionZ()) * Block.ZAXISSHORTENING;//or Point.SQRT12?
+		Point pos = getPoint();
+		return pos.getY() + (pos.getZ() + getDimensionZ()) * RenderCell.ZAXISSHORTENING;//or Point.SQRT12?
 	}
 
 	/**
@@ -310,7 +307,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 
 	@Override
 	public void render(GameView view, Camera camera) {
-		if (!hidden) {
+		if (!hidden && getPosition()!=null) {
 			Color fogcolor = null;
 			if (WE.getCVars().getValueB("enableFog")) {
 				//can use CVars for dynamic change. using harcored values for performance reasons
@@ -359,8 +356,9 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 				texture.originalWidth / 2 - texture.offsetX,
 				VIEW_HEIGHT2 - texture.offsetY
 			);
-			sprite.rotate(rotation);
-			sprite.scale(scaling);
+			sprite.setRotation(rotation);
+			//sprite.setOrigin(0, 0);
+			sprite.setScale(scaling);
 
 			sprite.setPosition(
 				xPos + texture.offsetX - texture.originalWidth / 2,
@@ -423,13 +421,22 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	}
 
 	//getter & setter
-	@Override
+	/**
+	 * the id of the sprite using for rendering.<br>
+	 * By default is the same as the object id but in some cases some
+	 * objects share one sprite so they can have the same.
+	 *
+	 * @return if spritevalue is not custom set uses value.
+	 */
 	public byte getSpriteId() {
 		return spriteId;
 	}
 
 
-	@Override
+	/**
+     * Get the value. It is like a sub-id and can identify the status.
+     * @return in range [0;{@link Block#VALUESNUM}]. Is -1 if about to destroyed.
+     */
 	public byte getSpriteValue() {
 		return spriteValue;
 	}
@@ -444,7 +451,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	/**
 	 * Returns the rotation of the object.
 	 *
-	 * @return
+	 * @return in degrees
 	 */
 	public float getRotation() {
 		return rotation;
@@ -453,7 +460,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	/**
 	 * Returns the scale factor of the object.
 	 *
-	 * @return 0 is no scaling
+	 * @return 1 is no scaling
 	 */
 	public float getScaling() {
 		return scaling;
@@ -488,7 +495,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 
 	/**
 	 *
-	 * @param scaling 0 no scaling
+	 * @param scaling 1 no scaling, &gt; bigger, &lt; 1 smaller
 	 */
 	public void setScaling(float scaling) {
 		this.scaling = scaling;
@@ -504,9 +511,12 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 		spriteId = id;
 	}
 
-	@Override
+	/**
+     * Set the value.
+     * @param value in range [0;{@link Block#VALUESNUM}]. Is -1 if about to destroyed.
+     */
 	public void setSpriteValue(byte value) {
-		if (value < Block.VALUESNUM) {
+		if (value < RenderCell.VALUESNUM) {
 			spriteValue = value;
 		}
 	}
@@ -540,29 +550,22 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 		return AbstractGameObject.getSprite(getCategory(), spriteId, spriteValue);
 	}
 
-	@Override
-	public void unmarkTemporarily() {
-		tmpMarked = false;
+	/**
+	 * Check if it is marked in this frame. Used for depth sorting.
+	 * @param id camera id
+	 * @return 
+	 */
+	public final boolean isMarkedDS(final int id) {
+		return ((marked>>id)&1) == ((AbstractGameObject.currentMarkedFlag >> id) & 1);
 	}
 
-	@Override
-	public final boolean isMarked() {
-		return this.dirtyFlag == AbstractGameObject.currentDirtyFlag;
-	}
-
-	@Override
-	public void markPermanent() {
-		this.dirtyFlag = AbstractGameObject.currentDirtyFlag;
-	}
-
-	@Override
-	public boolean isMarkedTemporarily() {
-		return tmpMarked;
-	}
-
-	@Override
-	public void markTemporarily() {
-		tmpMarked = true;
+	/**
+	 * Marks as visited in the depth sorting algorithm.
+	 * @param id camera id
+	 * @see com.bombinggames.wurfelengine.core.Camera#visit(com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject) 
+	 */
+	public void markPermanentDS(final int id) {
+		marked ^= (-((AbstractGameObject.currentMarkedFlag >> id) & 1) ^ marked) & (1 << id);
 	}
 
 	@Override

@@ -32,6 +32,7 @@ package com.bombinggames.wurfelengine.core;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input.Keys;
+import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
@@ -45,12 +46,11 @@ import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.utils.viewport.StretchViewport;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
-import com.bombinggames.wurfelengine.core.gameobjects.Block;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderBlock;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Intersection;
 import com.bombinggames.wurfelengine.core.map.LoadMenu;
 import com.bombinggames.wurfelengine.core.map.Point;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
 import java.util.ArrayList;
 import java.util.logging.Level;
@@ -61,6 +61,11 @@ import java.util.logging.Logger;
  * @author Benedikt
  */
 public class GameView implements GameManager {
+
+	/**
+	 * saves the amount of active cameras
+	 */
+	private static int cameraIdCounter = 0;
 
 	    /**
      * Shoud be called before the object get initialized.
@@ -74,7 +79,7 @@ public class GameView implements GameManager {
         //font.scale(-0.5f);
         
         //load sprites
-        RenderBlock.loadSheet();
+        RenderCell.loadSheet();
     }
 	
 	/**
@@ -157,6 +162,7 @@ public class GameView implements GameManager {
 		useDefaultShader();//set default shader
 
 		renderstorage = new RenderStorage();
+		MessageManager.getInstance().addListener(renderstorage, Events.mapChanged.getId());
 		initalized = true;
 	}
 	
@@ -237,14 +243,17 @@ public class GameView implements GameManager {
 	@Override
 	public final void enter() {
 		Gdx.app.debug("GameView", "Entering");
+		if (!isInitalized()) {
+			Gdx.app.error(this.getClass().toString(), "Called method enter() before initializing.");
+		}
 		WE.getEngineView().addInputProcessor(stage);//the input processor must be added every time because they are only 
+		controller.hideCursor();
+		
 		//enable cameras
 		for (Camera camera : cameras) {
 			camera.setActive(true);
 		}
 		
-		//renderstorage.refresh();
-
 		if (WE.SOUND != null) {
 			WE.SOUND.setView(this);
 		}
@@ -257,6 +266,7 @@ public class GameView implements GameManager {
 
 		//restore gameSpeed
 		WE.getCVars().get("timespeed").setValue(gameSpeed);
+		
 		onEnter();
 	}
 	
@@ -307,6 +317,8 @@ public class GameView implements GameManager {
 	}
 
 	public void setRenderStorage(RenderStorage renderstorage) {
+		if (this.renderstorage != null)
+			MessageManager.getInstance().removeListener(this.renderstorage, Events.mapChanged.getId());	
 		this.renderstorage = renderstorage;
 	}
 	
@@ -439,11 +451,10 @@ public class GameView implements GameManager {
 		if (cameras.size() > 0) {
 			Point p = screenToGameBasic(x, y);
 			//find point at top of map
-			float deltaZ = Chunk.getGameHeight() - Block.GAME_EDGELENGTH - p.getZ();
+			float deltaZ = Chunk.getGameHeight() - RenderCell.GAME_EDGELENGTH - p.getZ();
 			p.add(0, deltaZ * Point.SQRT2, deltaZ);//top of map
 
-			return p.rayMarching(
-				new Vector3(0, -1, -Block.ZAXISSHORTENING),//shoot in viewing direction, can not find correct vector: todo. Was -Point.SQRT12
+			return p.rayMarching(new Vector3(0, -1, -RenderCell.ZAXISSHORTENING),//shoot in viewing direction, can not find correct vector: todo. Was -Point.SQRT12
 				Float.POSITIVE_INFINITY,
 				this,
 				null
@@ -525,7 +536,7 @@ public class GameView implements GameManager {
     }
     
      /**
-     * Returns a camera.
+     * Returns a camera. The first camera is handled as the main camera.
      * @return The virtual cameras rendering the scene
      */
     public ArrayList<Camera> getCameras() {
@@ -547,6 +558,8 @@ public class GameView implements GameManager {
      */
     protected void addCamera(final Camera camera) {
         this.cameras.add(camera);
+		GameView.cameraIdCounter++;
+		camera.setId(GameView.cameraIdCounter);
 		getRenderStorage().addCamera(camera);
     }
     
@@ -630,10 +643,14 @@ public class GameView implements GameManager {
 		for (Camera camera : cameras) {
 			camera.dispose();
 		}
+		if (this.renderstorage != null)
+			MessageManager.getInstance().removeListener(this.renderstorage, Events.mapChanged.getId());	
 		renderstorage.dispose();
 		shRenderer.dispose();
 		spriteBatch.dispose();
 		stage.dispose();
+		
+		cameraIdCounter=0;
 	}
 	
 }

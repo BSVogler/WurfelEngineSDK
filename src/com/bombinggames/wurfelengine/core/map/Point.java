@@ -32,167 +32,232 @@ package com.bombinggames.wurfelengine.core.map;
 
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
+import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
-import com.bombinggames.wurfelengine.core.gameobjects.Block;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import java.util.ArrayList;
 import java.util.function.Predicate;
 
 /**
- *A point is a single position in the game world not bound to the grid. Use this for entities.
+ * A point is a single position in the game world not bound to the grid. Use
+ * this for entities.
+ *
  * @author Benedikt Vogler
  * @since WE1.1
  */
 public class Point extends Vector3 implements Position {
+
 	private static final long serialVersionUID = 2L;
 
-    /**
-     * Creates a point refering to a position in the game world.
-     * @param posX The distance from the left border of the map (game space)
-     * @param posY The distance from the top border of the map (game space)
-     * @param height The distance from ground  (game space)
-     */
-    public Point(float posX, float posY, float height) {
-		this.x = posX;
-		this.y = posY;
-        this.z = height;
-    }
+	/**
+	 * Creates a point refering to a position in the game world. Points at 0,0,0.
+	 */
+	public Point() {
+	}
+
 	
 	/**
-	 * 
-	 * @param vec 
+	 * Creates a point refering to a position in the game world.
+	 *
+	 * @param posX The distance from the left border of the map (game space)
+	 * @param posY The distance from the top border of the map (game space)
+	 * @param height The distance from ground (game space)
 	 */
-	public Point(Vector3 vec){
+	public Point(float posX, float posY, float height) {
+		this.x = posX;
+		this.y = posY;
+		this.z = height;
+	}
+
+	/**
+	 *
+	 * @param vec
+	 */
+	public Point(Vector3 vec) {
 		this.x = vec.x;
 		this.y = vec.y;
 		this.z = vec.z;
 	}
-    
-    /**
-     * Copy-constructor. This constructor copies the values.
-     * @param point the source of the copy
-     */
-    public Point(Point point) {
+
+	/**
+	 * Copy-constructor. This constructor copies the values.
+	 *
+	 * @param point the source of the copy
+	 */
+	public Point(Point point) {
 		this.x = point.x;
 		this.y = point.y;
 		this.z = point.z;
-    }
-	
+	}
 
-    /**
-     *Returns copy of itself.
-     * @return
-     */
-    @Override
-    public Point toPoint() {
-       return this.cpy();
-    }
-	
-	    /**
-     * Get the height (z-value) of the coordinate.
-     * @return game dimension
-     */
-    public float getZ() {
-        return z;
-    }
-	
 	/**
-     * Get the z in block grid coordinates of the coordinate. Faster the transofmring to coordinate first.
-     * @return in grid coordinates.
-     */
-    public int getZGrid() {
-        return (int) (z/Block.GAME_EDGELENGTH);
-    }
-
-    /**
-     * 
-     * @param height 
-     */
-    public void setZ(float height) {
-        this.z = height;
-    }
-    
-    /**
-     * returns coordinate aquivalent. Removes floating of block.<br> Copy safe.<br>
-	 * Looks complicated but has runtime O(const)
-     * @return coordinate aquivalent
-     */
-    @Override
-    public Coordinate toCoord() {
-        //find out where the position is (basic)
-        return new Coordinate(
-			Math.floorDiv((int) x, Block.GAME_DIAGLENGTH),
-			Math.floorDiv((int) y, Block.GAME_DIAGLENGTH) * 2 + 1, //maybe dangerous to optimize code here!
-			Math.floorDiv((int) z, Block.GAME_EDGELENGTH)
-		).goToNeighbour(Coordinate.getNeighbourSide( //find the specific coordinate (detail)
-			x % Block.GAME_DIAGLENGTH,
-			y % Block.GAME_DIAGLENGTH
-		));
-    }
-	
-    /**
-     *Get the game world position from left
-     * @return
-     */
-    public float getX() {
-        return x;
-    }
-    
-    /**
-     *Get the game world position from top.
-     * @return
-     */
-    public float getY() {
-        return y;
-    }
-	
-	/**
-	 * 
-	 * @return  the offset to the coordiantes center.
+	 * Get the height (z-value) of the coordinate.
+	 *
+	 * @return game dimension
 	 */
-	public float getRelToCoordX(){
+	public float getZ() {
+		return z;
+	}
+
+	/**
+	 * Get the z in block grid coordinates of the coordinate. Faster the
+	 * transofmring to coordinate first.
+	 *
+	 * @return in grid coordinates.
+	 */
+	public int getZGrid() {
+		return (int) (z / RenderCell.GAME_EDGELENGTH);
+	}
+
+	/**
+	 *
+	 * @param height
+	 */
+	public void setZ(float height) {
+		this.z = height;
+	}
+
+	/**
+	 * returns coordinate aquivalent. Removes floating of block.<br> Copy
+	 * safe.<br>
+	 * Looks complicated but has runtime O(const)
+	 *
+	 * @return coordinate aquivalent
+	 */
+	@Override
+	public Coordinate toCoord() {
+		//find out where the position is (basic)
+		return new Coordinate(
+			Math.floorDiv((int) x, RenderCell.GAME_DIAGLENGTH),
+			Math.floorDiv((int) y, RenderCell.GAME_DIAGLENGTH) * 2 + 1, //maybe dangerous to optimize code here!
+			Math.floorDiv((int) z, RenderCell.GAME_EDGELENGTH)
+		).goToNeighbour(Coordinate.getNeighbourSide( //find the specific coordinate (detail)
+			x % RenderCell.GAME_DIAGLENGTH,
+			y % RenderCell.GAME_DIAGLENGTH
+		));
+	}
+
+	@Override
+	public Coordinate getCoord() {
+		return toCoord();
+	}
+
+	@Override
+	public Point getPoint() {
+		return this;
+	}
+	
+	@Override
+	public Point toPoint() {
+		return this.cpy();
+	}
+	
+	/**
+	 * Get the game world position from left
+	 *
+	 * @return
+	 */
+	public float getX() {
+		return x;
+	}
+
+	/**
+	 * Get the game world position from top.
+	 *
+	 * @return
+	 */
+	public float getY() {
+		return y;
+	}
+
+	/**
+	 *
+	 * @return the offset to the coordiantes center.
+	 */
+	public float getRelToCoordX() {
 		return x - toCoord().toPoint().x;
 	}
-	
+
 	/**
-	 * 
-	 * @return  the offset to the coordiantes center.
+	 *
+	 * @return the offset to the coordiantes center.
 	 */
-	public float getRelToCoordY(){
+	public float getRelToCoordY() {
 		return y - toCoord().toPoint().y;
 	}
-	
+
 	/**
-	 * 
+	 *
 	 * @return the offset to the coordiantes center.
 	 */
-	public float getRelToCoordZ(){
-		return getZ() - getZGrid()*Block.GAME_EDGELENGTH;
+	public float getRelToCoordZ() {
+		return getZ() - getZGrid() * RenderCell.GAME_EDGELENGTH;
 	}
 	
-	/**
-	 * 
-	 * @return the offset to the coordiantes center.
-	 */
-	public Vector3 getRelToCoord(){
-		return new Vector3(
-			getRelToCoordX(),
-			getRelToCoordY(),
-			getRelToCoordZ()
-		);
+   @Override
+	public byte getBlockId() {
+		return (byte) (getBlock()&255);
 	}
 	
-    @Override
-    public Block getBlock() {
-		if (z >= Chunk.getGameHeight())
-			return null;
-        return Controller.getMap().getBlock(toCoord());
-    }
+	public int getBlock(){
+		if (z >= Chunk.getGameHeight()) {
+			return 0;
+		}
+		
+		if (z < 0) {
+			return (byte) WE.getCVars().getValueI("groundBlockID");
+		}
+
+		//bloated in-place code to avoid heap call with toCoord()
+		int xCoord = Math.floorDiv((int) x, RenderCell.GAME_DIAGLENGTH);
+		int yCoord = Math.floorDiv((int) y, RenderCell.GAME_DIAGLENGTH) * 2 + 1; //maybe dangerous to optimize code here!
+		//find the specific coordinate (detail)
+		switch (Coordinate.getNeighbourSide(
+			x % RenderCell.GAME_DIAGLENGTH,
+			y % RenderCell.GAME_DIAGLENGTH
+		)) {
+			case 0:
+				yCoord -= 2;
+				break;
+			case 1:
+				xCoord += yCoord % 2 == 0 ? 0 : 1;
+				yCoord--;
+				break;
+			case 2:
+				xCoord++;
+				break;
+			case 3:
+				xCoord += yCoord % 2 == 0 ? 0 : 1;
+				yCoord++;
+				break;
+			case 4:
+				yCoord += 2;
+				break;
+			case 5:
+				xCoord -= yCoord % 2 == 0 ? 1 : 0;
+				yCoord++;
+				break;
+			case 6:
+				xCoord--;
+				break;
+			case 7:
+				xCoord -= yCoord % 2 == 0 ? 1 : 0;
+				yCoord--;
+				break;
+		}
+
+		return Controller.getMap().getBlock(xCoord, yCoord, (int) (z / RenderCell.GAME_EDGELENGTH));
+	}
     
+	/**
+	 * avoid this method because it creates a new instance.
+	 * @return 
+	 */
     @Override
     public Point cpy() {
         return new Point(this);
@@ -207,7 +272,7 @@ public class Point extends Vector3 implements Position {
     public int getViewSpcY() {
         return (int)( 
 			-getY() / 2
-            + (int) (getZ() * Block.ZAXISSHORTENING)
+            + (int) (getZ() * RenderCell.ZAXISSHORTENING)
 		);
     }
 
@@ -222,17 +287,17 @@ public class Point extends Vector3 implements Position {
 	}
 	
     
-    @Override
-    public boolean isInMemoryAreaHorizontal() {
-		return toCoord().isInMemoryAreaHorizontal();
-    }
+	@Override
+	public boolean isInMemoryAreaHorizontal() {
+		return Controller.getMap().getChunkContaining(this) != null;
+	}
 	
 	@Override
     public boolean isInMemoryArea() {
 		if (z < 0 || z > Chunk.getGameWidth()){
 			return false;
 		} else {
-			return getBlock() != null;
+			return getBlockId() != 0;
 		}
     }
 
@@ -249,7 +314,7 @@ public class Point extends Vector3 implements Position {
     }
     
 	/**
-     *Add a vector to the position
+     * Add a vector to the position
      * @param vector all values in game world values
      * @return
      */
@@ -260,7 +325,7 @@ public class Point extends Vector3 implements Position {
     }
 	
      /**
-     *Add a vector to the position
+     * Add a vector to the position
      * @param vector all values in game world values
      * @return
      */
@@ -273,7 +338,7 @@ public class Point extends Vector3 implements Position {
     }
 
     /**
-     *
+     * Add a vector to the position
      * @param x x value to add
      * @param y y value to add
      * @param z height to add
@@ -295,19 +360,19 @@ public class Point extends Vector3 implements Position {
 	 * @param z offset from origin
 	 */
 	public void setPositionRelativeToCoord(float x, float y, float z) {
-		Point origin = toCoord().toPoint();
+		Point origin = toCoord().toPoint();//todo should be replaced by non-heap method
 		this.x = origin.x + x;
 		this.y = origin.y + y;
 		this.z = origin.z + z;
 	}
 
 	/**
-	 * Relative to the current coordiante field set the offset.
+	 * Set offset relative to the current coordiante.
 	 *
 	 * @param shift offset from origin
 	 */
 	public void setPositionRelativeToCoord(Vector3 shift) {
-		Point origin = toCoord().toPoint();
+		Point origin = toCoord().toPoint();//todo should be replaced by non-heap method
 		this.x = origin.x + shift.x;
 		this.y = origin.y + shift.y;
 		this.z = origin.z + shift.z;
@@ -323,7 +388,7 @@ public class Point extends Vector3 implements Position {
      * @return can return <i>null</i> if not hitting anything. The normal on the back sides may be wrong. The normals are in a turned coordiante system.
      * @since 1.2.29
      */
-		public Intersection raycast(final Vector3 dir, float maxDistance, final GameView view, final Predicate<Block> hitCondition) {
+		public Intersection raycast(final Vector3 dir, float maxDistance, final GameView view, final Predicate<Byte> hitCondition) {
 		/*  Call the callback with (x,y,z,value,normal) of all blocks along the line
 		segment from point 'origin' in vector dir 'dir' of length
 		'maxDistance'. 'maxDistance' may be infinite.
@@ -356,6 +421,8 @@ public class Point extends Vector3 implements Position {
 		dir.cpy().nor();
 		
 		Coordinate isectC = toCoord();
+		Point isectP = new Point(0, 0, 0);
+		//curent coordinate position
         int curX = isectC.getX();
         int curY = isectC.getY();
         int curZ = isectC.getZ();
@@ -374,7 +441,6 @@ public class Point extends Vector3 implements Position {
 		float tDeltaY = stepY / dir.y;
 		float tDeltaZ = stepZ / dir.z;
 
-		isectC = new Coordinate(curX, curY, curZ);
 		/* ray has not gone past bounds of world */
 		while (
 			(stepZ > 0 ? curZ < Chunk.getBlocksZ(): curZ >= 0)
@@ -388,13 +454,14 @@ public class Point extends Vector3 implements Position {
 				||
 				(curZ < view.getRenderStorage().getZRenderingLimit() && !view.getRenderStorage().isClipped(isectC))
 			) {
-				Block block = isectC.getBlock();
+				byte id = isectC.getBlockId();
 				if (
-					block != null
-					&& (hitCondition == null || hitCondition.test(block))
+					id != 0
+					&& (hitCondition == null || hitCondition.test(id))
 				){
 					//found intersection point
-					if (distanceTo(isectC.toPoint()) <= maxDistance*Block.GAME_EDGELENGTH)
+					isectP.setFromCoord(isectC);
+					if (distanceTo(isectP) <= maxDistance*RenderCell.GAME_EDGELENGTH)
 						return Intersection.intersect(isectC, this, dir);
 					else return null;
 				}
@@ -430,11 +497,15 @@ public class Point extends Vector3 implements Position {
                 }
             }
         }
-        //ground hit, must be 0,0,0
+        //ground hit
         if (curZ <= 0) {
-			Point intersectpoint = new Coordinate(curX, curY, 0).toPoint();
+			Point intersectpoint = new Point(
+				curX * RenderCell.GAME_DIAGLENGTH + (curY % 2 != 0 ? RenderCell.VIEW_WIDTH2 : 0),
+				curY * RenderCell.GAME_DIAGLENGTH2,
+				0
+			);
 			float distance = this.distanceTo(intersectpoint);
-			if (distance <= Block.GAME_EDGELENGTH * maxDistance) {
+			if (distance <= RenderCell.GAME_EDGELENGTH * maxDistance) {
 				return new Intersection(intersectpoint, Side.TOP, distance);
 			} else {
 				return null;
@@ -455,14 +526,10 @@ public class Point extends Vector3 implements Position {
 		if (ds < 0) {
 			return intbound(-s, -ds);
 		} else {
-			s = mod(s, 1);
+			s = (s % 1 + 1) % 1;//modulo
 			// problem is now s+t*ds = 1
 			return (int) ((1 - s) / ds);
 		}
-	}
-
-	private float mod(float value, int modulus) {
-		return (value % modulus + modulus) % modulus;
 	}
 
 	/**
@@ -474,13 +541,13 @@ public class Point extends Vector3 implements Position {
 	 * @param view
 	 * @param hitCondition can be null
 	 * @return 
-	 * @see #raycast(com.badlogic.gdx.math.Vector3, float, com.bombinggames.wurfelengine.core.Camera, boolean) 
+	 * @see #raycast(com.badlogic.gdx.math.Vector3, float, com.bombinggames.wurfelengine.core.GameView, java.util.function.Predicate) 
 	 */
 	public Intersection rayMarching(
 		final Vector3 dir,
 		float maxDistance,
 		final GameView view,
-		final Predicate<Block> hitCondition
+		final Predicate<Byte> hitCondition
 	){
 		if (dir == null) {
 			throw new NullPointerException("Direction of raycasting not defined");
@@ -503,7 +570,7 @@ public class Point extends Vector3 implements Position {
 			&& lastCoordZ > 0
 			&& lastCoordZ < Chunk.getBlocksZ()
 			|| isectC.isInMemoryArea())
-			&& distanceToSquared(traverseP) < maxDistance*Block.GAME_EDGELENGTH*maxDistance*Block.GAME_EDGELENGTH
+			&& distanceToSquared(traverseP) < maxDistance*RenderCell.GAME_EDGELENGTH*maxDistance*RenderCell.GAME_EDGELENGTH
 		){
 			//move
 			traverseP.add(dir);
@@ -517,10 +584,10 @@ public class Point extends Vector3 implements Position {
 				||
 				(lastCoordZ < view.getRenderStorage().getZRenderingLimit() && !view.getRenderStorage().isClipped(isectC))
 			) {
-				Block block = isectC.getBlock();
+				byte id = isectC.getBlockId();
 				if (
-					block != null
-					&& (hitCondition == null || hitCondition.test(block))
+					id != 0
+					&& (hitCondition == null || hitCondition.test(id))
 				){
 					Intersection interse = new Intersection(traverseP, null, distanceTo(traverseP));
 					interse.calcNormal(traverseP);
@@ -532,7 +599,7 @@ public class Point extends Vector3 implements Position {
 		if (traverseP.getZ() <= 0) {
 			traverseP.setZ(0);//clamp at 0
 			float distance = this.distanceTo(traverseP);
-			if (distance <= Block.GAME_EDGELENGTH * maxDistance) {
+			if (distance <= RenderCell.GAME_EDGELENGTH * maxDistance) {
 				return new Intersection(traverseP, Side.TOP, distance);
 			} else {
 				return null;
@@ -573,12 +640,12 @@ public class Point extends Vector3 implements Position {
 	 */
 	@Override
 	public float distanceTo(AbstractGameObject object) {
-		return distanceTo(object.getPosition().toPoint());
+		return distanceTo(object.getPoint());
 	}
 
 	@Override
 	public float distanceToSquared(AbstractGameObject object) {
-		return distanceToSquared(object.getPosition().toPoint());
+		return distanceToSquared(object.getPoint());
 	}
 
 	@Override
@@ -608,7 +675,7 @@ public class Point extends Vector3 implements Position {
 	 */
 	@Override
 	public float distanceToHorizontal(AbstractGameObject object) {
-		return distanceToHorizontal(object.getPosition().toPoint());
+		return distanceToHorizontal(object.getPoint());
 	}
 
 	@Override
@@ -639,7 +706,7 @@ public class Point extends Vector3 implements Position {
 		ArrayList<AbstractEntity> result = new ArrayList<>(5);//defautl size 5
 
 		for (AbstractEntity entity : Controller.getMap().getEntities()) {
-			if (entity.hasPosition() && distanceTo(entity.getPosition().toPoint()) < radius) {
+			if (entity.hasPosition() && distanceTo(entity.getPoint()) < radius) {
 				result.add(entity);
 			}
 		}
@@ -652,7 +719,7 @@ public class Point extends Vector3 implements Position {
 		ArrayList<AbstractEntity> result = new ArrayList<>(5);//defautl size 5
 		ArrayList<AbstractEntity> entityList = Controller.getMap().getEntities();
 		for (AbstractEntity entity : entityList) {
-			if (distanceToHorizontal(entity.getPosition().toPoint()) < radius) {
+			if (distanceToHorizontal(entity.getPoint()) < radius) {
 				result.add(entity);
 			}
 		}
@@ -670,7 +737,7 @@ public class Point extends Vector3 implements Position {
             if (
 				entity.hasPosition()
 				&& type.isInstance(entity) //if the entity is of the wanted type
-				&& distanceToHorizontal(entity.getPosition().toPoint()) < radius//TODO should use squared values for improved speed
+				&& distanceToHorizontal(entity.getPoint()) < radius//TODO should use squared values for improved speed
 			) {
                 result.add((type) entity);//add it to list
             }
@@ -689,12 +756,12 @@ public class Point extends Vector3 implements Position {
 	public int getChunkY() {
 		return Math.floorDiv((int) y, Chunk.getGameDepth());
 	}
-	
+
 	/**
-	 * 
+	 *
 	 * @param p
 	 * @param maxdistance game space in meters
-	 * @return 
+	 * @return
 	 */
 	public boolean canSee(Point p, float maxdistance) {
 		Vector3 vecToTarget = p.cpy().sub(this).nor();
@@ -703,19 +770,21 @@ public class Point extends Vector3 implements Position {
 			vecToTarget,
 			maxdistance,
 			null,
-			(Block t) -> !t.isTransparent()
+			(Byte t) -> !RenderCell.isTransparent(t,(byte)0)
 		);
 		return !(intersect != null
 			&& distanceTo(intersect.getPoint()) < distanceTo(p)//check if point is before
-);
+			);
 	}
 
 	/**
-	 * overwrites the coordinates with values from another point. Faster then creating a new object-
+	 * overwrites the coordinates with values from another point. Faster then
+	 * creating a new object-
+	 *
 	 * @param point is not modified
 	 * @return itself for chaining
 	 */
-	public Point setValues(final Point point) {
+	public Point set(final Point point) {
 		this.x = point.x;
 		this.y = point.y;
 		this.z = point.z;
@@ -737,6 +806,21 @@ public class Point extends Vector3 implements Position {
 
 	@Override
 	public Chunk getChunk() {
-		return Controller.getMap().getChunk(toCoord());
+		return Controller.getMap().getChunkContaining(toCoord());
 	}
+
+	/**
+	 * Set x,y,z based on a coordinate.
+	 * @param coord 
+	 */
+	public void setFromCoord(final Coordinate coord) {
+		x = coord.getX() * RenderCell.GAME_DIAGLENGTH + (y % 2 != 0 ? RenderCell.VIEW_WIDTH2 : 0)+RenderCell.GAME_DIAGLENGTH2;
+		y = coord.getY() * RenderCell.GAME_DIAGLENGTH2+RenderCell.GAME_DIAGLENGTH2;
+		z = coord.getZ() * RenderCell.GAME_EDGELENGTH;
+	}
+
+	public boolean isObstacle() {
+		return RenderCell.isObstacle(getBlockId());
+	}
+
 }
