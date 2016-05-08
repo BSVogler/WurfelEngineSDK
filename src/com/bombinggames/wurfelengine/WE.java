@@ -68,14 +68,14 @@ import java.util.ArrayList;
  * and the API libGDX v1.8.0 (may work with older versions).
  *
  * @author Benedikt S. Vogler
- * @version 1.7.3
+ * @version 1.7.4
  */
 public class WE {
 
 	/**
 	 * The version of the Engine
 	 */
-	public static final String VERSION = "1.7.3";
+	public static final String VERSION = "1.7.4";
 	/**
 	 * the working directory where the config and files are saved
 	 */
@@ -677,8 +677,7 @@ public class WE {
 				Gdx.app.error("WEMain", "Using a predefined BasicMainMenu.");
 				mainMenu = new BasicMainMenu();
 			}
-			engineView = new EngineView();
-			engineView.init(null, null);
+			engineView = new EngineView(null, null);
 
 			console = new Console(
 				engineView.getSkin(),

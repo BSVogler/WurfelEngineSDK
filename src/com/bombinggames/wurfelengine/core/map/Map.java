@@ -366,7 +366,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 *
 	 * @param block no null pointer
 	 * @see
-	 * #setBlock(com.bombinggames.wurfelengine.Core.Gameobjects.RenderBlock)
+	 * #setBlock(com.bombinggames.wurfelengine.core.map.rendering.RenderCell)
 	 */
 	public void setBlock(final RenderCell block) {
 		getChunkContaining(block.getPosition()).setBlock(block);
@@ -379,7 +379,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 * @param coord
 	 * @param id
 	 * @see
-	 * #setBlock(com.bombinggames.wurfelengine.Core.Gameobjects.RenderBlock)
+	 * #setBlock(com.bombinggames.wurfelengine.core.map.rendering.RenderCell)
 	 */
 	public void setBlock(Coordinate coord, byte id) {
 		Chunk chunk = getChunkContaining(coord);
@@ -896,6 +896,12 @@ public class Map implements IndexedGraph<PfNode> {
 		return Chunk.getBlocksX() * Chunk.getBlocksY();
 	}
 
+	/**
+	 * check wether a chunk is currently being loaded.
+	 * @param chunkX
+	 * @param chunkY
+	 * @return 
+	 */
 	public boolean isLoading(int chunkX, int chunkY) {
 		for (ChunkLoader lR : loadingRunnables) {
 			if (lR.getCoordX() == chunkX && lR.getCoordY() == chunkY) {

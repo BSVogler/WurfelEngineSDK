@@ -435,7 +435,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 
 	/**
      * Get the value. It is like a sub-id and can identify the status.
-     * @return in range [0;{@link Block#VALUESNUM}]. Is -1 if about to destroyed.
+     * @return in range [0;{@link RenderCell#VALUESNUM}]. Is -1 if about to destroyed.
      */
 	public byte getSpriteValue() {
 		return spriteValue;
@@ -494,7 +494,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	}
 
 	/**
-	 *
+	 * Absolute scaling factor.
 	 * @param scaling 1 no scaling, &gt; bigger, &lt; 1 smaller
 	 */
 	public void setScaling(float scaling) {
@@ -513,7 +513,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 
 	/**
      * Set the value.
-     * @param value in range [0;{@link Block#VALUESNUM}]. Is -1 if about to destroyed.
+     * @param value in range [0;{@link RenderCell#VALUESNUM}]. Is -1 if about to destroyed.
      */
 	public void setSpriteValue(byte value) {
 		if (value < RenderCell.VALUESNUM) {
@@ -528,14 +528,16 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * @param color
 	 */
 	public void setColor(Color color) {
-		this.tint = color;
+		if (color != null) {
+			this.tint = color;
+		}
 	}
 
 	/**
 	 * get the tint of the object. The default brightness is RGBA 0x808080FF so
 	 * you can make it brighter and darker by modifying R, G and B.
 	 *
-	 * @return not copy safe
+	 * @return not copy safe, not null
 	 */
 	public Color getColor() {
 		return tint;

@@ -198,12 +198,16 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 */
 	public AbstractEntity spawn(Point point) {
 		if (position == null) {
+			//spawn
 			setPosition(point);
 			dispose = false;
 			Controller.getMap().addEntities(this);
-			if (!this.isInMemoryArea()) {
+
+			//request chunk if needed
+			if (!position.isInMemoryAreaHorizontal()) {
 				this.requestChunk();
 			}
+			//if shadow is set spawn it
 			if (shadow != null && !shadow.hasPosition()) {
 				shadow.spawn(position.cpy());
 			}
@@ -561,7 +565,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * O(n) n:amount of entities. ignores if is obstacle.
 	 *
 	 * @param <type>
-	 * @param filter
+	 * @param filter only where the filter is true is returned
 	 * @return
 	 */
 	public <type extends AbstractEntity> ArrayList<type> getCollidingEntities(final Class<type> filter) {

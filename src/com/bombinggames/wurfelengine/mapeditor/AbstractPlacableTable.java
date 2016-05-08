@@ -1,12 +1,12 @@
 /*
- * Copyright 2015 Benedikt Vogler.
+ * If this software is used for a game the official „Wurfel Engine“ logo or its name must be visible in an intro screen or main menu.
+ *
+ * Copyright 2014 Benedikt Vogler.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * * If this software is used for a game the official „Wurfel Engine“ logo or its name must be
- *   visible in an intro screen or main menu.
  * * Redistributions of source code must retain the above copyright notice, 
  *   this list of conditions and the following disclaimer.
  * * Redistributions in binary form must reproduce the above copyright notice, 
@@ -28,61 +28,81 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-package com.bombinggames.wurfelengine.core;
+package com.bombinggames.wurfelengine.mapeditor;
 
-import com.badlogic.gdx.Screen;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.scenes.scene2d.Actor;
-import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
-import com.bombinggames.wurfelengine.WE;
-import java.util.ArrayList;
+import com.badlogic.gdx.scenes.scene2d.ui.Table;
+import com.bombinggames.wurfelengine.core.GameView;
 
 /**
- * A WEScreen is a {@link Screen} which supports Wurfel Engine features like the
- * {@link com.bombinggames.wurfelengine.core.console.Console}.
+ * A table containing all blocks where you can choose your block.
  *
  * @author Benedikt Vogler
  */
-public abstract class WEScreen implements Screen {
+public abstract class AbstractPlacableTable extends Table {
 
-	private final ArrayList<Actor> buttons = new ArrayList<>(5);
-	private int selection;
+	/**
+	 * list position
+	 */
+	private byte selected = 1;
+	private byte value;
 
-	@Override
-	public final void render(float delta) {
-		delta *= 1000;//to ms
-		if (delta >= WE.getCVars().getValueF("MaxDelta")) {
-			delta = 1000f / 60f;//if <1 FPS assume it was stopped and set delta to 16,66ms ^= 60FPS
-		}
-		renderImpl(delta);
-		WE.updateAndRender(delta);
+	/**
+	 *
+	 */
+	public AbstractPlacableTable() {
+		setWidth(400);
+		setHeight(Gdx.graphics.getHeight() * 0.80f);
+		setY(10);
+		setX(30);
 	}
 
 	/**
-	 * Main method which get's called every frame. Should be split up in data
-	 * managment and data displaying.
 	 *
-	 * @param dt time in ms
+	 * @param view used for rendering
 	 */
-	public abstract void renderImpl(float dt);
+	public abstract void show(GameView view);
 
-	public void addButton(Actor button) {
-		buttons.add(button);
+	/**
+	 *
+	 */
+	public void hide() {
+		if (hasChildren()) {
+			clear();
+		}
+
+		if (isVisible()) {
+			setVisible(false);
+		}
 	}
 
-	public void select(int i) {
-		selection = i;
+	/**
+	 * selects the item
+	 *
+	 * @param pos the pos of the listener
+	 */
+	void selectItem(byte pos) {
+		if (pos <= getChildren().size) {
+			selected = pos;
+			for (Actor c : getChildren()) {
+				c.setScale(0.35f);
+			}
+			getChildren().get(selected).setScale(0.4f);
+		}
 	}
 
-	public void enterSelection() {
-		buttons.get(selection).fire(new ChangeListener.ChangeEvent());
+	/**
+	 * sets the value of the selected
+	 *
+	 * @param value
+	 */
+	void setValue(byte value) {
+		this.value = value;
 	}
 
-	public int getSelection() {
-		return selection;
-	}
-
-	public int getButtonAmount() {
-		return buttons.size();
+	public byte getValue() {
+		return value;
 	}
 
 }

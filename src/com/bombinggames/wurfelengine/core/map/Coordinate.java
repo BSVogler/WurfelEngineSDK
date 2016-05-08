@@ -118,6 +118,16 @@ public class Coordinate implements Position {
 		return z;
 	}
 
+	@Override
+	public int getZGrid() {
+		return z;
+	}
+	
+	@Override
+	public float getZPoint(){
+		return z*RenderCell.GAME_EDGELENGTH;
+	}
+
 	public Coordinate set(int x, int y, int z) {
 		this.x = x;
 		this.y = y;
@@ -513,12 +523,12 @@ public class Coordinate implements Position {
 
 	@Override
 	public int getProjectionSpaceX(GameView view, Camera camera) {
-		return (int) (getViewSpcX() - camera.getViewSpaceX() + camera.getWidthInProjSpc() / 2);
+		return (int) (getViewSpcX() - camera.getViewSpaceX() + camera.getWidthInProjSpc()*0.5);
 	}
 
 	@Override
 	public int getProjectionSpaceY(GameView view, Camera camera) {
-		return (int) (getViewSpcY() - camera.getViewSpaceY() + camera.getHeightInProjSpc() / 2);
+		return (int) (getViewSpcY() - camera.getViewSpaceY() + camera.getHeightInProjSpc()*0.5);
 	}
 
 	@Override
@@ -556,7 +566,7 @@ public class Coordinate implements Position {
 	 */
 	public void destroy() {
 		int block = getBlock();
-		if ((block&255) != 0&& ((block>>16)&255) > 0) {
+		if ((block & 255) != 0 && ((block >> 16) & 255) > 0) {
 			Controller.getMap().setHealth(this, (byte) 0);
 			setBlock(0);
 			//broadcast event that this block got destroyed

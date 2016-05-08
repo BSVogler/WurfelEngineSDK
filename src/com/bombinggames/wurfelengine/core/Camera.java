@@ -5,7 +5,7 @@
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * * If this software is used for a game the official „Wurfel Engine“ logo or its name must be
+ * * If this software is used for dist game the official „Wurfel Engine“ logo or its name must be
  *   visible in an intro screen or main menu.
  * * Redistributions of source code must retain the above copyright notice,
  *   this list of conditions and the following disclaimer.
@@ -48,6 +48,7 @@ import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Iterators.CameraSpaceIterator;
 import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
+import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.SideSprite;
 import java.util.ArrayList;
@@ -59,11 +60,6 @@ import java.util.LinkedList;
  * @author Benedikt Vogler
  */
 public class Camera {
-
-	/**
-	 * top limit in game space
-	 */
-	private float zRenderingLimit = Float.POSITIVE_INFINITY;
 
 	/**
 	 * the position of the camera in view space. Y-up. Read only field.
@@ -90,7 +86,7 @@ public class Camera {
 	/**
 	 * the viewport width&height. Origin top left.
 	 */
-	private int screenWidth, screenHeight;
+	private int screenWidth, heightScreen;
 
 	/**
 	 * the position on the screen (viewportWidth/Height ist the affiliated).
@@ -117,8 +113,10 @@ public class Camera {
 	private float shakeTime;
 
 	private final GameView gameView;
-	private int viewSpaceWidth;
-	private int viewSpaceHeight;
+	private int widthView;
+	private int heightView;
+	private int heightProj;
+	private int widthProj;
 	private int centerChunkX;
 	private int centerChunkY;
 	/**
@@ -161,8 +159,9 @@ public class Camera {
 	public Camera(final GameView view) {
 		gameView = view;
 		screenWidth = Gdx.graphics.getBackBufferWidth();
-		screenHeight = Gdx.graphics.getBackBufferHeight();
+		heightScreen = Gdx.graphics.getBackBufferHeight();
 		updateViewSpaceSize();
+		widthProj = (int) (widthView / zoom);//update cache
 
 		Point center = Controller.getMap().getCenter();
 		position.x = center.getViewSpcX();
@@ -185,15 +184,15 @@ public class Camera {
 	 * @param view
 	 */
 	public Camera(final GameView view, final int x, final int y, final int width, final int height) {
-		zRenderingLimit = Chunk.getBlocksZ()-1;
-
 		gameView = view;
 		screenWidth = width;
-		screenHeight = height;
+		heightScreen = height;
 		screenPosX = x;
 		screenPosY = y;
 		renderResWidth = WE.getCVars().getValueI("renderResolutionWidth");
+		widthView = renderResWidth;
 		updateViewSpaceSize();
+		widthProj = (int) (widthView / zoom);//update cache
 
 		Point center = Controller.getMap().getCenter();
 		position.x = center.getViewSpcX();
@@ -220,11 +219,14 @@ public class Camera {
 	public Camera(final GameView view, final int x, final int y, final int width, final int height, final Point center) {
 		gameView = view;
 		screenWidth = width;
-		screenHeight = height;
+		heightScreen = height;
 		screenPosX = x;
 		screenPosY = y;
 		renderResWidth = WE.getCVars().getValueI("renderResolutionWidth");
+		widthView = renderResWidth;
+		widthView = renderResWidth;
 		updateViewSpaceSize();
+		widthProj = (int) (widthView / zoom);//update cache
 		position.x = center.getViewSpcX();
 		position.y = center.getViewSpcY();
 		initFocus();
@@ -248,11 +250,13 @@ public class Camera {
 	public Camera(final GameView view, final int x, final int y, final int width, final int height, final AbstractEntity focusentity) {
 		gameView = view;
 		screenWidth = width;
-		screenHeight = height;
+		heightScreen = height;
 		screenPosX = x;
 		screenPosY = y;
 		renderResWidth = WE.getCVars().getValueI("renderResolutionWidth");
+		widthView = renderResWidth;
 		updateViewSpaceSize();
+		widthProj = (int) (widthView / zoom);//update cache
 		if (focusentity == null) {
 			throw new NullPointerException("Parameter 'focusentity' is null");
 		}
@@ -452,9 +456,9 @@ public class Camera {
 			//set up the viewport, yIndex-up
 			HdpiUtils.glViewport(
 				screenPosX,
-				Gdx.graphics.getHeight() - screenHeight - screenPosY,
+				Gdx.graphics.getHeight() - heightScreen - screenPosY,
 				screenWidth,
-				screenHeight
+				heightScreen
 			);
 
 			//render map
@@ -580,16 +584,15 @@ public class Camera {
 		LinkedList<AbstractEntity> renderAppendix = this.renderAppendix;
 		renderAppendix.clear();
 		
+		//this should be made parallel via streams //ents.stream().parallel().forEach(action);?
 		for (AbstractEntity ent : ents) {
 			if (ent.hasPosition()
 				&& !ent.isHidden()
-				&& inViewFrustum(ent.getPosition().getViewSpcX(),
-					ent.getPosition().getViewSpcY()
-				)
-				&& ent.getPosition().getZ() < zRenderingLimit
+				&& inViewFrustum(ent.getPosition())
+				&& ent.getPosition().getZ() < gameView.getRenderStorage().getZRenderingLimit()
 			) {
 				RenderCell cell = gameView.getRenderStorage().getCell(ent.getPosition().add(0, 0, RenderCell.GAME_EDGELENGTH));//add in cell above
-				ent.getPosition().add(0, 0, -RenderCell.GAME_EDGELENGTH);//reverse change in line above
+				ent.getPosition().add(0, 0, -RenderCell.GAME_EDGELENGTH);//reverse change from line above
 				if (cell != null) {
 					cell.addCoveredEnts(ent);
 					modifiedCells.add(cell);
@@ -600,33 +603,28 @@ public class Camera {
 			}
 		}
 		
-		//iterate over renderstorage
+		//iterate over every block in renderstorage
 		objectsToBeRendered = 0;
-		//clear/reset flags
 		CameraSpaceIterator iterator = new CameraSpaceIterator(
 			gameView.getRenderStorage(),
 			centerChunkX,
 			centerChunkY,
 			0,
-			Chunk.getBlocksZ() - 1
+			(int) (gameView.getRenderStorage().getZRenderingLimit()/RenderCell.GAME_EDGELENGTH)
 		);
 		//check/visit every visible cell
 		while (iterator.hasNext()) {
 			RenderCell cell = iterator.next();
 
-			if (cell != null) {
-				if (inViewFrustum(
-					cell.getPosition().getViewSpcX(),
-					cell.getPosition().getViewSpcY()
-				)) {
-					visit(cell);
-				}
+			if (cell != null && inViewFrustum(cell.getPosition())) {
+				visit(cell);
 			}
 		}
+		//remove ents from modified blocks
 		for (RenderCell modifiedCell : modifiedCells) {
 			modifiedCell.clearCoveredEnts();
 		}
-		depthlist.addAll(renderAppendix);//render every entity which has not parent block at the end
+		depthlist.addAll(renderAppendix);//render every entity which has no parent block at the end of the list
 	}
 	
 	/**
@@ -639,20 +637,19 @@ public class Camera {
 			if (covered.size() > 0) {
 				n.markPermanentDS(id);
 					for (AbstractGameObject m : covered) {
-						if (inViewFrustum(
-							m.getPosition().getViewSpcX(),
-							m.getPosition().getViewSpcY()
-						)) {
+						if (inViewFrustum(m.getPosition())) {
 							visit(m);
 						}
 					}
 			}
-			if (n.shouldBeRendered(this)) {
-				if (objectsToBeRendered < maxsprites) {
-					//fill only up to available size
-					depthlist.add(n);
-					objectsToBeRendered++;
-				}
+			if (
+				n.shouldBeRendered(this)
+				&& n.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
+				&& objectsToBeRendered < maxsprites
+			) {
+				//fill only up to available size
+				depthlist.add(n);
+				objectsToBeRendered++;
 			}
 		}
 	}
@@ -660,28 +657,24 @@ public class Camera {
 	/**
 	 * checks if the projected position is inside the viewMat Frustum
 	 *
-	 * @param proX projective space
-	 * @param proY projective space
+	 * @param pos
 	 * @return
 	 */
-	public boolean inViewFrustum(int proX, int proY){
-		return
-				(position.y + getHeightInProjSpc() / 2)
+	public boolean inViewFrustum(Position pos){
+		int vspY = pos.getViewSpcY();
+		if (!(
+				(position.y + (heightProj>>1))
 				>
-				(proY - RenderCell.VIEW_HEIGHT * 2)//bottom of sprite
+				(vspY - (RenderCell.VIEW_HEIGHT<<1))//bottom of sprite
 			&&
-				(proY + RenderCell.VIEW_HEIGHT2 + RenderCell.VIEW_DEPTH)//top of sprite
+				(vspY + RenderCell.VIEW_HEIGHT2 + RenderCell.VIEW_DEPTH)//top of sprite
 				>
-				position.y - getHeightInProjSpc() / 2
-			&&
-				(proX + RenderCell.VIEW_WIDTH2)//right side of sprite
-				>
-				position.x - getWidthInProjSpc() / 2
-			&&
-				(proX - RenderCell.VIEW_WIDTH2)//left side of sprite
-				<
-				position.x + getWidthInProjSpc() / 2
-		;
+				position.y - (heightProj>>1))
+		)
+			return false;
+		int dist = (int) (pos.getViewSpcX()-position.x); //left side of sprite
+		//left and right check in one clause by using distance via squaring
+		return dist * dist < ( (widthProj >> 1) + RenderCell.VIEW_WIDTH2) * ((widthProj >> 1) + RenderCell.VIEW_WIDTH2);
 	}
 
 	/**
@@ -691,7 +684,8 @@ public class Camera {
 	 */
 	public void setZoom(float zoom) {
 		this.zoom = zoom;
-		updateViewSpaceSize();//todo check for redundant call?
+		updateViewSpaceSize();
+		widthProj = (int) (widthView / zoom);//update cache
 	}
 
 	/**
@@ -701,6 +695,7 @@ public class Camera {
 	 */
 	public void setInternalRenderResolution(int resolution) {
 		renderResWidth = resolution;
+		widthView = renderResWidth;
 		updateViewSpaceSize();
 	}
 
@@ -724,29 +719,12 @@ public class Camera {
 	}
 
 	/**
-	 * If the limit is set to the map's height or more it becomes deactivated.
-	 *
-	 * @param limit minimum is 0, everything to this limit becomes rendered
-	 */
-	public void setZRenderingLimit(float limit) {
-		if (limit != zRenderingLimit) {//only if it differs
-
-			zRenderingLimit = limit;
-
-			//clamp
-			if (limit < 0) {
-				zRenderingLimit = 0;//min is 0
-			}
-		}
-	}
-	
-	/**
 	 * Returns the left border of the actual visible area.
 	 *
 	 * @return left x position in view space
 	 */
 	public float getVisibleLeftBorderVS() {
-		return (position.x - getWidthInProjSpc() / 2)- RenderCell.VIEW_WIDTH2;
+		return (position.x - widthProj*0.5f)- RenderCell.VIEW_WIDTH2;
 	}
 
 	/**
@@ -755,7 +733,7 @@ public class Camera {
 	 * @return the left (X) border coordinate
 	 */
 	public int getVisibleLeftBorder() {
-		return (int) ((position.x - getWidthInProjSpc() / 2) / RenderCell.VIEW_WIDTH - 1);
+		return (int) ((position.x - widthProj*0.5) / RenderCell.VIEW_WIDTH - 1);
 	}
 
 	/**
@@ -765,7 +743,7 @@ public class Camera {
 	 * @return measured in grid-coordinates
 	 */
 	public int getVisibleRightBorder() {
-		return (int) ((position.x + getWidthInProjSpc() / 2) / RenderCell.VIEW_WIDTH + 1);
+		return (int) ((position.x + widthProj*0.5) / RenderCell.VIEW_WIDTH + 1);
 	}
 	
 	/**
@@ -775,7 +753,7 @@ public class Camera {
 	 * @return measured in grid-coordinates
 	 */
 	public float getVisibleRightBorderVS() {
-		return position.x + getWidthInProjSpc() / 2 + RenderCell.VIEW_WIDTH2;
+		return position.x + widthProj*0.5f + RenderCell.VIEW_WIDTH2;
 	}
 
 	/**
@@ -785,9 +763,9 @@ public class Camera {
 	 */
 	public int getVisibleBackBorder() {
 		//TODO verify
-		return (int) ((position.y + getHeightInProjSpc() / 2)//camera top border
+		return (int) ((position.y + heightProj * 0.5)//camera top border
 			/ -RenderCell.VIEW_DEPTH2//back to game space
-		);
+			);
 	}
 
 	/**
@@ -797,10 +775,9 @@ public class Camera {
 	 * @see #getVisibleFrontBorderHigh()
 	 */
 	public int getVisibleFrontBorderLow() {
-		return (int) (
-			(position.y- getHeightInProjSpc()/2) //bottom camera border
+		return (int) ((position.y - heightProj * 0.5) //bottom camera border
 			/ -RenderCell.VIEW_DEPTH2 //back to game coordinates
-		);
+			);
 	}
 
 	/**
@@ -810,9 +787,9 @@ public class Camera {
 	 * @see #getVisibleFrontBorderLow()
 	 */
 	public int getVisibleFrontBorderHigh() {
-		return (int) ((position.y - getHeightInProjSpc() / 2) //bottom camera border
+		return (int) ((position.y - heightProj * 0.5) //bottom camera border
 			/ -RenderCell.VIEW_DEPTH2 //back to game coordinates
-			+ Chunk.getBlocksY()*3 * RenderCell.VIEW_HEIGHT / RenderCell.VIEW_DEPTH2 //todo verify, try to add z component
+			+ Chunk.getBlocksY() * 3 * RenderCell.VIEW_HEIGHT / RenderCell.VIEW_DEPTH2 //todo verify, try to add z component
 			);
 	}
 
@@ -841,7 +818,7 @@ public class Camera {
 	 * @return in game pixels
 	 */
 	public final int getWidthInViewSpc() {
-		return viewSpaceWidth;
+		return widthView;
 	}
 
 	/**
@@ -851,15 +828,15 @@ public class Camera {
 	 * @return in game pixels
 	 */
 	public final int getHeightInViewSpc() {
-		return viewSpaceHeight;
+		return heightView;
 	}
 
 	/**
 	 * updates the cache
 	 */
-	public final void updateViewSpaceSize() {
-		viewSpaceWidth = renderResWidth;
-		viewSpaceHeight = (int) (screenHeight / getScreenSpaceScaling());
+	private void updateViewSpaceSize() {
+		heightView = (int) (heightScreen / getScreenSpaceScaling());
+		heightProj = (int) (heightView / zoom);
 	}
 
 	/**
@@ -870,7 +847,7 @@ public class Camera {
 	 * @return in viewMat pixels
 	 */
 	public final int getWidthInProjSpc() {
-		return (int) (viewSpaceWidth / zoom);
+		return widthProj;
 	}
 
 	/**
@@ -880,7 +857,7 @@ public class Camera {
 	 * @return in projective pixels
 	 */
 	public final int getHeightInProjSpc() {
-		return (int) (viewSpaceHeight / zoom);
+		return heightProj;
 	}
 
 	/**
@@ -907,7 +884,7 @@ public class Camera {
 	 * @return the value before scaling
 	 */
 	public int getHeightInScreenSpc() {
-		return screenHeight;
+		return heightScreen;
 	}
 
 	/**
@@ -936,7 +913,7 @@ public class Camera {
 	public void setFullWindow(boolean fullWindow) {
 		this.fullWindow = fullWindow;
 		this.screenWidth = Gdx.graphics.getWidth();
-		this.screenHeight = Gdx.graphics.getHeight();
+		this.heightScreen = Gdx.graphics.getHeight();
 		this.screenPosX = 0;
 		this.screenPosY = 0;
 		updateViewSpaceSize();
@@ -951,7 +928,7 @@ public class Camera {
 	public void resize(int width, int height) {
 		if (fullWindow) {
 			this.screenWidth = width;
-			this.screenHeight = height;
+			this.heightScreen = height;
 			this.screenPosX = 0;
 			this.screenPosY = 0;
 			updateViewSpaceSize();
@@ -969,12 +946,12 @@ public class Camera {
 			fullWindow = false;
 		}
 		this.screenWidth = width;
-		this.screenHeight = height;
+		this.heightScreen = height;
 		updateViewSpaceSize();
 	}
 
 	/**
-	 * Move xIndex and yIndex coordinate
+	 * Move x and y coordinate
 	 *
 	 * @param x in game space
 	 * @param y in game space

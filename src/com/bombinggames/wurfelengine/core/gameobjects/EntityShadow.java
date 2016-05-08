@@ -29,7 +29,6 @@
 package com.bombinggames.wurfelengine.core.gameobjects;
 
 import com.badlogic.gdx.ai.msg.Telegram;
-import com.badlogic.gdx.graphics.Color;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
@@ -70,11 +69,13 @@ public class EntityShadow extends AbstractEntity {
 			) {
 				getPoint().add(0, 0, -RenderCell.GAME_EDGELENGTH);
 			}
-			if (character.getPosition().getZ()<RenderCell.GAME_EDGELENGTH) {
+			//last level
+			if (character.getPosition().getZPoint() < RenderCell.GAME_EDGELENGTH) {
 				getPoint().setZ(0);
 			} else {
-				getPoint().setZ((getPoint().getZGrid()+1)*RenderCell.GAME_EDGELENGTH);
+				getPoint().setZ((getPoint().getZGrid() + 1) * RenderCell.GAME_EDGELENGTH);
 			}
+			setHidden(character.getPosition().getZPoint() < getPoint().z);
 		}
 	}
 
@@ -83,22 +84,20 @@ public class EntityShadow extends AbstractEntity {
 		if (character == null || !character.hasPosition() || !hasPosition() || character.isHidden()) {
 			dispose();
 		} else {
-			setScaling(1);
-			setColor(new Color(
+			getColor().set(
 					.5f,
 					.5f,
 					.5f,
 					1 - (character.getPosition().getZ() - getPosition().getZ()) / 2 / RenderCell.GAME_EDGELENGTH+0.1f
-				)
 			);
 			super.render(view, camera);
 			//always visible smaller shadow
 			if (getColor().a < 0.9f) {//render only if small shadow would be visible
-				setColor(
-					new Color(.5f, .5f, .5f, 0.2f)
-				);
+				getColor().a = 0.2f;
+				float prevScale = getScaling();
 				setScaling(0.5f);
 				super.render(view, camera);
+				setScaling(prevScale);
 			}
 		}
 	}

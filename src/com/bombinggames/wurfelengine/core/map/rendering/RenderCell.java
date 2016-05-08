@@ -50,9 +50,8 @@ import com.bombinggames.wurfelengine.core.map.Position;
 import java.util.LinkedList;
 
 /**
- * It is something which can be rendered and therefore render information saved shared across cameras. A RenderCell should not use the event system. The class extends (wraps) the plain data of the {@link Block} with a position and {@link AbstractGameObject} class methods. The wrapped {@link Block} is not referenced, so changing this {@link RenderCell} changes the data in the map.<br>
+ * It is something which can be rendered and therefore render information saved shared across cameras. A RenderCell should not use the event system. The class extends (wraps) the plain data of the block with a position and {@link AbstractGameObject} class methods. The wrapped cell is not referenced. It is possible to change there sprite id and value {@link AbstractGameObject#setSpriteId(byte)} but keeping the logic id and value. <br>
  * The internal wrapped block can have different id then used for rendering. The rendering sprite id's are set in the constructor or later manualy.<br>
- * @see Block
  * @author Benedikt Vogler
  */
 public class RenderCell extends AbstractGameObject {
@@ -68,6 +67,9 @@ public class RenderCell extends AbstractGameObject {
     private static final Color[][] COLORLIST = new Color[RenderCell.OBJECTTYPESNUM][RenderCell.VALUESNUM];
 	private static boolean fogEnabled;
 	private static boolean staticShade;
+	/**
+	 * frame number of last rebuild
+	 */
 	private static long rebuildCoverList = 0;
 	private static SimpleEntity destruct = new SimpleEntity((byte) 3,(byte) 0);
 	private static Color tmpColor = new Color();
@@ -435,10 +437,9 @@ public class RenderCell extends AbstractGameObject {
 	
 	/**
 	 * set the timestamp when the content changed
-	 * @param frameNum 
 	 */
-	public static void setRebuildCoverList(long frameNum) {
-		RenderCell.rebuildCoverList = frameNum;
+	public static void rebuildCoverList() {
+		RenderCell.rebuildCoverList = WE.getGameplay().getFrameNum();
 	}
 
    /**
@@ -490,7 +491,9 @@ public class RenderCell extends AbstractGameObject {
 		}
     }
 
-	
+	/**
+	 * game logic value. Sprite Id may differ.
+	 */
 	private final byte id;
 	private byte value;
 	private Coordinate coord = new Coordinate(0, 0, 0);
@@ -537,9 +540,12 @@ public class RenderCell extends AbstractGameObject {
 	 * three bits used, for each side one: TODO: move to aoFlags byte #3
 	 */
 	private byte clipping;
+	/**
+	 * stores references to neighbor blocks which are covered.
+	 */
 	private final LinkedList<AbstractGameObject> covered = new LinkedList<>();
 	/**
-	 * for topological sort. Contains entities and blocks
+	 * for topological sort. At the end contains both entities and blocks
 	 */
 	private final LinkedList<AbstractGameObject> coveredEnts = new LinkedList<>();
 	private SideSprite site1;
@@ -570,6 +576,24 @@ public class RenderCell extends AbstractGameObject {
 		super(id, value);
 		this.id = id;
 		this.value = value;
+	}
+	
+	/**
+	 * game logic value. Sprite Id may differ.
+	 * @return 
+	 * @see #getSpriteId() 
+	 */
+	public byte getId() {
+		return id;
+	}
+
+	/**
+	 * game logic value. Sprite value may differ.
+	 * @return 
+	 * @see #getSpriteValue()
+	 */
+	public byte getValue() {
+		return value;
 	}
 	
 	public boolean isObstacle() {
@@ -955,11 +979,11 @@ public class RenderCell extends AbstractGameObject {
 	 */
 	public boolean isTransparent() {
 		if (id==0) return true;
-		return RenderCell.isTransparent(id,value);
+		return RenderCell.isTransparent(getSpriteId(),getSpriteValue());//sprite id because view related
 	}
 	
 	public boolean isIndestructible() {
-		return RenderCell.isIndestructible(id,value);
+		return RenderCell.isIndestructible(id,value);//game logic related
 	}
 	
 	/**
@@ -1288,15 +1312,12 @@ public class RenderCell extends AbstractGameObject {
 		return id != 0
 				&& !isClipped()
 				&& !isHidden()
-				&& camera.inViewFrustum(
-					coord.getViewSpcX(),
-					coord.getViewSpcY()
-				);
+				&& camera.inViewFrustum(coord);
 	}
 
 	@Override
 	public LinkedList<AbstractGameObject> getCovered(RenderStorage rs) {
-		if (lastRebuild < rebuildCoverList) {
+		if (lastRebuild < rebuildCoverList) {//only rebuild once per frame
 			rebuildCovered(rs);
 		}
 		if (!coveredEnts.isEmpty()) {
@@ -1319,6 +1340,10 @@ public class RenderCell extends AbstractGameObject {
 		return covered;
 	}
 	
+	/**
+	 * Rebuilds the list of covered cells by this cell.
+	 * @param rs 
+	 */
 	private void rebuildCovered(RenderStorage rs) {
 		LinkedList<AbstractGameObject> covered = this.covered;
 		covered.clear();
@@ -1344,7 +1369,7 @@ public class RenderCell extends AbstractGameObject {
 			if (block != null) {
 				covered.add(block);
 			}
-			nghb.add(0, 2, 1);
+			nghb.add(0, 2, 1);//go back to origin
 		}
 		block = rs.getCell(nghb.goToNeighbour(0));//back
 		if (block != null) {
@@ -1355,21 +1380,20 @@ public class RenderCell extends AbstractGameObject {
 			covered.add(block);
 		}
 
-		//back left
-		block = rs.getCell(nghb.goToNeighbour(6));
+		block = rs.getCell(nghb.goToNeighbour(6));//back left
 		if (block != null) {
 			covered.add(block);
 		}
 		if (nghb.getZ() < Chunk.getBlocksZ() - 1) {
-			block = rs.getCell(nghb.add(0, 0, 1));//back
+			block = rs.getCell(nghb.add(0, 0, 1));//back left above
 			if (block != null) {
 				covered.add(block);
 			}
-			block = rs.getCell(nghb.goToNeighbour(2));//back
+			block = rs.getCell(nghb.goToNeighbour(2));//back right above
 			if (block != null) {
 				covered.add(block);
 			}
-			nghb.add(-1, 0, -1);
+			nghb.add(-1, 0, -1);//back to back left
 		}
 
 		nghb.goToNeighbour(3);//return to origin
@@ -1378,14 +1402,6 @@ public class RenderCell extends AbstractGameObject {
 
 	public void clearCoveredEnts() {
 		coveredEnts.clear();
-	}
-
-	public byte getId() {
-		return id;
-	}
-
-	public byte getValue() {
-		return value;
 	}
 
 	/**
