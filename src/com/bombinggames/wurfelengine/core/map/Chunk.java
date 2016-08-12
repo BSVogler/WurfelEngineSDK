@@ -61,12 +61,21 @@ public class Chunk implements Telegraph {
     /**The suffix of a chunk files.*/
     protected static final String CHUNKFILESUFFIX = "wec";
 
+	/**
+	 * dimensions of the chunk in X
+	*/
 	private static int blocksX = 10;
+	/**
+	 * dimensions of the chunk in Y
+	*/
     private static int blocksY = 40;//blocksY must be even number
+	/**
+	 * dimensions of the chunk in Z
+	*/
     private static int blocksZ = 10;
 
 	/**
-	 * save file stuff
+	 * special signs for the save file
 	 */
 	private final static char SIGN_ENTITIES = '|';//124 OR 0x7c
 	private final static char SIGN_COMMAND = '~';//126 OR 0x7e
@@ -151,7 +160,7 @@ public class Chunk implements Telegraph {
 	private final int chunkX, chunkY;
 	
 	/**
-	 * the ids are stored here
+	 * the ids are stored here. A block is defined by three fields. In the last dimension first is id, second value, third is health.
 	 */
     private final byte data[][][];
 	
@@ -161,7 +170,10 @@ public class Chunk implements Telegraph {
 	private final ArrayList<AbstractBlockLogicExtension> logicBlocks = new ArrayList<>(4);
 	private boolean modified;
 
-	private ArrayList<AbstractEntity> entities = new ArrayList<>(15);
+	/**
+	 * contains the entities on this chunk
+	 */
+	private ArrayList<AbstractEntity> entitiesinSaveFile;
 	private int topleftX;
 	private int topleftY;
 
@@ -188,7 +200,7 @@ public class Chunk implements Telegraph {
        for (int x = 0; x < blocksX; x++) {
 			for (int y = 0; y < blocksY; y++) {
 				for (int z = 0; z < blocksZ*3; z++) {
-					if (z % 3 == 2) {
+					if (z % 3 == 2) {//every third is health
 						data[x][y][z] = 100;
 					} else {
 						data[x][y][z] = 0;
@@ -200,37 +212,26 @@ public class Chunk implements Telegraph {
 		modified = true;
     }
 
-    /**
-    * Creates a chunk by trying to load and if this fails it generates a new
+	/**
+	 * Creates a chunk by trying to load and if this fails it generates a new
 	 * one.
 	 *
 	 * @param map
 	 * @param coordX the chunk coordinate
 	 * @param coordY the chunk coordinate
-	 * @param path filename
-	 * @param generator
+	 * @param path filename, can be null to skip file loading
+	 * @param generator used for generating if laoding fails
 	 */
-    public Chunk(final Map map, final File path, final int coordX, final int coordY, final Generator generator){
-        this(map, coordX,coordY);
-		if (WE.getCVars().getValueB("shouldLoadMap")){
+	public Chunk(final Map map, final File path, final int coordX, final int coordY, final Generator generator) {
+		this(map, coordX, coordY);
+		if (path != null && WE.getCVars().getValueB("shouldLoadMap")) {
 			if (!load(path, map.getCurrentSaveSlot(), coordX, coordY)) {
 				fill(generator);
 			}
-		} else fill(generator);
-    }
-
-    /**
-    * Creates a chunk by generating a new one.
-	 *
-	 * @param map
-	 * @param coordX the chunk coordinate
-	 * @param coordY the chunk coordinate
-	 * @param generator
-	 */
-	public Chunk(final Map map, final int coordX, final int coordY, final Generator generator) {
-		this(map, coordX, coordY);
-		fill(generator);
-    }
+		} else {
+			fill(generator);
+		}
+	}
 
 	/**
 	 * Updates the chunk. should be called once per frame.
@@ -288,11 +289,11 @@ public class Chunk implements Telegraph {
 					);
 					data[x][y][z] = (byte) (generated&255);
 					data[x][y][z + 1] = (byte) ((generated>>8)&255);
-					data[x][y][z + 2] = 100;
+					data[x][y][z + 2] = 100;//health
 					if (data[x][y][z] != 0) {
 						AbstractBlockLogicExtension logic = RenderCell.createLogicInstance(data[x][y][z],
 							data[x][y][z + 1],
-							new Coordinate(chunkX * blocksX + x, chunkY * blocksY + y, z)
+							new Coordinate(left + x, top + y, z)
 						);
 						if (logic != null) {
 							logicBlocks.add(logic);
@@ -359,9 +360,9 @@ public class Chunk implements Telegraph {
 					if (bChar == SIGN_EMTPYLAYER) {
 						for (x = 0; x < blocksX; x++) {
 							for (y = 0; y < blocksY; y++) {
-								data[x][y][z * 3] = 0;
-								data[x][y][z * 3 + 1] = 0;
-								data[x][y][z * 3 + 2] = 100;
+								data[x][y][z * 3] = 0;//id
+								data[x][y][z * 3 + 1] = 0;//value
+								data[x][y][z * 3 + 2] = 100;//health
 							}
 						}
 						skip = true;
@@ -380,8 +381,8 @@ public class Chunk implements Telegraph {
 							
 							if (id == 0) {
 								data[x][y][z * 3] = id;
-								data[x][y][z * 3 + 1] = 0;
-								data[x][y][z * 3 + 2] = 100;
+								data[x][y][z * 3 + 1] = 0;//value
+								data[x][y][z * 3 + 2] = 100;//health
 								id = -1;
 								x++;
 								if (x == blocksX) {
@@ -397,7 +398,7 @@ public class Chunk implements Telegraph {
 						} else {
 							data[x][y][z * 3] = id;
 							data[x][y][z * 3 + 1] = bChar;
-							data[x][y][z * 3 + 2] = 100;
+							data[x][y][z * 3 + 2] = 100;//health
 							//if has logicblock then add logicblock
 							if (id != 0) {
 								if (RenderCell.hasLogic(id, bChar)) {
@@ -436,32 +437,38 @@ public class Chunk implements Telegraph {
 
 	/**
 	 * fills entitie cache
+	 *
 	 * @param fis
-	 * @param path 
+	 * @param path
 	 */
-	private void loadEntities(FileInputStream fis, File path){
-		//ends with a sign for logic or entities or eof
+	private void loadEntities(FileInputStream fis, File path) {
+		//ends with a sign for logic or entitiesinSaveFile or eof
 		try (ObjectInputStream ois = new ObjectInputStream(fis)) {
 			byte bChar = ois.readByte();
 			if (bChar == SIGN_COMMAND) {
 				bChar = ois.readByte();
 			}
 
-			if (bChar == SIGN_ENTITIES && WE.getCVars().getValueB("loadEntities")){
+			if (bChar == SIGN_ENTITIES && WE.getCVars().getValueB("loadEntities")) {
 				try {
-					//loading entities
-					byte length = ois.readByte(); //amount of entities
-					Gdx.app.debug("Chunk", "Loading " + length +" entities.");
+					//loading entitiesinSaveFile
+					byte entCount = ois.readByte(); //amount of entities
+					if (entCount > 0 && entCount < 10000) {//upper limit
+						Gdx.app.debug("Chunk", "Loading " + entCount + " entities.");
+						entitiesinSaveFile = new ArrayList<>(entCount);
 
-					AbstractEntity ent;
-					for (int i = 0; i < length; i++) {
-						try {
-							ent = (AbstractEntity) ois.readObject();
-							entities.add(ent);
-							Gdx.app.debug("Chunk", "Loaded entity: " + ent.getName());
-						} catch (ClassNotFoundException | InvalidClassException ex) {
-							Gdx.app.error("Chunk", "An entity could not be loaded: "+ex.getMessage());
+						AbstractEntity ent;
+						for (int i = 0; i < entCount; i++) {
+							try {
+								ent = (AbstractEntity) ois.readObject();
+								entitiesinSaveFile.add(ent);
+								Gdx.app.debug("Chunk", "Loaded entity: " + ent.getName());
+							} catch (ClassNotFoundException | InvalidClassException ex) {
+								Gdx.app.error("Chunk", "An entity could not be loaded: " + ex.getMessage());
+							}
 						}
+					} else if (entCount < 0) {
+						Gdx.app.error("Chunk", "Loading of entities in chunk" + path + "/" + chunkX + "," + chunkY + " failed. File is corrupt.");
 					}
 					ois.close();
 				} catch (IOException ex) {
@@ -516,9 +523,13 @@ public class Chunk implements Telegraph {
         return false;
     }
 
+	/**
+	 * Returns entitiesinSaveFile spawned on this chunk. Can only called once.
+	 * @return list of entitiesinSaveFile on this chunk, can be null if empty
+	 */
 	public ArrayList<AbstractEntity> retrieveEntities() {
-		ArrayList<AbstractEntity> tmp = entities;
-		entities = null;
+		ArrayList<AbstractEntity> tmp = entitiesinSaveFile;
+		entitiesinSaveFile = null;//clear this reference to help gc
 		return tmp;
 	}
 
@@ -570,7 +581,7 @@ public class Chunk implements Telegraph {
 
 		if (entities.size() > 0){
 			try (ObjectOutputStream fileOut = new ObjectOutputStream(fos)) {
-				//save entities
+				//save entitiesinSaveFile
 				if (entities.size() > 0) {
 					fileOut.write(new byte[]{SIGN_COMMAND, SIGN_ENTITIES, (byte) entities.size()});
 					for (AbstractEntity ent : entities){
@@ -740,6 +751,14 @@ public class Chunk implements Telegraph {
 		}
 	}
 	
+	/**
+	 * Almost lowest level method to set a block in the map. If the block has
+	 * logic a new logicinstance will be created.
+	 * Sets health to 100.
+	 * @param coord
+	 * @param id
+	 * @param value 
+	 */
 	public void setBlock(Coordinate coord, byte id, byte value) {
 		int xIndex = coord.getX() - topleftX;
 		int yIndex = coord.getY() - topleftY;
@@ -747,6 +766,7 @@ public class Chunk implements Telegraph {
 		if (z >= 0){
 			data[xIndex][yIndex][z] = id;
 			data[xIndex][yIndex][z+1] = value;
+			data[xIndex][yIndex][z+2] = 100;
 			modified = true;
 		}
 		
@@ -759,7 +779,9 @@ public class Chunk implements Telegraph {
 	}
 	
 	/**
-	 * healed and value set to 0
+	 * Almost lowest level method to set a block in the map. If the block has
+	 * logic a new logicinstance will be created.
+	 * Health set to 100 and value set to 0
 	 * @param coord
 	 * @param id 
 	 */
@@ -792,6 +814,7 @@ public class Chunk implements Telegraph {
 		int yIndex = coord.getY() - topleftY;
 		int z = coord.getZ()*3;
 		if (z >= 0) {
+			//check if actually changed
 			if (data[xIndex][yIndex][z+1] != value) {
 				data[xIndex][yIndex][z+1] = value;
 				modified = true;
@@ -799,7 +822,13 @@ public class Chunk implements Telegraph {
 		}
 	}
 	
+	/**
+	 * Set health of a cell.
+	 * @param coord
+	 * @param health 0-100.
+	 */
 	public void setHealth(Coordinate coord, byte health) {
+		MessageManager.getInstance().dispatchMessage(Events.blockDamaged.getId(), coord);
 		int xIndex = coord.getX() - topleftX;
 		int yIndex = coord.getY() - topleftY;
 		int z = coord.getZ()*3;
@@ -852,13 +881,18 @@ public class Chunk implements Telegraph {
 			}
 		}
 
-		//remove entities on this chunk from map
+		//remove entitiesinSaveFile on this chunk from map
 		ArrayList<AbstractEntity> entities = map.getEntitiesOnChunk(chunkX, chunkY);
 		for (AbstractEntity ent : entities) {
 			ent.removeFromMap();
 		}
 	}
 
+	/**
+	 *
+	 * @param storage
+	 * @return
+	 */
 	public RenderChunk getRenderChunk(RenderStorage storage) {
 		return storage.getChunk(chunkX, chunkY);
 	}
@@ -867,13 +901,22 @@ public class Chunk implements Telegraph {
 	public boolean handleMessage(Telegram msg) {
 		return false;
 	}
-	
+
 	/*
 	 * @param x coordinate
 	 * @param y coordinate
 	 * @param z coordinate
 	 * @return can be null
 	 */
+
+	/**
+	 *
+	 * @param x
+	 * @param y
+	 * @param z
+	 * @return
+	 */
+
 	public byte getBlockId(int x, int y, int z) {
 		if (z >= Chunk.blocksZ) {
 			return 0;
@@ -883,6 +926,13 @@ public class Chunk implements Telegraph {
 		return data[xIndex][yIndex][z * 3];
 	}
 
+	/**
+	 *
+	 * @param x
+	 * @param y
+	 * @param z
+	 * @return
+	 */
 	public byte getBlockValue(int x, int y, int z) {
 		if (z >= Chunk.blocksZ) {
 			return 0;
@@ -892,6 +942,13 @@ public class Chunk implements Telegraph {
 		return data[xIndex][yIndex][z * 3 + 1];
 	}
 
+	/**
+	 *
+	 * @param x
+	 * @param y
+	 * @param z
+	 * @return
+	 */
 	public byte getHealth(int x, int y, int z) {
 		if (z >= Chunk.blocksZ) {
 			return 0;
@@ -901,6 +958,14 @@ public class Chunk implements Telegraph {
 		return data[xIndex][yIndex][z * 3 + 2];
 	}
 
+	/**
+	 * Get the block data at this coordinate.
+	 *
+	 * @param x global coordinates
+	 * @param y global coordinates
+	 * @param z global coordinates
+	 * @return
+	 */
 	public int getBlock(int x, int y, int z) {
 		if (z >= Chunk.blocksZ) {
 			return 0;
@@ -909,16 +974,18 @@ public class Chunk implements Telegraph {
 		int yIndex = y - topleftY;
 		return data[xIndex][yIndex][z * 3] + (data[xIndex][yIndex][z * 3 + 1] << 8) + (data[xIndex][yIndex][z * 3 + 2] << 16);
 	}
-	
+
 	/**
-	 * 
-	 * @param x
-	 * @param y
-	 * @param z
-	 * @return 
+	 * Get the block data at this index position.
+	 * @param x index
+	 * @param y index
+	 * @param z index
+	 * @return
 	 */
 	public int getCellByIndex(int x, int y, int z) {
-		if (z >= Chunk.blocksZ) return 0;
-		return data[x][y][z*3]+(data[x][y][z*3+1]<<8)+(data[x][y][z*3+2]<<16);
+		if (z >= Chunk.blocksZ) {
+			return 0;
+		}
+		return data[x][y][z * 3] + (data[x][y][z * 3 + 1] << 8) + (data[x][y][z * 3 + 2] << 16);
 	}
 }

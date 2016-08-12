@@ -42,6 +42,7 @@ import com.badlogic.gdx.utils.Array;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.Events;
+import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.cvar.CVarSystemMap;
 import com.bombinggames.wurfelengine.core.cvar.CVarSystemSave;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
@@ -52,6 +53,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.LinkedList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -156,6 +158,9 @@ public class Map implements IndexedGraph<PfNode> {
 	private ArrayList<Chunk> loadedChunks;
 	
 	private final ArrayList<ChunkLoader> loadingRunnables = new ArrayList<>(9);
+	/**
+	 * the amount of chunks in memory in one dimension
+	 */
 	private final int chunkDim;
 
 	/**
@@ -299,6 +304,10 @@ public class Map implements IndexedGraph<PfNode> {
 		return data;
 	}
 	
+	/**
+	 *
+	 * @return
+	 */
 	public ArrayList<Chunk> getLoadedChunks(){
 		return loadedChunks;
 	}
@@ -344,6 +353,13 @@ public class Map implements IndexedGraph<PfNode> {
 		}
 	}
 
+	/**
+	 *
+	 * @param x
+	 * @param y
+	 * @param z
+	 * @return
+	 */
 	public int getBlock(int x, int y, int z) {
 		if (z < 0) {
 			return (byte) WE.getCVars().getValueI("groundBlockID");
@@ -356,6 +372,11 @@ public class Map implements IndexedGraph<PfNode> {
 		}
 	}
 
+	/**
+	 *
+	 * @param coord
+	 * @return
+	 */
 	public byte getHealth(Coordinate coord) {
 		return (byte) ((getBlock(coord) >> 16) & 255);
 	}
@@ -388,14 +409,24 @@ public class Map implements IndexedGraph<PfNode> {
 		}
 	}
 	
+	/**
+	 * Set id, value and health at a coordinate in the map.
+	 * @param coord
+	 * @param block id, value and health
+	 */
 	public void setBlock(Coordinate coord, int block) {
 		Chunk chunk = getChunkContaining(coord);
 		if (chunk != null) {
-			chunk.setBlock(coord, (byte)(block&255), (byte)((block>>8)&255));
+			chunk.setBlock(coord, (byte) (block & 255), (byte) ((block >> 8) & 255), (byte) ((block >> 16) & 255));
 		}
 	}
 
-	
+	/**
+	 * Set id and value at a coordinate in the map.
+	 * @param coord
+	 * @param id
+	 * @param value
+	 */
 	public void setBlock(Coordinate coord, byte id, byte value) {
 		Chunk chunk = getChunkContaining(coord);
 		if (chunk != null) {
@@ -409,10 +440,24 @@ public class Map implements IndexedGraph<PfNode> {
 	 * @param value
 	 */
 	public void setValue(Coordinate coord, byte value) {
-		getChunkContaining(coord).setValue(coord, value);
+		getChunkContaining(coord).setValue(coord, value);//call to map
+		//call to update RenderStorage
+		GameView view = WE.getGameplay().getView();
+		if (view != null) {//only update RS if can access it
+			RenderCell renderCell = view.getRenderStorage().getCell(coord);
+			if (renderCell != null) {
+				renderCell.setValue(value);
+			}
+		}
 	}
-	
-	void setHealth(Coordinate coord, byte health) {
+
+	/**
+	 * Set health of a cell.
+	 *
+	 * @param coord
+	 * @param health
+	 */
+	public void setHealth(Coordinate coord, byte health) {
 		getChunkContaining(coord).setHealth(coord, health);
 	}
 
@@ -423,7 +468,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 * @return can return null if not loaded
 	 */
 	public Chunk getChunkContaining(final Coordinate coord) {
-		return data[Math.floorDiv(coord.getX(), Chunk.getBlocksX())+chunkDim/2][Math.floorDiv(coord.getY(), Chunk.getBlocksY())+chunkDim/4];
+		return data[Math.floorDiv(coord.getX(), Chunk.getBlocksX()) + chunkDim / 2][Math.floorDiv(coord.getY(), Chunk.getBlocksY()) + chunkDim / 4];
 	}
 
 	/**
@@ -434,7 +479,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 * @return can return null if not loaded
 	 */
 	public Chunk getChunkContaining(int x, int y) {
-		return data[Math.floorDiv(x, Chunk.getBlocksX())+chunkDim/2][Math.floorDiv(y, Chunk.getBlocksY())+chunkDim/4];
+		return data[Math.floorDiv(x, Chunk.getBlocksX()) + chunkDim / 2][Math.floorDiv(y, Chunk.getBlocksY()) + chunkDim / 4];
 	}
 	
 	/**
@@ -538,7 +583,7 @@ public class Map implements IndexedGraph<PfNode> {
 		//loop over every loaded entity
 		for (AbstractEntity ent : getEntities()) {
             if (
-					ent.isGettingSaved() && ent.hasPosition() //save only entities which are flagged
+					ent.isSavedPersistent() && ent.hasPosition() //save only entities which are flagged
 				&&
 					ent.getPosition().getX() > xChunk*Chunk.getGameWidth()//left chunk border
                 &&
@@ -772,11 +817,13 @@ public class Map implements IndexedGraph<PfNode> {
 	 * @param ent entities should be already spawned
 	 */
 	public void addEntities(Collection<AbstractEntity> ent) {
-		//remove duplicates
-		for (AbstractEntity e : ent) {
-			entityList.remove(e);
+		if (ent != null) {
+			//remove duplicates
+			for (AbstractEntity e : ent) {
+				entityList.remove(e);
+			}
+			entityList.addAll(ent);
 		}
-		entityList.addAll(ent);
 	}
 	
 
@@ -792,19 +839,19 @@ public class Map implements IndexedGraph<PfNode> {
 	 * Find every instance of a special class. E.g. find every
 	 * <i>AbstractCharacter</i>. They must be spawned to appear in the results.
 	 *
-	 * @param <type> the class you want to filter.
+	 * @param <T> the class you want to filter.
 	 * @param filter the class you want to filter.
 	 * @return a list with the entitys
 	 */
 	@SuppressWarnings(value = {"unchecked"})
-	public <type extends AbstractEntity> ArrayList<type> getEntitys(final Class<type> filter) {
-		ArrayList<type> result = new ArrayList<>(30); //default size 30
+	public <T> LinkedList<T> getEntitys(final Class<T> filter) {
+		LinkedList<T> result = new LinkedList<>();
 		if (filter == null) {
 			throw new IllegalArgumentException();
 		}
 		for (AbstractEntity entity : entityList) {
 			if (entity.hasPosition() && filter.isInstance(entity)) {
-				result.add((type) entity);
+				result.add((T) entity);
 			}
 		}
 		return result;
@@ -816,11 +863,11 @@ public class Map implements IndexedGraph<PfNode> {
 	 * @param coord
 	 * @return a list with the entitys
 	 */
-	public ArrayList<AbstractEntity> getEntitysOnCoord(final Coordinate coord) {
-		ArrayList<AbstractEntity> result = new ArrayList<>(5);//default size 5
+	public LinkedList<AbstractEntity> getEntitysOnCoord(final Coordinate coord) {
+		LinkedList<AbstractEntity> result = new LinkedList<>();
 
 		for (AbstractEntity ent : entityList) {
-			if (ent.getPosition() != null && ent.getPosition().toCoord().equals(coord)) {
+			if (ent.getPosition() != null && coord.contains(ent.getPosition())) {
 				result.add(ent);
 			}
 		}
@@ -831,21 +878,21 @@ public class Map implements IndexedGraph<PfNode> {
 	/**
 	 * Get every entity on a coord of the wanted type
 	 *
-	 * @param <type> the class you want to filter.
+	 * @param <T> the class you want to filter.
 	 * @param coord the coord where you want to get every entity from
 	 * @param filter the class you want to filter.
 	 * @return a list with the entitys of the wanted type
 	 */
 	@SuppressWarnings("unchecked")
-	public <type> ArrayList<type> getEntitysOnCoord(final Coordinate coord, final Class<? extends AbstractEntity> filter) {
-		ArrayList<type> result = new ArrayList<>(5);
+	public <T> LinkedList<T> getEntitysOnCoord(final Coordinate coord, final Class<T> filter) {
+		LinkedList<T> result = new LinkedList<>();
 
 		for (AbstractEntity ent : entityList) {
 			if (ent.hasPosition()
 				&& coord.contains(ent.getPosition())//on coordinate?
-				&& filter.isInstance(ent)//of tipe of filter?
-				) {
-				result.add((type) ent);//add it to list
+				&& filter.isInstance(ent)//of type of filter?
+			) {
+				result.add((T) ent);//add it to list
 			}
 		}
 

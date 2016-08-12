@@ -52,6 +52,10 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 
 	private static final long serialVersionUID = 2L;
 	private static java.util.HashMap<String, Class<? extends AbstractEntity>> entityMap = new java.util.HashMap<>(10);//map string to class
+
+	/**
+	 *
+	 */
 	public final int colissionRadius = GAME_DIAGLENGTH2/2;
 
 	/**
@@ -87,8 +91,6 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
     private int dimensionZ = GAME_EDGELENGTH;  
     private boolean dispose;
 	private boolean obstacle;
-	private transient EntityAnimation animation;
-	private transient EntityShadow shadow;
 	private String name = "undefined";
 	private boolean indestructible = false;
 		/**
@@ -99,19 +101,23 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	/**
 	 * flags if should be saved
 	 */
-	private boolean saveToDisk = true;
+	private boolean savePersistent = true;
 	private transient String[] damageSounds;
-	private char category = 'e';
+	private char spriteCategory = 'e';
 	private boolean useRawDelta = false;
 	private float mass = 0.4f;
-	private LinkedList<AbstractGameObject> covered = new LinkedList<>();
+	private final LinkedList<AbstractGameObject> covered = new LinkedList<>();
+	private final LinkedList<Component> components = new LinkedList<>();
+	private byte value;
+	private byte id;
 	/**
 	 * Create an abstractEntity.
 	 *
 	 * @param id objects with id = -1 will be deleted. 0 are invisible objects
 	 */
 	public AbstractEntity(byte id) {
-		super(id);
+		super();
+		this.id = id;
 	}
 
 	/**
@@ -121,7 +127,9 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * @param value
 	 */
 	public AbstractEntity(byte id, byte value) {
-		super(id, value);
+		super();
+		this.id = id;
+		this.value = value;
 	}
 
 	/**
@@ -130,16 +138,26 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * @param dt time since last update in game time
 	 */
 	public void update(float dt) {
-		if (animation != null) {
-			animation.update(dt);
-		}
-
 		if (getHealth() <= 0 && !indestructible) {
 			dispose();
 		}
 
 		if (soundTimeLimit > 0) {
 			soundTimeLimit -= Gdx.graphics.getRawDeltaTime();
+		}
+
+		//update the components
+		//question if traditional fore-loop is faster
+		//http://stackoverflow.com/questions/16635398/java-8-iterable-foreach-vs-foreach-loop
+		if (components.size() > 0) {
+			@SuppressWarnings("unchecked")
+			LinkedList<Component> cloneList = (LinkedList<Component>) components.clone();
+			for (Component com : cloneList) {
+				//if already in map don't update here
+				if (!((com instanceof AbstractEntity)
+					&& ((AbstractEntity) com).hasPosition()))
+				com.update(dt);
+			}
 		}
 	}
 
@@ -165,8 +183,8 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
     /**
      * Is the entity laying/standing on the ground?
      * @return true when on the ground. False if in air or not in memory.
-     */
-    public boolean isOnGround(){
+	 */
+	public boolean isOnGround() {
 		Point pos = getPosition();
 		if (pos == null) {
 			return false;
@@ -187,7 +205,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 				return false;//return false if over map
 			}
 		}
-    }
+	}
     
 	/**
 	 * Add this entity to the map-&gt; let it spawn
@@ -204,12 +222,8 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 			Controller.getMap().addEntities(this);
 
 			//request chunk if needed
-			if (!position.isInMemoryAreaHorizontal()) {
+			if (!position.isInMemoryAreaXY()) {
 				this.requestChunk();
-			}
-			//if shadow is set spawn it
-			if (shadow != null && !shadow.hasPosition()) {
-				shadow.spawn(position.cpy());
 			}
 		} else {
 			WE.getConsole().add(getName() + " is already spawned.");
@@ -217,26 +231,6 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 		return this;
 	}
 	
-	/**
-	 *
-	 */
-	public void enableShadow() {
-		shadow = new EntityShadow(this);
-		if (position != null) {
-			shadow.spawn(position.cpy());
-		}
-	}
-
-	/**
-	 * Disables the shadow.
-	 */
-	public void disableShadow() {
-		if (shadow != null) {
-			shadow.dispose();
-			shadow = null;
-		}
-	}
-    
 	/**
 	 * Is the object active on the map? If you spawn the object it has a
 	 * position afterwards
@@ -247,38 +241,18 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 		return position != null;
 	}
 
-	/**
-	 * Animation information.
-	 *
-	 * @return can be null if it has no animation
-	 */
-	public EntityAnimation getAnimation() {
-		return animation;
-	}
-
-	/**
-	 * Give the entity an animation.
-	 *
-	 * @param animation
-	 */
-	public void setAnimation(EntityAnimation animation) {
-		this.animation = animation;
-		animation.setParent(this);
-	}
-	
-
     @Override
-    public char getCategory() {
-        return category;
+    public char getSpriteCategory() {
+        return spriteCategory;
     }
 	
 	/**
-	 * Set the category used for the lookup of the sprite.
+	 * Set the spriteCategory used for the lookup of the sprite.
 	 *
 	 * @param c
 	 */
-	public void setCategory(char c) {
-		category = c;
+	public void setSpriteCategory(char c) {
+		spriteCategory = c;
 	}
     
  @Override
@@ -310,70 +284,37 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	public int getDimensionZ() {
 		return dimensionZ;
 	}
-	
-	/**
-	 * Deletes the object from the map. The opposite to
-	 * {@link #spawn(Point)}<br>
-	 *
-	 * @see #dispose()
-	 * @see #spawn(Point)
-	 */
-	public void removeFromMap() {
-		position = null;
-	}
-
-	/**
-	 * Deletes the object from the map and every other container. The opposite
-	 * to spawn() but also removes it completely.<br>
-	 *
-	 * @see #shouldBeDisposed()
-	 * @see #removeFromMap()
-	 */
-	public void dispose() {
-		dispose = true;
-		removeFromMap();
-	}
-
-	/**
-	 * false if in update list.
-	 *
-	 * @return true if disposing next tick
-	 * @see #dispose()
-	 */
-	public boolean shouldBeDisposed() {
-		return dispose;
-	}
 
 	/**
 	 * Is the oject saved on the map?
 	 *
 	 * @return true if savedin map file.
 	 */
-	public boolean isGettingSaved() {
-		return saveToDisk;
+	public boolean isSavedPersistent() {
+		return savePersistent;
 	}
 
 	/**
 	 * Mark objects to not be saved in disk. Gets passed to the children. Temp
 	 * objects should not be saved.
 	 *
-	 * @param saveToDisk new value of saveToDisk
+	 * @param persisent new value of persisent
 	 */
-	public void setSaveToDisk(boolean saveToDisk) {
-		this.saveToDisk = saveToDisk;
+	public void setSavePersistent(boolean persisent) {
+		this.savePersistent = persisent;
 	}
 
 	/**
 	 * true if on chunk which is in memory
 	 *
 	 * @return
-	 * @see com.bombinggames.wurfelengine.core.map.Coordinate#isInMemoryAreaHorizontal()
+	 * @see com.bombinggames.wurfelengine.core.map.Coordinate#isInMemoryAreaXY()
 	 */
 	public boolean isInMemoryArea() {
 		if (position == null) {
 			return false;
 		}
-		return position.isInMemoryAreaHorizontal();
+		return position.isInMemoryAreaXY();
 	}
 
 	/**
@@ -385,12 +326,16 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 		this.obstacle = obstacle;
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	public boolean isObstacle() {
 		return obstacle;
 	}
 
 	/**
-	 *
+	 * Get the mass of the object.
 	 * @return in kg
 	 */
 	public float getMass() {
@@ -467,7 +412,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 			setHealth((byte) (getHealth() + value));
 		}
 	}
-	
+
 	@Override
 	public float getLightlevelR() {
 		return lightlevelR;
@@ -491,21 +436,27 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	}
 
 	/**
-     *
-     * @return from maximum 100
-     */
+	 *
+	 * @return from maximum 100
+	 */
 	public float getHealth() {
 		return health;
 	}
 	
 	/**
-	 * clamps to [0..100]. You may prefer damage and {@link #heal(byte) }. Ignores invincibility.
-	 * @param health 
-	 * @see #takeDamage(byte) 
+	 * clamps to [0..100]. You may prefer damage and {@link #heal(byte) }.
+	 * Ignores invincibility.
+	 *
+	 * @param health
+	 * @see #takeDamage(byte)
 	 */
 	public void setHealth(float health) {
-		if (health > 100) health=  100;
-		if (health < 0) health = 0;
+		if (health > 100) {
+			health = 100;
+		}
+		if (health < 0) {
+			health = 0;
+		}
 		this.health = health;
 	}
 
@@ -516,7 +467,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	public void setUseRawDelta(boolean useRawDelta) {
 		this.useRawDelta = useRawDelta;
 	}
-	
+
 	/**
 	 *
 	 * @return
@@ -549,9 +500,9 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 *
 	 * @return
 	 */
-	public ArrayList<AbstractEntity> getCollidingEntities() {
+	public LinkedList<AbstractEntity> getCollidingEntities() {
 		ArrayList<AbstractEntity> ents = Controller.getMap().getEntities();
-		ArrayList<AbstractEntity> result = new ArrayList<>(5);//default size 5
+		LinkedList<AbstractEntity> result = new LinkedList<>();//default size 5
 		for (AbstractEntity entity : ents) {
 			if (collidesWith(entity)) {
 				result.add(entity);
@@ -564,16 +515,17 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	/**
 	 * O(n) n:amount of entities. ignores if is obstacle.
 	 *
-	 * @param <type>
+	 * @param <T>
 	 * @param filter only where the filter is true is returned
 	 * @return
 	 */
-	public <type extends AbstractEntity> ArrayList<type> getCollidingEntities(final Class<type> filter) {
-		ArrayList<type> result = new ArrayList<>(5);//default size 5
+	@SuppressWarnings("unchecked")
+	public <T> LinkedList<T> getCollidingEntities(final Class<T> filter) {
+		LinkedList<T> result = new LinkedList<>();//default size 5
 
-		ArrayList<type> ents = Controller.getMap().getEntitys(filter);
-		for (type entity : ents) {
-			if (collidesWith(entity)) {
+		LinkedList<T> ents = Controller.getMap().getEntitys(filter);
+		for (T entity : ents) {
+			if (collidesWith(((AbstractEntity) entity))) {
 				result.add(entity);
 			}
 		}
@@ -622,7 +574,10 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 
 			//render this ent before blocks below
 			if (coord.getZ()<1){
-				covered.add(rs.getCell(coord));
+				block = rs.getCell(coord);//front
+				if (block != null) {
+					covered.add(block);
+				}
 			} else {
 				if (coord.getZ() > 0) {
 	//				if (block != null) {
@@ -648,6 +603,95 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	public Coordinate getCoord() {
 		return position.toCoord();
 	}
+
+	/**
+	 *
+	 * @param component
+	 */
+	public void addComponent(Component component) {
+		this.components.add(component);
+		component.setParent(this);
+	}
+
+	/**
+	 *
+	 * @param <T>
+	 * @param filterType
+	 * @return
+	 */
+	public <T extends Component> Component getComponent(final Class<T> filterType) {
+		for (Component comp : components) {
+			if (filterType.isInstance(comp)) {
+				return comp;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 *
+	 * @param component
+	 */
+	public void removeComponent(Component component) {
+		this.components.remove(component);
+	}
 	
+	/**
+	 * false if in update list of map.
+	 *
+	 * @return true if disposing next tick
+	 * @see #dispose()
+	 */
+	public boolean shouldBeDisposed() {
+		return dispose;
+	}
 	
+	/**
+	 * Deletes the object from the map. The opposite to
+	 * {@link #spawn(Point)}<br>
+	 *
+	 * @see #dispose()
+	 * @see #spawn(Point)
+	 */
+	public void removeFromMap() {
+		position = null;
+	}
+
+	/**
+	 * Deletes the object from the map and every other container. The opposite
+	 * to spawn() but also sets a flag to remove it completely.<br>
+	 *
+	 * @see #shouldBeDisposed()
+	 * @see #removeFromMap()
+	 */
+	public void dispose() {
+		dispose = true;
+		removeFromMap();
+	}
+
+	@Override
+	public byte getSpriteId() {
+		return id;
+	}
+
+	@Override
+	public byte getSpriteValue() {
+		return value;
+	}
+	
+	/**
+	 *
+	 * @param id
+	 */
+	public void setSpriteId(byte id){
+		this.id = id;
+	}
+	
+	/**
+	 *
+	 * @param value
+	 */
+	public void setSpriteValue(byte value){
+		this.value = value;
+	}
 }

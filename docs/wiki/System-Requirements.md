@@ -1,20 +1,20 @@
 ## Minimum
-- >Java 1.7
-- Audio card (please test without)
+- Java 1.8 or newer
+- Audio card (not tested without)
 - Keyboard & Mouse or game controller
-- 200 MB free memory (RAM)
+- 512 MB free memory (RAM)
 - 10 MB free disk space
-- OpenGL 2.0
+- OpenGL 2.0 or newer
 
 ## Recommended
-- >Java 1.7
-- > 500 MB free (RAM)
-- >10 MB free disk space
+- Java 1.8 or newer
+- 1 GB free memory (RAM)
+- 10 MB free disk space
 - Graphics card not older than 5 years (old graphic cards may be slow scaling the graphic context)
-- > 2 GHz Processor
-- Audio card (please test without)
-- Keyboard & Mouse
-- > OpenGL 2.0
+- 2 GHz Processor
+- Audio card (not tested without)
+- Keyboard & Mouse or game controller
+- OpenGL 2.0 or newer
 
 
 ## Improve this data

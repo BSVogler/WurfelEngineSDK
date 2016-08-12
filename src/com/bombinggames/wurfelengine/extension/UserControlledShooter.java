@@ -33,14 +33,13 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
-import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.Controllable;
 import com.bombinggames.wurfelengine.core.gameobjects.MovableEntity;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.extension.shooting.Weapon;
 
 /**
- * The WeaponPlayer is a character who can walk and shoot.
+ * The UserControlledShooter is a character who can walk and shoot.
  *
  * @author Benedikt
  */
@@ -66,17 +65,18 @@ public class UserControlledShooter extends MovableEntity implements Controllable
 	}
 
 	@Override
-	public AbstractEntity spawn(Point point) {
+	public UserControlledShooter spawn(Point point) {
 		super.spawn(point);
-		if (weapon!=null)
+		if (weapon != null) {
 			weapon.spawn(point.cpy());
+		}
 		return this;
 	}
-	
+
 	@Override
 	public void walk(boolean up, boolean down, boolean left, boolean right, float walkingspeed, float dt) {
-		
-		if (up || down || left || right){
+
+		if (up || down || left || right) {
 
 			//update the direction vector
 			Vector2 dir = new Vector2(left ? -1 : (right ? 1 : 0f), up ? -1 : (down ? 1 : 0f));
@@ -90,8 +90,9 @@ public class UserControlledShooter extends MovableEntity implements Controllable
 	 */
 	@Override
 	public void jump() {
-		if (isOnGround())
+		if (isOnGround()) {
 			jump(5, true);
+		}
 	}
 
 	/**
@@ -118,7 +119,7 @@ public class UserControlledShooter extends MovableEntity implements Controllable
 	@Override
 	public void update(float dt) {
 		super.update(dt);
-		if (weapon != null) {
+		if (weapon != null && weapon.hasPosition()) {
 			if (hasPosition()) {
 				weapon.getPosition().set(getPosition());
 			}
@@ -138,6 +139,7 @@ public class UserControlledShooter extends MovableEntity implements Controllable
 
 	/**
 	 * Get the camera used to identify the aiming direction.
+	 *
 	 * @return
 	 */
 	public Camera getCamera() {
@@ -153,7 +155,7 @@ public class UserControlledShooter extends MovableEntity implements Controllable
 	}
 
 	/**
-	 * Gives the player a weapon.
+	 * Gives the player a weapon. Reloads if not loaded.
 	 *
 	 * @param weapon
 	 */
@@ -162,7 +164,11 @@ public class UserControlledShooter extends MovableEntity implements Controllable
 			this.weapon.removeFromMap();
 		}
 		this.weapon = weapon;
-		weapon.reload();
+		if (!weapon.hasPosition() && this.hasPosition()) {
+			spawn(getPosition().cpy());
+		}
+		if (!weapon.isLoaded()) {
+			weapon.reload();
+		}
 	}
-
 }

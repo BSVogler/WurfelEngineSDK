@@ -1,11 +1,13 @@
-* /devtools, /dev
-* /editor (toggles the editor)
-* /fullscreen
-* /lightengine (toggles the light engine)
-* /quit
-* /exit
-* /menu
-* /help
-* /newmap (generates new map)
-* /gamespeed prints game speed
-* /gamespeed <float> set game speed
+-----Commands
+* devtools, dev
+* editor (toggles the editor)
+* fullscreen
+* lightengine (toggles the light engine)
+* le (toggles the light engine)
+* quit
+* exit
+* menu
+* help
+* newmap (generates new map)
+
+For a list of Cvars look at [[CVar]]

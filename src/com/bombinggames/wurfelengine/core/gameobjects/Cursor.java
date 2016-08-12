@@ -32,6 +32,7 @@
 package com.bombinggames.wurfelengine.core.gameobjects;
 
 import com.badlogic.gdx.ai.msg.Telegram;
+import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Intersection;
@@ -50,26 +51,35 @@ public class Cursor extends AbstractEntity {
     private final SimpleEntity normal;
     private Side normalSide;
 	private CursorInfo selDet;
-	private Tool tool;
+	private Tool tool = Tool.DRAW;
     
     /**
      *
      */
     public Cursor() {
-        super((byte) 13);
-		setSaveToDisk(false);
+        super((byte) 8);
+		setSavePersistent(false);
 		setName("selectionEntity");
 		
-        normal = new SimpleEntity((byte) 14);
-		EntityAnimation anim = new EntityAnimation(new int[]{200,200}, true, true);
+        normal = new SimpleEntity((byte) 9);
 		normal.setUseRawDelta(true);
-		//normal.enableShadow();
-		normal.setAnimation(anim);
+		//normal.addComponent( new Shadow());
+		normal.addComponent(new EntityAnimation(new int[]{200,200}, true, true));
         normal.setLightlevel(10);
-		normal.setSaveToDisk(false);
-		normal.setName("normal");
+		normal.setSavePersistent(false);
+		normal.setName("cursor normal");
     }
+
+	@Override
+	public void update(float dt) {
+		super.update(dt);
+		setHidden(!WE.isInEditor() || tool == Tool.SELECT);
+	}
 	
+	/**
+	 *
+	 * @param selDet
+	 */
 	public void setInfo(CursorInfo selDet){
 		this.selDet = selDet;
 	}
@@ -169,13 +179,19 @@ public class Cursor extends AbstractEntity {
      * @param screenY cursor position from top
      */
     public void update(GameView view, int screenX, int screenY){
-       Intersection intersect = view.screenToGame(screenX, screenY);
+		Intersection intersect = view.screenToGame(screenX, screenY);
 
 		if (intersect != null && intersect.getPoint() != null) {
 			setPosition(intersect.getPoint());
 			setNormal(intersect.getNormal());
 		}
     }
+
+	@Override
+	public void setHidden(boolean hidden) {
+		super.setHidden(hidden);
+		normal.setHidden(!WE.isInEditor() || !tool.showNormal);
+	}
 
 	@Override
 	public boolean handleMessage(Telegram msg) {

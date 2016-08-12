@@ -41,11 +41,11 @@ import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator;
  */
 public class RenderChunk {
 
+	/**
+	 * a pool containing chunkdata
+	 */
 	private static final Pool<RenderCell[][][]> DATAPOOL;
-	private final RenderCell data[][][];
-	private Chunk chunk;
-	private boolean cameraAccess;
-
+	
 	static {
 		DATAPOOL = new Pool<RenderCell[][][]>(3) {
 			@Override
@@ -55,9 +55,16 @@ public class RenderChunk {
 		};
 	}
 	
+	/**
+	 *
+	 */
 	public static void clearPool(){
 		DATAPOOL.clear();
 	}
+	
+	private final RenderCell data[][][];
+	private Chunk chunk;
+	private boolean cameraAccess;
 
 	/**
 	 * With init
@@ -82,7 +89,7 @@ public class RenderChunk {
 	}
 
 	/**
-	 * fills every cell with the accoring data
+	 * fills every render cell with the according data from the map
 	 *
 	 * @param rS
 	 */
@@ -102,6 +109,7 @@ public class RenderChunk {
 					if (data[xInd][yInd][z] == null || (block & 255) != data[xInd][yInd][z].getId()) {
 						data[xInd][yInd][z] = RenderCell.getRenderCell((byte) (block & 255), (byte) ((block >> 8) & 255));
 					}
+					
 					data[xInd][yInd][z].getPosition().set(
 						tlX + xInd,
 						tlY + yInd,
@@ -190,10 +198,18 @@ public class RenderChunk {
 		}
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	public int getTopLeftCoordinateX() {
 		return chunk.getTopLeftCoordinateX();
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	public int getTopLeftCoordinateY() {
 		return chunk.getTopLeftCoordinateY();
 	}
@@ -213,14 +229,29 @@ public class RenderChunk {
 		);
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	public int getChunkX() {
 		return chunk.getChunkX();
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	public int getChunkY() {
 		return chunk.getChunkY();
 	}
 
+	/**
+	 *
+	 * @param x
+	 * @param y
+	 * @param z
+	 * @return
+	 */
 	protected RenderCell getCellByIndex(int x, int y, int z) {
 		return data[x][y][z];
 	}
@@ -242,6 +273,9 @@ public class RenderChunk {
 		cameraAccess = b;
 	}
 
+	/**
+	 *
+	 */
 	protected void dispose() {
 		DATAPOOL.free(data);
 	}

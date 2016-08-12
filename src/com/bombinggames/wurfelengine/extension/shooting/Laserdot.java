@@ -48,13 +48,15 @@ public class Laserdot extends SimpleEntity {
 
 	private byte ignoreId;
 
+	/**
+	 *
+	 */
 	public Laserdot() {
 		super((byte) 22);
 		setColor(new Color(1, 0, 0, 1));
 		setScaling(0.05f);
-		setSaveToDisk(false);
+		setSavePersistent(false);
 		setName("Laser dot");
-		disableShadow();
 	}
 
 	
@@ -64,6 +66,11 @@ public class Laserdot extends SimpleEntity {
 		return false;
 	}
 
+	/**
+	 *
+	 * @param aimDir
+	 * @param origin
+	 */
 	public void update(Vector3 aimDir, Point origin) {
 		if (hasPosition() && !aimDir.isZero()) {
 			
@@ -81,6 +88,10 @@ public class Laserdot extends SimpleEntity {
 		}
 	}
 
+	/**
+	 *
+	 * @param ignoreId
+	 */
 	public void ignoreBlock(byte ignoreId) {
 		this.ignoreId = ignoreId;
 	}

@@ -20,7 +20,7 @@ public class Particle extends MovableEntity {
 	 * if this reaches zero it is destroyed
 	 */
 	private float timeTillDeath;
-	private final Color startingColor = new Color(1, 1, 1, 0.5f);
+	private final Color startingColor = new Color(0.5f, 0.5f, 0.5f, 1f);
 	private float startingAlpha = 1f;
 	private ParticleType type = ParticleType.REGULAR;
 	private boolean rotateRight;
@@ -52,10 +52,14 @@ public class Particle extends MovableEntity {
 		init(maxtime);
 	}
 	
+	/**
+	 *
+	 * @param maxtime
+	 */
 	public void init(float maxtime){
 		this.maxtime = maxtime;
 		timeTillDeath = maxtime;
-		setSaveToDisk(false);
+		setSavePersistent(false);
 		if (type.isGrowing()) {
 			setScaling(0);
 		} else {
@@ -63,8 +67,8 @@ public class Particle extends MovableEntity {
 		}
 		setFloating(true);
 		setName("Particle");
-		super.setColor(new Color(0.5f, 0.5f, 0.5f, 1f));
-		startingColor.set(getColor());
+		setColor(getColor());
+		startingAlpha =1;
 		setMass(0.0005f);
 		rotateRight = Math.random() > 0.5f;
 	}
@@ -93,16 +97,13 @@ public class Particle extends MovableEntity {
 	}
 
 	/**
-	 * Time to live for each particle.
+	 * Time to live for each particle. Resets timer.
 	 *
 	 * @param time in ms
 	 */
 	public void setTTL(float time) {
 		maxtime = time;
-		//clamp
-		if (timeTillDeath > maxtime) {
-			timeTillDeath = maxtime;
-		}
+		timeTillDeath = time;
 	}
 
 	@Override
@@ -161,6 +162,10 @@ public class Particle extends MovableEntity {
 		return maxtime;
 	}
 
+	/**
+	 * set the pool where to put itself in after destruction
+	 * @param pool 
+	 */
 	void setPool(Pool<Particle> pool) {
 		this.pool = pool;
 	}

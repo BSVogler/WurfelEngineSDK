@@ -43,6 +43,7 @@ import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator;
 import com.bombinggames.wurfelengine.core.map.Point;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -64,8 +65,8 @@ public class RenderStorage implements Telegraph  {
 	/**
 	 * a list of Blocks marked as dirty. Dirty blocks are reshaded.
 	 */
-	private final LinkedList<RenderCell> dirtyFlags = new LinkedList<>();
-	private float zRenderingLimit;
+	private final HashSet<Coordinate> dirtyFlags = new HashSet<>(200);
+	private float zRenderingLimit = Float.POSITIVE_INFINITY;
 
 	/**
 	 * Creates a new renderstorage.
@@ -74,13 +75,20 @@ public class RenderStorage implements Telegraph  {
 		this.cameraContainer = new ArrayList<>(1);
 		lastCenterX = new ArrayList<>(1);
 		lastCenterY = new ArrayList<>(1);
-		zRenderingLimit = Chunk.getGameHeight();
 	}
 	
+	/**
+	 *
+	 * @param dt
+	 */
 	public void preUpdate(float dt){
 		resetShadingForDirty();
 	}
 
+	/**
+	 *
+	 * @param dt
+	 */
 	public void update(float dt){
 		checkNeededChunks();
 		//update rendderblocks
@@ -178,8 +186,7 @@ public class RenderStorage implements Telegraph  {
 	 * reset light to normal level for cordinates marked as dirty
 	 */
 	private void resetShadingForDirty() {
-		for (RenderCell rb : dirtyFlags) {
-			Coordinate coord = rb.getPosition();
+		for (Coordinate coord : dirtyFlags) {
 			RenderChunk chunk = getChunk(coord);
 			//should be loaded but check nevertheless
 			if (chunk != null) {
@@ -194,21 +201,21 @@ public class RenderStorage implements Telegraph  {
 	}
 	
 	/**
-	 * Marks this block as "dirty". O(n)
+	 * Marks this block as "dirty".
 	 * @param rB
 	 */
 	public void setLightFlag(RenderCell rB) {
-		if (!dirtyFlags.contains(rB))
-			dirtyFlags.add(rB);
+		if (!dirtyFlags.contains(rB.getPosition()))
+			dirtyFlags.add(rB.getPosition());
 	}
 	
 	
 	/**
-	 * clears the used RenderChunks then resets
+	 * clears the used RenderChunks then resets.
 	 */
 	public void reinitChunks() {
 		RenderStorage rS = this;
-		//loop over clone because may add new chunks to data
+		//loop over clone because may add new chunks to data while looping
 		@SuppressWarnings("unchecked")
 		LinkedList<RenderChunk> dataclone = (LinkedList<RenderChunk>) data.clone();
 		dataclone.forEach((RenderChunk rChunk) -> {
@@ -236,7 +243,8 @@ public class RenderStorage implements Telegraph  {
 			if (left <= coord.getX()
 				&& coord.getX() < left + Chunk.getBlocksX()
 				&& top <= coord.getY()
-				&& coord.getY() < top + Chunk.getBlocksY()) {
+				&& coord.getY() < top + Chunk.getBlocksY()
+			) {
 				data.addFirst(data.removeLast());
 				return chunk;
 			}
@@ -307,7 +315,7 @@ public class RenderStorage implements Telegraph  {
 	 */
 	public RenderCell getCell(final Coordinate coord) {
 		if (coord.getZ() < 0) {
-			return getNewGroundCellInstance();
+			return null;
 		}
 		RenderChunk chunk = getChunk(coord);
 		if (chunk == null) {
@@ -373,7 +381,7 @@ public class RenderStorage implements Telegraph  {
 	
 	
 	/**
-	 * performs a simple viewFrustum check by looking at the direct neighbours.
+	 * performs a simple clipping check by looking at the direct neighbours.
 	 *
 	 * @param chunk
 	 */
@@ -471,6 +479,10 @@ public class RenderStorage implements Telegraph  {
 		return RenderCell.getRenderCell((byte) WE.getCVars().getValueI("groundBlockID"), (byte) 0); //the representative of the bottom layer (ground) block
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	public LinkedList<RenderChunk> getData() {
 		return data;
 	}
@@ -523,6 +535,9 @@ public class RenderStorage implements Telegraph  {
 	 */
 	public void setZRenderingLimit(float height) {
 		zRenderingLimit = height;
+		if (height >= Chunk.getGameHeight()) {
+			zRenderingLimit = Float.POSITIVE_INFINITY;
+		}
 		if (zRenderingLimit < 0) {
 			zRenderingLimit = 0;
 		}
@@ -531,7 +546,7 @@ public class RenderStorage implements Telegraph  {
 	@Override
 	public boolean handleMessage(Telegram msg) {
 		if (msg.message == Events.mapChanged.getId()) {
-			reinitChunks();
+			reinitChunks();//coould be optimized by only updating blocks that changed
 			RenderCell.rebuildCoverList();
 			return true;
 		}
@@ -539,6 +554,9 @@ public class RenderStorage implements Telegraph  {
 		return false;
 	}
 
+	/**
+	 *
+	 */
 	public void dispose() {
 		RenderChunk.clearPool();
 		MessageManager.getInstance().removeListener(this, Events.mapChanged.getId());

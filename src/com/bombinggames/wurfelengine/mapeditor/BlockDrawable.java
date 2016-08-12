@@ -68,9 +68,21 @@ public class BlockDrawable extends TextureRegionDrawable {
 		block.setPosition(null);
 		block.setScaling(size);
 	}
+
+	/**
+	 * Set game and sprite value of this block.
+	 * @param value 
+	 */
+	protected void setValue(byte value) {
+		this.block.setValue(value);
+	}
 	
-	void setValue(byte value) {
-		this.block.setSpriteValue(value);
+	/**
+	 *
+	 * @return
+	 */
+	protected byte getValue(){
+		return this.block.getValue();
 	}
 
 	@Override
@@ -103,39 +115,76 @@ public class BlockDrawable extends TextureRegionDrawable {
 		}
 	}
 
+	/**
+	 *
+	 * @param batch
+	 * @param x
+	 * @param y
+	 * @param originX
+	 * @param originY
+	 * @param width
+	 * @param height
+	 * @param scaleX
+	 * @param scaleY
+	 * @param rotation
+	 */
 	@Override
 	public void draw(Batch batch, float x, float y, float originX, float originY, float width, float height, float scaleX, float scaleY, float rotation) {
 		block.setScaling(scaleY);
 		draw(batch, x, y, width, height);
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	@Override
 	public float getLeftWidth() {
 		return RenderCell.VIEW_WIDTH2 * block.getScaling();
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	@Override
 	public float getRightWidth() {
 		return RenderCell.VIEW_WIDTH2 * block.getScaling();
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	@Override
 	public float getTopHeight() {
 		return 0;
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	@Override
 	public float getBottomHeight() {
 		return 0;
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	@Override
 	public float getMinWidth() {
 		return RenderCell.VIEW_WIDTH * block.getScaling();
 	}
-	
-	public RenderCell getRenderBlock(){
+
+	/**
+	 *
+	 * @return
+	 */
+	public RenderCell getRenderBlock() {
 		return block;
 	}
-	
+
 }

@@ -91,7 +91,7 @@ public class Weapon extends AbstractEntity implements Telegraph {
 	 */
 	private boolean firing;
 	private boolean fireSoundBust;
-	private boolean bustSoundReady;
+	private boolean bustSoundReady = true;
 	private Point fixedPos = null;
 	private transient AimBand particleBand;
 	private transient PointLightSource lightSource;
@@ -299,10 +299,6 @@ public class Weapon extends AbstractEntity implements Telegraph {
 			firing = false;
 		}
 		
-		if (particleBand != null){
-			particleBand.update();
-		}
-		
 		//move back
 		if (hasPosition() && fixedPos != null) {
 			if (lightSource==null && fixedPos != null){
@@ -312,15 +308,15 @@ public class Weapon extends AbstractEntity implements Telegraph {
 					30f,
 					WE.getGameplay().getView()
 				).spawn(fixedPos.cpy());
-				lightSource.setSaveToDisk(false);
+				lightSource.setSavePersistent(false);
 			}
 			if (firing){
 				lightSource.enable();
 				float t;
-				if (bulletDelay > delayBetweenShots/2){
-					t = (bulletDelay-(delayBetweenShots/2f))/(delayBetweenShots/2f);
+				if (bulletDelay > delayBetweenShots / 2) {
+					t = (bulletDelay - (delayBetweenShots / 2f)) / (delayBetweenShots / 2f);
 				} else {
-					t = bulletDelay/(delayBetweenShots/2f);
+					t = bulletDelay / (delayBetweenShots / 2f);
 				}
 				this.getPosition().lerp(fixedPos.cpy().add(aimDir.cpy().scl(-RenderCell.GAME_EDGELENGTH2)),
 					t
@@ -339,12 +335,12 @@ public class Weapon extends AbstractEntity implements Telegraph {
 			}
 		} else { //if not shooting or loading
 			if (bulletDelay <= 0 && shotsLoaded <= 0) {//autoreload
-				reload();
-			}
+			   reload();
+		   }
 		}
 	   
 		
-		if (laserdot == null){
+		if (laserdot == null) {
 			laserdot = (Laserdot) new Laserdot().spawn(getPosition().cpy());
 		}
 		laserdot.ignoreBlock(ignoreId);
@@ -365,14 +361,12 @@ public class Weapon extends AbstractEntity implements Telegraph {
      */
     public void shoot(){
        if (shotsLoaded > 0 && bulletDelay <= 0 && reloading <= 0 && hasPosition()) {
-			if (fireSound != null) {
-				if (bustSoundReady) {
-					WE.SOUND.play(fireSound, getPosition());
-				}
-				if (fireSoundBust) {
-					bustSoundReady = false;
-				}
-			}
+			if (fireSound != null && bustSoundReady) {
+			   WE.SOUND.play(fireSound, getPosition());
+			   if (fireSoundBust) {
+				   bustSoundReady = false;
+			   }
+		   }
 			
 			bulletDelay += delayBetweenShots;
 			shotsLoaded--;
@@ -431,43 +425,43 @@ public class Weapon extends AbstractEntity implements Telegraph {
 		bustSoundReady = true;
         reloading = relodingTime;
         if (reload != null) {
-			WE.SOUND.play("reload", getPosition());
+			WE.SOUND.play(reload, getPosition());
 		}
     }
 
-    /**
-     *
-     * @return
-     */
-    public int getShotsLoaded() {
-        return shotsLoaded;
-    }
+	/**
+	 *
+	 * @return
+	 */
+	public int getShotsLoaded() {
+		return shotsLoaded;
+	}
 
-    /**
-     *
-     * @return
-     */
-    public int getShots() {
-        return shots;
-    }
+	/**
+	 *
+	 * @return
+	 */
+	public int getShots() {
+		return shots;
+	}
 
-    /**
-     *
-     * @return
-     */
-    public int getReloadingTime() {
-        return reloading;
-    }
+	/**
+	 *
+	 * @return
+	 */
+	public int getReloadingTime() {
+		return reloading;
+	}
 
-    /**
-     *
-     * @param fire
-	 * @param bustSound true if one sound per bust
-     */
-    public void setFireSound(String fire, boolean bustSound) {
-        this.fireSound = fire;
+	/**
+	 *
+	 * @param fire
+	 * @param bustSound true if one sound per bust. false to play sound at every shot.
+	 */
+	public void setFireSound(String fire, boolean bustSound) {
+		this.fireSound = fire;
 		this.fireSoundBust = bustSound;
-    }
+	}
 
     /**
      *
@@ -500,18 +494,18 @@ public class Weapon extends AbstractEntity implements Telegraph {
 		if (laserdot != null)
 			laserdot.dispose();
 	}
-	
-		
+
 	@Override
 	public boolean handleMessage(Telegram msg) {
-		 if (msg.message == Events.deselectInEditor.getId()){
+		if (msg.message == Events.deselectInEditor.getId()) {
 			if (particleBand != null) {
 				particleBand.dispose();
 				particleBand = null;
 			}
-		} else if (msg.message == Events.selectInEditor.getId()){
+		} else if (msg.message == Events.selectInEditor.getId()) {
 			if (particleBand == null) {
-				particleBand = new AimBand(this, laserdot);
+				particleBand = new AimBand(laserdot);
+				addComponent(particleBand);
 			} else {
 				particleBand.setTarget(laserdot);
 			}
@@ -524,8 +518,17 @@ public class Weapon extends AbstractEntity implements Telegraph {
 	 * @param hidden
 	 */
 	public void setLaserHidden(boolean hidden) {
-		if (laserdot!=null)
+		if (laserdot != null) {
 			laserdot.setHidden(hidden);
+		}
+	}
+
+	/**
+	 *
+	 * @return
+	 */
+	public boolean isLoaded() {
+		return shotsLoaded >= shots;
 	}
 	
 }

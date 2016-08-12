@@ -52,6 +52,7 @@ import com.bombinggames.wurfelengine.core.map.LoadMenu;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
+import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -67,19 +68,23 @@ public class GameView implements GameManager {
 	 */
 	private static int cameraIdCounter = 0;
 
-	    /**
+	/**
      * Shoud be called before the object get initialized.
      * Initializes class fields.
      */
     public static void classInit(){
-        //set up font
-        //font = WurfelEngine.getInstance().manager.get("com/bombinggames/wurfelengine/EngineCore/arial.fnt"); //load font
-        //font.scale(2);
-
-        //font.scale(-0.5f);
-        
-        //load sprites
-        RenderCell.loadSheet();
+			//set up font
+			//font = WurfelEngine.getInstance().manager.get("com/bombinggames/wurfelengine/EngineCore/arial.fnt"); //load font
+			//font.scale(2);
+			
+			//font.scale(-0.5f);
+			
+			//load sprites
+		try {
+			RenderCell.loadSheet();
+		} catch (FileNotFoundException ex) {
+			Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
+		}
     }
 	
 	/**
@@ -247,7 +252,6 @@ public class GameView implements GameManager {
 			Gdx.app.error(this.getClass().toString(), "Called method enter() before initializing.");
 		}
 		WE.getEngineView().addInputProcessor(stage);//the input processor must be added every time because they are only 
-		controller.hideCursor();
 		
 		//enable cameras
 		for (Camera camera : cameras) {
@@ -295,30 +299,40 @@ public class GameView implements GameManager {
 		 */
 		//at least one active camera
 		boolean cameraactive = false;
-        for (Camera camera : cameras) {
-            camera.update(dt);
-			if (camera.isEnabled())
+		for (Camera camera : cameras) {
+			camera.update(dt);
+			if (camera.isEnabled()) {
 				cameraactive = true;
-        }
+			}
+		}
 		if (cameraactive) {
 			renderstorage.update(dt);
 		}
-		
-        // toggle the dev menu?
-        if (keyF5isUp && Gdx.input.isKeyPressed(Keys.F5)) {
-            controller.getDevTools().setVisible(!controller.getDevTools().isVisible());
-            keyF5isUp = false;
-        }
-        keyF5isUp = !Gdx.input.isKeyPressed(Keys.F5);
-    }
-	    
+
+		// toggle the dev menu?
+		if (keyF5isUp && Gdx.input.isKeyPressed(Keys.F5)) {
+			controller.getDevTools().setVisible(!controller.getDevTools().isVisible());
+			keyF5isUp = false;
+		}
+		keyF5isUp = !Gdx.input.isKeyPressed(Keys.F5);
+	}
+
+	/**
+	 *
+	 * @return
+	 */
 	public RenderStorage getRenderStorage() {
 		return renderstorage;
 	}
 
+	/**
+	 *
+	 * @param renderstorage
+	 */
 	public void setRenderStorage(RenderStorage renderstorage) {
-		if (this.renderstorage != null)
-			MessageManager.getInstance().removeListener(this.renderstorage, Events.mapChanged.getId());	
+		if (this.renderstorage != null) {
+			MessageManager.getInstance().removeListener(this.renderstorage, Events.mapChanged.getId());
+		}
 		this.renderstorage = renderstorage;
 	}
 	

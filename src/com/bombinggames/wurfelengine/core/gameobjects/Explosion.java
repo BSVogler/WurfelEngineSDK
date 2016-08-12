@@ -3,7 +3,6 @@ package com.bombinggames.wurfelengine.core.gameobjects;
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
-import com.badlogic.gdx.graphics.Color;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.Controller;
@@ -11,7 +10,7 @@ import com.bombinggames.wurfelengine.core.Events;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
-import java.util.ArrayList;
+import java.util.LinkedList;
 
 /**
  *
@@ -33,7 +32,7 @@ public class Explosion extends AbstractEntity implements Telegraph {
 		super((byte) 0);
 		this.radius = 2;
 		damage = 50;
-		setSaveToDisk(false);
+		setSavePersistent(false);
 	}
 
 	/**
@@ -50,7 +49,7 @@ public class Explosion extends AbstractEntity implements Telegraph {
 			explosionsound = "explosion";
 		}
 		this.camera = camera;
-		setSaveToDisk(false);
+		setSavePersistent(false);
 	}
 
 	@Override
@@ -83,7 +82,7 @@ public class Explosion extends AbstractEntity implements Telegraph {
 					}
 					
 					//get every entity which is attacked
-					ArrayList<MovableEntity> list
+					LinkedList<MovableEntity> list
 						= Controller.getMap().getEntitysOnCoord(
 							coord,
 							MovableEntity.class
@@ -109,7 +108,7 @@ public class Explosion extends AbstractEntity implements Telegraph {
 						(byte) 22,
 						1700
 					).spawn(point.cpy().add((float) Math.random()*20f, (float) Math.random()*20f, (float) Math.random()*20f));//spawn at center
-					dust.setColor(new Color(0.6f, 0.55f, 0.4f, 1f));
+					dust.getColor().set(0.6f, 0.55f, 0.4f, 1f);
 					dust.setType(ParticleType.FIRE);
 					dust.addMovement(
 						coord.toPoint().sub(point).nor().scl(4f)

@@ -78,7 +78,6 @@ public class ParticleEmitter extends AbstractEntity {
 	public ParticleEmitter(int size) {
 		super((byte) 14);
 		//this.particleClass = Dust.class;
-		disableShadow();
 		setIndestructible(true);
 		setName("Particle Emitter");
 		setActive(true);
@@ -118,7 +117,7 @@ public class ParticleEmitter extends AbstractEntity {
 		super.update(dt);
 
 		if (active && hasPosition()) {
-			setColor(new Color(1, 0, 0, 1));//only important if visible
+			getColor().set(1, 0, 0, 1);//only important if visible
 			if (lightsource != null) {
 				lightsource.setPosition(getPosition());
 				lightsource.update(dt);
@@ -224,7 +223,7 @@ public class ParticleEmitter extends AbstractEntity {
 			return;
 		}
 		if (lightsource == null) {
-			lightsource = new PointLightSource(Color.YELLOW, 5, 11, WE.getGameplay().getView());
+			lightsource = new PointLightSource(Color.YELLOW.cpy(), 5, 11, WE.getGameplay().getView());
 		}
 		lightsource.setBrightness(brightness);
 		lightsource.enable();

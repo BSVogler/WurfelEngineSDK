@@ -1,5 +1,5 @@
 An UML diagram showing the most important things:
-![UML Cass diagram](https://github.com/Cbeed/Wurfel-Engine/blob/1.2/docs/UML.png)
+![UML Dass diagram](https://github.com/BSVogler/WurfelEngineSDK/wiki/UML Class Diagramm.png)
 The latest version on this UML diagram is included in the root folder.
 
 The engine uses some sort of MVC. The data is managed in a "Controller" class while the input/output handling is managed in the view.

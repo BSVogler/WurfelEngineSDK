@@ -35,7 +35,7 @@ import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import java.io.Serializable;
-import java.util.ArrayList;
+import java.util.LinkedList;
 
 /**
  *A
@@ -128,16 +128,18 @@ public interface Position extends Serializable {
     public abstract Position cpy(); 
     
     /**
-     * Checks if the position is on the chunks currently in memory. Horizontal checks only. So the position can be udner or over the map.
-     * @return 
-     */
-    public abstract boolean isInMemoryAreaHorizontal();
+	 * Checks if the coordiantes are accessable with the currently loaded chunks.
+	 * Does not check for z axis (horizontal only). So the position can be udner or over the map.
+	 *
+	 * @return
+	 */
+    public abstract boolean isInMemoryAreaXY();
 	
 	/**
      * Checks if the position is on the chunks currently in memory. Checks all axis'.
-     * @return <i>true</i> if inside a chunk. <i>false</i> if currently not loaded.
+     * @return <i>true</i> if inside a chunk. <i>false</i> if currently not loaded or outside range.
      */
-    public abstract boolean isInMemoryArea();
+    public abstract boolean isInMemoryAreaXYZ();
 	
 	/**
 	 *
@@ -147,7 +149,7 @@ public interface Position extends Serializable {
 	public abstract float distanceTo(AbstractGameObject object);
 	
 	/**
-	 * Faster but result is squared.
+	 * The result is squared for fast comparison.
 	 * @param object
 	 * @return the distance from this point to the other object squared
 	 * @see #distanceTo(AbstractGameObject) 
@@ -162,7 +164,7 @@ public interface Position extends Serializable {
 	public abstract float distanceTo(Position pos);
 	
 	/**
-	 * Faster but result is squared.
+	 * The result is squared for fast comparison.
 	 * @param pos
 	 * @return the distance from this point to the other object squared
 	 * @see #distanceTo(Position) 
@@ -186,21 +188,21 @@ public interface Position extends Serializable {
 	/**
 	 * Get entities in radius.
 	 *
-	 * @param <type> returns only object if type which is the filter
+	 * @param <T> returns only object if type which is the filter
 	 * @param radius in game dimension pixels
 	 * @param type the type you want to filter
 	 * @return every entitie in radius
 	 */
-	public <type> ArrayList<type> getEntitiesNearby(float radius, final Class<? extends AbstractEntity> type);
+	public <T> LinkedList<T> getEntitiesNearby(float radius, final Class<T> type);
 	
 	/**
 	 * get entities in horizontal radius (like a pipe)
-	 * @param <type>
+	 * @param <T>
 	 * @param radius in game dimension pixels
 	 * @param type whitelist
 	 * @return every entitie in radius
 	 */
-	public <type> ArrayList<type> getEntitiesNearbyHorizontal(float radius, final Class<type> type);
+	public <T> LinkedList<T> getEntitiesNearbyHorizontal(float radius, final Class<T> type);
 	
 	/**
 	 * get entities in radius (horizontal only)
@@ -208,7 +210,7 @@ public interface Position extends Serializable {
 	 * @param radius in game dimension pixels
 	 * @return every entitie in radius
 	 */
-	public ArrayList<AbstractEntity> getEntitiesNearbyHorizontal(float radius);
+	public LinkedList<AbstractEntity> getEntitiesNearbyHorizontal(float radius);
 	
 	
 	/**

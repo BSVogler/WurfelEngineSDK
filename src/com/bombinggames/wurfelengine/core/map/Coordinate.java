@@ -45,6 +45,7 @@ import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
 import java.util.ArrayList;
+import java.util.LinkedList;
 
 /**
  * A coordinate is a reference to a specific cell in the map. The coordinate
@@ -128,6 +129,13 @@ public class Coordinate implements Position {
 		return z*RenderCell.GAME_EDGELENGTH;
 	}
 
+	/**
+	 *
+	 * @param x
+	 * @param y
+	 * @param z
+	 * @return
+	 */
 	public Coordinate set(int x, int y, int z) {
 		this.x = x;
 		this.y = y;
@@ -135,6 +143,11 @@ public class Coordinate implements Position {
 		return this;
 	}
 
+	/**
+	 *
+	 * @param coord
+	 * @return
+	 */
 	public Coordinate set(Coordinate coord) {
 		this.x = coord.x;
 		this.y = coord.y;
@@ -248,8 +261,7 @@ public class Coordinate implements Position {
 	}
 
 	/**
-	 * Add a vector to the coordinates. If you just want the result and don't
-	 * change the coordiantes use addVectorCpy.
+	 * Add a vector to the coordinates.
 	 *
 	 * @param x
 	 * @param y
@@ -263,6 +275,10 @@ public class Coordinate implements Position {
 		return this;
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	public int getBlock() {
 		if (z < 0) {
 			return (byte) WE.getCVars().getValueI("groundBlockID");
@@ -285,6 +301,10 @@ public class Coordinate implements Position {
 		}
 	}
 	
+	/**
+	 * get the value of the block at this coordinate
+	 * @return 
+	 */
 	public byte getBlockValue() {
 		return (byte) ((getBlock()>>8)&255);
 	}
@@ -310,25 +330,13 @@ public class Coordinate implements Position {
 		return new Coordinate(this);
 	}
 
-	/**
-	 * Checks if the coordiantes are accessable with the currently loaded Chunks
-	 * (horizontal only).
-	 *
-	 * @return
-	 */
 	@Override
-	public boolean isInMemoryAreaHorizontal() {
-		return Controller.getMap().getChunkContaining(this)!=null;
+	public boolean isInMemoryAreaXY() {
+		return Controller.getMap().getChunkContaining(this) != null;
 	}
 
-	/**
-	 * Checks if the coordiantes are accessable with the currently loaded Chunks
-	 * (x,y,z).
-	 *
-	 * @return
-	 */
 	@Override
-	public boolean isInMemoryArea() {
+	public boolean isInMemoryAreaXYZ() {
 		if (getZ() >= 0 && getZ() < Chunk.getBlocksZ()) {
 			return Controller.getMap().getChunkContaining(this) != null;
 		}
@@ -463,7 +471,7 @@ public class Coordinate implements Position {
 	/**
 	 * Copy safe. Creates new instance. O(const)
 	 *
-	 * @return the coordiante's origin is the center
+	 * @return the coordiante's origin is the center. You should avoid this method because it uses the heap.
 	 */
 	@Override
 	public Point toPoint() {
@@ -486,8 +494,8 @@ public class Coordinate implements Position {
 	 *
 	 * @return a list with the entitys
 	 */
-	public ArrayList<AbstractEntity> getEntitiesInside() {
-		if (!isInMemoryAreaHorizontal()) {
+	public LinkedList<AbstractEntity> getEntitiesInside() {
+		if (!isInMemoryAreaXY()) {
 			Controller.getMap().loadChunk(toCoord().getChunkX(), toCoord().getChunkY());
 		}
 		return Controller.getMap().getEntitysOnCoord(this);
@@ -498,12 +506,12 @@ public class Coordinate implements Position {
 	 * Loads the chunk if not in memory. Should be used with care with generated
 	 * content because new chunks can also trigger this recursively.
 	 *
-	 * @param <type> the class you want to filter.
+	 * @param <T> the class you want to filter.
 	 * @param type the class you want to filter.
 	 * @return a list with the entitys of the wanted type
 	 */
-	public <type extends AbstractEntity> ArrayList<type> getEntitiesInside(final Class<? extends AbstractEntity> type) {
-		if (!isInMemoryAreaHorizontal()) {
+	public <T> LinkedList<T> getEntitiesInside(final Class<T> type) {
+		if (!isInMemoryAreaXY()) {
 			Controller.getMap().loadChunk(toCoord().getChunkX(), toCoord().getChunkY());
 		}
 		return Controller.getMap().getEntitysOnCoord(this, type);
@@ -569,8 +577,8 @@ public class Coordinate implements Position {
 		if ((block & 255) != 0 && ((block >> 16) & 255) > 0) {
 			Controller.getMap().setHealth(this, (byte) 0);
 			setBlock(0);
-			//broadcast event that this block got destroyed
-			MessageManager.getInstance().dispatchMessage(Events.destroyed.getId(), this);
+			//broadcast event that this block got blockDestroyed
+			MessageManager.getInstance().dispatchMessage(Events.blockDestroyed.getId(), this);
 		}
 	}
 
@@ -589,8 +597,8 @@ public class Coordinate implements Position {
 				Controller.getMap().setHealth(this, (byte) (getHealth() - amount));
 			}
 			if (getHealth() <= 0 && !RenderCell.isIndestructible(block, (byte)0)) {
-				//broadcast event that this block got destroyed
-				MessageManager.getInstance().dispatchMessage(Events.destroyed.getId(), this);
+				//broadcast event that this block got blockDestroyed
+				MessageManager.getInstance().dispatchMessage(Events.blockDestroyed.getId(), this);
 				setBlock(0);
 			}
 			return true;
@@ -635,7 +643,7 @@ public class Coordinate implements Position {
 
 	@Override
 	public int hashCode() {
-		return 13 * (425 + 37 * x) + 13 * y + 2953 * z;
+		return  20667 * x + 3 * y + 2953 * z;
 	}
 
 	@Override
@@ -644,7 +652,7 @@ public class Coordinate implements Position {
 	}
 
 	/**
-	 *
+	 *A change in the value overwrites the spritevalue.
 	 * @param value
 	 */
 	public void setValue(byte value) {
@@ -653,12 +661,12 @@ public class Coordinate implements Position {
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public <type> ArrayList<type> getEntitiesNearby(float radius, Class<? extends AbstractEntity> type) {
-		ArrayList<type> result = new ArrayList<>(5);//default size 5
-		ArrayList<? extends AbstractEntity> entities = Controller.getMap().getEntitys(type);
-		for (AbstractEntity entity : entities) {
-			if (distanceTo(entity.getPosition()) < radius) {
-				result.add((type) entity);
+	public <T> LinkedList<T> getEntitiesNearby(float radius, Class<T> type) {
+		LinkedList<T> result = new LinkedList<>();
+		LinkedList<T> entities = Controller.getMap().getEntitys(type);
+		for (T entity : entities) {
+			if (distanceTo(((AbstractEntity)entity).getPosition()) < radius) {
+				result.add(entity);
 			}
 		}
 
@@ -672,8 +680,8 @@ public class Coordinate implements Position {
 	 * @return every entitie in radius
 	 */
 	@Override
-	public ArrayList<AbstractEntity> getEntitiesNearbyHorizontal(float radius) {
-		ArrayList<AbstractEntity> result = new ArrayList<>(5);//defautl size 5
+	public LinkedList<AbstractEntity> getEntitiesNearbyHorizontal(float radius) {
+		LinkedList<AbstractEntity> result = new LinkedList<>();
 		ArrayList<AbstractEntity> entityList = Controller.getMap().getEntities();
 		for (AbstractEntity entity : entityList) {
 			if (distanceToHorizontal(entity.getPoint()) < radius) {
@@ -686,16 +694,16 @@ public class Coordinate implements Position {
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public <type> ArrayList<type> getEntitiesNearbyHorizontal(float radius, final Class<type> type) {
-		ArrayList<type> result = new ArrayList<>(5);//default size 5
+	public <T> LinkedList<T> getEntitiesNearbyHorizontal(float radius, final Class<T> type) {
+		LinkedList<T> result = new LinkedList<>();
 		ArrayList<AbstractEntity> entityList = Controller.getMap().getEntities();
 
 		for (AbstractEntity entity : entityList) {//check every entity
 			if (entity.hasPosition()
 				&& type.isInstance(entity) //if the entity is of the wanted type
 				&& distanceToHorizontal(entity.getPoint()) < radius//TODO should use squared values for improved speed
-				) {
-				result.add((type) entity);//add it to list
+			) {
+				result.add((T) entity);//add it to list
 			}
 		}
 
@@ -707,6 +715,11 @@ public class Coordinate implements Position {
 		return Controller.getMap().getChunkContaining(this);
 	}
 
+	/**
+	 *
+	 * @param gameView
+	 * @return
+	 */
 	public RenderChunk getRenderChunk(GameView gameView) {
 		return gameView.getRenderStorage().getChunk(this);
 	}
@@ -727,14 +740,14 @@ public class Coordinate implements Position {
 	}
 
 	/**
-	 * Add light to the renderblock at this coordiante
+	 * Add light to the RenderStorage at this coordiante
 	 *
 	 * @param view
 	 * @param side
-	 * @param color
+	 * @param color only read from
 	 * @param vertex
 	 */
-	public void addLight(GameView view, Side side, int vertex, Color color) {
+	public void addLight(final GameView view, Side side, int vertex, final Color color) {
 		RenderCell rB = getRenderBlock(view.getRenderStorage());
 		if (rB != null && !rB.isHidden()) {
 			view.getRenderStorage().setLightFlag(rB);
@@ -748,10 +761,10 @@ public class Coordinate implements Position {
 	 * Add light to the back edge of a coordinate and it's neighbors-
 	 *
 	 * @param view
-	 * @param color
+	 * @param color only read from
 	 * @param side
 	 */
-	public void addLightToBackEdge(GameView view, Side side, Color color) {
+	public void addLightToBackEdge(final GameView view, final Side side, final Color color) {
 		if (side == Side.TOP) {
 			this.addLight(view, side, 1, color);
 			goToNeighbour(0).addLight(view, side, 3, color);
@@ -821,6 +834,10 @@ public class Coordinate implements Position {
 			|| yCoord != y);
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	public boolean isObstacle(){
 		return false;
 	}

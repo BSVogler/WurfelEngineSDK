@@ -20,12 +20,12 @@ public class DestructionParticle extends MovableEntity {
 	 * @param id
 	 */
 	public DestructionParticle(byte id) {
-		super(id,(byte) 0);
-		setSaveToDisk(false);
-		disableShadow();
+		super(id,(byte) 0, false);
+		setSavePersistent(false);
 		addMovement(new Vector3((float) Math.random()-0.5f, (float) Math.random()-0.5f,(float) Math.random()*5f));
 		setRotation((float) Math.random()*360);
 		setMass(1.5f);
+		setName("Destruction Particle");
 	}
 
 

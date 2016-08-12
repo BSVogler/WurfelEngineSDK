@@ -21,11 +21,11 @@ com.badlogic.gdx.ai.utils
 com.badlogic.gdx.ai.utils.random
 com.bombinggames.wurfelengine
 com.bombinggames.wurfelengine.core
-com.bombinggames.wurfelengine.core.Loading
 com.bombinggames.wurfelengine.core.console
 com.bombinggames.wurfelengine.core.cvar
 com.bombinggames.wurfelengine.core.gameobjects
 com.bombinggames.wurfelengine.core.lightengine
+com.bombinggames.wurfelengine.core.loading
 com.bombinggames.wurfelengine.core.map
 com.bombinggames.wurfelengine.core.map.Generators
 com.bombinggames.wurfelengine.core.map.Iterators

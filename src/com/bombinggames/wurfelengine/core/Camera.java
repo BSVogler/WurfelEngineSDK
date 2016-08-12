@@ -33,8 +33,6 @@ package com.bombinggames.wurfelengine.core;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import static com.badlogic.gdx.graphics.GL20.GL_BLEND;
-import com.badlogic.gdx.graphics.Texture;
-import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Matrix4;
@@ -103,12 +101,6 @@ public class Camera {
 
 	private boolean fullWindow = false;
 
-	/**
-	 * the opacity of thedamage overlay
-	 */
-	private float damageoverlay = 0f;
-
-	private final Vector2 screenshake = new Vector2(0, 0);
 	private float shakeAmplitude;
 	private float shakeTime;
 
@@ -137,6 +129,9 @@ public class Camera {
 	 * The radius which is used for loading the chunks around the center. May be reduced after the first time to a smaller value.
 	 */
 	private int loadingRadius = 10;
+	/**
+	 * identifies the camera
+	 */
 	private int id;
 
 	/**
@@ -298,16 +293,10 @@ public class Camera {
 			
 			//aplly screen shake
 			if (shakeTime > 0) {
-				screenshake.x = (float) (Math.random() * shakeAmplitude - shakeAmplitude / 2);
-				screenshake.y = (float) (Math.random() * shakeAmplitude - shakeAmplitude / 2);
 				shakeTime -= dt;
-			} else {
-				screenshake.x = 0;
-				screenshake.y = 0;
+				position.x += (float) (Math.random() * shakeAmplitude*dt % shakeAmplitude)-shakeAmplitude*0.5;
+				position.y += (float) (Math.random() * shakeAmplitude*dt % shakeAmplitude)-shakeAmplitude*0.5;
 			}
-
-			position.x += screenshake.x;
-			position.y += screenshake.y;
 
 			//move camera to the focus
 			viewMat.setToLookAt(
@@ -480,33 +469,21 @@ public class Camera {
 					Controller.getLightEngine().getSun(getCenter()).getLight()
 				);
 				
+				Vector3 moonNormal;
+				Color moonColor;
+				Color ambientColor;
 				if (Controller.getLightEngine().getMoon(getCenter()) == null) {
-					view.getShader().setUniformf(
-						"moonNormal",
-						new Vector3()
-					);
-					view.getShader().setUniformf(
-						"moonColor",
-						new Color()
-					);
-					view.getShader().setUniformf(
-						"ambientColor",
-						new Color()
-					);
+					moonNormal = new Vector3();
+					moonColor = new Color();
+					ambientColor = new Color();
 				} else {
-					view.getShader().setUniformf(
-						"moonNormal",
-						Controller.getLightEngine().getMoon(getCenter()).getNormal()
-					);
-					view.getShader().setUniformf(
-						"moonColor",
-						Controller.getLightEngine().getMoon(getCenter()).getLight()
-					);
-					view.getShader().setUniformf(
-						"ambientColor",
-						Controller.getLightEngine().getAmbient(getCenter())
-					);
+					moonNormal = Controller.getLightEngine().getMoon(getCenter()).getNormal();
+					moonColor = Controller.getLightEngine().getMoon(getCenter()).getLight();
+					ambientColor = Controller.getLightEngine().getAmbient(getCenter());
 				}
+				view.getShader().setUniformf("moonNormal", moonNormal);
+				view.getShader().setUniformf("moonColor", moonColor);
+				view.getShader().setUniformf("ambientColor", ambientColor);
 			}
 
 			//bind normal map to texture unit 1
@@ -514,7 +491,7 @@ public class Camera {
 				AbstractGameObject.getTextureNormal().bind(1);
 			}
 
-				//bind diffuse color to texture unit 0
+			//bind diffuse color to texture unit 0
 			//important that we specify 0 otherwise we'll still be bound to glActiveTexture(GL_TEXTURE1)
 			AbstractGameObject.getTextureDiffuse().bind(0);
 
@@ -542,21 +519,6 @@ public class Camera {
 			//outline 3x3 chunks
 			if (WE.getCVars().getValueB("DevDebugRendering")) {
 				drawDebug(view, camera);
-			}
-			if (damageoverlay > 0.0f) {
-				//WE.getEngineView().getSpriteBatch().setShader(new custom shader);
-				WE.getEngineView().getSpriteBatch().begin();
-				Texture texture = WE.getAsset("com/bombinggames/wurfelengine/core/images/bloodblur.png");
-				Sprite overlay = new Sprite(texture);
-				overlay.setOrigin(0, 0);
-				//somehow reverse the viewport transformation, needed for split-screen
-				overlay.setSize(
-					getWidthInScreenSpc(),
-					getHeightInScreenSpc() * (float) Gdx.graphics.getHeight() / getHeightInScreenSpc()
-				);
-				overlay.setColor(1, 0, 0, damageoverlay);
-				overlay.draw(WE.getEngineView().getSpriteBatch());
-				WE.getEngineView().getSpriteBatch().end();
 			}
 		}
 	}
@@ -634,13 +596,13 @@ public class Camera {
 	private void visit(AbstractGameObject n) {
 		if (!n.isMarkedDS(id)) {
 			LinkedList<AbstractGameObject> covered = n.getCovered(gameView.getRenderStorage());
+			n.markPermanentDS(id);
 			if (covered.size() > 0) {
-				n.markPermanentDS(id);
-					for (AbstractGameObject m : covered) {
-						if (inViewFrustum(m.getPosition())) {
-							visit(m);
-						}
+				for (AbstractGameObject m : covered) {
+					if (inViewFrustum(m.getPosition())) {
+						visit(m);
 					}
+				}
 			}
 			if (
 				n.shouldBeRendered(this)
@@ -967,18 +929,10 @@ public class Camera {
 	}
 
 	/**
-	 *
-	 * @param opacity
-	 */
-	public void setDamageoverlayOpacity(float opacity) {
-		this.damageoverlay = opacity;
-	}
-
-	/**
 	 * shakes the screen
 	 *
 	 * @param amplitude
-	 * @param time
+	 * @param time game time
 	 */
 	public void shake(float amplitude, float time) {
 		shakeAmplitude = amplitude;
@@ -1072,18 +1026,34 @@ public class Camera {
 		sh.end();
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	public int getCenterChunkX() {
 		return centerChunkX;
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	public int getCenterChunkY() {
 		return centerChunkY;
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	public boolean isEnabled() {
 		return active;
 	}
 
+	/**
+	 *
+	 * @param id
+	 */
 	public void setId(int id){
 		this.id = id;
 	}

@@ -52,12 +52,16 @@ import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.Cursor;
 import com.bombinggames.wurfelengine.core.gameobjects.EntityShadow;
+import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Position;
+import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  *
@@ -137,33 +141,39 @@ public class EditorView extends GameView implements Telegraph {
 		getStage().addActor(cursorInfo);
 
 		//setup GUI
-		TextureAtlas spritesheet = WE.getAsset("com/bombinggames/wurfelengine/core/skin/gui.txt");
+		TextureAtlas spritesheet;
+		try {
+			spritesheet = WE.getAsset("com/bombinggames/wurfelengine/core/skin/gui.txt");
 
-		//add load button
-//        final Image loadbutton = new Image(spritesheet.findRegion("load_button"));
-//        loadbutton.setX(Gdx.graphics.getWidth()-80);
-//        loadbutton.setY(Gdx.graphics.getHeight()-40);
-//        loadbutton.addListener(new LoadButton(this,controller));
-//        getStage().addActor(loadbutton);
-		//add save button
-		final Image savebutton = new Image(spritesheet.findRegion("save_button"));
-		savebutton.setX(Gdx.graphics.getWidth() - 150);
-		savebutton.setY(Gdx.graphics.getHeight() - 50);
-		savebutton.addListener(new ClickListener() {
+			//add load button
+	//        final Image loadbutton = new Image(spritesheet.findRegion("load_button"));
+	//        loadbutton.setX(Gdx.graphics.getWidth()-80);
+	//        loadbutton.setY(Gdx.graphics.getHeight()-40);
+	//        loadbutton.addListener(new LoadButton(this,controller));
+	//        getStage().addActor(loadbutton);
+			//add save button
+			final Image savebutton = new Image(spritesheet.findRegion("save_button"));
+			savebutton.setX(Gdx.graphics.getWidth() - 150);
+			savebutton.setY(Gdx.graphics.getHeight() - 50);
+			savebutton.addListener(new ClickListener() {
 
-			@Override
-			public void clicked(InputEvent event, float x, float y) {
-				controller.save();
+				@Override
+				public void clicked(InputEvent event, float x, float y) {
+					controller.save();
+				}
+			});
+			getStage().addActor(savebutton);
+
+
+			if (Controller.getLightEngine() != null) {
+				Controller.getLightEngine().setToNoon(getCameras().get(0).getCenter());
 			}
-		});
-		getStage().addActor(savebutton);
 
-		if (Controller.getLightEngine() != null) {
-			Controller.getLightEngine().setToNoon(getCameras().get(0).getCenter());
+			toolSelection = new Toolbar(this, spritesheet, controller.getCursor(), getStage());
+			getStage().addActor(toolSelection);
+		} catch (FileNotFoundException ex) {
+			Logger.getLogger(EditorView.class.getName()).log(Level.SEVERE, null, ex);
 		}
-
-		toolSelection = new Toolbar(this, spritesheet, controller.getCursor(), getStage());
-		getStage().addActor(toolSelection);
 	}
 
 	@Override
@@ -207,7 +217,8 @@ public class EditorView extends GameView implements Telegraph {
 					&& ent.getPosition().getViewSpcX() - ent.getSprite().getRegionWidth() / 2 <= x2 //left spr. border
 					&& ent.getPosition().getViewSpcY() - ent.getSprite().getRegionHeight() / 2 <= y2 //bottom spr. border
 					&& ent.getPosition().getViewSpcY() + ent.getSprite().getRegionHeight() / 2 >= y1 //top spr. border
-					) {
+					&& ! (ent instanceof Cursor)
+					&& ! ent.getName().equalsIgnoreCase("cursor normal")) {
 					newSel.add(ent);
 					MessageManager.getInstance().dispatchMessage(
 						this,
@@ -646,8 +657,8 @@ public class EditorView extends GameView implements Telegraph {
 						&& ent.getPosition().getViewSpcY() - ent.getSprite().getRegionHeight() / 2 <= (int) screenYtoView(screenY, camera) //bottom spr. border
 						&& ent.getPosition().getViewSpcY() + ent.getSprite().getRegionHeight() / 2 >= (int) screenYtoView(screenY, camera) //top spr. border
 						&& !(ent instanceof EntityShadow)
-						&& !ent.getName().equals("normal")
-						&& !ent.getName().equals("selectionEntity")
+						&& ! (ent instanceof Cursor)
+						&& !ent.getName().equalsIgnoreCase("cursor normal")
 					) {
 						entityUnderMouse = ent;
 					}
@@ -684,7 +695,13 @@ public class EditorView extends GameView implements Telegraph {
 
 		@Override
 		public boolean scrolled(int amount) {
-			view.getRenderStorage().setZRenderingLimit(view.getRenderStorage().getZRenderingLimit() - amount*100);
+			if (amount > 0 && view.getRenderStorage().getZRenderingLimit()==Float.POSITIVE_INFINITY){
+				view.getRenderStorage().setZRenderingLimit(Chunk.getGameHeight() - amount*100);
+			} else {
+				if (view.getRenderStorage().getZRenderingLimit() - amount*100 > Chunk.getGameHeight()) {
+					view.getRenderStorage().setZRenderingLimit(Float.POSITIVE_INFINITY);
+				} else view.getRenderStorage().setZRenderingLimit(view.getRenderStorage().getZRenderingLimit() - amount*100);
+			}
 			return true;
 		}
 

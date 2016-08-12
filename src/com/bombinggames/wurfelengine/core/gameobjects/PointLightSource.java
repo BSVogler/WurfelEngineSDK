@@ -27,10 +27,9 @@ public class PointLightSource extends AbstractEntity {
 	/**
 	 * color of the light of this source
 	 */
-	private final transient Color color;
 	private float brightness;
 	private boolean enabled = true;
-	private Point lastPos = new Point(0, 0, 0);
+	private final Point lastPos = new Point(0, 0, 0);
 	private final GameView view;
 
 	/**
@@ -44,11 +43,10 @@ public class PointLightSource extends AbstractEntity {
 	public PointLightSource(Color color, float maxRadius, float brightness, GameView view) {
 		super((byte) 0);
 		setName("LightSource");
-		disableShadow();
 		this.floatradius = maxRadius;
 		this.radius = (int) Math.ceil(maxRadius);
 		this.brightness = brightness;
-		this.color = color;
+		setColor(color);
 		if (radius == 0) {
 			this.lightcache = new float[1][1][1][3];
 		} else {
@@ -127,6 +125,7 @@ public class PointLightSource extends AbstractEntity {
 						if (inters != null && inters.getPoint() != null) {
 							//get back edge of block
 							Point impactP = getPosition().toCoord().add(x, y, z).toPoint().add(0, -RenderCell.GAME_DIAGLENGTH2, 0);
+							//this should work in the future:getPoint().cpy().setToCenterOfCell().addCoord(x, y, z).add(0, -RenderCell.GAME_DIAGLENGTH2, 0)
 							float pow = origin.distanceTo(impactP) / RenderCell.GAME_EDGELENGTH;
 							float l = (1 + brightness) / (pow * pow);
 
@@ -172,21 +171,23 @@ public class PointLightSource extends AbstractEntity {
 			}
 
 			//apply cache
-			Coordinate tmp = getPosition().toCoord();
-			int xCenter = tmp.getX();
-			int yCenter = tmp.getY();
-			int zCenter = tmp.getZ();
+			Coordinate tmpCoord = getPosition().toCoord();
+			Color tmpColor = new Color();
+			Color color = getColor();
+			int xCenter = tmpCoord.getX();
+			int yCenter = tmpCoord.getY();
+			int zCenter = tmpCoord.getZ();
 			for (int x = -radius; x < radius; x++) {
 				for (int y = -radius * 2; y < radius * 2; y++) {
 					for (int z = -radius; z < radius; z++) {
 						//get the light in the cache
 						float[] blocklight = lightcache[x + radius][y + radius * 2][z + radius];
-						tmp.set(xCenter + x, yCenter + y, zCenter + z);
-						RenderCell rB = tmp.getRenderBlock(view.getRenderStorage());
+						tmpCoord.set(xCenter + x, yCenter + y, zCenter + z);
+						RenderCell rB = tmpCoord.getRenderBlock(view.getRenderStorage());
 						if (rB != null && !rB.isHidden()) {
-							tmp.addLightToBackEdge(view, Side.LEFT, color.cpy().mul(blocklight[0]));
-							tmp.addLightToBackEdge(view, Side.TOP, color.cpy().mul(blocklight[1]));
-							tmp.addLightToBackEdge(view, Side.RIGHT, color.cpy().mul(blocklight[2]));
+							tmpCoord.addLightToBackEdge(view, Side.LEFT, tmpColor.set(color).mul(blocklight[0]));
+							tmpCoord.addLightToBackEdge(view, Side.TOP, tmpColor.set(color).mul(blocklight[1]));
+							tmpCoord.addLightToBackEdge(view, Side.RIGHT, tmpColor.set(color).mul(blocklight[2]));
 						}
 					}
 				}

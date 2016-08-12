@@ -1,52 +1,32 @@
-An entity is an object which is not bound to the grid.
+An entity is an object which is not bound to the grid. Entities may move around (MovableEntitiy).
 
-Entities must derive from _AbstractEntity_.
-
-They can be spawned to the map with the method `exist()`
+Entities must derive from _com.bombinggames.wurfelengine.core.AbstractEntity_.
+![UML class diagram for AbstractEntity](https://github.com/BSVogler/WurfelEngineSDK/wiki/AbstractEntity.png)
+They can be spawned to the map with the method `spawn(Point point)`
 
 ### Example
 ```java
-Enemy enemy = (Enemy) new Enemy(pos).exist();
+Enemy enemy = (Enemy) new Enemy(). spawn( new Coordinate(5,5,5).getPoint() );
 ```
 
-## Reserved entities (v1.2)
-Entities with an id <40 are reserved by the engine.
+To remove the from the game you call `dispose()`. If you just want to remove them from the map call `removeFromMap()`.
+
+## Sprites
+By default entities use sprite category 'c'.
+Sprite of entities with an id 0-9 are reserved by the engine.
 
 Here is a list of the entities currently used by the engine.
 
-1. 
-2. 
-3. 
-4. 
-5. 
-6. 
-7. 
-8. 
-9. 
-10. 
-11. 
-12. bullets
-13. editor selector block
-14. editor selector normal
-15. bullet impact (white)
-16. blood splash
-17. blood floor decal
-18. burned floor decal
-19. bullet impact (yellow)
-20. red dot
-21. ball
-22. 
-23. 
-24. 
-25. 
-26. 
-27. 
-28. 
-29. 
-30. Player
-31. explosion
-32. Character Shadow
-...
+0. invisible stuff
+1. not in use
+2. not in use
+3. destruction decals
+4. not in use
+5. not in use
+6. shadow
+7. not in use
+8. cursor
+9. cursor normal
 
 ## Registering entities
 You can register entities in order to spawn them in the editor.

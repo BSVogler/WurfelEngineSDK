@@ -49,7 +49,6 @@ import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.EngineView;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.GameplayScreen;
-import com.bombinggames.wurfelengine.core.Loading.LoadingScreen;
 import com.bombinggames.wurfelengine.core.WEScreen;
 import com.bombinggames.wurfelengine.core.WorkingDirectory;
 import com.bombinggames.wurfelengine.core.console.Console;
@@ -57,9 +56,11 @@ import com.bombinggames.wurfelengine.core.cvar.CVarSystemMap;
 import com.bombinggames.wurfelengine.core.cvar.CVarSystemRoot;
 import com.bombinggames.wurfelengine.core.cvar.CVarSystemSave;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
+import com.bombinggames.wurfelengine.core.loading.LoadingScreen;
 import com.bombinggames.wurfelengine.extension.basicmainmenu.BasicMainMenu;
 import com.bombinggames.wurfelengine.soundengine.SoundEngine;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.util.ArrayList;
 
 /**
@@ -68,14 +69,14 @@ import java.util.ArrayList;
  * and the API libGDX v1.8.0 (may work with older versions).
  *
  * @author Benedikt S. Vogler
- * @version 1.7.4
+ * @version 1.7.5
  */
 public class WE {
 
 	/**
 	 * The version of the Engine
 	 */
-	public static final String VERSION = "1.7.4";
+	public static final String VERSION = "1.7.5";
 	/**
 	 * the working directory where the config and files are saved
 	 */
@@ -490,9 +491,14 @@ public class WE {
 	 * @param <T>
 	 * @param filename the name of the file
 	 * @return returns the asset
+	 * @throws java.io.FileNotFoundException
 	 */
-	public static <T> T getAsset(String filename) {
-		return ASSETMANAGER.get(filename);
+	public static <T> T getAsset(String filename) throws FileNotFoundException {
+		try {
+			return ASSETMANAGER.get(filename);
+		} catch (com.badlogic.gdx.utils.GdxRuntimeException ex){
+			throw new FileNotFoundException("Asset \"" + filename + "\" could not be retrieved because it is not loaded.");
+		}
 	}
 
 	/**

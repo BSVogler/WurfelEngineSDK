@@ -38,7 +38,6 @@ import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
-import com.bombinggames.wurfelengine.core.gameobjects.Sea;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
 import com.bombinggames.wurfelengine.core.gameobjects.SimpleEntity;
 import com.bombinggames.wurfelengine.core.map.AbstractBlockLogicExtension;
@@ -50,7 +49,7 @@ import com.bombinggames.wurfelengine.core.map.Position;
 import java.util.LinkedList;
 
 /**
- * It is something which can be rendered and therefore render information saved shared across cameras. A RenderCell should not use the event system. The class extends (wraps) the plain data of the block with a position and {@link AbstractGameObject} class methods. The wrapped cell is not referenced. It is possible to change there sprite id and value {@link AbstractGameObject#setSpriteId(byte)} but keeping the logic id and value. <br>
+ * Something which can be rendered and therefore saves render information shared across cameras. A RenderCell should not use the event system. The class extends (wraps) the plain data of the block with a position and {@link AbstractGameObject} class methods. The wrapped cell is not referenced. It is possible to change there sprite id and value {@link AbstractGameObject#setSpriteId(byte)} but keeping the logic id and value. <br>
  * The internal wrapped block can have different id then used for rendering. The rendering sprite id's are set in the constructor or later manualy.<br>
  * @author Benedikt Vogler
  */
@@ -191,7 +190,12 @@ public class RenderCell extends AbstractGameObject {
 		return customBlocks.newLogicInstance(id, value, coord);
 	}
 	
-	
+	/**
+	 *
+	 * @param id
+	 * @param value
+	 * @return
+	 */
 	public static boolean hasLogic(byte id, byte value) {
 		if (customBlocks == null) {
 			return false;
@@ -327,6 +331,12 @@ public class RenderCell extends AbstractGameObject {
 		return isLiquid((byte)(block&255), (byte)((block>>8)&255));
 	}
 	
+	/**
+	 *
+	 * @param id
+	 * @param value
+	 * @return
+	 */
 	public static boolean isIndestructible(byte id, byte value) {
 		if (customBlocks != null) {
 			return customBlocks.isIndestructible(id, value);
@@ -370,6 +380,12 @@ public class RenderCell extends AbstractGameObject {
 		}
 	}
 
+	/**
+	 *
+	 * @param spriteId
+	 * @param spriteValue
+	 * @return
+	 */
 	public static boolean hasSides(byte spriteId, byte spriteValue) {
 		if (spriteId == 0 || spriteId == 4) {
 			return false;
@@ -436,7 +452,7 @@ public class RenderCell extends AbstractGameObject {
 	}
 	
 	/**
-	 * set the timestamp when the content changed
+	 * set the timestamp when the content changed. This causes every field wich contains the covered neighbors to be rebuild.
 	 */
 	public static void rebuildCoverList() {
 		RenderCell.rebuildCoverList = WE.getGameplay().getFrameNum();
@@ -541,7 +557,7 @@ public class RenderCell extends AbstractGameObject {
 	 */
 	private byte clipping;
 	/**
-	 * stores references to neighbor blocks which are covered.
+	 * Stores references to neighbor blocks which are covered. For topological sort.
 	 */
 	private final LinkedList<AbstractGameObject> covered = new LinkedList<>();
 	/**
@@ -562,7 +578,7 @@ public class RenderCell extends AbstractGameObject {
 	 * @see #getRenderCell(byte, byte) 
 	 */
     public RenderCell(byte id){
-        super(id);
+        super();
 		this.id = id;
 	}
 	
@@ -573,7 +589,7 @@ public class RenderCell extends AbstractGameObject {
 	 * @see #getRenderCell(byte, byte) 
 	 */
 	public RenderCell(byte id, byte value){
-		super(id, value);
+		super();
 		this.id = id;
 		this.value = value;
 	}
@@ -596,6 +612,10 @@ public class RenderCell extends AbstractGameObject {
 		return value;
 	}
 	
+	/**
+	 *
+	 * @return
+	 */
 	public boolean isObstacle() {
 		return RenderCell.isObstacle(id, value);
 	}
@@ -907,6 +927,7 @@ public class RenderCell extends AbstractGameObject {
 				sprite = site3;
 				break;
 		}
+		sprite.setRegion(getBlockSprite(id, value, side));
 		sprite.setPosition(xPos, yPos);
 		if (getScaling() != 1) {
 			sprite.setOrigin(0, 0);
@@ -961,7 +982,7 @@ public class RenderCell extends AbstractGameObject {
     }
     
     @Override
-    public char getCategory() {
+    public char getSpriteCategory() {
         return 'b';
     }
 
@@ -982,6 +1003,10 @@ public class RenderCell extends AbstractGameObject {
 		return RenderCell.isTransparent(getSpriteId(),getSpriteValue());//sprite id because view related
 	}
 	
+	/**
+	 *
+	 * @return
+	 */
 	public boolean isIndestructible() {
 		return RenderCell.isIndestructible(id,value);//game logic related
 	}
@@ -1002,6 +1027,10 @@ public class RenderCell extends AbstractGameObject {
 		return RenderCell.hasSides(getSpriteId(),getSpriteValue());
 	}
 
+	/**
+	 *
+	 * @return
+	 */
 	public boolean isLiquid() {
 		if (id == 0) {
 			return false;
@@ -1400,6 +1429,9 @@ public class RenderCell extends AbstractGameObject {
 		lastRebuild = WE.getGameplay().getFrameNum();
 	}
 
+	/**
+	 *
+	 */
 	public void clearCoveredEnts() {
 		coveredEnts.clear();
 	}
@@ -1419,6 +1451,24 @@ public class RenderCell extends AbstractGameObject {
 	@Override
 	public String toString() {
 		return Integer.toHexString(hashCode())+" @"+getPosition().toString()+" id: "+ id+" value: "+value;
+	}
+
+	@Override
+	public byte getSpriteId() {
+		return id;
+	}
+
+	@Override
+	public byte getSpriteValue() {
+		return value;
+	}
+
+	/**
+	 * should only be changed when the copy of the data in the map has also changed
+	 * @param value game data value.
+	 */
+	public void setValue(byte value) {
+		this.value = value;
 	}
 
 }

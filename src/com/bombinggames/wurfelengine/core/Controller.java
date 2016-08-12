@@ -249,7 +249,7 @@ public class Controller implements GameManager {
 	/**
 	 * This method works like a constructor. Everything is loaded here. You must
 	 * set your custom map generator, if you want one, before calling this
-	 * method.
+	 * method, because chunk loading is started here.
 	 */
 	public void init() {
 		init(saveSlot, mapName);
@@ -310,17 +310,15 @@ public class Controller implements GameManager {
 		
 	}
 	
+	/**
+	 *
+	 */
 	public void showCursor(){
 		if (!cursor.hasPosition()) {
 			cursor.spawn(
 				new Point(0, 0, Chunk.getBlocksZ() - 1)
 			);
 		}
-		cursor.setHidden(false);
-	}
-	
-	public void hideCursor(){
-		cursor.setHidden(true);
 	}
 
 	/**

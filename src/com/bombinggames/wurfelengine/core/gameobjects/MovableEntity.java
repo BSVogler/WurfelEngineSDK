@@ -42,7 +42,6 @@ import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
 import com.bombinggames.wurfelengine.extension.AimBand;
-import java.util.ArrayList;
 
 /**
  *A clas used mainly for characters or object which can walk around. To control the character you should use a {@link Controllable} or modify the movemnet via {@link #setMovement(com.badlogic.gdx.math.Vector3) }.
@@ -140,7 +139,7 @@ public class MovableEntity extends AbstractEntity  {
 		movement = new Vector3(0,0,0);
 		floating = false;
 		friction = WE.getCVars().getValueF("friction");
-		if (shadow) enableShadow();
+		if (shadow) addComponent(new EntityShadow());
    }
    
    /**
@@ -155,11 +154,11 @@ public class MovableEntity extends AbstractEntity  {
 		collider = entity.collider;
 		floating = entity.floating;
 		
-		enableShadow();
+		addComponent(new EntityShadow());
 	}
 
 	@Override
-	public AbstractEntity spawn(Point point) {
+	public MovableEntity spawn(Point point) {
 //		if (!hasPosition())
 //			MessageManager.getInstance().addListener(this, Events.landed.getId());
 		super.spawn(point);
@@ -262,10 +261,6 @@ public class MovableEntity extends AbstractEntity  {
 				}
 			}
 			
-			if (particleBand != null) {
-				particleBand.update();
-			}
-			
 			/*HORIZONTAL MOVEMENT*/
 			//calculate new position
 			Vector3 dMove = new Vector3(
@@ -336,14 +331,14 @@ public class MovableEntity extends AbstractEntity  {
 			}
 			
 			//if entering water
-			if (!inLiquid && RenderCell.isLiquid(getPosition().getBlockId()) && getMass() > 1f) {
-				if (waterSound != null) {
+			if (!inLiquid && isInLiquid()) {
+				if (waterSound != null && getMass() >= 1f) {
 					WE.SOUND.play(waterSound, getPosition(), getMass() > 5 ? 1 : 0.5f);
 				}
-				inLiquid = RenderCell.isLiquid(getPosition().getBlockId());//save if in water
+				inLiquid = true;//save if in water
 			} else {
-				inLiquid = false;
 			}
+			inLiquid = isInLiquid();
 
 			if (!walkingPaused) {
 				//walking cycle
@@ -845,7 +840,7 @@ public class MovableEntity extends AbstractEntity  {
      * @return 
      */
     public boolean isInLiquid() {
-        return inLiquid;
+        return RenderCell.isLiquid(getPosition().getBlockId());
     }
 
 	/**
@@ -892,14 +887,6 @@ public class MovableEntity extends AbstractEntity  {
 		walkingPaused = false;
 	}
 
-	/**
-	 * Get the ai which moves the entity to a goal.
-	 * @return can be null
-	 */
-	public MoveToAi getMovementAI() {
-		return moveToAi;
-	}
-	
 	@Override
 	public boolean handleMessage(Telegram msg) {
 		if (msg.message == Events.landed.getId() && msg.sender == this) {
@@ -909,7 +896,8 @@ public class MovableEntity extends AbstractEntity  {
 		}
 		
 		if (msg.message == Events.moveTo.getId() && msg.receiver == this) {
-			moveToAi = new MoveToAi(this, (Point) msg.extraInfo);
+			moveToAi = new MoveToAi((Point) msg.extraInfo);
+			addComponent(moveToAi);
 			return true;
 		}
 		
@@ -924,16 +912,18 @@ public class MovableEntity extends AbstractEntity  {
 			return true;
 		}
 		
+		moveToAi = (MoveToAi) getComponent(MoveToAi.class);
 		if (msg.message == Events.deselectInEditor.getId()) {
 			if (particleBand != null) {
 				particleBand.dispose();
 				particleBand = null;
 			}
-		} else if (msg.message == Events.selectInEditor.getId() && getMovementAI() != null) {
+		} else if (msg.message == Events.selectInEditor.getId() && moveToAi != null) {
 			if (particleBand == null) {
-				particleBand = new AimBand(this, getMovementAI().getGoal());
+				particleBand = new AimBand(moveToAi.getGoal());
+				addComponent(particleBand);
 			} else {
-				particleBand.setTarget(getMovementAI().getGoal());
+				particleBand.setTarget(moveToAi.getGoal());
 			}
 		}
 		
@@ -944,20 +934,21 @@ public class MovableEntity extends AbstractEntity  {
 	 * checks the colissions with entities, O(n)
 	 */
 	private void checkEntColl() {
-		ArrayList<MovableEntity> nearbyEnts = getCollidingEntities(MovableEntity.class);
+		Iterable<MovableEntity> nearbyEnts = getCollidingEntities(MovableEntity.class);
+		Vector2 colVec2 = new Vector2();
 		for (MovableEntity ent : nearbyEnts) {
 			//if (this.collidesWith(ent))
 			if (ent.isObstacle() && getMass() > 0.5f) {
 
 				Vector3 colVec3 = getPosition().sub(ent.getPosition());
-				Vector2 colVec2 = new Vector2(colVec3.x, colVec3.y);
+				colVec2.set(colVec3.x, colVec3.y);
 				float d = colVec2.len();
 
 				// minimum translation distance to push balls apart after intersecting
-				Vector2 mtd = colVec2.scl(((colissionRadius + ent.colissionRadius) - d) / d);
+				colVec2.scl(((colissionRadius + ent.colissionRadius) - d) / d);
 
 				// impact speed
-				float vn = getMovementHor().sub(ent.getMovementHor()).dot(mtd.nor());
+				float vn = getMovementHor().sub(ent.getMovementHor()).dot(colVec2.nor());
 
 				// sphere intersecting but moving away from each other already
 				if (vn <= 0.0f) {
@@ -966,15 +957,15 @@ public class MovableEntity extends AbstractEntity  {
 					float im1 = 1 / getMass();
 					float im2 = 1 / ent.getMass();
 					// collision impulse
-					Vector2 impulse = mtd.scl((-(1.0f + 90.1f) * vn) / (im1 + im2));
+					Vector2 impulse = colVec2.scl((-91.1f* vn) / (im1 + im2));
 
-					//hack to prevent ultra fast speed
-					if (impulse.len2() > 26){
+					impulse.scl(im1);
+					// change in momentum
+					//hack to prevent ultra fast speed, clamps
+					if (impulse.len2() > 25){//lenght is >5
 						impulse.nor().scl(5);
 					}
-
-					// change in momentum
-					addMovement(impulse.scl(im1));
+					addMovement(impulse);
 					ent.addMovement(impulse.scl(-im2));
 
 					MessageManager.getInstance().dispatchMessage(this, Events.collided.getId());

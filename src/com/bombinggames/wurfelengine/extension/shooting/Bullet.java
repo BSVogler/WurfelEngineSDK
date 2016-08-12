@@ -41,7 +41,8 @@ import com.bombinggames.wurfelengine.core.gameobjects.MovableEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.Particle;
 import com.bombinggames.wurfelengine.core.gameobjects.ParticleType;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
-import java.util.ArrayList;
+import com.bombinggames.wurfelengine.core.map.Point;
+import java.util.LinkedList;
 
 /**
  * A bullet is a moving object which can destroy and damage entities or the
@@ -71,15 +72,21 @@ public class Bullet extends MovableEntity {
 	 * @see #setSpriteId(byte)
 	 */
 	public Bullet() {
-		super((byte) 22,0,false);
+		super((byte) 22, 0, false);
 		setName("Bullet");
 		setMass(0.002f);
-		setSaveToDisk(false);
+		setSavePersistent(false);
 		setFriction(0);
 		setColiding(false);
-		MessageManager.getInstance().addListener(this, Events.collided.getId());
 	}
 
+	@Override
+	public MovableEntity spawn(Point point) {
+		super.spawn(point);
+		MessageManager.getInstance().addListener(this, Events.collided.getId());
+		return this;
+	}
+	
 	@Override
 	public void update(float dt) {
 		super.update(dt);
@@ -100,7 +107,7 @@ public class Bullet extends MovableEntity {
 		}
 
         //check character hit
-		ArrayList<AbstractEntity> entitylist = getCollidingEntities();
+		LinkedList<AbstractEntity> entitylist = getCollidingEntities();
 		//entitylist.remove(gun);//remove self from list to prevent self shooting
 		//remove
 		entitylist.removeIf(
@@ -109,7 +116,7 @@ public class Bullet extends MovableEntity {
 		if (!entitylist.isEmpty()) {
 			MessageManager.getInstance().dispatchMessage(
 				this,
-				entitylist.get(0),//damage only the first unit on the list
+				entitylist.getFirst(),//damage only the first unit on the list
 				Events.damage.getId(),
 				damage
 			);
