@@ -10,7 +10,7 @@ import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.bombinggames.weaponofchoice.CustomGameController;
 import com.bombinggames.weaponofchoice.CustomGameView;
 import com.bombinggames.wurfelengine.WE;
-import com.bombinggames.wurfelengine.core.Loading.LoadingScreen;
+import com.bombinggames.wurfelengine.core.loading.LoadingScreen;
 
 
 /**

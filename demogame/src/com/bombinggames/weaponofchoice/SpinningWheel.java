@@ -1,7 +1,6 @@
 package com.bombinggames.weaponofchoice;
 
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.backends.lwjgl.audio.Ogg.Sound;
 import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.GameView;
@@ -20,7 +19,7 @@ public class SpinningWheel extends ArrayList<CustomWeapon> {
 	private final CustomGameController controller;
 	private boolean visible;
 	private byte current = -1;
-	private final int spintime = 5000;
+	private final int spintime = 3000;
 	private int timer;
 	private byte currentRandom;
 	private float wheelSpeed;
@@ -34,8 +33,7 @@ public class SpinningWheel extends ArrayList<CustomWeapon> {
 	 * Returns a new selection
 	 */
 	public void spin() {
-		Sound dudeldi = (Sound) WE.getAsset("com/bombinggames/WeaponOfChoice/Sounds/dudeldi.ogg");
-		dudeldi.play();
+		WE.SOUND.play("dudeldi");
 		if (WE.getCVars().getValueF("music") > 0)
 			WE.getCVars().get("music").setValue(0.2f);
 

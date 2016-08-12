@@ -3,6 +3,7 @@ package com.bombinggames.weaponofchoice;
 import com.bombinggames.weaponofchoice.mainmenu.MainMenuScreen;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.WorkingDirectory;
+import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 
 /**
@@ -16,9 +17,10 @@ public class WeaponOfChoice {
      */
     public static void main(String[] args) {
         WE.setMainMenu(new MainMenuScreen());
+		AbstractEntity.registerEntity("Evil Lizard", Enemy.class);
 		WorkingDirectory.setApplicationName("WeaponOfChoice");
 		AbstractGameObject.setCustomSpritesheet("com/bombinggames/weaponofchoice/sprites/Spritesheet");
-        WE.launch("Weapon of Choice - Made with WE V" + WE.VERSION, args);  
+        WE.launch("Weapon of Choice - Made with WE V" + WE.VERSION, args);
     }
     
 }

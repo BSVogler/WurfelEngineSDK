@@ -5,9 +5,15 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.audio.Sound;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Controller;
-import com.bombinggames.wurfelengine.core.gameobjects.Block;
+import com.bombinggames.wurfelengine.core.gameobjects.MovableEntity;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
+import com.bombinggames.wurfelengine.core.map.Map;
+import com.bombinggames.wurfelengine.core.map.Point;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import java.io.FileNotFoundException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * The <i>CustomGameController</i> is for the game code. Put engine code into
@@ -31,12 +37,13 @@ public class CustomGameController extends Controller {
 	@Override
 	public void init() {
 		Gdx.app.log("CustomGameController", "Initializing");
+		Map.setDefaultGenerator(new ArenaGenerator());
 		super.init();
 
 		gameOver = false;
 		WE.SOUND.setMusic("com/bombinggames/WeaponOfChoice/Sounds/music.ogg");
 
-		player = (Player) new Player(1, Block.GAME_EDGELENGTH)
+		player = (Player) new Player(1, RenderCell.GAME_EDGELENGTH)
 			.spawn(new Coordinate(0, 0, 8).toPoint());
 		player.setDamageSounds(
 			new String[]{
@@ -57,8 +64,7 @@ public class CustomGameController extends Controller {
 
 		startingTime = System.currentTimeMillis();
 		survivedSeconds = 0;
-		
-		Controller.getMap().setGenerator(new ArenaGenerator());
+
 	}
 
 	@Override
@@ -88,7 +94,7 @@ public class CustomGameController extends Controller {
 				}
 
 				//walk
-				getPlayer().walk(
+				player.walk(
 					input.isKeyPressed(Input.Keys.W),
 					input.isKeyPressed(Input.Keys.S),
 					input.isKeyPressed(Input.Keys.A),
@@ -112,13 +118,12 @@ public class CustomGameController extends Controller {
 				//spawn enemies
 				WE.getConsole().add("Spawning " + (round - 1) + " enemies.", "Warning");
 				for (int i = 0; i < round; i++) {
-					Coordinate randomPlace = new Coordinate(
-						(int) (Chunk.getBlocksX() * Math.random()),
-						(int) (Chunk.getBlocksY() * Math.random()),
+					Point randomPlace = player.getPosition().cpy().add(
+						(int) (Chunk.getGameWidth() * Math.random()) - Chunk.getGameDepth() / 2,
+						(int) (Chunk.getGameDepth() * Math.random()) - Chunk.getGameDepth() / 2,
 						Chunk.getGameHeight()
 					);
-					Enemy enemy = (Enemy) new Enemy((byte) 44).spawn(randomPlace.toPoint());
-					enemy.setTarget(getPlayer());
+					Enemy enemy = (Enemy) new Enemy((MovableEntity) getPlayer()).spawn(randomPlace);
 				}
 
 			}
@@ -140,12 +145,16 @@ public class CustomGameController extends Controller {
 	}
 
 	public void gameOver() {
-		gameOver = true;
-		((Sound) WE.getAsset("com/bombinggames/WeaponOfChoice/Sounds/dead.ogg")).play();
-		survivedSeconds = (int) ((System.currentTimeMillis() - startingTime) / 1000);
-		Gdx.app.error("Game over:", "Time:" + survivedSeconds);
+		try {
+			gameOver = true;
+			((Sound) WE.getAsset("com/bombinggames/WeaponOfChoice/Sounds/dead.ogg")).play();
+			survivedSeconds = (int) ((System.currentTimeMillis() - startingTime) / 1000);
+			Gdx.app.error("Game over:", "Time:" + survivedSeconds);
 
-		getPlayer().dispose();
+			getPlayer().dispose();
+		} catch (FileNotFoundException ex) {
+			Logger.getLogger(CustomGameController.class.getName()).log(Level.SEVERE, null, ex);
+		}
 	}
 
 	public boolean isGameOver() {

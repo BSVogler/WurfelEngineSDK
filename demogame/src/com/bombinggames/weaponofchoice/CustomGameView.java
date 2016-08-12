@@ -4,11 +4,13 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.GameView;
+import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.extension.shooting.Weapon;
 
 /**
@@ -31,6 +33,18 @@ public class CustomGameView extends GameView {
 	@Override
 	public void init(Controller controller, GameView oldView) {
 		super.init(controller, oldView);
+		
+		WE.SOUND.register("dudeldi", "com/bombinggames/WeaponOfChoice/Sounds/dudeldi.ogg");
+		WE.SOUND.register("reload", "com/bombinggames/WeaponOfChoice/Sounds/reload.wav");
+		WE.SOUND.register("shot", "com/bombinggames/WeaponOfChoice/Sounds/shot.wav");
+		WE.SOUND.register("melee", "com/bombinggames/WeaponOfChoice/Sounds/melee.wav");
+		WE.SOUND.register("punch", "com/bombinggames/WeaponOfChoice/Sounds/punch.wav");
+		WE.SOUND.register("shotgun", "com/bombinggames/WeaponOfChoice/Sounds/shotgun.wav");
+		WE.SOUND.register("wiz", "com/bombinggames/WeaponOfChoice/Sounds/wiz.wav");
+		WE.SOUND.register("poop", "com/bombinggames/WeaponOfChoice/Sounds/poop.wav");
+		WE.SOUND.register("thump", "com/bombinggames/WeaponOfChoice/Sounds/thump.wav");
+		WE.SOUND.register("fire", "com/bombinggames/WeaponOfChoice/Sounds/fire.wav");
+		
 		WE.getEngineView().addInputProcessor(new InputListener());
 		Camera camera = new Camera(
 			this,
@@ -57,10 +71,16 @@ public class CustomGameView extends GameView {
 				drawString(
 					"Shots: " + weapon.getShotsLoaded() + "/" + weapon.getShots(),
 					Gdx.graphics.getWidth() - 100,
-					Gdx.graphics.getHeight() - 100,
+					100,
 					Color.WHITE.cpy()
 				);
 			}
+			Sprite sprite;
+			sprite = new Sprite(AbstractGameObject.getSprite('i', (byte) 11, (byte) controller.getPlayer().getWeapon().getWeaponId())); // "canvas")
+			sprite.setX(Gdx.graphics.getWidth() - 200);
+			sprite.setY(150);
+			//sprite.scale(CustomWeapon.getScaling());
+			sprite.draw(getSpriteBatch());
 		getSpriteBatch().end();
 		
 		ShapeRenderer sh = WE.getEngineView().getShapeRenderer();
@@ -157,6 +177,32 @@ public class CustomGameView extends GameView {
 				if (keycode == Input.Keys.ESCAPE) {// Gdx.app.exit();
 					WE.showMainMenu();
 				}
+				
+				if (keycode == Input.Keys.NUM_1) {
+					controller.getPlayer().equipWeapon(new CustomWeapon((byte) 0, controller.getPlayer()));
+				}
+				if (keycode == Input.Keys.NUM_2) {
+					controller.getPlayer().equipWeapon(new CustomWeapon((byte) 1, controller.getPlayer()));
+				}
+				if (keycode == Input.Keys.NUM_3) {
+					controller.getPlayer().equipWeapon(new CustomWeapon((byte) 2, controller.getPlayer()));
+				}
+				if (keycode == Input.Keys.NUM_4) {
+					controller.getPlayer().equipWeapon(new CustomWeapon((byte) 3, controller.getPlayer()));
+				}
+				if (keycode == Input.Keys.NUM_5) {
+					controller.getPlayer().equipWeapon(new CustomWeapon((byte) 4, controller.getPlayer()));
+				}
+				if (keycode == Input.Keys.NUM_6) {
+					controller.getPlayer().equipWeapon(new CustomWeapon((byte) 5, controller.getPlayer()));
+				}
+				if (keycode == Input.Keys.NUM_7) {
+					controller.getPlayer().equipWeapon(new CustomWeapon((byte) 6, controller.getPlayer()));
+				}
+				if (keycode == Input.Keys.NUM_8) {
+					controller.getPlayer().equipWeapon(new CustomWeapon((byte) 7, controller.getPlayer()));
+				}
+				
 			}
 
 			return true;
@@ -205,4 +251,11 @@ public class CustomGameView extends GameView {
 			return true;
 		}
 	}
+
+	@Override
+	public CustomGameController getController() {
+		return controller;
+	}
+	
+	
 }
