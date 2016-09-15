@@ -11,6 +11,6 @@
 hs_err_pid*
 
 WurfelEngine.jar
-docs/
 lib/docs/
 lib/sources/
+*.DS_Store
