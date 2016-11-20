@@ -964,7 +964,7 @@ public class Chunk implements Telegraph {
 	 * @param x global coordinates
 	 * @param y global coordinates
 	 * @param z global coordinates
-	 * @return
+	 * @return first byte id, second value, third is health.
 	 */
 	public int getBlock(int x, int y, int z) {
 		if (z >= Chunk.blocksZ) {
@@ -977,10 +977,10 @@ public class Chunk implements Telegraph {
 
 	/**
 	 * Get the block data at this index position.
-	 * @param x index
-	 * @param y index
-	 * @param z index
-	 * @return
+	 * @param x only valid index
+	 * @param y only valid index
+	 * @param z only valid index
+	 * @return first byte id, second value, third is health.
 	 */
 	public int getCellByIndex(int x, int y, int z) {
 		if (z >= Chunk.blocksZ) {
