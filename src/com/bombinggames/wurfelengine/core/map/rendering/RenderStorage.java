@@ -48,13 +48,13 @@ import java.util.LinkedList;
 import java.util.List;
 
 /**
- * A RenderStorage is container which saves {@link RenderChunk}s used for rendering data only chunks. It manages which {@link Chunk}s must be transformed to {@link RenderChunk}s.
+ * A RenderStorage is container which saves {@link RenderChunk}s used for chunks storing rendering-data. It manages which {@link Chunk}s must be transformed to {@link RenderChunk}s.
  * @author Benedikt Vogler
  */
 public class RenderStorage implements Telegraph  {
 
 	/**
-	 * Stores the data of the map.
+	 * Stores the render data of the map.
 	 */
 	private final LinkedList<RenderChunk> data = new LinkedList<>();
 	private final List<Camera> cameraContainer;
@@ -63,7 +63,7 @@ public class RenderStorage implements Telegraph  {
 	 */
 	private final ArrayList<Integer> lastCenterX, lastCenterY;
 	/**
-	 * a list of Blocks marked as dirty. Dirty blocks are reshaded.
+	 * a list of cells marked as dirty. Dirty cells are reshaded.
 	 */
 	private final HashSet<Coordinate> dirtyFlags = new HashSet<>(200);
 	private float zRenderingLimit = Float.POSITIVE_INFINITY;
