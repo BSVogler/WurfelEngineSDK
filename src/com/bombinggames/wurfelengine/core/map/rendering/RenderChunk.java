@@ -33,6 +33,7 @@ package com.bombinggames.wurfelengine.core.map.rendering;
 import com.badlogic.gdx.utils.Pool;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
 import com.bombinggames.wurfelengine.core.map.Chunk;
+import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator;
 
 /**
@@ -40,7 +41,11 @@ import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator;
  * @author Benedikt Vogler
  */
 public class RenderChunk {
-
+	
+	/**
+	 * if in a cell is no data available use this block. Uses air internally. Per-block differences should not be used when using this object.
+	 */
+	public static final RenderCell NULLPOINTEROBJECT = RenderCell.newRenderCell((byte) 0, (byte) 0);
 	/**
 	 * a pool containing chunkdata
 	 */
@@ -50,66 +55,72 @@ public class RenderChunk {
 		DATAPOOL = new Pool<RenderCell[][][]>(3) {
 			@Override
 			protected RenderCell[][][] newObject() {
-				return new RenderCell[Chunk.getBlocksX()][Chunk.getBlocksY()][Chunk.getBlocksZ()];
+				//bigger by two because overlap
+				RenderCell[][][] arr = new RenderCell[Chunk.getBlocksX()+2][Chunk.getBlocksY()+4][Chunk.getBlocksZ()];
+				for (RenderCell[][] x : arr) {
+					for (RenderCell[] y : x) {
+						for (int z = 0; z < y.length; z++) {
+							y[z] = NULLPOINTEROBJECT;
+						}
+					}
+				}
+				return arr;
 			}
 		};
 	}
 	
 	/**
-	 *
+	 *clears the pool to free memory
 	 */
 	public static void clearPool(){
 		DATAPOOL.clear();
 	}
 	
+	/**
+	 * chunk used for rendering with this object
+	 */
+	private final Chunk chunk;
+	
+	/**
+	 * the actual data stored in this renderchunk
+	 */
 	private final RenderCell data[][][];
-	private Chunk chunk;
 	private boolean cameraAccess;
 
 	/**
 	 * With init
 	 *
-	 * @param rS
-	 * @param chunk linked chunk
+	 * @param chunk linked chunk which is then rendered
 	 */
-	public RenderChunk(RenderStorage rS, Chunk chunk) {
+	public RenderChunk(Chunk chunk) {
 		data = DATAPOOL.obtain();
-		init(rS, chunk);
-	}
-
-	/**
-	 * update the content
-	 *
-	 * @param rS
-	 * @param chunk
-	 */
-	public void init(RenderStorage rS, Chunk chunk) {
 		this.chunk = chunk;
-		initData(rS);
+		initData();
 	}
 
 	/**
 	 * fills every render cell with the according data from the map
 	 *
-	 * @param rS
 	 */
-	public void initData(RenderStorage rS) {
+	public void initData() {
 		int tlX = chunk.getTopLeftCoordinateX();
 		int tlY = chunk.getTopLeftCoordinateY();
 
 		//fill every data cell
-		int blocksZ = Chunk.getBlocksZ();
 		int blocksX = Chunk.getBlocksX();
 		int blocksY = Chunk.getBlocksY();
+		int blocksZ = Chunk.getBlocksZ();
 		for (int xInd = 0; xInd < blocksX; xInd++) {
 			for (int yInd = 0; yInd < blocksY; yInd++) {
 				for (int z = 0; z < blocksZ; z++) {
 					//update only if cell changed
-					int block = chunk.getCellByIndex(xInd, yInd, z);
-					if (data[xInd][yInd][z] == null || (block & 255) != data[xInd][yInd][z].getId()) {
-						data[xInd][yInd][z] = RenderCell.getRenderCell((byte) (block & 255), (byte) ((block >> 8) & 255));
+					int blockAtPos = chunk.getBlockByIndex(xInd, yInd, z);//get block from map
+					//here 'null' can be value of cell if not yet initialized
+					if (data[xInd][yInd][z] == null || (blockAtPos & 255) != data[xInd][yInd][z].getId()) {
+						data[xInd][yInd][z] = RenderCell.newRenderCell((byte) (blockAtPos & 255), (byte) ((blockAtPos >> 8) & 255));
 					}
 					
+					//set the coordinate
 					data[xInd][yInd][z].getPosition().set(
 						tlX + xInd,
 						tlY + yInd,
@@ -124,24 +135,40 @@ public class RenderChunk {
 
 	/**
 	 *
-	 * @param x coordinate
-	 * @param y coordinate
-	 * @param z coordinate
+	 * @param coord only coordinates which are in this chunk
+	 * @return 
+	 */
+	public RenderCell getCell(Coordinate coord) {
+		if (coord.getZ() >= Chunk.getBlocksZ()) {
+			return NULLPOINTEROBJECT;
+		}
+		return data[coord.getX() - chunk.getTopLeftCoordinateX()][coord.getY() - chunk.getTopLeftCoordinateY()][coord.getZ()];
+	}
+	
+	/**
+	 *
+	 * @param x coordinate, must be contained in this chunk
+	 * @param y coordinate, must be contained in this chunk
+	 * @param z coordinate, must be contained in this chunk
 	 * @return
 	 */
-	RenderCell getCell(int x, int y, int z) {
+	public RenderCell getCell(int x, int y, int z) {
 		if (z >= Chunk.getBlocksZ()) {
-			return null;
+			return NULLPOINTEROBJECT;
 		}
 		return data[x - chunk.getTopLeftCoordinateX()][y - chunk.getTopLeftCoordinateY()][z];
 	}
 
-	RenderCell[][][] getData() {
+	/**
+	 * get the pointer to the data
+	 * @return 
+	 */
+	public RenderCell[][][] getData() {
 		return data;
 	}
 
 	/**
-	 *
+	 * Resets the clipping for every block.
 	 */
 	protected void resetClipping() {
 		int blocksZ = Chunk.getBlocksZ();
@@ -150,7 +177,7 @@ public class RenderChunk {
 		for (int x = 0; x < blocksX; x++) {
 			for (int y = 0; y < blocksY; y++) {
 				for (int z = 0; z < blocksZ; z++) {
-					if (data[x][y][z] != null) {
+					if (data[x][y][z] != NULLPOINTEROBJECT) {
 						data[x][y][z].setUnclipped();
 					}
 				}
@@ -170,28 +197,27 @@ public class RenderChunk {
 		int blocksZ = Chunk.getBlocksZ();
 		if (idexZ < Chunk.getBlocksZ() && idexZ >= 0) {
 			RenderCell block = data[idexX][idexY][idexZ];
-			if (block != null) {
+			if (block != null && block != NULLPOINTEROBJECT) {
 				data[idexX][idexY][idexZ].setLightlevel(1);
 
+				//check if block above is transparent
 				if (idexZ < blocksZ - 2
 					&& (data[idexX][idexY][idexZ + 1] == null
-					|| data[idexX][idexY][idexZ + 1].isTransparent())) {
-					//two block above is a block casting shadows
+					|| data[idexX][idexY][idexZ + 1].isTransparent())
+				) {
+					//two cells above is a block casting shadows
 					if (data[idexX][idexY][idexZ + 2] != null
-						&& !data[idexX][idexY][idexZ + 2].isTransparent()) {
-						data[idexX][idexY][idexZ].setLightlevel(0.8f, Side.TOP, 0);//todo every vertex
-						data[idexX][idexY][idexZ].setLightlevel(0.9f, Side.TOP, 1);//todo every vertex
-						data[idexX][idexY][idexZ].setLightlevel(0.9f, Side.TOP, 2);//todo every vertex
-						data[idexX][idexY][idexZ].setLightlevel(0.9f, Side.TOP, 3);//todo every vertex
+						&& !data[idexX][idexY][idexZ + 2].isTransparent()
+					) {
+						data[idexX][idexY][idexZ].setLightlevel(0.8f, Side.TOP);
+					//three blocks above is one
 					} else if (idexZ < blocksZ - 3
 						&& (data[idexX][idexY][idexZ + 2] == null
 						|| data[idexX][idexY][idexZ + 2].isTransparent())
 						&& data[idexX][idexY][idexZ + 3] != null
-						&& !data[idexX][idexY][idexZ + 3].isTransparent()) {
-						data[idexX][idexY][idexZ].setLightlevel(0.9f, Side.TOP, 0);//todo every vertex
-						data[idexX][idexY][idexZ].setLightlevel(0.9f, Side.TOP, 1);//todo every vertex
-						data[idexX][idexY][idexZ].setLightlevel(0.9f, Side.TOP, 2);//todo every vertex
-						data[idexX][idexY][idexZ].setLightlevel(0.9f, Side.TOP, 3);//todo every vertex
+						&& !data[idexX][idexY][idexZ + 3].isTransparent()
+					) {
+						data[idexX][idexY][idexZ].setLightlevel(0.92f, Side.TOP);
 					}
 				}
 			}
@@ -260,7 +286,7 @@ public class RenderChunk {
 	 * If not used can be removed.
 	 * @return true if a camera rendered this chunk this frame. 
 	 */
-	protected boolean cameraAccess() {
+	protected boolean getCameraAccess() {
 		return cameraAccess;
 	}
 

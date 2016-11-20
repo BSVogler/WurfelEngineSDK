@@ -53,6 +53,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -149,33 +150,39 @@ public class Map implements IndexedGraph<PfNode> {
 	private int activeSaveSlot;
 
 	/**
-	 * Stores the data of the map.
+	 * Stores the data of the map. Hash function is chunkX*chunkDim + chunkY. This means that there are only collision once you are outside the possible range specified in chunkDim. Was a 2d array before with same functionality but limited to dimensions of the array. HashMap now allows (slower) access to out-of-scope areas. TODO: Collisions can be avoided if areas, which are not active are pruned.
 	 */
-	private Chunk[][] data;
+	private HashMap<Integer, Chunk> data;
 	/**
-	 * contains evey chunk which was loaded
+	 * contains evey loaded chunk for fast iteration
 	 */
-	private ArrayList<Chunk> loadedChunks;
+	private LinkedList<Chunk> loadedChunks;
 	
 	private final ArrayList<ChunkLoader> loadingRunnables = new ArrayList<>(9);
 	/**
-	 * the amount of chunks in memory in one dimension
+	 * The amount of chunks in memory in one dimension.
 	 */
 	private final int chunkDim;
+	/**
+	 * Limits the amount of chunks which can be loaded into memory.
+	 */
+	private final int maxChunks;
+	private final CVarSystemMap cVars;
 
 	/**
 	 * Loads a map using the default generator.
 	 *
 	 * @param name if available on disk it will be load
 	 * @param saveslot
-	 * @throws java.io.IOException
+	 * @throws java.io.IOException thrown if there is no full read/write access
+	 * to the map file
 	 */
 	public Map(final File name, int saveslot) throws IOException {
 		this(name, getDefaultGenerator(), saveslot);
 	}
 
 	/**
-	 * Loads a map. Loads map and save cvars.
+	 * Loads a map. Loads map and save cVars.
 	 *
 	 * @param name if available on disk it will load the meta file
 	 * @param generator the generator used for generating new chunks
@@ -186,20 +193,18 @@ public class Map implements IndexedGraph<PfNode> {
 	public Map(final File name, Generator generator, int saveSlot) throws IOException {
 		this.directory = name;
 		this.generator = generator;
+		
 		//init data array
 		chunkDim = WE.getCVars().getValueI("mapIndexSpaceSize");
-		data = new Chunk[chunkDim][];
-		for (int i = 0; i < data.length; i++) {
-			data[i] = new Chunk[chunkDim / 2];//to have a quadratic map
-		}
-		int maxChunks = WE.getCVars().getValueI("mapMaxMemoryUse") / (Chunk.getBlocksX()*Chunk.getBlocksY()*Chunk.getBlocksZ()*3); //
-		loadedChunks = new ArrayList<>(maxChunks);
+		data = new HashMap<>(chunkDim*chunkDim, 0.5f);
+		
+		maxChunks = WE.getCVars().getValueI("mapMaxMemoryUseBytes") / (Chunk.getBlocksX()*Chunk.getBlocksY()*Chunk.getBlocksZ()*3); //
+		loadedChunks = new LinkedList<>();
 		WE.getCVars().get("loadedMap").setValue(name.getName());
 		
-		//load map cvars
-		CVarSystemMap mapCVars = new CVarSystemMap(new File(directory + "/meta.wecvar"));
-		WE.getCVars().setMapCVars(mapCVars);
-		mapCVars.load();
+		//load map cVars
+		cVars = new CVarSystemMap(new File(directory + "/meta.wecvar"));
+		cVars.load();
 
 		if (!hasSaveSlot(saveSlot)) {
 			createSaveSlot(saveSlot);
@@ -207,6 +212,26 @@ public class Map implements IndexedGraph<PfNode> {
 		useSaveSlot(saveSlot);
 
 		Gdx.app.debug("Map", "Map named \"" + name + "\", saveslot " + saveSlot + " should be loaded");
+	}
+
+	/**
+	 * 
+	 * @return 
+	 */
+	public CVarSystemMap getCVars() {
+		return cVars;
+	}
+	
+	
+	/**
+	 *
+	 * @return
+	 */
+	public CVarSystemSave getSaveCVars() {
+		if (cVars == null) {
+			return null;
+		}
+		return cVars.getSaveCVars();
 	}
 
 	/**
@@ -220,11 +245,13 @@ public class Map implements IndexedGraph<PfNode> {
 		//add parralell loaded chunks serial to avoid conflicts
 		for (int i = 0; i < loadingRunnables.size(); i++) {
 			ChunkLoader runnable = loadingRunnables.get(i);
-			if (runnable.getChunk() != null) {
-				loadedChunks.add(runnable.getChunk());
-				data[runnable.getCoordX()+chunkDim/2][runnable.getCoordY()+chunkDim/4] = runnable.getChunk();
-				addEntities(runnable.getChunk().retrieveEntities());
-				setModified();
+			if (runnable.getChunk() != null) {//loaded
+				if (loadedChunks.size() < maxChunks ) {
+					loadedChunks.add(runnable.getChunk());
+					data.put(runnable.getCoordX()*chunkDim+runnable.getCoordY(), runnable.getChunk());
+					addEntities(runnable.getChunk().retrieveEntities());
+					setModified();
+				}
 				loadingRunnables.remove(i);
 			}
 		}
@@ -277,7 +304,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 * @param chunkY
 	 */
 	public void loadChunk(int chunkX, int chunkY) {
-		if (Map.this.getChunk(chunkX, chunkY) == null) {
+		if (loadedChunks.size() < maxChunks && Map.this.getChunk(chunkX, chunkY) == null) {
 			if (!isLoading(chunkX, chunkY)) {
 				ChunkLoader cl = new ChunkLoader(this, getPath(), chunkX, chunkY, getGenerator());
 				loadingRunnables.add(cl);
@@ -300,7 +327,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 * From range in X [-chunkDim/2,chunkDim/2]
 	 * @return
 	 */
-	public Chunk[][] getData() {
+	public HashMap<Integer, Chunk> getData() {
 		return data;
 	}
 	
@@ -308,7 +335,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 *
 	 * @return
 	 */
-	public ArrayList<Chunk> getLoadedChunks(){
+	public LinkedList<Chunk> getLoadedChunks(){
 		return loadedChunks;
 	}
 
@@ -468,7 +495,8 @@ public class Map implements IndexedGraph<PfNode> {
 	 * @return can return null if not loaded
 	 */
 	public Chunk getChunkContaining(final Coordinate coord) {
-		return data[Math.floorDiv(coord.getX(), Chunk.getBlocksX()) + chunkDim / 2][Math.floorDiv(coord.getY(), Chunk.getBlocksY()) + chunkDim / 4];
+		return data.get(Math.floorDiv(coord.getX(), Chunk.getBlocksX())*chunkDim + Math.floorDiv(coord.getY(), Chunk.getBlocksY()));
+	
 	}
 
 	/**
@@ -479,7 +507,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 * @return can return null if not loaded
 	 */
 	public Chunk getChunkContaining(int x, int y) {
-		return data[Math.floorDiv(x, Chunk.getBlocksX()) + chunkDim / 2][Math.floorDiv(y, Chunk.getBlocksY()) + chunkDim / 4];
+		return data.get(Math.floorDiv(x, Chunk.getBlocksX())*chunkDim + Math.floorDiv(y, Chunk.getBlocksY()));
 	}
 	
 	/**
@@ -529,15 +557,14 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 
 	/**
-	 * get the chunk with the given chunk coords. <br>Runtime: O(c) c: amount of
-	 * chunks -&gt; O(1)
+	 * get the chunk with the given chunk coords.<br><br> Runtime: O(1)
 	 *
-	 * @param chunkX
-	 * @param chunkY
-	 * @return if not in memory return null
+	 * @param chunkX chunk coordinate
+	 * @param chunkY chunk coordinate
+	 * @return if not in memory returns null
 	 */
 	public Chunk getChunk(int chunkX, int chunkY) {
-		return data[chunkX+chunkDim/2][chunkY+chunkDim/4];
+		return data.get(chunkX*chunkDim + chunkY);//this is the hash function
 	}
 
 	/**
@@ -610,6 +637,7 @@ public class Map implements IndexedGraph<PfNode> {
 		for (Chunk chunk : loadedChunks) {
 			try {
 				chunk.save(
+					this,
 					getPath(),
 					saveSlot
 				);
@@ -628,8 +656,8 @@ public class Map implements IndexedGraph<PfNode> {
 	 * @return
 	 */
 	public boolean save() {
-		WE.getCVarsSave().get("LEsunAzimuth").setValue(Controller.getLightEngine().getSun(new Coordinate(0, 0, 0)).getAzimuth());
-		WE.getCVarsSave().get("LEmoonAzimuth").setValue(Controller.getLightEngine().getMoon(new Coordinate(0, 0, 0)).getAzimuth());
+		getSaveCVars().get("LEsunAzimuth").setValue(Controller.getLightEngine().getSun(new Coordinate(0, 0, 0)).getAzimuth());
+		getSaveCVars().get("LEmoonAzimuth").setValue(Controller.getLightEngine().getMoon(new Coordinate(0, 0, 0)).getAzimuth());
 		return save(activeSaveSlot);
 	}
 
@@ -659,20 +687,20 @@ public class Map implements IndexedGraph<PfNode> {
 
 	/**
 	 * uses a specific save slot for loading and saving the map. Loads the save
-	 * cvars.
+ cVars.
 	 *
 	 * @param slot slot number
 	 */
 	public void useSaveSlot(int slot) {
 		this.activeSaveSlot = slot;
-		WE.getCVarsMap().get("currentSaveSlot").setValue(slot);
-		//load save cvars
-		WE.getCVarsMap().setSaveCVars(
+		cVars.get("currentSaveSlot").setValue(slot);
+		//load save cVars
+		cVars.setSaveCVars(
 			new CVarSystemSave(
 				new File(directory + "/save" + activeSaveSlot + "/meta.wecvar")
 			)
 		);
-		WE.getCVarsSave().load();
+		cVars.load();
 	}
 
 	/**
@@ -687,14 +715,13 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 
 	/**
-	 * Check if a save slot exists.
+	 * Check if the save slot exists.
 	 *
 	 * @param saveSlot
 	 * @return
 	 */
 	public boolean hasSaveSlot(int saveSlot) {
-		FileHandle path = Gdx.files.absolute(directory + "/save" + saveSlot);
-		return path.exists();
+		return Gdx.files.absolute(directory + "/save" + saveSlot).exists();
 	}
 
 	/**
@@ -966,9 +993,9 @@ public class Map implements IndexedGraph<PfNode> {
 	public void dispose(boolean save) {
 		for (Chunk chunk : loadedChunks) {
 			if (save) {
-				chunk.dispose(getPath());
+				chunk.dispose(this, getPath());
 			} else {
-				chunk.dispose(null);
+				chunk.dispose(this, null);
 			}
 		}
 		disposeEntities();

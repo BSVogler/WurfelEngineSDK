@@ -129,10 +129,10 @@ public class GameView implements GameManager {
 	private RenderStorage renderstorage;
     
 	/**
-	 * Loades some files and set up everything. This should be done after
-	 * creating and linking the view. After this has been inactive use {@link #onEnter() }
+	 * Loades some files and set up everything. After this has been inactive use {@link #onEnter() }
+	 * This method is a an implementation of the <a href="https://de.wikipedia.org/wiki/Dependency_Injection">Setter Inejction</a> pattern.
 	 *
-	 * @param controller The data sources used for the view. Can be null but
+	 * @param controller The dependent data controller used for the view. Can be null but
 	 * should not.
 	 * @param oldView The view used before. Can be null.
 	 * @see #onEnter() 
@@ -237,16 +237,13 @@ public class GameView implements GameManager {
 		}
 	}
 
-	/**
-	 * Override to specify what should happen when the mangager becomes active. You can ignore the super call.
-	 */
 	@Override
 	public void onEnter() {
-		//no code here so missing super call has code executed in enter()
+		//no code here intentionally, use enter() instead
 	}
 
 	@Override
-	public final void enter() {
+	public final void enter() {//by using final this can not be overwritten
 		Gdx.app.debug("GameView", "Entering");
 		if (!isInitalized()) {
 			Gdx.app.error(this.getClass().toString(), "Called method enter() before initializing.");
@@ -271,7 +268,7 @@ public class GameView implements GameManager {
 		//restore gameSpeed
 		WE.getCVars().get("timespeed").setValue(gameSpeed);
 		
-		onEnter();
+		onEnter();//some pattern to call onEnter() and deny overrides to enter
 	}
 	
 	/**

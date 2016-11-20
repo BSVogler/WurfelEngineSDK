@@ -42,6 +42,7 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell.Channel;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
 import java.util.ArrayList;
@@ -568,6 +569,16 @@ public class Coordinate implements Position {
 	public float distanceToHorizontal(Position point) {
 		return toPoint().distanceToHorizontal(point);
 	}
+	
+	@Override
+	public float distanceToHorizontalSquared(AbstractGameObject object) {
+		return toPoint().distanceToHorizontalSquared(object);
+	}
+
+	@Override
+	public float distanceToHorizontalSquared(Position point) {
+		return toPoint().distanceToHorizontalSquared(point);
+	}
 
 	/**
 	 * destroys the block at the current position, replacing by air.
@@ -665,7 +676,7 @@ public class Coordinate implements Position {
 		LinkedList<T> result = new LinkedList<>();
 		LinkedList<T> entities = Controller.getMap().getEntitys(type);
 		for (T entity : entities) {
-			if (distanceTo(((AbstractEntity)entity).getPosition()) < radius) {
+			if (getPoint().distanceToSquared(((AbstractEntity)entity).getPosition()) < radius*radius) {
 				result.add(entity);
 			}
 		}
@@ -684,7 +695,7 @@ public class Coordinate implements Position {
 		LinkedList<AbstractEntity> result = new LinkedList<>();
 		ArrayList<AbstractEntity> entityList = Controller.getMap().getEntities();
 		for (AbstractEntity entity : entityList) {
-			if (distanceToHorizontal(entity.getPoint()) < radius) {
+			if (getPoint().distanceToHorizontalSquared(entity.getPoint()) < radius*radius) {
 				result.add(entity);
 			}
 		}
@@ -701,7 +712,7 @@ public class Coordinate implements Position {
 		for (AbstractEntity entity : entityList) {//check every entity
 			if (entity.hasPosition()
 				&& type.isInstance(entity) //if the entity is of the wanted type
-				&& distanceToHorizontal(entity.getPoint()) < radius//TODO should use squared values for improved speed
+				&& getPoint().distanceToHorizontalSquared(entity.getPoint()) < radius*radius
 			) {
 				result.add((T) entity);//add it to list
 			}
@@ -729,11 +740,11 @@ public class Coordinate implements Position {
 	 * @param rs
 	 * @return can return null
 	 */
-	public RenderCell getRenderBlock(RenderStorage rs) {
+	public RenderCell getRenderCell(RenderStorage rs) {
 		if (z < 0) {
-			return null;
+			return RenderChunk.NULLPOINTEROBJECT;
 		} else if (z >= Chunk.getBlocksZ()) {
-			return null;
+			return RenderChunk.NULLPOINTEROBJECT;
 		} else {
 			return rs.getCell(this);
 		}
@@ -747,13 +758,13 @@ public class Coordinate implements Position {
 	 * @param color only read from
 	 * @param vertex
 	 */
-	public void addLight(final GameView view, Side side, int vertex, final Color color) {
-		RenderCell rB = getRenderBlock(view.getRenderStorage());
+	public void addLight(final GameView view, Side side, byte vertex, final Color color) {
+		RenderCell rB = getRenderCell(view.getRenderStorage());
 		if (rB != null && !rB.isHidden()) {
 			view.getRenderStorage().setLightFlag(rB);
-			rB.addLightlevel(color.r, side, 0, vertex);
-			rB.addLightlevel(color.g, side, 1, vertex);
-			rB.addLightlevel(color.b, side, 2, vertex);
+			rB.addLightlevel(color.r, side, Channel.Red, vertex);
+			rB.addLightlevel(color.g, side, Channel.Green, vertex);
+			rB.addLightlevel(color.b, side, Channel.Blue, vertex);
 		}
 	}
 
@@ -766,27 +777,27 @@ public class Coordinate implements Position {
 	 */
 	public void addLightToBackEdge(final GameView view, final Side side, final Color color) {
 		if (side == Side.TOP) {
-			this.addLight(view, side, 1, color);
-			goToNeighbour(0).addLight(view, side, 3, color);
-			goToNeighbour(3).addLight(view, side, 0, color);
-			goToNeighbour(6).addLight(view, side, 2, color);
+			this.addLight(view, side, (byte) 1, color);
+			goToNeighbour(0).addLight(view, side, (byte) 3, color);
+			goToNeighbour(3).addLight(view, side, (byte) 0, color);
+			goToNeighbour(6).addLight(view, side, (byte) 2, color);
 			goToNeighbour(3);//go back
 		} else {
-			RenderCell neighb = getRenderBlock(view.getRenderStorage());
+			RenderCell neighb = getRenderCell(view.getRenderStorage());
 			if (neighb != null && !neighb.isHidden()) {
 				//view.getRenderStorage().setLightFlag(rB); //in the way this algorthm is used this line is not needed
-				neighb.addLightlevel(color.r, side, 0, 0);
-				neighb.addLightlevel(color.g, side, 1, 0);
-				neighb.addLightlevel(color.b, side, 2, 0);
-				neighb.addLightlevel(color.r, side, 0, 1);
-				neighb.addLightlevel(color.g, side, 1, 1);
-				neighb.addLightlevel(color.b, side, 2, 1);
-				neighb.addLightlevel(color.r, side, 0, 2);
-				neighb.addLightlevel(color.g, side, 1, 2);
-				neighb.addLightlevel(color.b, side, 2, 2);
-				neighb.addLightlevel(color.r, side, 0, 3);
-				neighb.addLightlevel(color.g, side, 1, 3);
-				neighb.addLightlevel(color.b, side, 2, 3);
+				neighb.addLightlevel(color.r, side, Channel.Red, (byte) 0);
+				neighb.addLightlevel(color.g, side, Channel.Green, (byte) 0);
+				neighb.addLightlevel(color.b, side, Channel.Blue, (byte) 0);
+				neighb.addLightlevel(color.r, side, Channel.Red, (byte) 1);
+				neighb.addLightlevel(color.g, side, Channel.Green, (byte) 1);
+				neighb.addLightlevel(color.b, side, Channel.Blue, (byte) 1);
+				neighb.addLightlevel(color.r, side, Channel.Red, (byte) 2);
+				neighb.addLightlevel(color.g, side, Channel.Green, (byte) 2);
+				neighb.addLightlevel(color.b, side, Channel.Blue, (byte) 2);
+				neighb.addLightlevel(color.r, side, Channel.Red, (byte) 3);
+				neighb.addLightlevel(color.g, side, Channel.Green, (byte) 3);
+				neighb.addLightlevel(color.b, side, Channel.Blue, (byte) 3);
 			}
 		}
 	}

@@ -43,11 +43,12 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.gameobjects.Renderable;
 import com.bombinggames.wurfelengine.core.map.Chunk;
-import com.bombinggames.wurfelengine.core.map.Iterators.CameraSpaceIterator;
+import com.bombinggames.wurfelengine.core.map.Iterators.CoveredByCameraIterator;
 import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import com.bombinggames.wurfelengine.core.map.rendering.SideSprite;
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -124,6 +125,9 @@ public class Camera {
 	private int maxsprites;
 	private final Point center = new Point(0, 0, 0);
 	private final ArrayList<RenderCell> modifiedCells = new ArrayList<>(30);
+	/**
+	 * is rendered at the end
+	 */
 	private final LinkedList<AbstractEntity> renderAppendix = new LinkedList<>();
 	/**
 	 * The radius which is used for loading the chunks around the center. May be reduced after the first time to a smaller value.
@@ -539,7 +543,7 @@ public class Camera {
 		//add entitys which should be rendered
 		ArrayList<AbstractEntity> ents = Controller.getMap().getEntities();
 				
-		//add entities to renderstorage
+		//add entities by inserting them into the render store
 		ArrayList<RenderCell> modifiedCells = this.modifiedCells;
 		modifiedCells.clear();
 		modifiedCells.ensureCapacity(ents.size());
@@ -553,21 +557,20 @@ public class Camera {
 				&& inViewFrustum(ent.getPosition())
 				&& ent.getPosition().getZ() < gameView.getRenderStorage().getZRenderingLimit()
 			) {
-				RenderCell cell = gameView.getRenderStorage().getCell(ent.getPosition().add(0, 0, RenderCell.GAME_EDGELENGTH));//add in cell above
+				RenderCell cellAbove = gameView.getRenderStorage().getCell(ent.getPosition().add(0, 0, RenderCell.GAME_EDGELENGTH));//add in cell above
 				ent.getPosition().add(0, 0, -RenderCell.GAME_EDGELENGTH);//reverse change from line above
-				if (cell != null) {
-					cell.addCoveredEnts(ent);
-					modifiedCells.add(cell);
+				if (cellAbove == RenderChunk.NULLPOINTEROBJECT) {
+					renderAppendix.add(ent);//render at the end
 				} else {
-					//add at end of renderList
-					renderAppendix.add(ent);
+					cellAbove.addCoveredEnts(ent);//cell covers entities inside
+					modifiedCells.add(cellAbove);
 				}
 			}
 		}
 		
 		//iterate over every block in renderstorage
 		objectsToBeRendered = 0;
-		CameraSpaceIterator iterator = new CameraSpaceIterator(
+		CoveredByCameraIterator iterator = new CoveredByCameraIterator(
 			gameView.getRenderStorage(),
 			centerChunkX,
 			centerChunkY,
@@ -578,7 +581,7 @@ public class Camera {
 		while (iterator.hasNext()) {
 			RenderCell cell = iterator.next();
 
-			if (cell != null && inViewFrustum(cell.getPosition())) {
+			if (cell != RenderChunk.NULLPOINTEROBJECT && inViewFrustum(cell.getPosition())) {
 				visit(cell);
 			}
 		}
@@ -586,18 +589,32 @@ public class Camera {
 		for (RenderCell modifiedCell : modifiedCells) {
 			modifiedCell.clearCoveredEnts();
 		}
+		
+		//sort by depth
+		renderAppendix.sort((AbstractGameObject o1, AbstractGameObject o2) -> {
+			float d1 = o1.getDepth();
+			float d2 = o2.getDepth();
+			if (d1 > d2) {
+				return 1;
+			} else {
+				if (d1 == d2) {
+					return 0;
+				}
+				return -1;
+			}
+		});
 		depthlist.addAll(renderAppendix);//render every entity which has no parent block at the end of the list
 	}
 	
 	/**
 	 * topological sort
-	 * @param n root node
+	 * @param o root node
 	 */
-	private void visit(AbstractGameObject n) {
-		if (!n.isMarkedDS(id)) {
-			LinkedList<AbstractGameObject> covered = n.getCovered(gameView.getRenderStorage());
-			n.markPermanentDS(id);
-			if (covered.size() > 0) {
+	private void visit(AbstractGameObject o) {
+		if (!o.isMarkedDS(id)) {
+			LinkedList<AbstractGameObject> covered = o.getCovered(gameView.getRenderStorage());
+			o.markPermanentDS(id);
+			if (!covered.isEmpty()) {
 				for (AbstractGameObject m : covered) {
 					if (inViewFrustum(m.getPosition())) {
 						visit(m);
@@ -605,12 +622,12 @@ public class Camera {
 				}
 			}
 			if (
-				n.shouldBeRendered(this)
-				&& n.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
+				o.shouldBeRendered(this)
+				&& o.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
 				&& objectsToBeRendered < maxsprites
 			) {
 				//fill only up to available size
-				depthlist.add(n);
+				depthlist.add(o);
 				objectsToBeRendered++;
 			}
 		}
@@ -625,13 +642,13 @@ public class Camera {
 	public boolean inViewFrustum(Position pos){
 		int vspY = pos.getViewSpcY();
 		if (!(
-				(position.y + (heightProj>>1))
+				(position.y + (heightProj>>1))//fast division by two
 				>
 				(vspY - (RenderCell.VIEW_HEIGHT<<1))//bottom of sprite
 			&&
 				(vspY + RenderCell.VIEW_HEIGHT2 + RenderCell.VIEW_DEPTH)//top of sprite
 				>
-				position.y - (heightProj>>1))
+				position.y - (heightProj>>1))//fast division by two
 		)
 			return false;
 		int dist = (int) (pos.getViewSpcX()-position.x); //left side of sprite

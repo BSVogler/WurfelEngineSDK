@@ -237,7 +237,7 @@ public class RenderCell extends AbstractGameObject {
 	 * @param value
 	 * @return
 	 */
-	public static RenderCell getRenderCell(byte id, byte value) {
+	public static RenderCell newRenderCell(byte id, byte value) {
 		if (id == 0 || id == 4) {//air and invisible wall
 			RenderCell a = new RenderCell(id, value);
 			a.setHidden(true);
@@ -283,28 +283,28 @@ public class RenderCell extends AbstractGameObject {
 	
 	/**
 	 * 
-	 * @param id
-	 * @param value
+	 * @param spriteId
+	 * @param spriteValue
 	 * @return 
 	 */
-	public static boolean isTransparent(byte id, byte value) {
-		if (id==0 || id == 9 || id == 4) {
+	public static boolean isTransparent(byte spriteId, byte spriteValue) {
+		if (spriteId==0 || spriteId == 9 || spriteId == 4) {
 			return true;
 		}
 		
-		if (id > 9 && customBlocks != null) {
-			return customBlocks.isTransparent(id, value);
+		if (spriteId > 9 && customBlocks != null) {
+			return customBlocks.isTransparent(spriteId, spriteValue);
 		}
 		return false;
 	}
 	
 	/**
 	 * 
-	 * @param block
+	 * @param spriteIdValue id and value in one int
 	 * @return 
 	 */
-	public static boolean isTransparent(int block) {
-		return isTransparent((byte)(block&255), (byte)((block>>8)&255));
+	public static boolean isTransparent(int spriteIdValue) {
+		return isTransparent((byte)(spriteIdValue&255), (byte)((spriteIdValue>>8)&255));
 	}
 
 	/**
@@ -516,9 +516,9 @@ public class RenderCell extends AbstractGameObject {
 	
 	//view data
 	/**
-	 * each side has RGB color stored as 10bit float. Obtained by dividing bits
-	 * by fraction /2^10-1 = 1023.
-	 * each field is vertex 0-3
+	 * Each side has four RGB101010 colors with a 10bit float precision per
+	 * channel. channel brightness obtained by dividing bits by fraction /2^10-1
+	 * = 1023. each field is vertex 0-3
 	 */
 	private final int[] colorLeft = new int[]{
 		(55 << 16) + (55 << 8) + 55,
@@ -575,7 +575,7 @@ public class RenderCell extends AbstractGameObject {
 	/**
 	 * For direct creation. You should use the factory method instead.
 	 * @param id 
-	 * @see #getRenderCell(byte, byte) 
+	 * @see #newRenderCell(byte, byte) 
 	 */
     public RenderCell(byte id){
         super();
@@ -586,7 +586,7 @@ public class RenderCell extends AbstractGameObject {
 	 * For direct creation. You should use the factory method instead.
 	 * @param id
 	 * @param value 
-	 * @see #getRenderCell(byte, byte) 
+	 * @see #newRenderCell(byte, byte) 
 	 */
 	public RenderCell(byte id, byte value){
 		super();
@@ -885,7 +885,7 @@ public class RenderCell extends AbstractGameObject {
 		);
 	}
   /**
-	 * Draws a side of a block at a custom position. Apllies color before
+	 * Draws a side of a cell at a custom position. Apllies color before
 	 * rendering and takes the lightlevel into account.
 	 *
 	 * @param view the view using this render method
@@ -955,18 +955,18 @@ public class RenderCell extends AbstractGameObject {
 	//				color.b = 1;
 	//			}
 			sprite.setColor(
-				getLightlevel(side, 0, 0) / 2f,
-				getLightlevel(side, 0, 1) / 2f,
-				getLightlevel(side, 0, 2) / 2f,
-				getLightlevel(side, 1, 0) / 2f,
-				getLightlevel(side, 1, 1) / 2f,
-				getLightlevel(side, 1, 2) / 2f,
-				getLightlevel(side, 2, 0) / 2f,
-				getLightlevel(side, 2, 1) / 2f,
-				getLightlevel(side, 2, 2) / 2f,
-				getLightlevel(side, 3, 0) / 2f,
-				getLightlevel(side, 3, 1) / 2f,
-				getLightlevel(side, 3, 2) / 2f
+				getLightlevel(side, (byte) 0, Channel.Red) / 2f,
+				getLightlevel(side, (byte) 0, Channel.Green) / 2f,
+				getLightlevel(side, (byte) 0, Channel.Blue) / 2f,
+				getLightlevel(side, (byte) 1, Channel.Red)  / 2f,
+				getLightlevel(side, (byte) 1, Channel.Green) / 2f,
+				getLightlevel(side, (byte) 1, Channel.Blue) / 2f,
+				getLightlevel(side, (byte) 2, Channel.Red)  / 2f,
+				getLightlevel(side, (byte) 2, Channel.Green) / 2f,
+				getLightlevel(side, (byte) 2, Channel.Blue) / 2f,
+				getLightlevel(side, (byte) 3, Channel.Red)  / 2f,
+				getLightlevel(side, (byte) 3, Channel.Green) / 2f,
+				getLightlevel(side, (byte) 3, Channel.Blue) / 2f
 			);
 			//}
 			sprite.draw(view.getSpriteBatch());
@@ -1040,34 +1040,40 @@ public class RenderCell extends AbstractGameObject {
 
 	@Override
 	public float getLightlevelR() {
-		return (getLightlevel(Side.LEFT, 0,0) + getLightlevel(Side.TOP, 0,0) + getLightlevel(Side.RIGHT, 0,0)) / 3f;
+		return (getLightlevel(Side.LEFT, (byte) 0, Channel.Red)
+			+ getLightlevel(Side.TOP, (byte) 0, Channel.Red)
+			+ getLightlevel(Side.RIGHT, (byte) 0, Channel.Red)) / 3f;
 	}
 
 	@Override
 	public float getLightlevelG() {
-		return (getLightlevel(Side.LEFT, 0,1) + getLightlevel(Side.TOP, 0,1) + getLightlevel(Side.RIGHT, 0,1)) / 3f;
+		return (getLightlevel(Side.LEFT, (byte) 0, Channel.Green)
+			+ getLightlevel(Side.TOP, (byte) 0, Channel.Green)
+			+ getLightlevel(Side.RIGHT, (byte) 0, Channel.Green)) / 3f;
 	}
 
 	@Override
 	public float getLightlevelB() {
-		return (getLightlevel(Side.LEFT, 0, 2) + getLightlevel(Side.TOP, 0,2) + getLightlevel(Side.RIGHT, 0,2)) / 3f;
+		return (getLightlevel(Side.LEFT, (byte) 0, Channel.Blue)
+			+ getLightlevel(Side.TOP, (byte) 0, Channel.Blue)
+			+ getLightlevel(Side.RIGHT, (byte) 0, Channel.Blue)) / 3f;
 	}
 
 	/**
 	 *
 	 * @param side
-	 * @param vert
+	 * @param vertex 0-3
 	 * @param channel
 	 * @return range 0-2.
 	 */
-	public float getLightlevel(Side side, int vert, int channel) {
-		byte colorBitShift = (byte) (20 - 10 * channel);
+	public float getLightlevel(Side side, byte vertex, Channel channel) {
+		byte colorBitShift = (byte) (20 - 10 * channel.id);
 		if (side == Side.LEFT) {
-			return ((colorLeft[vert]  >> colorBitShift) & 0x3FF) / 511f;
+			return ((colorLeft[vertex]  >> colorBitShift) & 0x3FF) / 511f;
 		} else if (side == Side.TOP) {
-			return ((colorTop[vert]  >> colorBitShift) & 0x3FF) / 511f;
+			return ((colorTop[vertex]  >> colorBitShift) & 0x3FF) / 511f;
 		}
-		return ((colorRight[vert]  >> colorBitShift) & 0x3FF) / 511f;
+		return ((colorRight[vertex]  >> colorBitShift) & 0x3FF) / 511f;
 	}
 
 	/**
@@ -1118,9 +1124,45 @@ public class RenderCell extends AbstractGameObject {
 	 *
 	 * @param lightlevel a factor in range [0-2]
 	 * @param side
-	 * @param vertex
 	 */
-	public void setLightlevel(float lightlevel, Side side, int vertex) {
+	public void setLightlevel(float lightlevel, Side side) {
+		if (lightlevel < 0) {
+			lightlevel = 0;
+		}
+		int l = (int) (lightlevel * 512);
+		if (l > 1023) {
+			l = 1023;
+		}
+
+		switch (side) {
+			case LEFT:
+				colorLeft[0] = (l << 20) + (l << 10) + l;//RGB
+				colorLeft[1] = (l << 20) + (l << 10) + l;//RGB
+				colorLeft[2] = (l << 20) + (l << 10) + l;//RGB
+				colorLeft[3] = (l << 20) + (l << 10) + l;//RGB
+				break;
+			case TOP:
+				colorTop[0] = (l << 20) + (l << 10) + l;//RGB
+				colorTop[1] = (l << 20) + (l << 10) + l;//RGB
+				colorTop[2] = (l << 20) + (l << 10) + l;//RGB
+				colorTop[3] = (l << 20) + (l << 10) + l;//RGB
+				break;
+			default:
+				colorRight[0] = (l << 20) + (l << 10) + l;//RGB
+				colorRight[1] = (l << 20) + (l << 10) + l;//RGB
+				colorRight[2] = (l << 20) + (l << 10) + l;//RGB
+				colorRight[3] = (l << 20) + (l << 10) + l;//RGB
+				break;
+		}
+	}
+	
+	/**
+	 *
+	 * @param lightlevel a factor in range [0-2]
+	 * @param side
+	 * @param vertex id [0-3]
+	 */
+	public void setLightlevel(float lightlevel, Side side, byte vertex) {
 		if (lightlevel < 0) {
 			lightlevel = 0;
 		}
@@ -1146,15 +1188,15 @@ public class RenderCell extends AbstractGameObject {
 	 *
 	 * @param lightlevel a factor in range [0-2]
 	 * @param side
-	 * @param channel r g oder b,
+	 * @param channel 0 = Red, 1 = Green, 2 = Blue
 	 * @param vertex
 	 */
-	public void setLightlevel(float lightlevel, Side side, int channel, int vertex) {
+	public void setLightlevel(float lightlevel, Side side, Channel channel, byte vertex) {
 		if (lightlevel < 0) {
 			lightlevel = 0;
 		}
 		
-		byte colorBitShift = (byte) (20 - 10 * channel);
+		byte colorBitShift = (byte) (20 - 10 * channel.id);
 		
 		int l = (int) (lightlevel * 512);
 		if (l > 1023) {
@@ -1178,15 +1220,15 @@ public class RenderCell extends AbstractGameObject {
 	 *
 	 * @param lightlevel a factor in range [0-2]
 	 * @param side
-	 * @param channel 0 = R, 1 =G, 2=B
+	 * @param channel 0 = Red, 1 = Green, 2 = Blue
 	 * @param vertex
 	 */
-	public void addLightlevel(float lightlevel, Side side, int channel, int vertex) {
+	public void addLightlevel(float lightlevel, Side side, Channel channel, byte vertex) {
 		if (lightlevel < 0) {
 			lightlevel = 0;
 		}
 
-		byte colorBitShift = (byte) (20 - 10 * channel);
+		byte colorBitShift = (byte) (20 - 10 * channel.id);
 
 		float l = lightlevel * 512;
 		if (l > 1023) {
@@ -1328,7 +1370,7 @@ public class RenderCell extends AbstractGameObject {
 	}
 
 	/**
-	 * adds the entitiy into a cell
+	 * adds the entity into a cell for depth sorting
 	 *
 	 * @param ent
 	 */
@@ -1377,50 +1419,50 @@ public class RenderCell extends AbstractGameObject {
 		LinkedList<AbstractGameObject> covered = this.covered;
 		covered.clear();
 		Coordinate nghb = getPosition();
-		RenderCell block;
+		RenderCell cell;
 		if (nghb.getZ() > 0) {
-			block = rs.getCell(nghb.add(0, 0, -1));//go down
-			if (block != null) {
-				covered.add(block);
+			cell = rs.getCell(nghb.add(0, 0, -1));//go down
+			if (cell != null) {
+				covered.add(cell);
 			}
 			//back right
-			block = rs.getCell(nghb.goToNeighbour(1));
-			if (block != null) {
-				covered.add(block);
+			cell = rs.getCell(nghb.goToNeighbour(1));
+			if (cell != null) {
+				covered.add(cell);
 			}
 			//back left
-			block = rs.getCell(nghb.goToNeighbour(6));
-			if (block != null) {
-				covered.add(block);
+			cell = rs.getCell(nghb.goToNeighbour(6));
+			if (cell != null) {
+				covered.add(cell);
 			}
 			//back
-			block = rs.getCell(nghb.goToNeighbour(1));
-			if (block != null) {
-				covered.add(block);
+			cell = rs.getCell(nghb.goToNeighbour(1));
+			if (cell != null) {
+				covered.add(cell);
 			}
 			nghb.add(0, 2, 1);//go back to origin
 		}
-		block = rs.getCell(nghb.goToNeighbour(0));//back
-		if (block != null) {
-			covered.add(block);
+		cell = rs.getCell(nghb.goToNeighbour(0));//back
+		if (cell != null) {
+			covered.add(cell);
 		}
-		block = rs.getCell(nghb.goToNeighbour(3));//back right
-		if (block != null) {
-			covered.add(block);
+		cell = rs.getCell(nghb.goToNeighbour(3));//back right
+		if (cell != null) {
+			covered.add(cell);
 		}
 
-		block = rs.getCell(nghb.goToNeighbour(6));//back left
-		if (block != null) {
-			covered.add(block);
+		cell = rs.getCell(nghb.goToNeighbour(6));//back left
+		if (cell != null) {
+			covered.add(cell);
 		}
 		if (nghb.getZ() < Chunk.getBlocksZ() - 1) {
-			block = rs.getCell(nghb.add(0, 0, 1));//back left above
-			if (block != null) {
-				covered.add(block);
+			cell = rs.getCell(nghb.add(0, 0, 1));//back left above
+			if (cell != null) {
+				covered.add(cell);
 			}
-			block = rs.getCell(nghb.goToNeighbour(2));//back right above
-			if (block != null) {
-				covered.add(block);
+			cell = rs.getCell(nghb.goToNeighbour(2));//back right above
+			if (cell != null) {
+				covered.add(cell);
 			}
 			nghb.add(-1, 0, -1);//back to back left
 		}
@@ -1469,6 +1511,19 @@ public class RenderCell extends AbstractGameObject {
 	 */
 	public void setValue(byte value) {
 		this.value = value;
+	}
+
+	public static enum Channel {
+
+		Red((byte) 0),
+		Green((byte) 1),
+		Blue((byte) 2);
+
+		final byte id;
+
+		Channel(byte id) {
+			this.id = id;
+		}
 	}
 
 }
