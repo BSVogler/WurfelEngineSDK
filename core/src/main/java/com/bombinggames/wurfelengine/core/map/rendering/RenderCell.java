@@ -1380,7 +1380,7 @@ public class RenderCell extends AbstractGameObject {
 	@Override
 	public boolean shouldBeRendered(Camera camera) {
 		return id != 0
-				&& !isClipped()
+				&& !isFullyClipped()
 				&& !isHidden()
 				&& camera.inViewFrustum(coord);
 	}
@@ -1491,7 +1491,7 @@ public class RenderCell extends AbstractGameObject {
 
 	@Override
 	public String toString() {
-		return Integer.toHexString(hashCode())+" @"+getPosition().toString()+" id: "+ id+" value: "+value;
+		return Integer.toHexString(hashCode()) + " @" + getPosition().toString() + " id: " + id + " value: " + value;
 	}
 
 	@Override
@@ -1505,7 +1505,9 @@ public class RenderCell extends AbstractGameObject {
 	}
 
 	/**
-	 * should only be changed when the copy of the data in the map has also changed
+	 * It is advised to only change this value if the data stored in the map
+	 * also changes.
+	 *
 	 * @param value game data value.
 	 */
 	public void setValue(byte value) {

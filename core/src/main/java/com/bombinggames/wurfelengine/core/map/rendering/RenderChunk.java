@@ -37,13 +37,13 @@ import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator;
 
 /**
- *
+ * Stores display data for a {@link Chunk}. If no block/air is stored by using the shared {@link #NULLPOINTEROBJECT}.
  * @author Benedikt Vogler
  */
 public class RenderChunk {
 	
 	/**
-	 * if in a cell is no data available use this block. Uses air internally. Per-block differences should not be used when using this object.
+	 * if in a cell is no data available use this block. Uses air internally. block-by-block differences must not used when using this shared object.
 	 */
 	public static final RenderCell NULLPOINTEROBJECT = RenderCell.newRenderCell((byte) 0, (byte) 0);
 	/**
@@ -60,7 +60,7 @@ public class RenderChunk {
 				for (RenderCell[][] x : arr) {
 					for (RenderCell[] y : x) {
 						for (int z = 0; z < y.length; z++) {
-							y[z] = NULLPOINTEROBJECT;
+							y[z] = RenderCell.newRenderCell((byte) 0, (byte) 0);//nullpointerobject can not be used, as the rendering process expects an individiual ocntainer at each cell
 						}
 					}
 				}
@@ -115,8 +115,7 @@ public class RenderChunk {
 				for (int z = 0; z < blocksZ; z++) {
 					//update only if cell changed
 					int blockAtPos = chunk.getBlockByIndex(xInd, yInd, z);//get block from map
-					//here 'null' can be value of cell if not yet initialized
-					if (data[xInd][yInd][z] == null || (blockAtPos & 255) != data[xInd][yInd][z].getId()) {
+					if ((blockAtPos & 255) != data[xInd][yInd][z].getId()) {
 						data[xInd][yInd][z] = RenderCell.newRenderCell((byte) (blockAtPos & 255), (byte) ((blockAtPos >> 8) & 255));
 					}
 					
@@ -153,6 +152,7 @@ public class RenderChunk {
 	 * @return
 	 */
 	public RenderCell getCell(int x, int y, int z) {
+		//if is above (outside) container
 		if (z >= Chunk.getBlocksZ()) {
 			return NULLPOINTEROBJECT;
 		}
