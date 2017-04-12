@@ -32,7 +32,6 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
-import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.GameView;
@@ -49,8 +48,14 @@ import com.bombinggames.wurfelengine.core.map.Position;
 import java.util.LinkedList;
 
 /**
- * Something which can be rendered and therefore saves render information shared across cameras. A RenderCell should not use the event system. The class extends (wraps) the plain data of the block with a position and {@link AbstractGameObject} class methods. The wrapped cell is not referenced. It is possible to change there sprite id and value {@link AbstractGameObject#setSpriteId(byte)} but keeping the logic id and value. <br>
- * The internal wrapped block can have different id then used for rendering. The rendering sprite id's are set in the constructor or later manualy.<br>
+ * Something which can be rendered and therefore saves render information shared
+ * across cameras. A RenderCell should not use the event system. The class
+ * extends/wraps the plain data of the block with a position and
+ * {@link AbstractGameObject} class methods. The wrapped cell is not
+ * referenced.<br>
+ * The block id in teh map can have different id then used for rendering. The
+ * rendering sprite id's are set in the constructor or later manualy.<br>
+ *
  * @author Benedikt Vogler
  */
 public class RenderCell extends AbstractGameObject {
@@ -175,7 +180,7 @@ public class RenderCell extends AbstractGameObject {
 	}
 
 	/**
-	 * Creates a new logic instance. This can happen before the chunk is filled
+	 * Creates a new logic instance if registered. This can happen before the chunk is filled
 	 * at this position.
 	 *
 	 * @param id
@@ -184,10 +189,7 @@ public class RenderCell extends AbstractGameObject {
 	 * @return null if has no logic
 	 */
 	public static AbstractBlockLogicExtension createLogicInstance(byte id, byte value, Coordinate coord) {
-		if (customBlocks == null) {
-			return null;
-		}
-		return customBlocks.newLogicInstance(id, value, coord);
+		return AbstractBlockLogicExtension.newLogicInstance(id, value, coord);
 	}
 	
 	/**
@@ -197,10 +199,7 @@ public class RenderCell extends AbstractGameObject {
 	 * @return
 	 */
 	public static boolean hasLogic(byte id, byte value) {
-		if (customBlocks == null) {
-			return false;
-		}
-		return customBlocks.hasLogic(id, value);
+		return AbstractBlockLogicExtension.isRegistered(id);
 	}
 
 	/**
@@ -455,7 +454,7 @@ public class RenderCell extends AbstractGameObject {
 	 * set the timestamp when the content changed. This causes every field wich contains the covered neighbors to be rebuild.
 	 */
 	public static void rebuildCoverList() {
-		RenderCell.rebuildCoverList = WE.getGameplay().getFrameNum();
+		RenderCell.rebuildCoverList = Gdx.graphics.getFrameId();
 	}
 
    /**
@@ -1337,7 +1336,7 @@ public class RenderCell extends AbstractGameObject {
 	 *
 	 * @return
 	 */
-	public boolean isClipped() {
+	public boolean isFullyClipped() {
 		return clipping == 0b111;
 	}
 
