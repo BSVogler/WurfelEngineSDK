@@ -1468,7 +1468,7 @@ public class RenderCell extends AbstractGameObject {
 		}
 
 		nghb.goToNeighbour(3);//return to origin
-		lastRebuild = WE.getGameplay().getFrameNum();
+		lastRebuild = Gdx.graphics.getFrameId();
 	}
 
 	/**
