@@ -28,6 +28,8 @@
  */
 package com.bombinggames.wurfelengine.core.map.rendering;
 
+import java.util.LinkedList;
+
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
@@ -45,7 +47,6 @@ import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.CustomBlocks;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
-import java.util.LinkedList;
 
 /**
  * Something which can be rendered and therefore saves render information shared

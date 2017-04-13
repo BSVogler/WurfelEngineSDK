@@ -30,6 +30,10 @@
  */
 package com.bombinggames.wurfelengine;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.util.ArrayList;
+
 import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Files;
 import com.badlogic.gdx.Game;
@@ -51,9 +55,6 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.loading.LoadingScreen;
 import com.bombinggames.wurfelengine.extension.basicmainmenu.BasicMainMenu;
 import com.bombinggames.wurfelengine.soundengine.SoundEngine;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.util.ArrayList;
 
 /**
  * The main class of the engine. To create a new engine use

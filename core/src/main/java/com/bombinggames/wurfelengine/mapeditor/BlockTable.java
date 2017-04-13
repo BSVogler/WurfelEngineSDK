@@ -30,12 +30,13 @@
  */
 package com.bombinggames.wurfelengine.mapeditor;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
-import java.util.ArrayList;
-import java.util.Iterator;
 
 /**
  *

@@ -30,6 +30,9 @@
  */
 package com.bombinggames.wurfelengine.core.map;
 
+import java.util.ArrayList;
+import java.util.LinkedList;
+
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Vector3;
@@ -45,8 +48,6 @@ import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell.Channel;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
-import java.util.ArrayList;
-import java.util.LinkedList;
 
 /**
  * A coordinate is a reference to a specific cell in the map. The coordinate
@@ -671,7 +672,6 @@ public class Coordinate implements Position {
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
 	public <T> LinkedList<T> getEntitiesNearby(float radius, Class<T> type) {
 		LinkedList<T> result = new LinkedList<>();
 		LinkedList<T> entities = Controller.getMap().getEntitys(type);

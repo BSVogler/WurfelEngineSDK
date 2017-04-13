@@ -31,6 +31,8 @@
 
 package com.bombinggames.wurfelengine.core.map;
 
+import java.io.File;
+
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
@@ -44,7 +46,6 @@ import com.badlogic.gdx.scenes.scene2d.ui.Window;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.WorkingDirectory;
-import java.io.File;
 
 /**
  *A menu for choosing a map.

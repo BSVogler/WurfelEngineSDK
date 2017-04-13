@@ -30,6 +30,11 @@
  */
 package com.bombinggames.wurfelengine.core;
 
+import java.io.FileNotFoundException;
+import java.util.ArrayList;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input.Keys;
 import com.badlogic.gdx.ai.msg.MessageManager;
@@ -52,10 +57,6 @@ import com.bombinggames.wurfelengine.core.map.LoadMenu;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
-import java.io.FileNotFoundException;
-import java.util.ArrayList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * The GameView manages everything what should be drawn in an active game in game space.

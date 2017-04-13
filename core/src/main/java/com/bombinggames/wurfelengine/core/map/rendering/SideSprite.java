@@ -30,8 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core.map.rendering;
 
-import com.badlogic.gdx.graphics.Color;
-import com.badlogic.gdx.graphics.g2d.Batch;
 import static com.badlogic.gdx.graphics.g2d.Batch.C1;
 import static com.badlogic.gdx.graphics.g2d.Batch.C2;
 import static com.badlogic.gdx.graphics.g2d.Batch.C3;
@@ -52,6 +50,9 @@ import static com.badlogic.gdx.graphics.g2d.Batch.Y1;
 import static com.badlogic.gdx.graphics.g2d.Batch.Y2;
 import static com.badlogic.gdx.graphics.g2d.Batch.Y3;
 import static com.badlogic.gdx.graphics.g2d.Batch.Y4;
+
+import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
@@ -128,8 +129,8 @@ public class SideSprite extends TextureRegion {
 
 		float x2 = x + width;
 		float y2 = y + height;
-		@SuppressWarnings("MismatchedReadAndWriteOfArray")
 		float[] vertices = this.vertices;
+		
 		vertices[X1] = x;
 		vertices[Y1] = y;
 
@@ -167,7 +168,6 @@ public class SideSprite extends TextureRegion {
 
 		float x2 = x + width;
 		float y2 = y + height;
-		@SuppressWarnings("MismatchedReadAndWriteOfArray")
 		float[] vertices = this.vertices;
 		vertices[X1] = x;
 		vertices[Y1] = y;
@@ -266,8 +266,8 @@ public class SideSprite extends TextureRegion {
 			return;
 		}
 
-		@SuppressWarnings("MismatchedReadAndWriteOfArray")
 		float[] vertices = this.vertices;
+		
 		vertices[X1] += xAmount;
 		vertices[X2] += xAmount;
 		vertices[X3] += xAmount;
@@ -288,7 +288,6 @@ public class SideSprite extends TextureRegion {
 			return;
 		}
 
-		@SuppressWarnings("MismatchedReadAndWriteOfArray")
 		float[] vertices = this.vertices;
 		vertices[Y1] += yAmount;
 		vertices[Y2] += yAmount;
@@ -312,7 +311,6 @@ public class SideSprite extends TextureRegion {
 			return;
 		}
 
-		@SuppressWarnings("MismatchedReadAndWriteOfArray")
 		float[] vertices = this.vertices;
 		vertices[X1] += xAmount;
 		vertices[Y1] += yAmount;

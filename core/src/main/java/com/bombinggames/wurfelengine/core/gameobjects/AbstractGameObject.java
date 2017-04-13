@@ -28,6 +28,13 @@
  */
 package com.bombinggames.wurfelengine.core.gameobjects;
 
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_DEPTH2;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_WIDTH2;
+
+import java.io.FileNotFoundException;
+import java.io.Serializable;
+
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
@@ -42,11 +49,6 @@ import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_DEPTH2;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_WIDTH2;
-import java.io.FileNotFoundException;
-import java.io.Serializable;
 
 /**
  * An AbstractGameObject is something wich can be found in the game world.

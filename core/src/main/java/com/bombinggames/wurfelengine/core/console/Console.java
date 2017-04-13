@@ -30,6 +30,11 @@
  */
 package com.bombinggames.wurfelengine.core.console;
 
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Stack;
+import java.util.StringTokenizer;
+
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input.Keys;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
@@ -43,10 +48,6 @@ import com.bombinggames.wurfelengine.core.WorkingDirectory;
 import com.bombinggames.wurfelengine.core.cvar.CVar;
 import com.bombinggames.wurfelengine.core.cvar.CVarSystemMap;
 import com.bombinggames.wurfelengine.core.cvar.CVarSystemSave;
-import java.io.File;
-import java.util.ArrayList;
-import java.util.Stack;
-import java.util.StringTokenizer;
 
 /**
  * The message system can manage &amp; show messages (Line).

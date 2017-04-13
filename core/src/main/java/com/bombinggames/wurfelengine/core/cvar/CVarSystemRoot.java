@@ -30,8 +30,9 @@
  */
 package com.bombinggames.wurfelengine.core.cvar;
 
-import com.badlogic.gdx.Input;
 import java.io.File;
+
+import com.badlogic.gdx.Input;
 
 /**
  *

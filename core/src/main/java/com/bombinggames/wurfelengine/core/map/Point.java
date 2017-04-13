@@ -30,6 +30,10 @@
  */
 package com.bombinggames.wurfelengine.core.map;
 
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.function.Predicate;
+
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.WE;
@@ -40,9 +44,6 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.function.Predicate;
 
 /**
  * A point is a single position in the game world not bound to the grid. Use
@@ -878,7 +879,6 @@ public class Point extends Vector3 implements Position {
 	}
 	
 	@Override
-	@SuppressWarnings("SuspiciousNameCombination")
 	public int getChunkX() {
 		return Math.floorDiv((int) x, Chunk.getGameWidth());
 	}
@@ -923,7 +923,6 @@ public class Point extends Vector3 implements Position {
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
 	public <T> LinkedList<T> getEntitiesNearby(float radius, Class<T> type) {
 		LinkedList<T> result = new LinkedList<>();//default size 5
 		LinkedList<T> entities = Controller.getMap().getEntitys(type);

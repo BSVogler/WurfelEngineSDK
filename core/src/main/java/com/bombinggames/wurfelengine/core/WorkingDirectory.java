@@ -30,7 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core;
 
-import com.badlogic.gdx.Gdx;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -39,6 +38,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+
+import com.badlogic.gdx.Gdx;
 
 /**
  * A class which helps getting OS specific information.
@@ -164,7 +165,6 @@ public class WorkingDirectory {
 	 * @return trlue if everything went okay
 	 * @since 1.3.13
 	 */
-	@SuppressWarnings("NestedAssignment")
 	public static boolean unpackMap(String foldername, InputStream source) {
 		File dest = new File(getMapsFolder().getAbsolutePath()+"/"+foldername+"/");
 		//if directory not exists, create it

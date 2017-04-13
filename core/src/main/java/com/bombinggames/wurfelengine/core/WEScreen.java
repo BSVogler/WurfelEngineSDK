@@ -30,11 +30,12 @@
  */
 package com.bombinggames.wurfelengine.core;
 
+import java.util.ArrayList;
+
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.bombinggames.wurfelengine.WE;
-import java.util.ArrayList;
 
 /**
  * A WEScreen is a {@link Screen} which supports Wurfel Engine features like the

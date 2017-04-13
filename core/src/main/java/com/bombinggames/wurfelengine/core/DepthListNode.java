@@ -30,9 +30,10 @@
  */
 package com.bombinggames.wurfelengine.core;
 
+import java.util.Iterator;
+
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
-import java.util.Iterator;
 
 /**
  *
