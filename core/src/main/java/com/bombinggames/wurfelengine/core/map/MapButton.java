@@ -31,6 +31,8 @@
 
 package com.bombinggames.wurfelengine.core.map;
 
+import java.io.File;
+
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.scenes.scene2d.Actor;
@@ -40,7 +42,6 @@ import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.WorkingDirectory;
 import com.bombinggames.wurfelengine.core.cvar.CVarSystemMap;
-import java.io.File;
 
 /**
  *A button which creates a new save if you click on it

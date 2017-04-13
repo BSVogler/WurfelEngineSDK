@@ -31,8 +31,8 @@
 package com.bombinggames.wurfelengine.core.map;
 
 import com.badlogic.gdx.math.Vector3;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 
 /**
  *

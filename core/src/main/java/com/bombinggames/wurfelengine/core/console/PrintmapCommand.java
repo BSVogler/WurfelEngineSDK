@@ -5,8 +5,9 @@
  */
 package com.bombinggames.wurfelengine.core.console;
 
-import com.bombinggames.wurfelengine.core.GameplayScreen;
 import java.util.StringTokenizer;
+
+import com.bombinggames.wurfelengine.core.GameplayScreen;
 
 /**
  *

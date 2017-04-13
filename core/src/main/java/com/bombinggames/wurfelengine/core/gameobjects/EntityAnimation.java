@@ -33,7 +33,6 @@ package com.bombinggames.wurfelengine.core.gameobjects;
  * @author Benedikt
  */
 public class EntityAnimation implements Animatable, Component {
-	private static final long serialVersionUID = 1L;
     private final int[] animationsduration;
     private float counter = 0;
     private boolean running;

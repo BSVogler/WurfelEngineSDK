@@ -30,6 +30,10 @@
  */
 package com.bombinggames.wurfelengine.core;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.bombinggames.wurfelengine.Command;
@@ -43,9 +47,6 @@ import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
 
 /**
  * A controller manages the map and the game data.

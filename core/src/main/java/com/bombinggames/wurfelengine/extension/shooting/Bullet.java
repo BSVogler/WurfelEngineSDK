@@ -30,6 +30,8 @@
  */
 package com.bombinggames.wurfelengine.extension.shooting;
 
+import java.util.LinkedList;
+
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.graphics.Color;
@@ -42,7 +44,6 @@ import com.bombinggames.wurfelengine.core.gameobjects.Particle;
 import com.bombinggames.wurfelengine.core.gameobjects.ParticleType;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
-import java.util.LinkedList;
 
 /**
  * A bullet is a moving object which can destroy and damage entities or the

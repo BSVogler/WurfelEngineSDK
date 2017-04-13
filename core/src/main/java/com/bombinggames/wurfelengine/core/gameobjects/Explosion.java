@@ -1,5 +1,7 @@
 package com.bombinggames.wurfelengine.core.gameobjects;
 
+import java.util.LinkedList;
+
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
@@ -10,7 +12,6 @@ import com.bombinggames.wurfelengine.core.Events;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
-import java.util.LinkedList;
 
 /**
  *

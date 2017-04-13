@@ -28,6 +28,12 @@
  */
 package com.bombinggames.wurfelengine.core.gameobjects;
 
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_DIAGLENGTH2;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
+
+import java.util.ArrayList;
+import java.util.LinkedList;
+
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ai.msg.Telegraph;
 import com.bombinggames.wurfelengine.WE;
@@ -37,11 +43,7 @@ import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_DIAGLENGTH2;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
-import java.util.ArrayList;
-import java.util.LinkedList;
 
 /**
  * An entity is a game object which has the key feature that is has a position.
@@ -519,7 +521,6 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * @param filter only where the filter is true is returned
 	 * @return
 	 */
-	@SuppressWarnings("unchecked")
 	public <T> LinkedList<T> getCollidingEntities(final Class<T> filter) {
 		LinkedList<T> result = new LinkedList<>();//default size 5
 

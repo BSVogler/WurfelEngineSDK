@@ -30,9 +30,13 @@
  */
 package com.bombinggames.wurfelengine.core;
 
+import static com.badlogic.gdx.graphics.GL20.GL_BLEND;
+
+import java.util.ArrayList;
+import java.util.LinkedList;
+
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
-import static com.badlogic.gdx.graphics.GL20.GL_BLEND;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Matrix4;
@@ -43,15 +47,13 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.gameobjects.Renderable;
 import com.bombinggames.wurfelengine.core.map.Chunk;
-import com.bombinggames.wurfelengine.core.map.Iterators.CoveredByCameraIterator;
 import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
+import com.bombinggames.wurfelengine.core.map.Iterators.CoveredByCameraIterator;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import com.bombinggames.wurfelengine.core.map.rendering.SideSprite;
-import java.util.ArrayList;
-import java.util.LinkedList;
 
 /**
  * Creates a virtual camera wich displays the game world on the viewport. A camer acan be locked to an entity.

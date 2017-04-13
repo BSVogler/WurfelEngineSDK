@@ -30,6 +30,10 @@
  */
 package com.bombinggames.wurfelengine.soundengine;
 
+import java.io.FileNotFoundException;
+import java.util.ArrayList;
+import java.util.HashMap;
+
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.audio.Sound;
@@ -39,9 +43,6 @@ import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
-import java.io.FileNotFoundException;
-import java.util.ArrayList;
-import java.util.HashMap;
 
 /**
  * Manages the sounds in the game world.

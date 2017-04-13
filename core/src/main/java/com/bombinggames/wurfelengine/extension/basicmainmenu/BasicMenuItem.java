@@ -30,6 +30,9 @@
  */
 package com.bombinggames.wurfelengine.extension.basicmainmenu;
 
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input.Buttons;
 import com.badlogic.gdx.audio.Sound;
@@ -41,8 +44,6 @@ import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.loading.LoadingScreen;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * A menu item is an object wich can be placed on a menu.
