@@ -30,8 +30,9 @@
  */
 package com.bombinggames.wurfelengine.core.map.Iterators;
 
-import com.bombinggames.wurfelengine.core.map.Chunk;
 import java.util.Iterator;
+
+import com.bombinggames.wurfelengine.core.map.Chunk;
 
 /**
  * An iterator iterating over a 3d array. Starts outside the array so first call before acces must be {@link #next()}.

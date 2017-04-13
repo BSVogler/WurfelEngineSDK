@@ -30,11 +30,12 @@
  */
 package com.bombinggames.wurfelengine.core.map.Iterators;
 
+import java.util.NoSuchElementException;
+
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
-import java.util.NoSuchElementException;
 
 /**
  * A map iterator which loops only over the chunks covered by the camera (0-8).

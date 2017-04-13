@@ -30,6 +30,8 @@
  */
 package com.bombinggames.wurfelengine.extension;
 
+import java.util.ArrayList;
+
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
@@ -37,7 +39,6 @@ import com.bombinggames.wurfelengine.core.gameobjects.Component;
 import com.bombinggames.wurfelengine.core.gameobjects.Particle;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
-import java.util.ArrayList;
 
 /**
  * A band which points to a point or entity. It most only be updated to work. It

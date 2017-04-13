@@ -30,13 +30,14 @@
  */
 package com.bombinggames.wurfelengine.core.gameobjects;
 
+import java.io.Serializable;
+
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.core.map.Point;
-import java.io.Serializable;
 
 /**
  *

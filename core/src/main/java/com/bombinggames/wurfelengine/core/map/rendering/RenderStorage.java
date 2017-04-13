@@ -30,6 +30,11 @@
  */
 package com.bombinggames.wurfelengine.core.map.rendering;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
@@ -40,12 +45,8 @@ import com.bombinggames.wurfelengine.core.Events;
 import com.bombinggames.wurfelengine.core.lightengine.AmbientOcclusionCalculator;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
-import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator;
 import com.bombinggames.wurfelengine.core.map.Point;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
+import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator;
 
 /**
  * A RenderStorage is container which saves {@link RenderChunk}s used for chunks storing rendering-data. It manages which {@link Chunk}s must be transformed to {@link RenderChunk}s.

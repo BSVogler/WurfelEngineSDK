@@ -30,8 +30,9 @@
  */
 package com.bombinggames.wurfelengine.core.cvar;
 
-import com.bombinggames.wurfelengine.core.map.Map;
 import java.io.File;
+
+import com.bombinggames.wurfelengine.core.map.Map;
 
 /**
  *
