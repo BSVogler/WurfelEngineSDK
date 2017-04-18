@@ -68,14 +68,6 @@
 			<version>${libGdxVersion}</version>
 		</dependency>
 
-		<!-- https://mvnrepository.com/artifact/com.badlogicgames.gdx/gdx-controllers-desktop -->
-		<dependency>
-			<groupId>com.badlogicgames.gdx</groupId>
-			<artifactId>gdx-controllers-lwjgl3</artifactId>
-			<version>${libGdxVersion}</version>
-		</dependency>
-
-
 		<!-- https://mvnrepository.com/artifact/com.badlogicgames.gdx/gdx-ai -->
 		<dependency>
 			<groupId>com.badlogicgames.gdx</groupId>
@@ -170,19 +162,6 @@
 							<outputDirectory>${project.build.directory}/natives</outputDirectory>
 						</configuration>
 					</execution>
-					<execution>
-						<id>controller-natives</id>
-						<phase>generate-resources</phase>
-						<goals>
-							<goal>wget</goal>
-						</goals>
-						<configuration>
-							<cacheDirectory>${project.build.directory}/download-cache</cacheDirectory>
-							<url>${gdxControllerNativesUrl}/gdx-controllers-desktop-natives.jar</url>
-							<unpack>true</unpack>
-							<outputDirectory>${project.build.directory}/controller-natives</outputDirectory>
-						</configuration>
-					</execution>
 				</executions>
 			</plugin>
 		</plugins>
@@ -195,12 +174,6 @@
 			</resource>
 			<resource>
 				<directory>${project.build.directory}/natives</directory>
-				<includes>
-					<include>**/*.*</include>
-				</includes>
-			</resource>
-			<resource>
-				<directory>${project.build.directory}/controller-natives</directory>
 				<includes>
 					<include>**/*.*</include>
 				</includes>
