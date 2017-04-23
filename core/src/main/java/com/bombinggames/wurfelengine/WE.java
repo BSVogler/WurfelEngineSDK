@@ -30,10 +30,6 @@
  */
 package com.bombinggames.wurfelengine;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.util.ArrayList;
-
 import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Files;
 import com.badlogic.gdx.Game;
@@ -55,6 +51,9 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.loading.LoadingScreen;
 import com.bombinggames.wurfelengine.extension.basicmainmenu.BasicMainMenu;
 import com.bombinggames.wurfelengine.soundengine.SoundEngine;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.util.ArrayList;
 
 /**
  * The main class of the engine. To create a new engine use
@@ -99,6 +98,7 @@ public class WE {
 	 */
 	private static boolean inGame = false;
 	private static boolean inEditor = false;
+	private static LoadingScreen customLoadingScreen;
 
 	/**
 	 * Pass the mainMenu which gets displayed when you call launch().
@@ -281,10 +281,10 @@ public class WE {
 			Gdx.app.log("Wurfel Engine", "and View:" + view.toString());
 			Gdx.app.log("Wurfel Engine", "and Config:" + CONFIG.toString());
 
-			getEngineView().getEditorToggler().setGameplayManagers(
-				view
-			);
+			getEngineView().getEditorToggler().setGameView(view);
 
+			WE.customLoadingScreen = customLoadingScreen;
+				
 			if (gameplayScreen != null) {
 				gameplayScreen.dispose();//remove gameplayscreen if it already exists
 			}
@@ -312,9 +312,7 @@ public class WE {
 		Gdx.app.debug("Wurfel Engine", "and View:" + view.toString());
 		inGame = true;
 		inEditor = false;
-		getEngineView().getEditorToggler().setGameplayManagers(
-			view
-		);
+		getEngineView().getEditorToggler().setGameView(view);
 		engineView.resetInputProcessors();
 		gameplayScreen.getController().exit();
 		gameplayScreen.getView().exit();
@@ -354,7 +352,7 @@ public class WE {
 		inGame = true;
 		inEditor = editor;
 		if (!inEditor) {
-			getEngineView().getEditorToggler().setGameplayManagers(
+			getEngineView().getEditorToggler().setGameView(
 				view
 			);
 		}
@@ -386,7 +384,7 @@ public class WE {
 		Gdx.app.debug("Wurfel Engine", "View switch: " + view.toString());
 		inEditor = editor;
 		if (!inEditor) {
-			getEngineView().getEditorToggler().setGameplayManagers(
+			getEngineView().getEditorToggler().setGameView(
 				view
 			);
 		}
@@ -445,6 +443,9 @@ public class WE {
 	 * after the loading screen.
 	 */
 	public static void showMainMenu() {
+		if (customLoadingScreen != null){
+			customLoadingScreen.dispose();
+		}
 		if (gameplayScreen != null) {
 			gameplayScreen.dispose();
 		}
@@ -592,7 +593,7 @@ public class WE {
 				Gdx.app.error("WEMain", "Using a predefined BasicMainMenu.");
 				mainMenu = new BasicMainMenu();
 			}
-			engineView = new EngineView(null, null);
+			engineView = EngineView.getInstance();
 
 			WE.console = new Console(
 				engineView.getSkin(),
