@@ -30,12 +30,11 @@
  */
 package com.bombinggames.wurfelengine.core;
 
-import static com.bombinggames.wurfelengine.core.Controller.getMap;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.bombinggames.wurfelengine.WE;
+import static com.bombinggames.wurfelengine.core.Controller.getMap;
 import com.bombinggames.wurfelengine.core.loading.LoadingScreen;
 import com.bombinggames.wurfelengine.mapeditor.EditorView;
 
@@ -47,14 +46,12 @@ import com.bombinggames.wurfelengine.mapeditor.EditorView;
  */
 public class GameplayScreen extends WEScreen {
 
-	/**
-	 * Contains the Message System
-	 */
-
 	private GameView view = null;
 	private Controller controller = null;
+	/**
+	 * the view used when changed to editor mode
+	 */
 	private EditorView editorView;
-	private LoadingScreen loadingScreen;
 
 	/**
 	 * Create the gameplay state. This shows the loading screen.
@@ -66,8 +63,7 @@ public class GameplayScreen extends WEScreen {
 	public GameplayScreen(final Controller controller, final GameView view, LoadingScreen loadingScreen) {
 		Gdx.app.log("GameplayScreen", "Initializing");
 
-		Gdx.input.setInputProcessor(null);
-		this.loadingScreen = loadingScreen;
+		Gdx.input.setInputProcessor(null);//why is this line needed?
 		WE.setScreen(loadingScreen);
 
 		this.controller = controller;
@@ -141,11 +137,6 @@ public class GameplayScreen extends WEScreen {
 		this.view.init(controller, null);
 		controller.enter();
 		view.enter();
-
-		if (loadingScreen != null) {
-			loadingScreen.dispose();
-		}
-		loadingScreen = null;
 	}
 
 	@Override

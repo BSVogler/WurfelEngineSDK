@@ -35,7 +35,6 @@ import com.badlogic.gdx.InputMultiplexer;
 import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Cursor;
-import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -53,15 +52,22 @@ import com.bombinggames.wurfelengine.mapeditor.EditorToggler;
  * @author Benedikt Vogler
  * @since 1.2.26
  */
-public class EngineView {//is GameView so it can render in game space
+public class EngineView {
 
+	private static EngineView instance;
+	
+	public static EngineView getInstance(){
+		if (instance==null)
+			instance = new EngineView();
+		return instance;
+	}
+	
 	private final BitmapFont font = new BitmapFont(false);
 	private final Skin skin = new Skin(Gdx.files.internal("com/bombinggames/wurfelengine/core/skin/uiskin.json"));
 	private Cursor cursor;
 	private Cursor cursorDrag;
 	private Cursor cursorPointer;
 	private int cursorId;
-	private final OrthographicCamera camera = new OrthographicCamera(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 	private final EditorToggler editorToggler = new EditorToggler();
 	private final ShapeRenderer shRenderer = new ShapeRenderer();
 	private final SpriteBatch spriteBatch = new SpriteBatch(2000);
@@ -80,7 +86,7 @@ public class EngineView {//is GameView so it can render in game space
 	 * @param controller
 	 * @param oldView
 	 */
-	public EngineView(Controller controller, GameView oldView) {
+	private EngineView() {
 		Gdx.app.debug("EngineView", "Initializing...");
 		//set up font
 		//font = WurfelEngine.getInstance().manager.get("com/bombinggames/wurfelengine/EngineCore/arial.fnt"); //load font
@@ -89,8 +95,6 @@ public class EngineView {//is GameView so it can render in game space
 		font.setColor(Color.GREEN);
 		//font.scale(-0.5f);
 
-		camera.setToOrtho(false, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-		camera.update();
 		//getSpriteBatch().setProjectionMatrix(camera.combined);
 		//getShapeRenderer().setProjectionMatrix(camera.combined);
 
