@@ -30,13 +30,11 @@
  */
 package com.bombinggames.wurfelengine.core;
 
-import java.text.DecimalFormat;
-import java.text.NumberFormat;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.mapeditor.EditorView;
 
@@ -52,7 +50,6 @@ public class DevTools {
     public static final int WIDTH=3;
     private final float[] data = new float[100];
     private final int leftOffset, topOffset, maxHeight;
-    private float timeStepMin;
     private int field;//the current field number
     private boolean visible = true;
     private StringBuilder memoryText;
@@ -77,12 +74,12 @@ public class DevTools {
 	 *
 	 */
 	public void update() {
-		float dt = Gdx.graphics.getRawDeltaTime();
+		float rdt = Gdx.graphics.getRawDeltaTime();
 		field++;//move to next field
 		if (field >= data.length) {
 			field = 0; //start over           
 		}
-		data[field] = dt;//save delta time
+		data[field] = rdt;//save delta time
         
         Runtime runtime = Runtime.getRuntime();
         NumberFormat format = NumberFormat.getInstance();
@@ -149,7 +146,7 @@ public class DevTools {
             shr.rect(xPos+WIDTH*field,
                 yPos-maxHeight,
                 WIDTH,
-                getSavedDelta(field)*3000
+                data[field]*3000
             );
             
             shr.end();
@@ -177,7 +174,7 @@ public class DevTools {
             }
             
             //render average values       
-            float avg = getAverage();
+            float avg = getAverageDelta(WE.getCVars().getValueI("numFramesAverageDelta"));
             if (avg>0) {
                  //delta values
                 shr.setColor(new Color(0, 0.3f, 0.8f, 0.7f));
@@ -200,23 +197,7 @@ public class DevTools {
     }
     
 	/**
-	 * Get a recorded FPS value. The time between savings is at least the
-	 * timeStepMin
-	 *
-	 * @param pos the array position
-	 * @return FPS value
-	 * @see #getTimeStepMin()
-	 */
-	public int getSavedFPS(int pos) {
-		if (data[pos] == 0) {
-			return 0;
-		} else {
-			return (int) (data[pos]);
-		}
-	}
-
-	/**
-	 * Get a recorded FPS value. The time between savings is at least the
+	 * Get a recorded frame time value. The time between savings is at least the
 	 * timeStepMin
 	 *
 	 * @param pos the array position
@@ -227,28 +208,37 @@ public class DevTools {
 	}
 	
     /**
-     * The minimum time between two FPS values.
-     * @return 
-     */
-    public float getTimeStepMin() {
-        return timeStepMin;
-    }
-    
-    /**
      * Returns the average delta time.
      * @return
      */
-    public float getAverage(){
+    public float getAverageDelta(){
         float avg = 0;
         int length = 0;
-        for (float fps : data) {
-            avg += fps;
-            if (fps > 0) length ++;//count how many field are filled
+        for (float rdt : data) {
+            avg += rdt;
+            if (rdt > 0) length ++;//count how many field are filled
         }
         if (length > 0) avg /= length;
         return avg;
     }
-
+	
+	/**
+	 * Get the avererage raw delta time over the last n steps
+	 * @param lastNSteps
+	 * @return 
+	 */
+	public float getAverageDelta(int lastNSteps){
+        float avg = 0;
+        int length = 0;
+		for (int i = lastNSteps; i >= 0; i--) {
+			float rdt = data[(field-i+data.length)%data.length];
+			avg += rdt;
+			if (rdt > 0) length ++;//count how many field are filled
+		}
+        if (length > 0) avg /= length;
+        return avg;
+	}
+	
     /**
      * Is the diagramm visible?
      * @return 
