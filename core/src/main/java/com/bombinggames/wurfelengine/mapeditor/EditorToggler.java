@@ -174,8 +174,7 @@ public class EditorToggler {
 
 		/**
 		 *
-		 * @param controller
-		 * @param gameview
+		 * @param gameview the view which will be activated when clicked
 		 * @param replay ignored at the moment
 		 */
 		private PlayButton(GameView gameview, boolean replay) {
