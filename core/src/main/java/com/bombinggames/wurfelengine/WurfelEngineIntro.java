@@ -45,79 +45,80 @@ import com.bombinggames.wurfelengine.core.WEScreen;
  */
 class WurfelEngineIntro extends WEScreen {
 
-		private final Sprite lettering;
-		private final SpriteBatch batch;
-		private float alpha = 0;
-		private boolean increase = true;
-		private final Sound startupsound;
-		private final Interpolation interpolate;
+	private final Sprite lettering;
+	private final SpriteBatch batch;
+	private float alpha = 0;
+	private boolean increase = true;
+	private final Sound startupsound;
+	private final Interpolation interpolate;
 
-		WurfelEngineIntro() {
-			batch = new SpriteBatch();
-			lettering = new Sprite(new Texture(Gdx.files.internal("com/bombinggames/wurfelengine/lettering.png")));
-			lettering.setX((Gdx.graphics.getWidth() - lettering.getWidth()) / 2);
-			lettering.setY((Gdx.graphics.getHeight() - lettering.getHeight()) / 2);
-			startupsound = Gdx.audio.newSound(Gdx.files.internal("com/bombinggames/wurfelengine/soundengine/sounds/startup.mp3"));
-			startupsound.play();
-			interpolate = new Interpolation.ExpOut(2, 7);
-			//lettering.flip(false, true);
-		}
+	WurfelEngineIntro() {
+		batch = new SpriteBatch();
+		lettering = new Sprite(new Texture(Gdx.files.internal("com/bombinggames/wurfelengine/lettering.png")));
+		lettering.setX((Gdx.graphics.getWidth() - lettering.getWidth()) / 2);
+		lettering.setY((Gdx.graphics.getHeight() - lettering.getHeight()) / 2);
+		startupsound = Gdx.audio.newSound(Gdx.files.internal("com/bombinggames/wurfelengine/soundengine/sounds/startup.mp3"));
+		startupsound.play();
+		interpolate = new Interpolation.ExpOut(2, 7);
+		//lettering.flip(false, true);
+	}
 
-		@Override
-		public void renderImpl(float dt) {
-			if (increase) {
-				if (alpha >= 1) {
-					alpha = 1;
-					increase = false;
-				} else {
-					alpha += dt / 1500f;
-				}
-				drawLettering();
-			} else if (alpha <= 0) {
-				alpha = 0;
+	@Override
+	public void renderImpl(float dt) {
+		if (increase) {
+			if (alpha >= 1) {
+				alpha = 1;
+				increase = false;
+			} else {
+				alpha += dt / 1500f;
+			}
+			drawLettering();
+		} else {
+			alpha -= dt / 1000f;
+			if (alpha <= 0) {
 				dispose();
 			} else {
-				alpha -= dt / 1000f;
 				drawLettering();
 			}
 		}
-
-		void drawLettering() {
-			lettering.setColor(1f, 1f, 1f, interpolate.apply(alpha));
-
-			//clear & set background to black
-			Gdx.gl20.glClearColor(0f, 0f, 0f, 1f);
-			Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT);
-
-			batch.begin();
-			lettering.draw(batch);
-			batch.end();
-		}
-
-		@Override
-		public void resize(int width, int height) {
-		}
-
-		@Override
-		public void show() {
-			Gdx.app.debug("Intro", "Showing intro…");
-		}
-
-		@Override
-		public void hide() {
-		}
-
-		@Override
-		public void pause() {
-		}
-
-		@Override
-		public void resume() {
-		}
-
-		@Override
-		public void dispose() {
-			startupsound.dispose();
-			WE.showMainMenu();
-		}
 	}
+
+	void drawLettering() {
+		lettering.setColor(1f, 1f, 1f, interpolate.apply(alpha));
+
+		//clear & set background to black
+		Gdx.gl20.glClearColor(0f, 0f, 0f, 1f);
+		Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
+		batch.begin();
+		lettering.draw(batch);
+		batch.end();
+	}
+
+	@Override
+	public void resize(int width, int height) {
+	}
+
+	@Override
+	public void show() {
+		Gdx.app.debug("Intro", "Showing intro…");
+	}
+
+	@Override
+	public void hide() {
+	}
+
+	@Override
+	public void pause() {
+	}
+
+	@Override
+	public void resume() {
+	}
+
+	@Override
+	public void dispose() {
+		startupsound.dispose();
+		WE.showMainMenu();
+	}
+}
