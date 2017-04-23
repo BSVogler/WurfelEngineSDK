@@ -434,7 +434,7 @@ public class WE {
 
 	/**
 	 * Starts the actual game using the custom gameplayScreen. This is called
-	 * after the loading screen.
+	 * after the loading screen finishes.
 	 */
 	public static void startGame() {
 		SOUND.disposeMusic();

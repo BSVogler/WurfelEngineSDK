@@ -41,7 +41,7 @@ import com.bombinggames.wurfelengine.mapeditor.EditorView;
 
 /**
  * The GameplayScreen State. This is state where the Wurfel Engine magic
- * happens.
+ * happens. A controller and view is needed.
  *
  * @author Benedikt
  */
