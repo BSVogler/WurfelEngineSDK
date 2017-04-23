@@ -197,9 +197,9 @@ public class LoadingScreen extends WEScreen {
 
     @Override
     public void dispose() {
-		Gdx.app.debug("LoadingScreen", "disposing");
         // Dispose the loading assets as we no longer need them
 		if (!(boolean) WE.getCVars().get("preventUnloading").getValue()) {
+			Gdx.app.debug("LoadingScreen", "disposing");
 			stage.dispose();
 			WE.getAssetManager().unload("com/bombinggames/wurfelengine/core/Loading/loading.txt");//causes programm to stop and show a white screen!
 		}
