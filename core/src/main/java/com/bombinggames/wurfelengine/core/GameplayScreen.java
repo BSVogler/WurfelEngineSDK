@@ -106,9 +106,11 @@ public class GameplayScreen extends WEScreen {
 
 	@Override
 	public void renderImpl(final float delta) {
+		float avgDt = controller.getDevTools().getAverageDelta(WE.getCVars().getValueI("numFramesAverageDelta"));
 		
 		//aply game world speed
-		float dt = delta * WE.getCVars().getValueF("timespeed");
+		float dt = avgDt * WE.getCVars().getValueF("timespeed");
+		
 		//update data
 		MessageManager.getInstance().update(delta);
 		view.preUpdate(dt);
