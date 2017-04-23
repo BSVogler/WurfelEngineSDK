@@ -180,7 +180,7 @@ public class Console {
     }
 
     /**
-     *
+     * Set the reference field for the console so that it can access the game.
      * @param gameplayRef
      */
     public void setGameplayRef(GameplayScreen gameplayRef) {

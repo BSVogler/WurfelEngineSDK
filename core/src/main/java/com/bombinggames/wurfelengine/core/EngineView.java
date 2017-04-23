@@ -47,7 +47,7 @@ import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.mapeditor.EditorToggler;
 
 /**
- * A view which is not dependend on the currently active game. Only one instance
+ * A view which is not dependend on the currently active game. It can therefore be used to render in screen space and in the menus. Only one instance
  * should be used.
  *
  * @author Benedikt Vogler
@@ -75,7 +75,7 @@ public class EngineView {//is GameView so it can render in game space
 	private InputProcessor inactiveInpProcssrs;
 
 	/**
-	 * Iniatializises.
+	 * Iniatializes.
 	 *
 	 * @param controller
 	 * @param oldView
