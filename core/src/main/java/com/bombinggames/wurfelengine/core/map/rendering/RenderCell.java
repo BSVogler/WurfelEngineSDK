@@ -491,9 +491,9 @@ public class RenderCell extends AbstractGameObject {
 	
 	//view data
 	/**
-	 * Each side has four RGB101010 colors with a 10bit float precision per
-	 * channel. channel brightness obtained by dividing bits by fraction /2^10-1
-	 * = 1023. each field is vertex 0-3
+	 * Each side has four RGB101010 colors (each edge) with a each 10bit float
+	 * per color channel. The channel brightness is obtained by dividing bits by
+	 * fraction /2^10-1 = 1023. Each field is vertex (edge) 0-3
 	 */
 	private final int[] colorLeft = new int[]{
 		(55 << 16) + (55 << 8) + 55,
@@ -1052,9 +1052,9 @@ public class RenderCell extends AbstractGameObject {
 	}
 
 	/**
-	 * Stores the lightlevel overriding each side
+	 * Stores the lightlevel factor for the whole cell and thereby overriding values for each side.
 	 *
-	 * @param lightlevel range 0 -2
+	 * @param lightlevel range 0-2 where 1 is default
 	 */
 	@Override
 	public void setLightlevel(float lightlevel) {
