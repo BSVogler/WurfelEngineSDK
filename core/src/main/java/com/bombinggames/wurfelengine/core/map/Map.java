@@ -30,16 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core.map;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.pfa.Connection;
@@ -58,6 +48,15 @@ import com.bombinggames.wurfelengine.core.cvar.CVarSystemSave;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.map.Generators.AirGenerator;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * A map stores nine chunks as part of a bigger map. It also contains the
@@ -179,7 +178,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 * to the map file
 	 */
 	public Map(final File name, int saveslot) throws IOException {
-		this(name, getDefaultGenerator(), saveslot);
+		this(name, saveslot, getDefaultGenerator());
 	}
 
 	/**
@@ -191,7 +190,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 * @throws java.io.IOException thrown if there is no full read/write access
 	 * to the map file
 	 */
-	public Map(final File name, Generator generator, int saveSlot) throws IOException {
+	public Map(final File name, int saveSlot, Generator generator) throws IOException {
 		this.directory = name;
 		this.generator = generator;
 		
