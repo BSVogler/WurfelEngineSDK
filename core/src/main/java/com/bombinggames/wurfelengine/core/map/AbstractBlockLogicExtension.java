@@ -30,11 +30,12 @@ public abstract class AbstractBlockLogicExtension {
 		LOGICREGISTER.put(id, aClass);
 }
 	/**
-	 * 
+	 * Creates a new logic instance if registered. This can happen before the chunk is filled
+	 * at this position.
 	 * @param blockId the block at the position
 	 * @param value
 	 * @param coord the position where the logic block is placed
-	 * @return 
+	 * @return null if not registered
 	 */
  	public static AbstractBlockLogicExtension newLogicInstance(byte blockId, byte value, Coordinate coord) {
 		if (coord == null) {
@@ -73,7 +74,6 @@ public abstract class AbstractBlockLogicExtension {
 	 * Called when spawned. Should not access the map because during map
 	 * creating this method is called and the map still empty. Also entities can not be spawned here.
 	 *
-
 	 */
 	public AbstractBlockLogicExtension() {
 	}
@@ -100,7 +100,7 @@ public abstract class AbstractBlockLogicExtension {
 
 	/**
 	 *
-	 * @param dt
+	 * @param dt time in ms
 	 */
 	public abstract void update(float dt);
 
