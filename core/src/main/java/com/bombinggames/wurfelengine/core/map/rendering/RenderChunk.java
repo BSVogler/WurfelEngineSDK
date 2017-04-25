@@ -82,7 +82,7 @@ public class RenderChunk {
 	private final Chunk chunk;
 	
 	/**
-	 * the actual data stored in this renderchunk
+	 * the actual data stored in this renderchunk. Can not contain null
 	 */
 	private final RenderCell data[][][];
 	private boolean cameraAccess;
@@ -200,19 +200,15 @@ public class RenderChunk {
 
 				//check if block above is transparent
 				if (idexZ < blocksZ - 2
-					&& (data[idexX][idexY][idexZ + 1] == null
-					|| data[idexX][idexY][idexZ + 1].isTransparent())
+					&& (data[idexX][idexY][idexZ + 1].isTransparent())
 				) {
 					//two cells above is a block casting shadows
-					if (data[idexX][idexY][idexZ + 2] != null
-						&& !data[idexX][idexY][idexZ + 2].isTransparent()
+					if (!data[idexX][idexY][idexZ + 2].isTransparent()
 					) {
 						data[idexX][idexY][idexZ].setLightlevel(0.8f, Side.TOP);
 					//three blocks above is one
 					} else if (idexZ < blocksZ - 3
-						&& (data[idexX][idexY][idexZ + 2] == null
-						|| data[idexX][idexY][idexZ + 2].isTransparent())
-						&& data[idexX][idexY][idexZ + 3] != null
+						&& (data[idexX][idexY][idexZ + 2].isTransparent())
 						&& !data[idexX][idexY][idexZ + 3].isTransparent()
 					) {
 						data[idexX][idexY][idexZ].setLightlevel(0.92f, Side.TOP);
