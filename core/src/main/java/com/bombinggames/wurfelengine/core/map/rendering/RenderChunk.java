@@ -255,6 +255,7 @@ public class RenderChunk {
 
 	/**
 	 *
+	 * @see Chunk#getChunkX() 
 	 * @return
 	 */
 	public int getChunkX() {
@@ -263,6 +264,7 @@ public class RenderChunk {
 
 	/**
 	 *
+	 * @see Chunk#getChunkY() 
 	 * @return
 	 */
 	public int getChunkY() {
