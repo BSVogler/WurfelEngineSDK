@@ -144,7 +144,7 @@ public abstract class AbstractCVarSystem {
 	 * @since v1.4.2
 	 */
 	public void load() {
-		System.out.println("Loading saved CVars…");
+		System.out.println("Loading saved CVars "+fileSystemPath);
 		reading = true;
 		FileHandle sourceFile = new FileHandle(fileSystemPath);
 		if (sourceFile.exists() && !sourceFile.isDirectory()) {
