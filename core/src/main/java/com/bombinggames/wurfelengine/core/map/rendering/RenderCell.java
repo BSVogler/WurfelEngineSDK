@@ -28,8 +28,6 @@
  */
 package com.bombinggames.wurfelengine.core.map.rendering;
 
-import java.util.LinkedList;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
@@ -41,12 +39,12 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
 import com.bombinggames.wurfelengine.core.gameobjects.SimpleEntity;
-import com.bombinggames.wurfelengine.core.map.AbstractBlockLogicExtension;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.CustomBlocks;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
+import java.util.LinkedList;
 
 /**
  * Something which can be rendered and therefore saves render information shared
@@ -178,29 +176,6 @@ public class RenderCell extends AbstractGameObject {
 	 */
 	public static CustomBlocks getFactory() {
 		return customBlocks;
-	}
-
-	/**
-	 * Creates a new logic instance if registered. This can happen before the chunk is filled
-	 * at this position.
-	 *
-	 * @param id
-	 * @param value
-	 * @param coord
-	 * @return null if has no logic
-	 */
-	public static AbstractBlockLogicExtension createLogicInstance(byte id, byte value, Coordinate coord) {
-		return AbstractBlockLogicExtension.newLogicInstance(id, value, coord);
-	}
-	
-	/**
-	 *
-	 * @param id
-	 * @param value
-	 * @return
-	 */
-	public static boolean hasLogic(byte id, byte value) {
-		return AbstractBlockLogicExtension.isRegistered(id);
 	}
 
 	/**
