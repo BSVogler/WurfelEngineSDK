@@ -21,6 +21,11 @@ public abstract class AbstractBlockLogicExtension {
 	private static final long serialVersionUID = 2L;
 	private static final HashMap<Byte, Class<? extends AbstractBlockLogicExtension>> LOGICREGISTER = new HashMap<>(20);
 
+	/**
+	 * Register a block id with a logic block class.
+	 * @param id
+	 * @param aClass 
+	 */
 	public static void registerClass(byte id, Class<? extends AbstractBlockLogicExtension> aClass){
 		LOGICREGISTER.put(id, aClass);
 }
