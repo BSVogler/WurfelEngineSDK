@@ -285,7 +285,7 @@ public class Chunk implements Telegraph {
 					data[x][y][z + 1] = (byte) ((generated>>8)&255);
 					data[x][y][z + 2] = 100;//health
 					if (data[x][y][z] != 0) {
-						AbstractBlockLogicExtension logic = RenderCell.createLogicInstance(
+						AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(
 							data[x][y][z],
 							data[x][y][z + 1],
 							new Coordinate(left + x, top + y, z)
@@ -396,8 +396,8 @@ public class Chunk implements Telegraph {
 							data[x][y][z * 3 + 2] = 100;//health
 							//if has logicblock then add logicblock
 							if (id != 0) {
-								if (RenderCell.hasLogic(id, bChar)) {
-									AbstractBlockLogicExtension logic = RenderCell.createLogicInstance(
+								if (AbstractBlockLogicExtension.isRegistered(id)) {
+									AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(
 										id,
 										bChar,
 										new Coordinate(
@@ -713,7 +713,7 @@ public class Chunk implements Telegraph {
 		
 		//get corresponding logic and update
 		if (rblock.getId() != 0) {
-			AbstractBlockLogicExtension logic = RenderCell.createLogicInstance(rblock.getId(), rblock.getValue(), rblock.getPosition());
+			AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(rblock.getId(), rblock.getValue(), rblock.getPosition());
 			if (logic != null)
 				logicBlocks.add(logic);
 		}
@@ -742,7 +742,7 @@ public class Chunk implements Telegraph {
 		
 		//get corresponding logic and update
 		if (id != 0) {
-			AbstractBlockLogicExtension logic = RenderCell.createLogicInstance(id, value, coord);
+			AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, value, coord);
 			if (logic != null)
 				logicBlocks.add(logic);
 		}
@@ -769,7 +769,7 @@ public class Chunk implements Telegraph {
 		
 		//get corresponding logic and update
 		if (id != 0) {
-			AbstractBlockLogicExtension logic = RenderCell.createLogicInstance(id, value, coord);
+			AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, value, coord);
 			if (logic != null)
 				logicBlocks.add(logic);
 		}
@@ -795,7 +795,7 @@ public class Chunk implements Telegraph {
 		
 		//get corresponding logic and update
 		if (id != 0) {
-			AbstractBlockLogicExtension logic = RenderCell.createLogicInstance(id, (byte) 0, coord);
+			AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, (byte) 0, coord);
 			if (logic != null)
 				logicBlocks.add(logic);
 		}
