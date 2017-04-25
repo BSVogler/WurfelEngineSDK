@@ -41,19 +41,21 @@ public abstract class AbstractBlockLogicExtension {
 		if (coord == null) {
 			throw new NullPointerException();
 		}
-		try {
-			Class<? extends AbstractBlockLogicExtension> aClass = LOGICREGISTER.get(blockId);
-			if (aClass!=null) {
-				AbstractBlockLogicExtension instance = aClass.newInstance();
+	
+		Class<? extends AbstractBlockLogicExtension> logicClass = LOGICREGISTER.get(blockId);
+		if (logicClass != null) {
+			try {
+				AbstractBlockLogicExtension instance = logicClass.newInstance();
 				instance.id = blockId;
 				instance.coord = coord;
 				instance.setValue(value);
 				instance.setCoord(coord);
 				return instance;
+			} catch (InstantiationException | IllegalAccessException ex) {
+				Logger.getLogger(AbstractBlockLogicExtension.class.getName()).log(Level.SEVERE, null, ex);
 			}
-		} catch (InstantiationException | IllegalAccessException ex) {
-			Logger.getLogger(AbstractBlockLogicExtension.class.getName()).log(Level.SEVERE, null, ex);
 		}
+
 		return null;
 	}
 
