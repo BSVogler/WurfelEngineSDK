@@ -56,7 +56,7 @@ public class RenderChunk {
 			@Override
 			protected RenderCell[][][] newObject() {
 				//bigger by two cells because of an overlap
-				RenderCell[][][] arr = new RenderCell[Chunk.getBlocksX()+2][Chunk.getBlocksY()+4][Chunk.getBlocksZ()];
+				RenderCell[][][] arr = new RenderCell[Chunk.getBlocksX()][Chunk.getBlocksY()][Chunk.getBlocksZ()];
 				for (RenderCell[][] x : arr) {
 					for (RenderCell[] y : x) {
 						for (int z = 0; z < y.length; z++) {
