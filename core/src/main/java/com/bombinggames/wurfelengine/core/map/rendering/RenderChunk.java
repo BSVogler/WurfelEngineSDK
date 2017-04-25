@@ -99,7 +99,7 @@ public class RenderChunk {
 	}
 
 	/**
-	 * fills every render cell with the according data from the map
+	 * fills every render cell based on the data from the map
 	 *
 	 */
 	public void initData() {

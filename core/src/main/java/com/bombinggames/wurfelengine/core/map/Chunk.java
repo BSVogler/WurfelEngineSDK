@@ -904,17 +904,8 @@ public class Chunk implements Telegraph {
 	 * @param x coordinate
 	 * @param y coordinate
 	 * @param z coordinate
-	 * @return can be null
+	 * @return can be null-pointer
 	 */
-
-	/**
-	 *
-	 * @param x
-	 * @param y
-	 * @param z
-	 * @return
-	 */
-
 	public byte getBlockId(int x, int y, int z) {
 		if (z >= Chunk.blocksZ) {
 			return 0;
