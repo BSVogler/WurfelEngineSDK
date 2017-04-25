@@ -697,28 +697,32 @@ public class Chunk implements Telegraph {
 	}
 
 	/**
-	 * sets a block in the map. if position is under the map does nothing.
-	 * @param rblock no null pointer allowed
+	 * Almost lowest level method to set a block in the map. If the block has
+	 * logic a new logicinstance will be created.
+	 * Health set to 100 and value set to 0
+	 * @param x
+	 * @param y
+	 * @param z
+	 * @param id 
 	 */
-	public void setBlock(RenderCell rblock) {
-		int xIndex = rblock.getPosition().getX()-topleftX;
-		int yIndex = rblock.getPosition().getY()-topleftY;
-		int z = rblock.getPosition().getZ()*3;
+	public void setBlock(int x, int y, int z, byte id) {
+		int xIndex = x - topleftX;
+		int yIndex = y - topleftY;
+		z = z*3;//because each block uses three bytes
 		if (z >= 0){
-			data[xIndex][yIndex][z] = rblock.getId();
-			data[xIndex][yIndex][z+1] = rblock.getValue();
-			data[xIndex][yIndex][z+2] = rblock.getHealth();
+			data[xIndex][yIndex][z] = id;
+			data[xIndex][yIndex][z+1] = 0;
+			data[xIndex][yIndex][z+2] = 100;
 			modified = true;
 		}
-		
 		//get corresponding logic and update
-		if (rblock.getId() != 0) {
-			AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(rblock.getId(), rblock.getValue(), rblock.getPosition());
+		if (id != 0) {
+			AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, (byte) 0, new Coordinate(x, y, z));
 			if (logic != null)
 				logicBlocks.add(logic);
 		}
 	}
-
+	
 	/**
 	 * Almost lowest level method to set a block in the map. If the block has
 	 * logic a new logicinstance will be created.

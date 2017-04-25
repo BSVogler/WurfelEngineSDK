@@ -637,7 +637,7 @@ public class RenderCell extends AbstractGameObject {
 	 */
 	public RenderCell spawn(RenderStorage rS, Coordinate coord) {
 		setPosition(coord);
-		Controller.getMap().setBlock(this);
+		Controller.getMap().setBlock(coord, getId(), getValue());
 		return this;
 	}
     

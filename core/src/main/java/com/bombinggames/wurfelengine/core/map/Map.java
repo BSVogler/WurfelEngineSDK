@@ -409,18 +409,6 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 
 	/**
-	 * Replace a block. Assume that the map already has been filled at this
-	 * coordinate.
-	 *
-	 * @param block no null pointer
-	 * @see
-	 * #setBlock(com.bombinggames.wurfelengine.core.map.rendering.RenderCell)
-	 */
-	public void setBlock(final RenderCell block) {
-		getChunkContaining(block.getPosition()).setBlock(block);
-	}
-
-	/**
 	 * Set a block at this coordinate. This creates a logic instance if the
 	 * block if it has a logic.
 	 *
