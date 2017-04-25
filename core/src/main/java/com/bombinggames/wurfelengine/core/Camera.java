@@ -562,7 +562,7 @@ public class Camera {
 				RenderCell cellAbove = gameView.getRenderStorage().getCell(ent.getPosition().add(0, 0, RenderCell.GAME_EDGELENGTH));//add in cell above
 				ent.getPosition().add(0, 0, -RenderCell.GAME_EDGELENGTH);//reverse change from line above
 				//in the renderstorage no nullpointer should exists, escept object is outside the array
-				if (cellAbove == RenderChunk.NULLPOINTEROBJECT) {
+				if (cellAbove == RenderChunk.CELLOUTSIDE) {
 					renderAppendix.add(ent);//render at the end
 				} else {
 					cellAbove.addCoveredEnts(ent);//cell covers entities inside
@@ -584,7 +584,7 @@ public class Camera {
 		while (iterator.hasNext()) {
 			RenderCell cell = iterator.next();
 
-			if (cell != RenderChunk.NULLPOINTEROBJECT && inViewFrustum(cell.getPosition())) {
+			if (cell != RenderChunk.CELLOUTSIDE && inViewFrustum(cell.getPosition())) {
 				visit(cell);
 			}
 		}

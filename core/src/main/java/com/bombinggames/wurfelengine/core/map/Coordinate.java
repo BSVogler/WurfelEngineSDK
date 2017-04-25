@@ -742,9 +742,9 @@ public class Coordinate implements Position {
 	 */
 	public RenderCell getRenderCell(RenderStorage rs) {
 		if (z < 0) {
-			return RenderChunk.NULLPOINTEROBJECT;
+			return RenderChunk.CELLOUTSIDE;
 		} else if (z >= Chunk.getBlocksZ()) {
-			return RenderChunk.NULLPOINTEROBJECT;
+			return RenderChunk.CELLOUTSIDE;
 		} else {
 			return rs.getCell(this);
 		}

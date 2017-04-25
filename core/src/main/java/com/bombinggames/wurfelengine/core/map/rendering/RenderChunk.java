@@ -37,15 +37,15 @@ import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator;
 
 /**
- * Stores display data for a {@link Chunk}. If no block/air is stored by using the shared {@link #NULLPOINTEROBJECT}.
+ * Stores display data for a {@link Chunk}. If no block/air is stored by using the shared {@link #CELLOUTSIDE}.
  * @author Benedikt Vogler
  */
 public class RenderChunk {
 	
 	/**
-	 * if in a cell is no data available use this block. Uses air internally. block-by-block differences must not used when using this shared object.
+	 * if in a cell is no data available use this block. Uses air internally. block-by-block differences must not be used because this is a shared object.
 	 */
-	public static final RenderCell NULLPOINTEROBJECT = RenderCell.newRenderCell((byte) 0, (byte) 0);
+	public static final RenderCell CELLOUTSIDE = RenderCell.newRenderCell((byte) 0, (byte) 0);
 	/**
 	 * a pool containing chunkdata
 	 */
@@ -55,12 +55,12 @@ public class RenderChunk {
 		DATAPOOL = new Pool<RenderCell[][][]>(3) {
 			@Override
 			protected RenderCell[][][] newObject() {
-				//bigger by two because overlap
+				//bigger by two cells because of an overlap
 				RenderCell[][][] arr = new RenderCell[Chunk.getBlocksX()+2][Chunk.getBlocksY()+4][Chunk.getBlocksZ()];
 				for (RenderCell[][] x : arr) {
 					for (RenderCell[] y : x) {
 						for (int z = 0; z < y.length; z++) {
-							y[z] = RenderCell.newRenderCell((byte) 0, (byte) 0);//nullpointerobject can not be used, as the rendering process expects an individiual ocntainer at each cell
+							y[z] = RenderCell.newRenderCell((byte) 0, (byte) 0);//nullpointerobject or just a null pointer can be used, as the rendering process expects an individiual container at each cell
 						}
 					}
 				}
@@ -139,7 +139,7 @@ public class RenderChunk {
 	 */
 	public RenderCell getCell(Coordinate coord) {
 		if (coord.getZ() >= Chunk.getBlocksZ()) {
-			return NULLPOINTEROBJECT;
+			return CELLOUTSIDE;
 		}
 		return data[coord.getX() - chunk.getTopLeftCoordinateX()][coord.getY() - chunk.getTopLeftCoordinateY()][coord.getZ()];
 	}
@@ -154,7 +154,7 @@ public class RenderChunk {
 	public RenderCell getCell(int x, int y, int z) {
 		//if is above (outside) container
 		if (z >= Chunk.getBlocksZ()) {
-			return NULLPOINTEROBJECT;
+			return CELLOUTSIDE;
 		}
 		return data[x - chunk.getTopLeftCoordinateX()][y - chunk.getTopLeftCoordinateY()][z];
 	}
@@ -177,9 +177,7 @@ public class RenderChunk {
 		for (int x = 0; x < blocksX; x++) {
 			for (int y = 0; y < blocksY; y++) {
 				for (int z = 0; z < blocksZ; z++) {
-					if (data[x][y][z] != NULLPOINTEROBJECT) {
-						data[x][y][z].setUnclipped();
-					}
+					data[x][y][z].setUnclipped();
 				}
 			}
 		}
@@ -197,7 +195,7 @@ public class RenderChunk {
 		int blocksZ = Chunk.getBlocksZ();
 		if (idexZ < Chunk.getBlocksZ() && idexZ >= 0) {
 			RenderCell block = data[idexX][idexY][idexZ];
-			if (block != null && block != NULLPOINTEROBJECT) {
+			if (block != null) {
 				data[idexX][idexY][idexZ].setLightlevel(1);
 
 				//check if block above is transparent

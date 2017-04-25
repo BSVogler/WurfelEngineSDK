@@ -97,7 +97,7 @@ public class RenderStorage implements Telegraph  {
 			for (RenderCell[][] x : renderChunk.getData()) {
 				for (RenderCell[] y : x) {
 					for (RenderCell z : y) {
-						if (z != RenderChunk.NULLPOINTEROBJECT) {
+						if (z != RenderChunk.CELLOUTSIDE) {
 							z.update(dt);
 						}
 					}
@@ -297,7 +297,7 @@ public class RenderStorage implements Telegraph  {
 				return chunk.getCell(x, y, z);//find chunk in x coord
 			}
 		}
-		return RenderChunk.NULLPOINTEROBJECT;
+		return RenderChunk.CELLOUTSIDE;
 	}
 
 	/**
@@ -308,11 +308,11 @@ public class RenderStorage implements Telegraph  {
 	 */
 	public RenderCell getCell(final Coordinate coord) {
 		if (coord.getZ() < 0) {
-			return RenderChunk.NULLPOINTEROBJECT;
+			return RenderChunk.CELLOUTSIDE;
 		}
 		RenderChunk chunk = getChunk(coord);
 		if (chunk == null) {
-			return RenderChunk.NULLPOINTEROBJECT;
+			return RenderChunk.CELLOUTSIDE;
 		} else {
 			return chunk.getCell(coord.getX(), coord.getY(), coord.getZ());//find chunk in x coord
 		}
@@ -411,7 +411,7 @@ public class RenderStorage implements Telegraph  {
 		while (dataIter.hasNext()) {
 			RenderCell current = dataIter.next();//next is the current block
 
-			if (current != RenderChunk.NULLPOINTEROBJECT) {
+			if (current != RenderChunk.CELLOUTSIDE) {
 				//calculate index position relative to camera border
 				final int x = dataIter.getCurrentIndex()[0];
 				final int y = dataIter.getCurrentIndex()[1];
@@ -421,7 +421,7 @@ public class RenderStorage implements Telegraph  {
 				//get neighbour block
 				RenderCell neighbour = getCellByIndex(chunk, x - ((y % 2 == 0) ? 1 : 0), y + 1, z);//next row can be shifted right(?)
 
-				if (neighbour != RenderChunk.NULLPOINTEROBJECT
+				if (neighbour != RenderChunk.CELLOUTSIDE
 					&& (neighbour.hidingPastBlock() || (neighbour.isLiquid() && current.isLiquid()))) {
 					current.setClippedLeft();
 				}
@@ -430,7 +430,7 @@ public class RenderStorage implements Telegraph  {
 				//get neighbour block
 				neighbour = getCellByIndex(chunk, x + ((y % 2 == 0) ? 0 : 1), y + 1, z);//next row is shifted right
 
-				if (neighbour != RenderChunk.NULLPOINTEROBJECT
+				if (neighbour != RenderChunk.CELLOUTSIDE
 					&& (neighbour.hidingPastBlock() || (neighbour.isLiquid() && current.isLiquid()))) {
 					current.setClippedRight();
 				}
@@ -441,7 +441,7 @@ public class RenderStorage implements Telegraph  {
 					if (
 						neighbour.hidingPastBlock()
 						||
-						(chunkData[x][y][z + 1] != RenderChunk.NULLPOINTEROBJECT
+						(chunkData[x][y][z + 1] != RenderChunk.CELLOUTSIDE
 						&& (chunkData[x][y][z + 1].hidingPastBlock()
 						|| chunkData[x][y][z + 1].isLiquid() && current.isLiquid()))
 					) {
