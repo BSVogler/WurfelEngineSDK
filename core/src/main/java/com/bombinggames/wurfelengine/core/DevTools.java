@@ -211,23 +211,23 @@ public class DevTools {
 	
     /**
      * Returns the average delta time.
-     * @return
+     * @return time in ms
      */
     public float getAverageDelta(){
         float avg = 0;
         int length = 0;
         for (float rdt : data) {
             avg += rdt;
-            if (rdt > 0) length ++;//count how many field are filled
+            if (rdt > 0) length++;//count how many field are filled
         }
         if (length > 0) avg /= length;
-        return avg;
+        return avg*1000;
     }
 	
 	/**
 	 * Get the avererage raw delta time over the last n steps
 	 * @param lastNSteps
-	 * @return 
+	 * @return time in ms
 	 */
 	public float getAverageDelta(int lastNSteps){
         float avg = 0;
@@ -235,10 +235,10 @@ public class DevTools {
 		for (int i = lastNSteps; i >= 0; i--) {
 			float rdt = data[(field-i+data.length)%data.length];
 			avg += rdt;
-			if (rdt > 0) length ++;//count how many field are filled
+			if (rdt > 0) length++;//count how many field are filled
 		}
         if (length > 0) avg /= length;
-        return avg;
+        return avg*1000;
 	}
 	
     /**
