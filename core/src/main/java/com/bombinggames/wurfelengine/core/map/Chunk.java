@@ -285,7 +285,8 @@ public class Chunk implements Telegraph {
 					data[x][y][z + 1] = (byte) ((generated>>8)&255);
 					data[x][y][z + 2] = 100;//health
 					if (data[x][y][z] != 0) {
-						AbstractBlockLogicExtension logic = RenderCell.createLogicInstance(data[x][y][z],
+						AbstractBlockLogicExtension logic = RenderCell.createLogicInstance(
+							data[x][y][z],
 							data[x][y][z + 1],
 							new Coordinate(left + x, top + y, z)
 						);
