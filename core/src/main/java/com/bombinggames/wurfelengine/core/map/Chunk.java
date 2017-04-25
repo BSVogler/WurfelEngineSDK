@@ -600,7 +600,7 @@ public class Chunk implements Telegraph {
     }
 
 	/**
-     * Returns the data of the chunk
+     * Returns the data of the chunk. each block uses three bytes, id, value and health
      * @return
      */
     public byte[][][] getData() {
@@ -722,32 +722,28 @@ public class Chunk implements Telegraph {
 	/**
 	 * Almost lowest level method to set a block in the map. If the block has
 	 * logic a new logicinstance will be created.
-	 *
-	 * @param coord The position where you insert the block. Must be inside the
-	 * bounds of the chunk.
-	 * @param id
-	 * @param value
-	 * @param health
+	 * Health set to 100 and value set to 0
+	 * @param coord
+	 * @param id 
 	 */
-	public void setBlock(Coordinate coord, byte id, byte value, byte health) {
+	public void setBlock(Coordinate coord, byte id) {
 		int xIndex = coord.getX() - topleftX;
 		int yIndex = coord.getY() - topleftY;
-		int z = coord.getZ()*3;
+		int z = coord.getZ()*3;//because each block uses three bytes
 		if (z >= 0){
 			data[xIndex][yIndex][z] = id;
-			data[xIndex][yIndex][z+1] = value;
-			data[xIndex][yIndex][z+2] = health;
+			data[xIndex][yIndex][z+1] = 0;
+			data[xIndex][yIndex][z+2] = 100;
 			modified = true;
 		}
-		
 		//get corresponding logic and update
 		if (id != 0) {
-			AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, value, coord);
+			AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, (byte) 0, coord);
 			if (logic != null)
 				logicBlocks.add(logic);
 		}
 	}
-	
+		
 	/**
 	 * Almost lowest level method to set a block in the map. If the block has
 	 * logic a new logicinstance will be created.
@@ -778,24 +774,27 @@ public class Chunk implements Telegraph {
 	/**
 	 * Almost lowest level method to set a block in the map. If the block has
 	 * logic a new logicinstance will be created.
-	 * Health set to 100 and value set to 0
-	 * @param coord
-	 * @param id 
+	 *
+	 * @param coord The position where you insert the block. Must be inside the
+	 * bounds of the chunk.
+	 * @param id
+	 * @param value
+	 * @param health
 	 */
-		public void setBlock(Coordinate coord, byte id) {
+	public void setBlock(Coordinate coord, byte id, byte value, byte health) {
 		int xIndex = coord.getX() - topleftX;
 		int yIndex = coord.getY() - topleftY;
 		int z = coord.getZ()*3;
 		if (z >= 0){
 			data[xIndex][yIndex][z] = id;
-			data[xIndex][yIndex][z+1] = 0;
-			data[xIndex][yIndex][z+2] = 100;
+			data[xIndex][yIndex][z+1] = value;
+			data[xIndex][yIndex][z+2] = health;
 			modified = true;
 		}
 		
 		//get corresponding logic and update
 		if (id != 0) {
-			AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, (byte) 0, coord);
+			AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, value, coord);
 			if (logic != null)
 				logicBlocks.add(logic);
 		}
