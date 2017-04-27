@@ -91,7 +91,12 @@ public class Console {
         private String sender = "System";
         private int importance = 1;
 
-
+		/**
+		 * 
+		 * @param pmessage
+		 * @param psender
+		 * @param imp importance
+		 */
         protected Line(String pmessage, String psender, int imp) {
             message = pmessage;
             sender = psender;
@@ -126,6 +131,7 @@ public class Console {
      */
     public Console(Skin skin, final int xPos, final int yPos) {
         this.messages = new Stack<>();
+		messages.add(new Line(WE.getCVars().getValueS("lastConsoleCommand"), "Console", 100));
 		
 		//register engine commands
 		registeredCommands.add(new BenchmarkCommand());
@@ -246,8 +252,11 @@ public class Console {
 			}
 		}
 		
-		if (!textinput.getText().startsWith(path+" $ "))
-			setText(path+" $ ");
+		if (!textinput.getText().startsWith(path + " $ ")) {
+			textinput.setText(path+" $ ");
+			textinput.setCursorPosition(textinput.getText().length());
+		}
+		 
     }
     
     /**
@@ -352,7 +361,11 @@ public class Console {
 		}
 
 		String line = filt.get(filt.size() - 1 - skip).message;//apply filter
-		return line.substring(textinput.getText().indexOf("$ ") + 2, line.length() - 1);
+		if (line.contains("$ ")) {
+			return line.substring(line.indexOf("$ ") + 2, line.length() - 1);
+		} else {
+			return line;
+		}
 	}
     
     /**
@@ -360,7 +373,7 @@ public class Console {
      * @param text
      */
     public void setText(String text){
-        textinput.setText(text);
+        textinput.setText(path+" $ "+text);
         textinput.setCursorPosition(textinput.getText().length());
 		//nextSuggestionNo=0;//start with suggestions all over
     }
@@ -558,22 +571,19 @@ public class Console {
 					if (message.sender.equals("Console")) {
 						filt.add(message);
 					}
-				}	
+				}
+				//increase position
 				if (posInLastCommands < filt.size()) {
 					posInLastCommands++;
 				}
-				if (posInLastCommands >= filt.size()){
-					parentRef.setText(WE.getCVars().getValueS("lastConsoleCommand"));
-				} else {
-					parentRef.setText(parentRef.getLastMessage("Console",posInLastCommands));
-				}
+				parentRef.setText(parentRef.getLastMessage("Console",posInLastCommands));
             }
 			if (keycode == Keys.DOWN){
 				if (posInLastCommands > -1) {
 					posInLastCommands--;
 				}
 				if (posInLastCommands == -1) {
-					parentRef.setText(path + " $ ");
+					parentRef.setText("");//todo should be current text
 				} else {
 					parentRef.setText(parentRef.getLastMessage("Console", posInLastCommands));
 				}
