@@ -30,11 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core.console;
 
-import java.io.File;
-import java.util.ArrayList;
-import java.util.Stack;
-import java.util.StringTokenizer;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input.Keys;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
@@ -48,6 +43,10 @@ import com.bombinggames.wurfelengine.core.WorkingDirectory;
 import com.bombinggames.wurfelengine.core.cvar.CVar;
 import com.bombinggames.wurfelengine.core.cvar.CVarSystemMap;
 import com.bombinggames.wurfelengine.core.cvar.CVarSystemSave;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Stack;
+import java.util.StringTokenizer;
 
 /**
  * The message system can manage &amp; show messages (Line).
@@ -62,10 +61,6 @@ public class Console {
     private final Stack<Line> messages; 
     private boolean keyConsoleDown;
     private StageInputProcessor inputprocessor;
-	/**
-	 * the mode of the console
-	 */
-    private Modes mode;
 	private final TextArea log;
 	private final ArrayList<ConsoleCommand> registeredCommands = new ArrayList<>(10);
 	
@@ -87,11 +82,6 @@ public class Console {
 		return path;
 	}
 
-
-    
-    private enum Modes {
-        Chat, Console
-    }
     /**
      * A message is put into the Console. It contains the message, the sender and the importance.
      * @author Benedikt
@@ -232,7 +222,7 @@ public class Console {
        
         //open close console/chat box. Update is called when the console is not active. The StageInputProcessor oly when it is ipen
         if (!keyConsoleDown && Gdx.input.isKeyPressed(WE.getCVars().getValueI("KeyConsole"))) {
-            setActive(Modes.Console, !textinput.isVisible());//toggle
+            setActive(!textinput.isVisible());//toggle
         }
         keyConsoleDown = Gdx.input.isKeyPressed(WE.getCVars().getValueI("KeyConsole"));
 		
@@ -264,15 +254,12 @@ public class Console {
      * Tell the msg system if it should listen for input.
      * @param active If deactivating the input will be saved.
      */
-   private void setActive(Modes mode, final boolean active) {
-		this.mode = mode;
-		if (mode == Modes.Chat) {
-			if (!active && !textinput.getText().isEmpty()) {//message entered and closing?
-				enter();
-			} else if (active && !textinput.isVisible()) {//window should be opened?
-				clearCommandLine();//clear if openend
-			}
-        }
+   private void setActive(final boolean active) {
+		if (!active && !textinput.getText().isEmpty()) {//message entered and closing?
+			enter();
+		} else if (active && !textinput.isVisible()) {//window should be opened?
+			clearCommandLine();//clear if openend
+		}
         
 		if (active && !textinput.isVisible()) {//window should be opened?
 			inputprocessor = new StageInputProcessor(this);
@@ -598,7 +585,7 @@ public class Console {
             }
 			
 			if (keycode == Keys.ESCAPE){
-                setActive(Modes.Console, false);//toggle
+                setActive(false);//toggle
             }
 			
 			if (keycode == Keys.TAB){
