@@ -49,6 +49,11 @@ import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_DEPTH2;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_WIDTH2;
+import java.io.FileNotFoundException;
+import java.io.Serializable;
 
 /**
  * An AbstractGameObject is something wich can be found in the game world.
@@ -63,7 +68,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * The sprite texture which contains every object texture
 	 */
 	private transient static TextureAtlas spritesheet;
-	private transient static String spritesheetPath = "com/bombinggames/wurfelengine/core/images/Spritesheet";
+	private transient static String spritesheetPath = "com/bombinggames/wurfelengine/core/images/spritesheet";
 	private transient static Pixmap pixmap;
 	/**
 	 * indexed acces to the spritesheet
