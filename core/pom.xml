@@ -47,6 +47,7 @@
 		<gdxNativesUrl>http://libgdx.badlogicgames.com/nightlies/dist</gdxNativesUrl>
 	</properties>
 
+
 	<dependencies>
 		<!-- https://mvnrepository.com/artifact/com.badlogicgames.gdx/gdx -->
 		<dependency>
@@ -142,6 +143,26 @@
 						<exclude>**/BaseClientTest.java</exclude>
 					</excludes>
 				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>com.googlecode.maven-download-plugin</groupId>
+				<artifactId>maven-download-plugin</artifactId>
+				<version>1.1.0</version>
+				<executions>
+					<execution>
+						<id>natives</id>
+						<phase>generate-resources</phase>
+						<goals>
+							<goal>wget</goal>
+						</goals>
+						<configuration>
+							<cacheDirectory>${project.build.directory}/download-cache</cacheDirectory>
+							<url>${gdxNativesUrl}/gdx-natives.jar</url>
+							<unpack>true</unpack>
+							<outputDirectory>${project.build.directory}/natives</outputDirectory>
+						</configuration>
+					</execution>
+				</executions>
 			</plugin>
 		</plugins>
 		<resources>
