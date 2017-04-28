@@ -28,13 +28,6 @@
  */
 package com.bombinggames.wurfelengine.core.gameobjects;
 
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_DEPTH2;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_WIDTH2;
-
-import java.io.FileNotFoundException;
-import java.io.Serializable;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
@@ -73,7 +66,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	/**
 	 * indexed acces to the spritesheet
 	 */
-	private transient static AtlasRegion[][][] sprites = new AtlasRegion['z'][RenderCell.OBJECTTYPESNUM][RenderCell.VALUESNUM];//{category}{id}{value}
+	private static final transient AtlasRegion[][][] sprites = new AtlasRegion['z'][RenderCell.OBJECTTYPESNUM][RenderCell.VALUESNUM];//{category}{id}{value}
 	private transient static int drawCalls = 0;
 	private static Texture textureDiff;
 	private static Texture textureNormal;
