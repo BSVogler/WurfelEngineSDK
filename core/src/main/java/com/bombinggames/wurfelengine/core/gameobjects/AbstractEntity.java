@@ -43,7 +43,11 @@ import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_DIAGLENGTH2;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
+import java.util.ArrayList;
+import java.util.LinkedList;
 
 /**
  * An entity is a game object which has the key feature that is has a position.
@@ -111,15 +115,15 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	private final LinkedList<AbstractGameObject> covered = new LinkedList<>();
 	private final LinkedList<Component> components = new LinkedList<>();
 	private byte value;
-	private byte id;
+	private byte spriteId;
 	/**
 	 * Create an abstractEntity.
 	 *
-	 * @param id objects with id = -1 will be deleted. 0 are invisible objects
+	 * @param spriteId objects with id = -1 will be deleted. 0 are invisible objects
 	 */
-	public AbstractEntity(byte id) {
+	public AbstractEntity(byte spriteId) {
 		super();
-		this.id = id;
+		this.spriteId = spriteId;
 	}
 
 	/**
@@ -130,7 +134,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 */
 	public AbstractEntity(byte id, byte value) {
 		super();
-		this.id = id;
+		this.spriteId = id;
 		this.value = value;
 	}
 
@@ -672,7 +676,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 
 	@Override
 	public byte getSpriteId() {
-		return id;
+		return spriteId;
 	}
 
 	@Override
@@ -685,7 +689,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * @param id
 	 */
 	public void setSpriteId(byte id){
-		this.id = id;
+		this.spriteId = id;
 	}
 	
 	/**
