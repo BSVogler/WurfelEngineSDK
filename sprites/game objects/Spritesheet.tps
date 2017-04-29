@@ -36,7 +36,7 @@
         <key>dataFormat</key>
         <string>libgdx</string>
         <key>textureFileName</key>
-        <filename>../../core/src/main/resources/com/bombinggames/wurfelengine/core/spritesheet.png</filename>
+        <filename>../../core/src/main/resources/com/bombinggames/wurfelengine/core/images/spritesheet.png</filename>
         <key>flipPVR</key>
         <false/>
         <key>pvrCompressionQuality</key>
@@ -150,7 +150,7 @@
             <key>data</key>
             <struct type="DataFile">
                 <key>name</key>
-                <filename>../../core/src/main/resources/com/bombinggames/wurfelengine/core/spritesheet.txt</filename>
+                <filename>../../core/src/main/resources/com/bombinggames/wurfelengine/core/images/spritesheet.txt</filename>
             </struct>
             <key>java</key>
             <struct type="DataFile">
