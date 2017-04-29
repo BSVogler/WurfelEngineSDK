@@ -232,16 +232,6 @@ public class Console {
         }
         keyConsoleDown = Gdx.input.isKeyPressed(WE.getCVars().getValueI("KeyConsole"));
 		
-		if (
-			!keySuggestionDown
-			&& Gdx.input.isKeyPressed( WE.getCVars().getValueI("KeySuggestion") )
-			&& isActive()
-		) {
-            autoComplete();
-        }
-        keySuggestionDown = Gdx.input.isKeyPressed(WE.getCVars().getValueI("KeySuggestion"));
-		
-
 		//decrease importance every 30ms
 		if (timelastupdate >= 30) {
 			timelastupdate = 0;
@@ -369,7 +359,7 @@ public class Console {
 	}
     
     /**
-     *Set the text in the box.
+     *Set the text in the box and the cursor at the end.
      * @param text
      */
     public void setText(String text){
@@ -414,11 +404,6 @@ public class Console {
 			}
 		}
 		
-		//displaySuggestion
-		if (suggestions.size()==1) {
-			textinput.setText(path+" $ "+suggestions.get(0)+" ");
-			textinput.setCursorPosition(textinput.getText().length());
-		}
 		return suggestions;
 	}
     
@@ -598,20 +583,20 @@ public class Console {
                 setActive(false);//toggle
             }
 			
-			if (keycode == Keys.TAB){
-				ArrayList<String> possibilities = autoComplete();
-				if (possibilities.size()>1){
-					if (lastKeyWasTab){
-						add(possibilities+"\n");
-					}
-				} else {
-					if (possibilities.size()==1)
-						setText(path + " $ "+possibilities.get(0));
+			if (keycode == WE.getCVars().getValueI("KeySuggestion")){
+				ArrayList<String> suggestions = autoComplete();
+				if (isActive()) {
+					autoComplete();
 				}
-				lastKeyWasTab = true;
-            }else {
-				lastKeyWasTab = false;
-			}
+				
+				if (suggestions.size()>1){
+					//displaySuggestion
+					add(suggestions+"\n");
+				} else if (!suggestions.isEmpty()) {
+					setText(suggestions.get(0)+" ");
+				}
+            }
+			
             return true;
         }
     }
