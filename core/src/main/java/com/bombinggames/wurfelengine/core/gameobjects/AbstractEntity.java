@@ -28,12 +28,6 @@
  */
 package com.bombinggames.wurfelengine.core.gameobjects;
 
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_DIAGLENGTH2;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
-
-import java.util.ArrayList;
-import java.util.LinkedList;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ai.msg.Telegraph;
 import com.bombinggames.wurfelengine.WE;
@@ -116,6 +110,12 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	private final LinkedList<Component> components = new LinkedList<>();
 	private byte value;
 	private byte spriteId;
+	
+	/**
+	 * can be used to save a heap call to obtain the coordiante.
+	 * @see Coordinate#setFromPoint(com.bombinggames.wurfelengine.core.map.Point) 
+	 * */
+	private final Coordinate tmpCoordinate = new Coordinate(0, 0, 0);
 	/**
 	 * Create an abstractEntity.
 	 *
@@ -487,14 +487,14 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 */
 	public void requestChunk() {
 		if (hasPosition()) {
-			Coordinate coord = position.toCoord();
+			Coordinate coord = getCoord();
 			Chunk chunk = coord.getChunk();
 			if (chunk == null) {
 				int chunkX = coord.getChunkX();
 				int chunkY = coord.getChunkY();
 				if (!Controller.getMap().isLoading(chunkX, chunkY)) {
-					WE.getConsole().add("Entity " + getName() + " requested chunk " + position.toCoord().getChunkX() + "," + position.toCoord().getChunkY());
-					Controller.getMap().loadChunk(position.toCoord().getChunkX(), position.toCoord().getChunkY());
+					WE.getConsole().add("Entity " + getName() + " requested chunk " + coord.getChunkX() + "," + coord.getChunkY());
+					Controller.getMap().loadChunk(coord.getChunkX(), coord.getChunkY());
 				}
 			}
 		}
@@ -606,7 +606,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 
 	@Override
 	public Coordinate getCoord() {
-		return position.toCoord();
+		return tmpCoordinate.setFromPoint(position);
 	}
 
 	/**
