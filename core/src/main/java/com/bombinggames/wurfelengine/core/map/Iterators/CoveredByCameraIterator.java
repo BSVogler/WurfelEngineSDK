@@ -69,6 +69,8 @@ public class CoveredByCameraIterator {
 	public CoveredByCameraIterator(RenderStorage renderStorage, int centerCoordX, int centerCoordY, int startingZ, int topLevel) {
 		this.renderStorage = renderStorage;
 		this.topLevel = topLevel;
+		if (startingZ<0)
+			startingZ=0;
 		this.startingZ = startingZ;
 		centerChunkX = centerCoordX;
 		centerChunkY = centerCoordY;
