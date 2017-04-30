@@ -70,6 +70,9 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	private transient static int drawCalls = 0;
 	private static Texture textureDiff;
 	private static Texture textureNormal;
+	/**
+	 * bit position = camera id
+	 */
 	private static int currentMarkedFlag;
 
 	/**
