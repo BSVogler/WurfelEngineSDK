@@ -73,7 +73,7 @@ public interface Renderable {
 	public Coordinate getCoord();
 	
 	/**
-	 *
+	 * Gives information if object should be rendered. 
 	 * @param camera
 	 * @return
 	 */

@@ -427,7 +427,7 @@ public class RenderCell extends AbstractGameObject {
 	}
 	
 	/**
-	 * set the timestamp when the content changed. This causes every field wich contains the covered neighbors to be rebuild.
+	 * set the timestamp when the content changed. This causes every field wich contains the covered neighbors to be rebuild. uses to prent dublicate rebuilds in one frame.
 	 */
 	public static void rebuildCoverList() {
 		RenderCell.rebuildCoverList = Gdx.graphics.getFrameId();
@@ -1363,7 +1363,7 @@ public class RenderCell extends AbstractGameObject {
 
 	@Override
 	public LinkedList<AbstractGameObject> getCovered(RenderStorage rs) {
-		if (lastRebuild < rebuildCoverList) {//only rebuild once per frame
+		if (lastRebuild < rebuildCoverList) {//only rebuild a maximum of one time per frame
 			rebuildCovered(rs);
 		}
 		if (!coveredEnts.isEmpty()) {

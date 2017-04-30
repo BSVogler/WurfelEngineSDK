@@ -240,6 +240,9 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * default is RGBA 0x808080FF.
 	 */
 	private transient Color tint = new Color(0.5f, 0.5f, 0.5f, 1f);
+	/**
+	 * flag 
+	 */
 	private int marked;
 
 	/**
