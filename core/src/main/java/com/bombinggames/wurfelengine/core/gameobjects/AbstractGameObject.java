@@ -533,7 +533,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * @param id camera id
 	 * @see com.bombinggames.wurfelengine.core.Camera#visit(com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject) 
 	 */
-	public void markPermanentDS(final int id) {
+	public void markAsVisitedDS(final int id) {
 		marked ^= (-((AbstractGameObject.currentMarkedFlag >> id) & 1) ^ marked) & (1 << id);
 	}
 

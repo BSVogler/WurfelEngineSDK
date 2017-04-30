@@ -615,8 +615,8 @@ public class Camera {
 	 */
 	private void visit(AbstractGameObject o) {
 		if (!o.isMarkedDS(id)) {
+			o.markAsVisitedDS(id);
 			LinkedList<AbstractGameObject> covered = o.getCovered(gameView.getRenderStorage());
-			o.markPermanentDS(id);
 			if (!covered.isEmpty()) {
 				for (AbstractGameObject m : covered) {
 					if (inViewFrustum(m.getPosition())) {
