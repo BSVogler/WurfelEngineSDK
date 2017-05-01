@@ -561,7 +561,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 			RenderCell block;
 //			block = rs.getCell(coord);//draw block in this cell first
 //			if (block != null) {
-//				covered.add(block);
+//				covered.add(ablock);
 //			}
 //			block = rs.getCell(coord.goToNeighbour(7));//block behind left
 //			if (block != null) {
@@ -578,7 +578,8 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 //			coord.goToNeighbour(5);
 
 			//render this ent before blocks below
-			if (coord.getZ()<1){
+			if (coord.getZ()<0){
+				//add bottom layer
 				block = rs.getCell(coord);//front
 				if (block != null) {
 					covered.add(block);
