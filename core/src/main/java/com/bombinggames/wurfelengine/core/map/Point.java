@@ -30,10 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core.map;
 
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.function.Predicate;
-
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.WE;
@@ -44,6 +40,10 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.function.Predicate;
 
 /**
  * A point is a single position in the game world not bound to the grid. Use
@@ -640,7 +640,7 @@ public class Point extends Vector3 implements Position {
 	 * 
 	 * @param dir
 	 * @param maxDistance game space in meters
-	 * @param view
+	 * @param rS used when regarding clipping information
 	 * @param hitCondition can be null
 	 * @return 
 	 * @see #raycast(com.badlogic.gdx.math.Vector3, float, com.bombinggames.wurfelengine.core.GameView, java.util.function.Predicate) 
@@ -648,7 +648,7 @@ public class Point extends Vector3 implements Position {
 	public Intersection rayMarching(
 		final Vector3 dir,
 		float maxDistance,
-		final GameView view,
+		final RenderStorage rS,
 		final Predicate<Byte> hitCondition
 	){
 		if (dir == null) {
@@ -662,14 +662,9 @@ public class Point extends Vector3 implements Position {
 		Point traverseP = cpy();
 		dir.cpy().nor().scl(3);
 		Coordinate isectC = traverseP.toCoord();
-		int lastCoordX = 0;
-		int lastCoordY = 0;
 		int lastCoordZ = 0;
 		while (
-			(lastCoordX == isectC.getX()
-			&& lastCoordY == isectC.getY()
-			&& lastCoordZ == isectC.getZ()
-			&& lastCoordZ > 0
+			(lastCoordZ > 0
 			&& lastCoordZ < Chunk.getBlocksZ()
 			|| isectC.isInMemoryAreaXYZ())
 			&& distanceToSquared(traverseP) < maxDistance*RenderCell.GAME_EDGELENGTH*maxDistance*RenderCell.GAME_EDGELENGTH
@@ -677,15 +672,14 @@ public class Point extends Vector3 implements Position {
 			//move
 			traverseP.add(dir);
 			isectC.setFromPoint(traverseP);
-			lastCoordX = isectC.getX();
-			lastCoordY = isectC.getY();
 			lastCoordZ = isectC.getZ();
 			
 			if (
-				view == null
+				rS == null
 				||
-				(lastCoordZ*RenderCell.GAME_EDGELENGTH < view.getRenderStorage().getZRenderingLimit() && !view.getRenderStorage().isClipped(isectC))
+				(lastCoordZ*RenderCell.GAME_EDGELENGTH < rS.getZRenderingLimit() && !rS.isClipped(isectC))
 			) {
+				//evaluate hit
 				byte id = isectC.getBlockId();
 				if (
 					id != 0
