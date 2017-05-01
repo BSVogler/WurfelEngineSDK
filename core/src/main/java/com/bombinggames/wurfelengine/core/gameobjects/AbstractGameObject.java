@@ -253,7 +253,6 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 *
 	 */
 	protected AbstractGameObject() {
-		//markPermanent();//create as marked
 	}
 
 	/**
