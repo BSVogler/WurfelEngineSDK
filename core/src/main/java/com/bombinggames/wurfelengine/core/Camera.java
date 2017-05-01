@@ -30,13 +30,12 @@
  */
 package com.bombinggames.wurfelengine.core;
 
-import static com.badlogic.gdx.graphics.GL20.GL_BLEND;
-
-import java.util.ArrayList;
-import java.util.LinkedList;
-
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.ai.msg.MessageManager;
+import com.badlogic.gdx.ai.msg.Telegram;
+import com.badlogic.gdx.ai.msg.Telegraph;
 import com.badlogic.gdx.graphics.Color;
+import static com.badlogic.gdx.graphics.GL20.GL_BLEND;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Matrix4;
@@ -47,20 +46,22 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.gameobjects.Renderable;
 import com.bombinggames.wurfelengine.core.map.Chunk;
+import com.bombinggames.wurfelengine.core.map.Iterators.CoveredByCameraIterator;
 import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
-import com.bombinggames.wurfelengine.core.map.Iterators.CoveredByCameraIterator;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import com.bombinggames.wurfelengine.core.map.rendering.SideSprite;
+import java.util.ArrayList;
+import java.util.LinkedList;
 
 /**
  * Creates a virtual camera wich displays the game world on the viewport. A camer acan be locked to an entity.
  *
  * @author Benedikt Vogler
  */
-public class Camera {
+public class Camera implements Telegraph {
 
 	/**
 	 * the position of the camera in view space. Y-up. Read only field.
@@ -139,6 +140,8 @@ public class Camera {
 	 * identifies the camera
 	 */
 	private int id;
+	private LinkedList<RenderCell> cacheTopLevel = new LinkedList<>();
+	private int sampleNum;
 
 	/**
 	 * Updates the needed chunks after recaclucating the center chunk of the
@@ -169,6 +172,7 @@ public class Camera {
 		position.y = center.getViewSpcY();
 		fullWindow = true;
 		initFocus();
+		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
 	}
 	
 	/**
@@ -199,6 +203,7 @@ public class Camera {
 		position.x = center.getViewSpcX();
 		position.y = center.getViewSpcY();
 		initFocus();
+		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
 	}
 
 	/**
@@ -231,6 +236,7 @@ public class Camera {
 		position.x = center.getViewSpcX();
 		position.y = center.getViewSpcY();
 		initFocus();
+		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
 	}
 
 	/**
@@ -270,6 +276,7 @@ public class Camera {
 		position.y = (int) (focusEntity.getPosition().getViewSpcY()
 						+ focusEntity.getDimensionZ() * RenderCell.ZAXISSHORTENING/2);//have middle of object in center
 		initFocus();
+		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
 	}
 
 	/**
@@ -458,7 +465,7 @@ public class Camera {
 
 			//render map
 			createDepthList();
-
+			
 			Gdx.gl20.glEnable(GL_BLEND); // Enable the OpenGL Blending functionality
 			//Gdx.gl20.glBlendFunc(GL_SRC_ALPHA, GL20.GL_CONSTANT_COLOR);
 
@@ -573,17 +580,7 @@ public class Camera {
 		
 		//iterate over every block in renderstorage
 		objectsToBeRendered = 0;
-		CoveredByCameraIterator iterator = new CoveredByCameraIterator(
-			gameView.getRenderStorage(),
-			centerChunkX,
-			centerChunkY,
-			0,
-			(int) (gameView.getRenderStorage().getZRenderingLimit()/RenderCell.GAME_EDGELENGTH)
-		);
-		//check/visit every visible cell
-		while (iterator.hasNext()) {
-			RenderCell cell = iterator.next();
-
+		for (RenderCell cell : cacheTopLevel) {
 			if (cell != RenderChunk.CELLOUTSIDE && inViewFrustum(cell.getPosition())) {
 				visit(cell);
 			}
@@ -607,6 +604,31 @@ public class Camera {
 			}
 		});
 		depthlist.addAll(renderAppendix);//render every entity which has no parent block at the end of the list
+	}
+	
+	/**
+	 * rebuilds the reference list for fields whihc will be called for the depthsorting.
+	 */
+	public void rebuildTopLevelCache() {
+		int topLevel;
+		if (gameView.getRenderStorage().getZRenderingLimit() == Float.POSITIVE_INFINITY) {
+			topLevel = Chunk.getBlocksZ();
+		} else {
+			topLevel = (int) (gameView.getRenderStorage().getZRenderingLimit() / RenderCell.GAME_EDGELENGTH);
+		}
+		CoveredByCameraIterator iterator = new CoveredByCameraIterator(
+			gameView.getRenderStorage(),
+			centerChunkX,
+			centerChunkY,
+			topLevel-2,
+			topLevel-1//last layer 
+		);
+		cacheTopLevel.clear();
+		//check/visit every visible cell
+		while (iterator.hasNext()) {
+			RenderCell cell = iterator.next();
+			cacheTopLevel.add(cell);
+		}
 	}
 	
 	/**
@@ -1078,6 +1100,15 @@ public class Camera {
 		this.id = id;
 	}
 	
+	@Override
+	public boolean handleMessage(Telegram msg) {
+		if (msg.message == Events.mapChanged.getId()) {
+			rebuildTopLevelCache();
+			return true;
+		}
+		
+		return false;
+	}
 	
 	void dispose() {
 	}

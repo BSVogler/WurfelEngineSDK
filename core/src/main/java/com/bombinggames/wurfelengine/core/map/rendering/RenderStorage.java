@@ -133,6 +133,7 @@ public class RenderStorage implements Telegraph  {
 					lastCenterY.set(i, camera.getCenterChunkY());
 					//rebuild
 					RenderCell.rebuildCoverList();
+					camera.rebuildTopLevelCache();
 				}
 			}
 		}
