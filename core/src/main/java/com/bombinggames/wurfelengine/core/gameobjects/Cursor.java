@@ -109,7 +109,8 @@ public class Cursor extends AbstractEntity {
 		if (normalSide == Side.TOP) {
 			isectP.setZ((isectP.getZGrid() + 1) * RenderCell.GAME_EDGELENGTH);
 		}
-        normal.getPosition().set(isectP);
+		if (normal.hasPosition())
+			normal.getPosition().set(isectP);
 		selDet.updateFrom(pos.getBlock(), coord);
     }
         
