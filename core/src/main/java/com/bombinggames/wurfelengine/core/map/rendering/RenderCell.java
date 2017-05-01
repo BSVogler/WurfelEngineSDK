@@ -1410,18 +1410,11 @@ public class RenderCell extends AbstractGameObject {
 			if (cell != null) {
 				covered.add(cell);
 			}
-			//back
-			cell = rs.getCell(nghb.goToNeighbour(1));
-			if (cell != null) {
-				covered.add(cell);
-			}
-			nghb.add(0, 2, 1);//go back to origin
+			
+			nghb.goToNeighbour(3).add(0, 0, 1);//go back to origin
 		}
-		cell = rs.getCell(nghb.goToNeighbour(0));//back
-		if (cell != null) {
-			covered.add(cell);
-		}
-		cell = rs.getCell(nghb.goToNeighbour(3));//back right
+		
+		cell = rs.getCell(nghb.goToNeighbour(1));//back right
 		if (cell != null) {
 			covered.add(cell);
 		}
