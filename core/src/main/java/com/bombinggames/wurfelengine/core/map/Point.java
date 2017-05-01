@@ -270,14 +270,14 @@ public class Point extends Vector3 implements Position {
 
     @Override
     public int getViewSpcX() {
-        return (int) (getX()); //just the position as integer
+        return (int) (x); //just the position as integer
     }
 
     @Override
     public int getViewSpcY() {
         return (int)( 
-			-getY() / 2
-            + (int) (getZ() * RenderCell.ZAXISSHORTENING)
+			-y / 2
+            + (int) (z * RenderCell.ZAXISSHORTENING)
 		);
     }
 
