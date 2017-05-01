@@ -431,7 +431,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 */
 	public void setBlock(Coordinate coord, int block) {
 		Chunk chunk = getChunkContaining(coord);
-		if (chunk != null) {
+		if (chunk != null && coord.getZ()>= 0 && coord.getZ() < Chunk.getBlocksZ()) {
 			chunk.setBlock(coord, (byte) (block & 255), (byte) ((block >> 8) & 255), (byte) ((block >> 16) & 255));
 		}
 	}
