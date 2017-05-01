@@ -635,7 +635,7 @@ public class Point extends Vector3 implements Position {
 	}
 
 	/**
-	 * Sends a ray by moving a coordiante though the map. Slow but it works.<br>
+	 * Sends a ray by moving a coordinate though the map. Slow but it works.<br>
 	 * Stops at first point where the criteria are met, so positions relative to coordinate may differ.
 	 * 
 	 * @param dir

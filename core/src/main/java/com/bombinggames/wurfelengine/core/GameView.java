@@ -420,7 +420,7 @@ public class GameView implements GameManager {
     }
     
     /**
-     * Returns deepest layer. Can be used in game space but then its on the floor layer.
+     * Returns mathcing point on the ground. Can be used in game space but then its on the floor layer.
      * @param x screen space
      * @param y screen space. y-up
      * @return the position on the map. deepest layer. If no camera returns map center.
