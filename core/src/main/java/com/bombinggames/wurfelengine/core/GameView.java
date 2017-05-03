@@ -463,11 +463,11 @@ public class GameView implements GameManager {
 		if (cameras.size() > 0) {
 			Point p = screenToGameBasic(x, y);
 			//find point at top of map
-			float deltaZ = Chunk.getGameHeight()-1;
-			p.add(0, deltaZ * Point.SQRT2, deltaZ);//top of map
+			Vector3 vectorToTop = new Vector3(0, RenderCell.PROJECTIONFACTORZ/RenderCell.PROJECTIONFACTORY, 1).scl((Chunk.getGameHeight()-1));//Vector can be calculated by using an equation where z values are known and top y is unknown and game to view projection is applied. May be a special when Y projection factor is 0.5
+			p.add(vectorToTop);//top of map
 
 			return p.rayMarching(
-				new Vector3(0, -Point.SQRT2, -1),//shoot in viewing direction, can not find correct vector: todo. Was -Point.SQRT12
+				new Vector3(0, -RenderCell.PROJECTIONFACTORZ, -RenderCell.PROJECTIONFACTORY),//now go in reverse direction
 				Float.POSITIVE_INFINITY,
 				getRenderStorage(),
 				null
