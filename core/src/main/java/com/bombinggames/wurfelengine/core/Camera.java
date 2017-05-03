@@ -274,7 +274,7 @@ public class Camera implements Telegraph {
 		}
 		position.x = focusEntity.getPosition().getViewSpcX();
 		position.y = (int) (focusEntity.getPosition().getViewSpcY()
-						+ focusEntity.getDimensionZ() * RenderCell.ZAXISSHORTENING/2);//have middle of object in center
+						+ focusEntity.getDimensionZ() * RenderCell.PROJECTIONFACTORZ/2);//have middle of object in center
 		initFocus();
 		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
 	}
@@ -291,7 +291,7 @@ public class Camera implements Telegraph {
 				Vector2 newPos = new Vector2(
 					focusEntity.getPosition().getViewSpcX(),
 					(int) (focusEntity.getPosition().getViewSpcY()
-						+ focusEntity.getDimensionZ() * RenderCell.ZAXISSHORTENING/2)//have middle of object in center
+						+ focusEntity.getDimensionZ() * RenderCell.PROJECTIONFACTORZ/2)//have middle of object in center
 				);
 
 				//only follow if outside leap radius
@@ -1013,7 +1013,7 @@ public class Camera implements Telegraph {
 			this.focusEntity = focusEntity;
 			position.set(focusEntity.getPosition().getViewSpcX(),
 				(int) (focusEntity.getPosition().getViewSpcY()
-					+ focusEntity.getDimensionZ() * RenderCell.ZAXISSHORTENING/2)//have middle of object in center
+					+ focusEntity.getDimensionZ() * RenderCell.PROJECTIONFACTORZ/2)//have middle of object in center
 			);
 		}
 	}

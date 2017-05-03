@@ -276,8 +276,8 @@ public class Point extends Vector3 implements Position {
     @Override
     public int getViewSpcY() {
         return (int)( 
-			-y / 2
-            + (int) (z * RenderCell.ZAXISSHORTENING)
+			-y * RenderCell.PROJECTIONFACTORY
+            + z * RenderCell.PROJECTIONFACTORZ
 		);
     }
 

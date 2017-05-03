@@ -140,10 +140,16 @@ public class RenderCell extends AbstractGameObject {
 	public transient static final int GAME_EDGELENGTH2 = GAME_EDGELENGTH / 2;
 
 	/**
-	 * Some magic number which is the factor by what the Z axis is distorted
-	 * because of the angle of projection.
+	 * The factor by what the Z axis is distorted when game to view projection
+	 * is applied. Usually not 1 because of the angle of projection.
 	 */
-	public transient static final float ZAXISSHORTENING = VIEW_HEIGHT / (float) GAME_EDGELENGTH;
+	public transient static final float PROJECTIONFACTORZ = VIEW_HEIGHT / (float) GAME_EDGELENGTH;
+	
+	/**
+	 * The factor by what the Y axis is distorted when game to view projection
+	 * is applied. Usually not 1 because of the angle of projection.
+	 */
+	public transient static final float PROJECTIONFACTORY = VIEW_DEPTH / (float) GAME_DIAGLENGTH;
 
 	/**
 	 * the max. amount of different object types

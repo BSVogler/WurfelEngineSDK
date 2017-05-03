@@ -286,7 +286,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 */
 	public float getDepth() {
 		Point pos = getPoint();
-		return pos.getY() + (pos.getZ() + getDimensionZ()) * RenderCell.ZAXISSHORTENING;//or Point.SQRT12?
+		return pos.getY() + (pos.getZ() + getDimensionZ()) * RenderCell.PROJECTIONFACTORZ;//or Point.SQRT12?
 	}
 
 	/**
