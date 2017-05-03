@@ -407,7 +407,7 @@ public class GameView implements GameManager {
     }
     
    /**
-     * Reverts the projection and transforms it into a coordinate which can be used in the game logic. Should be verified if returning correct results.
+     * Reverts the projection and transforms it into game space. Should be verified if returning correct results.
      * @param screenY the y position on the screen. y-up
      * @param camera the camera where the position is on
      * @return view coordinate
@@ -420,7 +420,7 @@ public class GameView implements GameManager {
     }
     
     /**
-     * Returns mathcing point on the ground. Can be used in game space but then its on the floor layer.
+     * Returns matching point on the ground. Can be used in game space but then its on the floor layer.
      * @param x screen space
      * @param y screen space. y-up
      * @return the position on the map. deepest layer. If no camera returns map center.
