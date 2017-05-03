@@ -416,7 +416,7 @@ public class GameView implements GameManager {
         return camera.getViewSpaceY() //to view space
 			+ camera.getHeightInProjSpc()/2//use top side, therefore /2
 			- screenY / camera.getScreenSpaceScaling() //to view space and then revert scaling
-			- camera.getScreenPosY(); //screen pos offset
+			- camera.getScreenPosY(); //to projection space
     }
     
     /**
