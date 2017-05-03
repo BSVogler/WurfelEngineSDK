@@ -666,7 +666,7 @@ public class Point extends Vector3 implements Position {
 		while (
 			(lastCoordZ > 0
 			&& lastCoordZ < Chunk.getBlocksZ()
-			|| isectC.isInMemoryAreaXYZ())
+			|| isectC.isInMemoryAreaXY())
 			&& distanceToSquared(traverseP) < maxDistance*RenderCell.GAME_EDGELENGTH*maxDistance*RenderCell.GAME_EDGELENGTH
 		){
 			//move
