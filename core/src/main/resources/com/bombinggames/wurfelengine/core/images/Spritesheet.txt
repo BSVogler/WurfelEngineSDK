@@ -5,7 +5,7 @@ filter: Linear,Linear
 repeat: none
 b0-0-0
   rotate: false
-  xy: 274, 478
+  xy: 273, 478
   size: 100, 173
   orig: 100, 173
   offset: 0, 0
@@ -19,7 +19,7 @@ b0-0-1
   index: -1
 b0-0-2
   rotate: false
-  xy: 276, 652
+  xy: 275, 652
   size: 100, 173
   orig: 100, 173
   offset: 0, 0
@@ -61,14 +61,14 @@ b2-0-1
   index: -1
 b2-0-2
   rotate: false
-  xy: 375, 462
+  xy: 374, 462
   size: 100, 173
   orig: 100, 173
   offset: 0, 0
   index: -1
 b3-0-0
   rotate: false
-  xy: 377, 636
+  xy: 376, 636
   size: 100, 173
   orig: 100, 173
   offset: 0, 0
@@ -103,14 +103,14 @@ b8-0-1
   index: -1
 b8-0-2
   rotate: false
-  xy: 476, 429
+  xy: 475, 429
   size: 100, 173
   orig: 100, 173
   offset: 0, 0
   index: -1
 b9-0-0
   rotate: false
-  xy: 478, 603
+  xy: 477, 603
   size: 100, 173
   orig: 100, 173
   offset: 0, 0
@@ -124,7 +124,7 @@ b9-0-1
   index: -1
 b9-0-2
   rotate: false
-  xy: 577, 423
+  xy: 576, 423
   size: 100, 173
   orig: 100, 173
   offset: 0, 0
@@ -159,7 +159,7 @@ b71-1
   index: -1
 e3-0
   rotate: false
-  xy: 222, 839
+  xy: 221, 839
   size: 34, 56
   orig: 78, 138
   offset: 24, 46
@@ -208,7 +208,7 @@ e3-6
   index: -1
 e3-7
   rotate: false
-  xy: 257, 833
+  xy: 256, 833
   size: 104, 66
   orig: 160, 80
   offset: 37, 8
@@ -236,17 +236,17 @@ e8-0
   index: -1
 e9-0
   rotate: false
-  xy: 0, 697
-  size: 160, 206
+  xy: 0, 483
+  size: 159, 213
   orig: 200, 225
-  offset: 23, 0
+  offset: 21, 0
   index: -1
 e9-1
   rotate: false
-  xy: 0, 483
-  size: 160, 213
+  xy: 0, 697
+  size: 159, 206
   orig: 200, 225
-  offset: 23, 0
+  offset: 21, 0
   index: -1
 e12-0
   rotate: false
@@ -285,21 +285,21 @@ e15-0
   index: -1
 e16-0
   rotate: false
-  xy: 161, 839
+  xy: 160, 839
   size: 60, 60
   orig: 60, 60
   offset: 0, 0
   index: -1
 e17-0
   rotate: false
-  xy: 443, 810
+  xy: 442, 810
   size: 156, 79
   orig: 156, 79
   offset: 0, 0
   index: -1
 e18-0
   rotate: false
-  xy: 362, 826
+  xy: 361, 826
   size: 80, 71
   orig: 80, 80
   offset: 0, 5
@@ -355,42 +355,42 @@ e30-3
   index: -1
 e30-4
   rotate: false
-  xy: 217, 482
+  xy: 216, 482
   size: 56, 175
   orig: 160, 240
   offset: 52, 31
   index: -1
 e30-5
   rotate: false
-  xy: 232, 658
+  xy: 231, 658
   size: 43, 174
   orig: 160, 240
   offset: 63, 34
   index: -1
 e30-6
   rotate: false
-  xy: 161, 483
+  xy: 160, 483
   size: 55, 178
   orig: 160, 240
   offset: 52, 30
   index: -1
 e30-7
   rotate: false
-  xy: 161, 662
+  xy: 160, 662
   size: 70, 176
   orig: 160, 240
   offset: 45, 32
   index: -1
 e31-0
   rotate: false
-  xy: 579, 0
+  xy: 578, 0
   size: 160, 160
   orig: 160, 160
   offset: 0, 0
   index: -1
 e31-1
   rotate: false
-  xy: 579, 161
+  xy: 578, 161
   size: 160, 160
   orig: 160, 160
   offset: 0, 0
