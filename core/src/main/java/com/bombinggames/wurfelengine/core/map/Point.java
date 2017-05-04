@@ -124,11 +124,10 @@ public class Point extends Vector3 implements Position {
 	}
 
 	/**
-	 * returns coordinate aquivalent. Removes floating of block.<br> Copy
-	 * safe.<br>
-	 * Looks complicated but has runtime O(const). You should avoid this method because it uses the heap.
+	 * returns coordinate aquivalent. Removes floating of block.<br>
+	 * Looks complicated but has runtime O(const). You should avoid this method in loops or the update method because it uses the heap.
 	 *
-	 * @return coordinate aquivalent
+	 * @return coordinate aquivalent, copy safe
 	 */
 	@Override
 	public Coordinate toCoord() {
