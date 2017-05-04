@@ -96,8 +96,11 @@ public class PointLightSource extends AbstractEntity {
 		if (hasPosition()) {
 			Point origin = getPosition();
 			lastPos.set(origin);
+			//local var for faster performance
+			float[][][][] lightcache = this.lightcache;
 			
-			//light blocks around
+			Vector3[] sidesvectors = new Vector3[]{Side.LEFT.toVector(), Side.TOP.toVector(), Side.RIGHT.toVector()};
+			//light blocks around, rumtime O(2*radius^3)
 			Vector3 dir = new Vector3();
 			for (int z = -radius; z < radius; z++) {
 				for (int x = -radius; x < radius; x++) {
@@ -126,12 +129,13 @@ public class PointLightSource extends AbstractEntity {
 							//get back edge of block
 							Point impactP = getPosition().toCoord().add(x, y, z).toPoint().add(0, -RenderCell.GAME_DIAGLENGTH2, 0);
 							//this should work in the future:getPoint().cpy().setToCenterOfCell().addCoord(x, y, z).add(0, -RenderCell.GAME_DIAGLENGTH2, 0)
-							float pow = origin.distanceTo(impactP) / RenderCell.GAME_EDGELENGTH;
-							float l = (1 + brightness) / (pow * pow);
+							
+							float pow = origin.distanceToSquared(impactP) / (RenderCell.GAME_EDGELENGTH*RenderCell.GAME_EDGELENGTH);
+							float l = (1 + brightness) / pow;
 
 							Vector3 vecToBlock = origin.cpy().sub(impactP).nor();
 							//side 0
-							float lambert = vecToBlock.dot(Side.LEFT.toVector());
+							float lambert = vecToBlock.dot(sidesvectors[0]);
 
 							float newbright = l *lambert* (0.15f + 0.1f * 0.005f);
 							if (lambert > 0 && newbright > lightcache[x + radius][y + radius * 2][z + radius][0]) {
@@ -139,7 +143,7 @@ public class PointLightSource extends AbstractEntity {
 							}
 
 							//side 1
-							lambert = vecToBlock.dot(Side.TOP.toVector());
+							lambert = vecToBlock.dot(sidesvectors[1]);
 
 							newbright = l * lambert * (0.15f + 0.2f * 0.005f);
 							if (lambert > 0 && newbright > lightcache[x + radius][y + radius * 2][z + radius][1]) {
@@ -147,7 +151,7 @@ public class PointLightSource extends AbstractEntity {
 							}
 
 							//side 2
-							lambert = vecToBlock.dot(Side.RIGHT.toVector());
+							lambert = vecToBlock.dot(sidesvectors[2]);
 
 							newbright = l *lambert* (0.15f + 0.25f * 0.005f);
 							if (lambert > 0 && newbright > lightcache[x + radius][y + radius * 2][z + radius][2]) {
