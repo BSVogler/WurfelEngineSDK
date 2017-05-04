@@ -1048,11 +1048,11 @@ public class RenderCell extends AbstractGameObject {
 	public float getLightlevel(Side side, byte vertex, Channel channel) {
 		byte colorBitShift = (byte) (20 - 10 * channel.id);
 		if (side == Side.LEFT) {
-			return ((colorLeft[vertex]  >> colorBitShift) & 0x3FF) / 511f;
+			return ((colorLeft[vertex] >> colorBitShift) & 0x3FF) / 511f;
 		} else if (side == Side.TOP) {
-			return ((colorTop[vertex]  >> colorBitShift) & 0x3FF) / 511f;
+			return ((colorTop[vertex] >> colorBitShift) & 0x3FF) / 511f;
 		}
-		return ((colorRight[vertex]  >> colorBitShift) & 0x3FF) / 511f;
+		return ((colorRight[vertex] >> colorBitShift) & 0x3FF) / 511f;
 	}
 
 	/**
@@ -1207,34 +1207,38 @@ public class RenderCell extends AbstractGameObject {
 			lightlevel = 0;
 		}
 
+		//amount of bits to be shifted
 		byte colorBitShift = (byte) (20 - 10 * channel.id);
 
-		float l = lightlevel * 512;
-		if (l > 1023) {
-			l = 1023;
+		int l = (int) (lightlevel * 512);
+		if (l > 0x3FF) {
+			l = 0x3FF;
 		}
 
 		switch (side) {
 			case LEFT: {
-				int newl = (int) (((colorLeft[vertex] >> colorBitShift) & 0x3FF) / 511f + l);
-				if (newl > 1023) {
-					newl = 1023;
+				int newl = ((colorLeft[vertex] >> colorBitShift) & 0x3FF)+ l;
+				//clamp at 10 bit
+				if (newl > 0x3FF) {
+					newl = 0x3FF;
 				}
-				colorLeft[vertex] |= (newl << colorBitShift);
+				colorLeft[vertex] |= (newl << colorBitShift);//write
 				break;
 			}
 			case TOP: {
-				int newl = (int) (((colorTop[vertex] >> colorBitShift) & 0x3FF) / 511f + l);
-				if (newl > 1023) {
-					newl = 1023;
+				int newl = ((colorTop[vertex] >> colorBitShift) & 0x3FF)+ l;
+				//clamp at 10 bit
+				if (newl > 0x3FF) {
+					newl = 0x3FF;
 				}
 				colorTop[vertex] |= (newl << colorBitShift);
 				break;
 			}
 			default: {
-				int newl = (int) (((colorRight[vertex] >> colorBitShift) & 0x3FF) / 511f + l);
-				if (newl > 1023) {
-					newl = 1023;
+				int newl = ((colorRight[vertex] >> colorBitShift) & 0x3FF+ l);
+				//clamp at 10 bit
+				if (newl > 0x3FF) {
+					newl = 0x3FF;
 				}
 				colorRight[vertex] |= (newl << colorBitShift);
 				break;
