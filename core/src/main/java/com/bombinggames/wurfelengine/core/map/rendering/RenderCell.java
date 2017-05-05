@@ -497,26 +497,9 @@ public class RenderCell extends AbstractGameObject {
 	/**
 	 * Each side has four RGB101010 colors (each edge) with a each 10bit float
 	 * per color channel. The channel brightness is obtained by dividing bits by
-	 * fraction /2^10-1 = 1023. Each field is vertex (edge) 0-3
+	 * fraction /2^10-1 = 1023. Each field is vertex (edge) 0-3. Vertex start at left, then top, then right.
 	 */
-	private final int[] colorLeft = new int[]{
-		(55 << 16) + (55 << 8) + 55,
-		(55 << 16) + (55 << 8) + 55,
-		(55 << 16) + (55 << 8) + 55,
-		(55 << 16) + (55 << 8) + 55
-	};
-	private final int[] colorTop = new int[]{
-		(55 << 16) + (55 << 8) + 55,
-		(55 << 16) + (55 << 8) + 55,
-		(55 << 16) + (55 << 8) + 55,
-		(55 << 16) + (55 << 8) + 55
-	};
-	private final int[] colorRight = new int[]{
-		(55 << 16) + (55 << 8) + 55,
-		(55 << 16) + (55 << 8) + 55,
-		(55 << 16) + (55 << 8) + 55,
-		(55 << 16) + (55 << 8) + 55
-	};
+	private final int[] color = new int[3*4];
 	/**
 	 * byte 0: left side, byte 1: top side, byte 2: right side.<br>In each byte the
 	 * bit order: <br>
@@ -921,31 +904,33 @@ public class RenderCell extends AbstractGameObject {
             sh.end();
         } else {
 			//if (color != null) {
-	//			color.r *= getLightlevelR(side);
-	//			if (color.r > 1) {//values above 1 can not be casted later
-	//				color.r = 1;
-	//			}
-	//			color.g *= getLightlevelG(side);
-	//			if (color.g > 1) {//values above 1 can not be casted later
-	//				color.g = 1;
-	//			}
-	//			color.b *= getLightlevelB(side);
-	//			if (color.b > 1) {//values above 1 can not be casted later
-	//				color.b = 1;
-	//			}
+			//			color.r *= getLightlevelR(side);
+			//			if (color.r > 1) {//values above 1 can not be casted later
+			//				color.r = 1;
+			//			}
+			//			color.g *= getLightlevelG(side);
+			//			if (color.g > 1) {//values above 1 can not be casted later
+			//				color.g = 1;
+			//			}
+			//			color.b *= getLightlevelB(side);
+			//			if (color.b > 1) {//values above 1 can not be casted later
+			//				color.b = 1;
+			//			}
+			int[] vertexcolor = this.color;
+			byte sidecode = side.getCode();
 			sprite.setColor(
-				getLightlevel(side, (byte) 0, Channel.Red) / 2f,
-				getLightlevel(side, (byte) 0, Channel.Green) / 2f,
-				getLightlevel(side, (byte) 0, Channel.Blue) / 2f,
-				getLightlevel(side, (byte) 1, Channel.Red)  / 2f,
-				getLightlevel(side, (byte) 1, Channel.Green) / 2f,
-				getLightlevel(side, (byte) 1, Channel.Blue) / 2f,
-				getLightlevel(side, (byte) 2, Channel.Red)  / 2f,
-				getLightlevel(side, (byte) 2, Channel.Green) / 2f,
-				getLightlevel(side, (byte) 2, Channel.Blue) / 2f,
-				getLightlevel(side, (byte) 3, Channel.Red)  / 2f,
-				getLightlevel(side, (byte) 3, Channel.Green) / 2f,
-				getLightlevel(side, (byte) 3, Channel.Blue) / 2f
+				((vertexcolor[sidecode*4+0] >> (20 - 10 * Channel.Red.id)) & 0x3FF) / 1023f,
+				((vertexcolor[sidecode*4+0] >> (20 - 10 * Channel.Green.id)) & 0x3FF) / 1023f,
+				((vertexcolor[sidecode*4+0] >> (20 - 10 * Channel.Blue.id)) & 0x3FF) / 1023f,
+				((vertexcolor[sidecode*4+1] >> (20 - 10 * Channel.Red.id)) & 0x3FF) / 1023f,
+				((vertexcolor[sidecode*4+1] >> (20 - 10 * Channel.Green.id)) & 0x3FF) / 1023f,
+				((vertexcolor[sidecode*4+1] >> (20 - 10 * Channel.Blue.id)) & 0x3FF) / 1023f,
+				((vertexcolor[sidecode*4+2] >> (20 - 10 * Channel.Red.id)) & 0x3FF) / 1023f,
+				((vertexcolor[sidecode*4+2] >> (20 - 10 * Channel.Green.id)) & 0x3FF) / 1023f,
+				((vertexcolor[sidecode*4+2] >> (20 - 10 * Channel.Blue.id)) & 0x3FF) / 1023f,
+				((vertexcolor[sidecode*4+3] >> (20 - 10 * Channel.Red.id)) & 0x3FF) / 1023f,
+				((vertexcolor[sidecode*4+3] >> (20 - 10 * Channel.Green.id)) & 0x3FF) / 1023f,
+				((vertexcolor[sidecode*4+3] >> (20 - 10 * Channel.Blue.id)) & 0x3FF) / 1023f
 			);
 			//}
 			sprite.draw(view.getSpriteBatch());
@@ -1047,12 +1032,7 @@ public class RenderCell extends AbstractGameObject {
 	 */
 	public float getLightlevel(Side side, byte vertex, Channel channel) {
 		byte colorBitShift = (byte) (20 - 10 * channel.id);
-		if (side == Side.LEFT) {
-			return ((colorLeft[vertex] >> colorBitShift) & 0x3FF) / 511f;
-		} else if (side == Side.TOP) {
-			return ((colorTop[vertex] >> colorBitShift) & 0x3FF) / 511f;
-		}
-		return ((colorRight[vertex] >> colorBitShift) & 0x3FF) / 511f;
+		return ((color[side.getCode()*4+vertex] >> colorBitShift) & 0x3FF) / 511f;
 	}
 
 	/**
@@ -1073,14 +1053,8 @@ public class RenderCell extends AbstractGameObject {
 			}
 			color = (l << 20) + (l << 10) + l;
 		}
-		for (int i = 0; i < colorLeft.length; i++) {
-			colorLeft[i] = color;//512 base 10 for each color channel
-		}
-		for (int i = 0; i < colorTop.length; i++) {
-			colorTop[i] = color;//512 base 10 for each color channel
-		}
-		for (int i = 0; i < colorRight.length; i++) {
-			colorRight[i] = color;//512 base 10 for each color channel
+		for (int i = 0; i < this.color.length; i++) {
+			this.color[i] = color;//512 base 10 for each color channel
 		}
 	}
 	
@@ -1088,14 +1062,8 @@ public class RenderCell extends AbstractGameObject {
 	 * sets the light to 1
 	 */
 	public void resetLight(){
-		for (int i = 0; i < colorLeft.length; i++) {
-			colorLeft[i] = 537395712;//512 base 10 for each color channel
-		}
-		for (int i = 0; i < colorTop.length; i++) {
-			colorTop[i] = 537395712;//512 base 10 for each color channel
-		}
-		for (int i = 0; i < colorRight.length; i++) {
-			colorRight[i] = 537395712;//512 base 10 for each color channel
+		for (int i = 0; i < color.length; i++) {
+			color[i] = 537395712;//512 base 10 for each color channel
 		}
 	}
 
@@ -1113,26 +1081,10 @@ public class RenderCell extends AbstractGameObject {
 			l = 1023;
 		}
 
-		switch (side) {
-			case LEFT:
-				colorLeft[0] = (l << 20) + (l << 10) + l;//RGB
-				colorLeft[1] = (l << 20) + (l << 10) + l;//RGB
-				colorLeft[2] = (l << 20) + (l << 10) + l;//RGB
-				colorLeft[3] = (l << 20) + (l << 10) + l;//RGB
-				break;
-			case TOP:
-				colorTop[0] = (l << 20) + (l << 10) + l;//RGB
-				colorTop[1] = (l << 20) + (l << 10) + l;//RGB
-				colorTop[2] = (l << 20) + (l << 10) + l;//RGB
-				colorTop[3] = (l << 20) + (l << 10) + l;//RGB
-				break;
-			default:
-				colorRight[0] = (l << 20) + (l << 10) + l;//RGB
-				colorRight[1] = (l << 20) + (l << 10) + l;//RGB
-				colorRight[2] = (l << 20) + (l << 10) + l;//RGB
-				colorRight[3] = (l << 20) + (l << 10) + l;//RGB
-				break;
-		}
+		color[side.getCode()*4+0] = (l << 20) + (l << 10) + l;//RGB
+		color[side.getCode()*4+1] = (l << 20) + (l << 10) + l;//RGB
+		color[side.getCode()*4+2] = (l << 20) + (l << 10) + l;//RGB
+		color[side.getCode()*4+3] = (l << 20) + (l << 10) + l;//RGB
 	}
 	
 	/**
@@ -1150,17 +1102,7 @@ public class RenderCell extends AbstractGameObject {
 			l = 1023;
 		}
 
-		switch (side) {
-			case LEFT:
-				colorLeft[vertex] = (l << 20) + (l << 10) + l;//RGB;
-				break;
-			case TOP:
-				colorTop[vertex] = (l << 20) + (l << 10) + l;//RGB;
-				break;
-			default:
-				colorRight[vertex] = (l << 20) + (l << 10) + l;//RGB
-				break;
-		}
+		color[side.getCode()*4+vertex] = (l << 20) + (l << 10) + l;//RGB
 	}
 	
 		/**
@@ -1182,17 +1124,7 @@ public class RenderCell extends AbstractGameObject {
 			l = 1023;
 		}
 		
-		switch (side) {
-			case LEFT:
-				colorLeft[vertex] |= (l << colorBitShift);
-				break;
-			case TOP:
-				colorTop[vertex] |= (l << colorBitShift);
-				break;
-			default:
-				colorRight[vertex] |= (l << colorBitShift);
-				break;
-		}
+		color[side.getCode()*4+vertex] |= (l << colorBitShift);
 	}
 	
 	/**
@@ -1215,35 +1147,16 @@ public class RenderCell extends AbstractGameObject {
 			l = 0x3FF;
 		}
 
-		switch (side) {
-			case LEFT: {
-				int newl = ((colorLeft[vertex] >> colorBitShift) & 0x3FF)+ l;
-				//clamp at 10 bit
-				if (newl > 0x3FF) {
-					newl = 0x3FF;
-				}
-				colorLeft[vertex] |= (newl << colorBitShift);//write
-				break;
-			}
-			case TOP: {
-				int newl = ((colorTop[vertex] >> colorBitShift) & 0x3FF)+ l;
-				//clamp at 10 bit
-				if (newl > 0x3FF) {
-					newl = 0x3FF;
-				}
-				colorTop[vertex] |= (newl << colorBitShift);
-				break;
-			}
-			default: {
-				int newl = ((colorRight[vertex] >> colorBitShift) & 0x3FF+ l);
-				//clamp at 10 bit
-				if (newl > 0x3FF) {
-					newl = 0x3FF;
-				}
-				colorRight[vertex] |= (newl << colorBitShift);
-				break;
-			}
+		int currentl = color[side.getCode()*4+vertex];
+		//read value and add new
+		int newl = ((currentl >> colorBitShift) & 0x3FF)+ l;
+		//clamp at 10 bit
+		if (newl > 0x3FF) {
+			newl = 0x3FF;
 		}
+		
+		//mask to write zeroes and then add new bits
+		color[side.getCode()*4+vertex] = (currentl & ~(0x3FF <<colorBitShift))|(newl << colorBitShift);//write
 	}
 	
 	/**
