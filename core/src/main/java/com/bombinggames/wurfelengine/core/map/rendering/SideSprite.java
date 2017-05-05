@@ -672,7 +672,7 @@ public class SideSprite extends TextureRegion {
 		float shadowColor3 = NumberUtils.intToFloatColor((((intBits3 >>> 24) & 0xff) << 24) | ((int) (((intBits3 >>> 16) & 0xff) * ambientOcclusion) << 16) | ((int) (((intBits3 >>> 8) & 0xff) * ambientOcclusion) << 8) | ((int) ((intBits3 & 0xff) * ambientOcclusion)));
 		float shadowColor4 = NumberUtils.intToFloatColor((((intBits4 >>> 24) & 0xff) << 24) | ((int) (((intBits4 >>> 16) & 0xff) * ambientOcclusion) << 16) | ((int) (((intBits4 >>> 8) & 0xff) * ambientOcclusion) << 8) | ((int) ((intBits2 & 0xff) * ambientOcclusion)));
 			
-		if (side == Side.LEFT && ((byte) (aoFlags)) != 0) {//only if top side and there is ambient occlusion
+		if (side == Side.LEFT && ((byte) (aoFlags)) != 0) {//only if left side and there is ambient occlusion
 			if ((aoFlags & (1 << 2)) != 0) {//if right
 				vertices[C3] = shadowColor3;
 				vertices[C4] = shadowColor4;
@@ -722,7 +722,7 @@ public class SideSprite extends TextureRegion {
 			}
 		}
 
-		if (side == Side.RIGHT && ((byte) (aoFlags >> 16)) != 0) {//only if top side and there is ambient occlusion
+		if (side == Side.RIGHT && ((byte) (aoFlags >> 16)) != 0) {//only if right side and there is ambient occlusion
 			if ((aoFlags & (1 << 18)) != 0) {//if right
 				vertices[C3] = shadowColor3;
 				vertices[C4] = shadowColor4;
