@@ -59,14 +59,14 @@ public interface Renderable {
 	public Position getPosition();
 	
 	/**
-	 * can be copy safe but must not
+	 * can be copy safe but may not
 	 * @return 
 	 * @see #getPosition() 
 	 */
 	public Point getPoint();
 	
 	/**
-	 * can be copy safe but must not
+	 * can be copy safe but may not
 	 * @return 
 	 * @see #getPosition() 
 	 */
