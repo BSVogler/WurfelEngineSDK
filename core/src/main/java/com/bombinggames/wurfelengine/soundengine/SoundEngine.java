@@ -281,7 +281,7 @@ public class SoundEngine {
 	public void setVolume(String identifier, long instance, float volume) {
 		Sound result = sounds.get(identifier);
 		if (result != null) {
-			result.setVolume(instance, volume);
+			result.setVolume(instance, volume * WE.getCVars().getValueF("sound"));
 		}
 	}
 
