@@ -81,7 +81,7 @@ public abstract class AbstractPlacableTable extends Table {
 	}
 
 	/**
-	 * selects the item
+	 * selects the item and sets value to 0.
 	 *
 	 * @param pos the pos of the listener
 	 */
