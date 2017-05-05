@@ -478,7 +478,7 @@ public class Coordinate implements Position {
 	@Override
 	public Point toPoint() {
 		return new Point(
-			x * RenderCell.GAME_DIAGLENGTH + (y % 2 != 0 ? RenderCell.VIEW_WIDTH2 : 0),
+			x * RenderCell.GAME_DIAGLENGTH + (y % 2 != 0 ? RenderCell.GAME_DIAGLENGTH2 : 0),
 			y * RenderCell.GAME_DIAGLENGTH2,
 			z * RenderCell.GAME_EDGELENGTH
 		);
