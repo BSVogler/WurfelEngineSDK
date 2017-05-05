@@ -899,13 +899,6 @@ public class SideSprite extends TextureRegion {
 		);
 	}
 
-	/**
-	 *
-	 * @param u
-	 * @param v
-	 * @param u2
-	 * @param v2
-	 */
 	@Override
 	public void setRegion(float u, float v, float u2, float v2) {
 		super.setRegion(u, v, u2, v2);
@@ -924,10 +917,6 @@ public class SideSprite extends TextureRegion {
 		vertices[V4] = v2 - (side == Side.RIGHT ? f : 0f);
 	}
 
-	/**
-	 *
-	 * @param u
-	 */
 	@Override
 	public void setU(float u) {
 		super.setU(u);
