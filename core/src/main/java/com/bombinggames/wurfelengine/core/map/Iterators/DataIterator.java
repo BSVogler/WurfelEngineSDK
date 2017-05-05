@@ -105,11 +105,11 @@ public class DataIterator<T> implements Iterator<T> {
 			pos[2]++;
 		} else if (pos[0] < right) { // go right if it can
 			pos[0]++;
-			pos[2] = 0;
+			pos[2] = startingZ;
 		} else if (pos[1] < front) {// go down if it can and start at x=0
 			pos[1]++;
 			pos[0] = left;
-			pos[2] = 0;
+			pos[2] = startingZ;
 		}
 		return data[pos[0]][pos[1]][pos[2]];
 	}
