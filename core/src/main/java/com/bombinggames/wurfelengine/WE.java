@@ -596,7 +596,7 @@ public class WE {
 
 		@Override
 		public void create() {
-			Gdx.graphics.getBackBufferWidth();
+			Gdx.app.setLogLevel(Application.LOG_DEBUG);
 			if (!skipintro) {
 				GAME.setScreen(new WurfelEngineIntro());
 			}
