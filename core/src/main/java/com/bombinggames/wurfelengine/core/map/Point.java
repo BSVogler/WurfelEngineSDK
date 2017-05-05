@@ -490,13 +490,14 @@ public class Point extends Vector3 implements Position {
 
     /**
      * Trace a ray through the map until ray hits non air block.<br>
-     * Does not work properly with the staggered map.
+     * Does not work properly with the staggered map but is quite fast.
      * @param dir dir of the ray
-     * @param maxDistance the distane after which it should stop. (in game meters)
+     * @param maxDistance the distance after which it should stop. (in game meters)
 	 * @param rs
 	 * @param hitCondition
      * @return can return <i>null</i> if not hitting anything. The normal on the back sides may be wrong. The normals are in a turned coordiante system.
      * @since 1.2.29
+	 * @see #rayMarching(com.badlogic.gdx.math.Vector3, float, com.bombinggames.wurfelengine.core.map.rendering.RenderStorage, java.util.function.Predicate) 
      */
 	public Intersection raycast(final Vector3 dir, float maxDistance, final RenderStorage rs, final Predicate<Byte> hitCondition) {
 		/*  Call the callback with (x,y,z,value,normal) of all blocks along the line
@@ -643,14 +644,14 @@ public class Point extends Vector3 implements Position {
 	}
 
 	/**
-	 * Sends a ray by moving a coordinate though the map. Slow but it works.<br>
-	 * Stops at first point where the criteria are met, so positions relative to coordinate may differ.
+	 * Sends a ray by moving a coordinate though the map. Slow but it mostly returns precise results.<br>
+	 * Stops at first point where the criteria is met.
 	 * 
 	 * @param dir
 	 * @param maxDistance game space in meters
 	 * @param rS used when regarding clipping information
 	 * @param hitCondition can be null
-	 * @return 
+	 * @return intersection point
 	 * @see #raycast(com.badlogic.gdx.math.Vector3, float, com.bombinggames.wurfelengine.core.map.rendering.RenderStorage, java.util.function.Predicate) 
 	 */
 	public Intersection rayMarching(
