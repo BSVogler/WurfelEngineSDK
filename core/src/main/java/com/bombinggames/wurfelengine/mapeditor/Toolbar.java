@@ -39,6 +39,7 @@ import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.InputListener;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
+import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.ui.TextField;
 import com.badlogic.gdx.scenes.scene2d.ui.Window;
@@ -60,12 +61,12 @@ public class Toolbar extends Window {
 	private final Tool selectionRight = Tool.ERASE;
 	private final EntityTable entTable;
 	private final BlockTable blockTable;
-	private final TextField valuesActor;
+	private final TextField valuesTextField;
 	private final GameView view;
 	private final Image[] items = new Image[Tool.values().length];
 
 	private Tool selectionLeft = Tool.DRAW;
-	private final TextButton aplyValuesButton;
+	private final TextButton valuesButton;
 
 	/**
 	 * creates a new toolbar
@@ -105,27 +106,46 @@ public class Toolbar extends Window {
 		//initialize selection
 		showTable(selectionLeft);
 
-		valuesActor = new TextField("1", WE.getEngineView().getSkin());
-		valuesActor.setWidth(30);
-		valuesActor.setPosition(2, 2);
-		valuesActor.setMaxLength(1 + RenderCell.VALUESNUM / 100);
-		valuesActor.setTextFieldFilter((TextField textField, char c) -> Character.isDigit(c));
-		valuesActor.addListener(new TextFieldChangedListener(this));
-		addActor(valuesActor);
+		Label valuesLabel = new Label("Values:", WE.getEngineView().getSkin());
+		valuesLabel.setPosition(2, 0);
+		addActor(valuesLabel);
 		
-		aplyValuesButton = new TextButton("Edit Value", WE.getEngineView().getSkin());
-		aplyValuesButton.setPosition(valuesActor.getWidth()+valuesActor.getX()+3, 2);
-		aplyValuesButton.addListener(
-			new ClickListener() {
+		valuesTextField = new TextField("0", WE.getEngineView().getSkin());
+		valuesTextField.setWidth(30);
+		valuesTextField.setPosition(valuesLabel.getWidth()+2, 2);
+		valuesTextField.setMaxLength(2 + RenderCell.VALUESNUM / 100);
+		valuesTextField.setTextFieldFilter((TextField textField, char c) -> Character.isDigit(c));
+		valuesTextField.addListener(new TextFieldChangedListener(this));
+		valuesTextField.setDisabled(true);
+		addActor(valuesTextField);
+	
+		
+		valuesButton = new TextButton("0", WE.getEngineView().getSkin());
+		valuesButton.setPosition(valuesLabel.getWidth()+2, 2);
+		valuesButton.setWidth(30);
+		valuesButton.addListener(new ClickListener() {
 			@Override
 			public void clicked(InputEvent event, float x, float y) {
 				super.clicked(event, x, y);
-				valuesActor.setDisabled(!valuesActor.isDisabled());
-				valuesActor.setVisible(!valuesActor.isDisabled());
+				byte value = getValue();
+				if (value==-1)
+					value=0;
+				valuesTextField.setDisabled(!valuesTextField.isDisabled());
+				valuesTextField.setVisible(!valuesTextField.isDisabled());
+				valuesButton.setPosition(
+					!valuesTextField.isDisabled() ? valuesTextField.getX()+valuesTextField.getWidth()+2 : valuesLabel.getWidth()+2,
+					2
+				);
+				valuesButton.setText(
+					!valuesTextField.isDisabled() ? "Ok" : Byte.toString(value)
+				);
+				if (!valuesTextField.isDisabled()){
+					valuesTextField.selectAll();
+				}
 			}
 		});
 		
-		addActor(aplyValuesButton);
+		addActor(valuesButton);
 		
 	}
 	
@@ -211,15 +231,15 @@ public class Toolbar extends Window {
 
 	/**
 	 * Get the value of the text field.
-	 * @return -1 if invalid number
+	 * @return -1 if invalid number or disabled
 	 */
 	private byte getValue() {
-		if (valuesActor.getText().isEmpty()) {
+		if (valuesTextField.getText().isEmpty()) {
 			return -1;
 		}
 		byte value;
 		try {
-			value = (byte) (Byte.valueOf(valuesActor.getText()));
+			value = (byte) (Byte.valueOf(valuesTextField.getText()));
 		} catch (NumberFormatException ex) {
 			return -1;
 		}
@@ -227,6 +247,12 @@ public class Toolbar extends Window {
 			return -1;
 		}
 		return value;
+	}
+	
+	public void setValue(byte value){
+		valuesTextField.setText(Byte.toString(value));
+		if (valuesTextField.isDisabled())
+			valuesButton.setText(Byte.toString(value));
 	}
 
 	//class to detect clicks
@@ -262,8 +288,8 @@ public class Toolbar extends Window {
 			if (parent.getValue() > -1) {
 				parent.getActiveTable().setValue(parent.getValue());
 			}
-			if (parent.valuesActor.getText().length() > 1) {
-				parent.valuesActor.selectAll();
+			if (parent.valuesTextField.getText().length() > parent.valuesTextField.getMaxLength()-1) {
+				parent.valuesTextField.selectAll();
 			}
 		}
 	}
