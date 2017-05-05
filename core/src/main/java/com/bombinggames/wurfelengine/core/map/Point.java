@@ -493,12 +493,12 @@ public class Point extends Vector3 implements Position {
      * Does not work properly with the staggered map.
      * @param dir dir of the ray
      * @param maxDistance the distane after which it should stop. (in game meters)
-	 * @param view
+	 * @param rs
 	 * @param hitCondition
      * @return can return <i>null</i> if not hitting anything. The normal on the back sides may be wrong. The normals are in a turned coordiante system.
      * @since 1.2.29
      */
-	public Intersection raycast(final Vector3 dir, float maxDistance, final GameView view, final Predicate<Byte> hitCondition) {
+	public Intersection raycast(final Vector3 dir, float maxDistance, final RenderStorage rs, final Predicate<Byte> hitCondition) {
 		/*  Call the callback with (x,y,z,value,normal) of all blocks along the line
 		segment from point 'origin' in vector dir 'dir' of length
 		'maxDistance'. 'maxDistance' may be infinite.
@@ -560,9 +560,9 @@ public class Point extends Vector3 implements Position {
 			isectC.set(curX, curY, curZ);
 			//intersect?
 			if (
-				view == null
+				rs == null
 				||
-				(curZ*RenderCell.GAME_EDGELENGTH < view.getRenderStorage().getZRenderingLimit() && !view.getRenderStorage().isClipped(isectC))
+				(curZ*RenderCell.GAME_EDGELENGTH < rs.getZRenderingLimit() && !rs.isClipped(isectC))
 			) {
 				byte id = Controller.getMap().getBlockId(isectC);
 				if (
@@ -651,7 +651,7 @@ public class Point extends Vector3 implements Position {
 	 * @param rS used when regarding clipping information
 	 * @param hitCondition can be null
 	 * @return 
-	 * @see #raycast(com.badlogic.gdx.math.Vector3, float, com.bombinggames.wurfelengine.core.GameView, java.util.function.Predicate) 
+	 * @see #raycast(com.badlogic.gdx.math.Vector3, float, com.bombinggames.wurfelengine.core.map.rendering.RenderStorage, java.util.function.Predicate) 
 	 */
 	public Intersection rayMarching(
 		final Vector3 dir,
