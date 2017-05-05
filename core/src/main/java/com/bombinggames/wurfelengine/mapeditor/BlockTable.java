@@ -134,6 +134,7 @@ public class BlockTable extends AbstractPlacableTable {
 	 */
 	public void select(byte blockId, byte blockValue) {
 		selectionId = blockId;
+		
 		byte i = 0;
 		Iterator<BlockDrawable> iter = blockDrawables.iterator();
 		while (iter.hasNext()) {
@@ -143,7 +144,8 @@ public class BlockTable extends AbstractPlacableTable {
 			}
 			i++;
 		}
-		setValue(selectedDrawable.getValue());
+		
+		setValue(blockValue);
 	}
 
 	/**
