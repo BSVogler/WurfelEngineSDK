@@ -423,7 +423,8 @@ public class Chunk implements Telegraph {
 							id = -1;
 						}
 					} catch (ArrayIndexOutOfBoundsException ex) {
-						Gdx.app.error("Chunk", "too much blocks loaded:" + x + "," + y + "," + z + ". Map file corrrupt?");
+						Gdx.app.error("Chunk", "too much blocks loaded in chunk "+chunkX+","+chunkY+" position" + x + "," + y + "," + z + ". Map file corrrupt?");
+						break;
 					}
 				}
 			}
