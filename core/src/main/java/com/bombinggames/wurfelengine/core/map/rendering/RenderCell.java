@@ -589,7 +589,7 @@ public class RenderCell extends AbstractGameObject {
 
 	@Override
 	public Point getPoint() {
-		return coord.toPoint();
+		return Point.getShared().setFromCoord(coord);
 	}
 
 	@Override

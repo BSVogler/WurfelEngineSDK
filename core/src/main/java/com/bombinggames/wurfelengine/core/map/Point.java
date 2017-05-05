@@ -55,6 +55,15 @@ import java.util.function.Predicate;
 public class Point extends Vector3 implements Position {
 
 	private static final long serialVersionUID = 2L;
+	private static Point tmp = new Point();
+
+	/**
+	 * A shared object to pass values without using the heap.
+	 * @return 
+	 */
+	public static Point getShared() {
+		return tmp;
+	}
 
 	/**
 	 * Creates a point refering to a position in the game world. Points at 0,0,0.
@@ -522,7 +531,7 @@ public class Point extends Vector3 implements Position {
 		dir.cpy().nor();
 		
 		Coordinate isectC = toCoord();
-		Point isectP = new Point(0, 0, 0);
+		Point isectPtmp = Point.getShared();
 		//curent coordinate position
         int curX = isectC.getX();
         int curY = isectC.getY();
@@ -561,8 +570,8 @@ public class Point extends Vector3 implements Position {
 					&& (hitCondition == null || hitCondition.test(id))
 				){
 					//found intersection point
-					isectP.setFromCoord(isectC);
-					if (distanceTo(isectP) <= maxDistance*RenderCell.GAME_EDGELENGTH)
+					isectPtmp.setFromCoord(isectC);
+					if (distanceTo(isectPtmp) <= maxDistance*RenderCell.GAME_EDGELENGTH)
 						return Intersection.intersect(isectC, this, dir);
 					else return null;
 				}
