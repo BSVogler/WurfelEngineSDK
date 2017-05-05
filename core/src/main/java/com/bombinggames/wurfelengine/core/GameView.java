@@ -224,7 +224,7 @@ public class GameView implements GameManager {
 			shader = newshader;
 			
 			//print any warnings
-			if (shader.getLog().length() != 0) {
+			if (!shader.getLog().isEmpty()) {
 				System.out.println(shader.getLog());
 			}
 
