@@ -497,6 +497,7 @@ public class EditorView extends GameView implements Telegraph {
 			if (button == Buttons.MIDDLE || (button == Buttons.LEFT && Gdx.input.isKeyPressed(Keys.ALT_LEFT))) {//middle mouse button works as pipet
 				if (toolSelection.getActiveTable() instanceof BlockTable) {
 					((BlockTable) toolSelection.getActiveTable()).select(coords.getBlockId(), coords.getBlockValue());
+					toolSelection.setValue(coords.getBlockValue());
 				}
 							
 			//other tools used
