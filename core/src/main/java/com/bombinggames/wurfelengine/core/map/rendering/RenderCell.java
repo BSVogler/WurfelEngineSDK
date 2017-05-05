@@ -515,7 +515,7 @@ public class RenderCell extends AbstractGameObject {
 	 **/
 	private int aoFlags;
 	/**
-	 * three bits used, for each side one: TODO: move to aoFlags byte #3
+	 * Three bits used, for each side one. byte position equals side id. TODO: move to aoFlags byte #3
 	 */
 	private byte clipping;
 	/**
