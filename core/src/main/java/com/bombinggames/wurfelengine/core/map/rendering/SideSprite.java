@@ -570,7 +570,7 @@ public class SideSprite extends TextureRegion {
 			dirty = false;
 
 			float localX1 = -originX;//bottom left
-			float localY1 = -originY;
+			float localY1 = -originY + (side == Side.LEFT ? height * (1-Point.SQRT12) : 0);
 			
 			float localX2 = -originX;//top left
 			float localY2 = -originY + (side == Side.RIGHT ? height * Point.SQRT12 : height);
@@ -583,10 +583,6 @@ public class SideSprite extends TextureRegion {
 			
 			float worldOriginX = this.x + originX;
 			float worldOriginY = this.y + originY;
-			
-			if (side == Side.LEFT) {
-				localY1 += height * (1-Point.SQRT12);
-			}
 			
 			if (side == Side.TOP) {
 				localY1 += height * 0.5f;
@@ -665,12 +661,11 @@ public class SideSprite extends TextureRegion {
 	 * aply the ao to the vertice color
 	 */
 	protected void applyAO(){
-		//render ambient occlusion
-
-		int intBits1 = NumberUtils.floatToIntColor(vertices[C1]);
-		int intBits2 = NumberUtils.floatToIntColor(vertices[C2]);
-		int intBits3 = NumberUtils.floatToIntColor(vertices[C3]);
-		int intBits4 = NumberUtils.floatToIntColor(vertices[C4]);
+		//float to integer color
+		int intBits1 = Float.floatToRawIntBits(vertices[C1]);
+		int intBits2 = Float.floatToRawIntBits(vertices[C2]);
+		int intBits3 = Float.floatToRawIntBits(vertices[C3]);
+		int intBits4 = Float.floatToRawIntBits(vertices[C4]);
 			
 		float shadowColor1 = NumberUtils.intToFloatColor((((intBits1 >>> 24) & 0xff) << 24) | ((int) (((intBits1 >>> 16) & 0xff) * ambientOcclusion) << 16) | ((int) (((intBits1 >>> 8) & 0xff) * ambientOcclusion) << 8) | ((int) ((intBits1 & 0xff) * ambientOcclusion)));
 		float shadowColor2 = NumberUtils.intToFloatColor((((intBits2 >>> 24) & 0xff) << 24) | ((int) (((intBits2 >>> 16) & 0xff) * ambientOcclusion) << 16) | ((int) (((intBits2 >>> 8) & 0xff) * ambientOcclusion) << 8) | ((int) ((intBits2 & 0xff) * ambientOcclusion)));
