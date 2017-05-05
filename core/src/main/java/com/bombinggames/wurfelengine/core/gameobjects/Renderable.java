@@ -1,42 +1,48 @@
 package com.bombinggames.wurfelengine.core.gameobjects;
 
-import java.util.LinkedList;
-
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
+import java.util.LinkedList;
 
 /**
- *Interface for objects whether they are blocks and entities.
+ * Interface for objects whether they are blocks and entities.
+ *
  * @author Benedikt Vogler
  */
 public interface Renderable {
-	
+
 	/**
-	 * How bright is the object?
-	 * The lightlevel is a scale applied to the color. 1 is default value.
+	 * How bright is the object? The lightlevel is a scale applied to the color.
+	 * 1 is default value.
+	 *
 	 * @return 1 is default bright. 0 is black.
 	 */
 	float getLightlevelR();
+
 	/**
-	 * How bright is the object?
-	 * The lightlevel is a scale applied to the color. 1 is default value.
+	 * How bright is the object? The lightlevel is a scale applied to the color.
+	 * 1 is default value.
+	 *
 	 * @return 1 is default bright. 0 is black.
 	 */
 	float getLightlevelG();
+
 	/**
-	 * How bright is the object?
-	 * The lightlevel is a scale applied to the color. 1 is default value.
+	 * How bright is the object? The lightlevel is a scale applied to the color.
+	 * 1 is default value.
+	 *
 	 * @return 1 is default bright. 0 is black.
 	 */
 	float getLightlevelB();
 
 	/**
-	 * Set the brightness of the object.
-	 * The lightlevel is a scaling factor. 1 is default value.
+	 * Set the brightness of the object. The lightlevel is a scaling factor. 1
+	 * is default value.
+	 *
 	 * @param lightlevel 1 is default bright. 0 is black.
 	 */
 	void setLightlevel(float lightlevel);
@@ -54,26 +60,29 @@ public interface Renderable {
 	 *
 	 * @return Reference to the position object which points to the location in
 	 * the game world.
-	 * @see #getPoint() 
+	 * @see #getPoint()
 	 */
 	public Position getPosition();
-	
+
 	/**
 	 * can be copy safe but may not
-	 * @return 
-	 * @see #getPosition() 
+	 *
+	 * @return
+	 * @see #getPosition()
 	 */
 	public Point getPoint();
-	
+
 	/**
 	 * can be copy safe but may not
-	 * @return 
-	 * @see #getPosition() 
+	 *
+	 * @return
+	 * @see #getPosition()
 	 */
 	public Coordinate getCoord();
-	
+
 	/**
-	 * Gives information if object should be rendered. 
+	 * Gives information if object should be rendered.
+	 *
 	 * @param camera
 	 * @return
 	 */
@@ -81,8 +90,9 @@ public interface Renderable {
 
 	/**
 	 * get the stuff which must be rendered before
+	 *
 	 * @param rs
-	 * @return 
+	 * @return
 	 */
 	public LinkedList<AbstractGameObject> getCovered(RenderStorage rs);
 }
