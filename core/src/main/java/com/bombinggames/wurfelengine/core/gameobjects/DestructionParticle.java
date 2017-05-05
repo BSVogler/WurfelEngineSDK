@@ -39,7 +39,7 @@ public class DestructionParticle extends MovableEntity {
 			modMoved = modMoved % rotateEachNMeters;
 		}
 		
-		if (timeofExistance>2000) dispose();
+		if (timeofExistance>6000) dispose();
 		
 	}
 	
