@@ -231,7 +231,7 @@ public class RenderStorage implements Telegraph  {
 	}
 	
 	/**
-	 * get the chunk where the coordinates are on.
+	 * get the chunk where the coordinates are on. Worst case O(n). Average case O(1).
 	 *
 	 * @param coord not altered
 	 * @return can return null if not loaded
@@ -239,7 +239,7 @@ public class RenderStorage implements Telegraph  {
 	public RenderChunk getChunk(final Coordinate coord) {
 		int left, top;
 		//loop over storage
-		for (RenderChunk chunk : data) {
+		for (RenderChunk chunk : data) {//impact of using this loop has to be measured
 			left = chunk.getTopLeftCoordinateX();
 			top = chunk.getTopLeftCoordinateY();
 			//check if coordinates are inside the chunk

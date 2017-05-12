@@ -477,7 +477,7 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 
 	/**
-	 * get the chunk where the coordinates are on
+	 * get the chunk where the coordinates are on. Usese hashmap so O(1).
 	 *
 	 * @param coord not altered
 	 * @return can return null if not loaded
