@@ -247,6 +247,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * flag 
 	 */
 	private int marked;
+	private Sprite sprite;
 
 	/**
 	 * Creates an object.
@@ -344,7 +345,9 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 		byte value = getSpriteValue();
 		if (id > 0 && value >= 0) {
 			AtlasRegion texture = AbstractGameObject.getSprite(getSpriteCategory(), id, value);
-			Sprite sprite = new Sprite(texture);
+			if (sprite==null) {
+				sprite = new Sprite(texture);
+			}
 			sprite.setOrigin(
 				texture.originalWidth / 2 - texture.offsetX,
 				VIEW_HEIGHT2 - texture.offsetY
