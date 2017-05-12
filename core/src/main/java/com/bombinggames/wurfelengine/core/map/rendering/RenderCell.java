@@ -889,7 +889,7 @@ public class RenderCell extends AbstractGameObject {
 				sprite = site3;
 				break;
 		}
-		sprite.setRegion(getBlockSprite(id, value, side));
+		//sprite.setRegion(getBlockSprite(id, value, side).getTexture());
 		sprite.setPosition(xPos, yPos);
 		if (getScaling() != 1) {
 			sprite.setOrigin(0, 0);
