@@ -30,18 +30,12 @@
  */
 package com.bombinggames.wurfelengine.core;
 
-import java.io.FileNotFoundException;
-import java.util.ArrayList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input.Keys;
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
-import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
@@ -57,6 +51,11 @@ import com.bombinggames.wurfelengine.core.map.LoadMenu;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
+import com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis;
+import java.io.FileNotFoundException;
+import java.util.ArrayList;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * The GameView manages everything what should be drawn in an active game in game space.
@@ -113,7 +112,7 @@ public class GameView implements GameManager {
      * game related stage. e.g. holds hud and gui
      */
     private Stage stage;
-    private final SpriteBatch spriteBatch = new SpriteBatch(2000);
+    private final SpriteBatchWithZAxis spriteBatch = new SpriteBatchWithZAxis(2000);
     
     private LoadMenu loadMenu;
     
@@ -604,7 +603,7 @@ public class GameView implements GameManager {
      * Game view dependent spriteBatch
      * @return 
      */
-    public SpriteBatch getSpriteBatch() {
+    public SpriteBatchWithZAxis getSpriteBatch() {
         return spriteBatch;
     }
     

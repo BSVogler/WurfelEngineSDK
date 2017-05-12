@@ -1,36 +1,29 @@
 /*
- * If this software is used for a game the official „Wurfel Engine“ logo or its name must be visible in an intro screen or main menu.
- *
- * Copyright 2015 Benedikt Vogler.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice, 
- *   this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice, 
- *   this list of conditions and the following disclaimer in the documentation 
- *   and/or other materials provided with the distribution.
- * * Neither the name of Benedikt Vogler nor the names of its contributors 
- *   may be used to endorse or promote products derived from this software without specific
- *   prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
  */
 package com.bombinggames.wurfelengine.core.map.rendering;
 
+/**
+ * *****************************************************************************
+ * Copyright 2011 See AUTHORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy of
+ * the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ *****************************************************************************
+ */
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import static com.badlogic.gdx.graphics.g2d.Batch.C1;
 import static com.badlogic.gdx.graphics.g2d.Batch.C2;
@@ -52,69 +45,172 @@ import static com.badlogic.gdx.graphics.g2d.Batch.Y1;
 import static com.badlogic.gdx.graphics.g2d.Batch.Y2;
 import static com.badlogic.gdx.graphics.g2d.Batch.Y3;
 import static com.badlogic.gdx.graphics.g2d.Batch.Y4;
-import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.NumberUtils;
-import com.bombinggames.wurfelengine.core.gameobjects.Side;
-import com.bombinggames.wurfelengine.core.map.Point;
 
 /**
+ * Holds the geometry, color, and texture information for drawing 2D sprites
+ * using {@link Batch}. A Sprite has a position and a size given as width and
+ * height. The position is relative to the origin of the coordinate system
+ * specified via {@link Batch#begin()} and the respective matrices. A Sprite is
+ * always rectangular and its position (x, y) are located in the bottom left
+ * corner of that rectangle. A Sprite also has an origin around which rotations
+ * and scaling are performed (that is, the origin is not modified by rotation
+ * and scaling). The origin is given relative to the bottom left corner of the
+ * Sprite, its position.
  *
- * @author Benedikt Vogler
+ * @author mzechner
+ * @author Nathan Sweet
  */
-public class SideSprite extends WETextureRegion {
+public class Sprite extends WETextureRegion {
 
-	static final int VERTEX_SIZE = 2 + 1 + 2;//x,y + ? + u,v + color?
-	static final int SPRITE_SIZE = 4 * VERTEX_SIZE;//four edges
-	/**
-	 * the brightness of the ao
-	 */
-	private static float ambientOcclusion;
+	static final int VERTEX_SIZE = 2 + 1 + 2;
+	static final int SPRITE_SIZE = 4 * VERTEX_SIZE;
 
-	/**
-	 *
-	 * @param brightness
-	 */
-	public static void setAO(float brightness) {
-		ambientOcclusion = brightness;
-	}
-	
 	final float[] vertices = new float[SPRITE_SIZE];
+	private final Color color = new Color(1, 1, 1, 1);
 	private float x, y;
-	private float width, height;
+	float width, height;
 	private float originX, originY;
 	private float rotation;
 	private float scaleX = 1, scaleY = 1;
 	private boolean dirty = true;
 	private Rectangle bounds;
-	private final Side side;
-	private int aoFlags;
-	
+
 	/**
-	 * An object helping with rendering a blokc made out of sides
-	 * @param region the texture used for rendering this side
-	 * @param side which side does this represent?
-	 * @param aoFlags 
+	 * Creates an uninitialized sprite. The sprite will need a texture region
+	 * and bounds set before it can be drawn.
 	 */
-	public SideSprite(TextureRegion region, Side side, int aoFlags) {
-		this.side = side;
+	public Sprite() {
+		setColor(1, 1, 1, 1);
+	}
+
+	/**
+	 * Creates a sprite with width, height, and texture region equal to the size
+	 * of the texture.
+	 * @param texture
+	 */
+	public Sprite(Texture texture) {
+		this(texture, 0, 0, texture.getWidth(), texture.getHeight());
+	}
+
+	/**
+	 * Creates a sprite with width, height, and texture region equal to the
+	 * specified size. The texture region's upper left corner will be 0,0.
+	 *
+	 * @param texture
+	 * @param srcWidth The width of the texture region. May be negative to flip
+	 * the sprite when drawn.
+	 * @param srcHeight The height of the texture region. May be negative to
+	 * flip the sprite when drawn.
+	 */
+	public Sprite(Texture texture, int srcWidth, int srcHeight) {
+		this(texture, 0, 0, srcWidth, srcHeight);
+	}
+
+	/**
+	 * Creates a sprite with width, height, and texture region equal to the
+	 * specified size.
+	 *
+	 * @param texture
+	 * @param srcX
+	 * @param srcWidth The width of the texture region. May be negative to flip
+	 * the sprite when drawn.
+	 * @param srcY
+	 * @param srcHeight The height of the texture region. May be negative to
+	 * flip the sprite when drawn.
+	 */
+	public Sprite(Texture texture, int srcX, int srcY, int srcWidth, int srcHeight) {
+		if (texture == null) {
+			throw new IllegalArgumentException("texture cannot be null.");
+		}
+		this.texture = texture;
+		setRegion(srcX, srcY, srcWidth, srcHeight);
+		setColor(1, 1, 1, 1);
+		setSize(Math.abs(srcWidth), Math.abs(srcHeight));
+		setOrigin(width / 2, height / 2);
+	}
+
+	// Note the region is copied.
+	/**
+	 * Creates a sprite based on a specific TextureRegion, the new sprite's
+	 * region is a copy of the parameter region - altering one does not affect
+	 * the other
+	 * @param region
+	 */
+	public Sprite(WETextureRegion region) {
 		setRegion(region);
-		this.aoFlags = aoFlags;
 		setColor(1, 1, 1, 1);
 		setSize(region.getRegionWidth(), region.getRegionHeight());
 		setOrigin(width / 2, height / 2);
 	}
 
 	/**
+	 * Creates a sprite with width, height, and texture region equal to the
+	 * specified size, relative to specified sprite's texture region.
+	 *
+	 * @param region
+	 * @param srcX
+	 * @param srcWidth The width of the texture region. May be negative to flip
+	 * the sprite when drawn.
+	 * @param srcY
+	 * @param srcHeight The height of the texture region. May be negative to
+	 * flip the sprite when drawn.
+	 */
+	public Sprite(WETextureRegion region, int srcX, int srcY, int srcWidth, int srcHeight) {
+		setRegion(region, srcX, srcY, srcWidth, srcHeight);
+		setColor(1, 1, 1, 1);
+		setSize(Math.abs(srcWidth), Math.abs(srcHeight));
+		setOrigin(width / 2, height / 2);
+	}
+
+	/**
+	 * Creates a sprite that is a copy in every way of the specified sprite.
+	 *
+	 * @param sprite
+	 */
+	public Sprite(Sprite sprite) {
+		set(sprite);
+	}
+
+	/**
+	 * Make this sprite a copy in every way of the specified sprite
+	 * @param sprite
+	 */
+	public void set(Sprite sprite) {
+		if (sprite == null) {
+			throw new IllegalArgumentException("sprite cannot be null.");
+		}
+		System.arraycopy(sprite.vertices, 0, vertices, 0, SPRITE_SIZE);
+		texture = sprite.texture;
+		u = sprite.u;
+		v = sprite.v;
+		u2 = sprite.u2;
+		v2 = sprite.v2;
+		x = sprite.x;
+		y = sprite.y;
+		width = sprite.width;
+		height = sprite.height;
+		regionWidth = sprite.regionWidth;
+		regionHeight = sprite.regionHeight;
+		originX = sprite.originX;
+		originY = sprite.originY;
+		rotation = sprite.rotation;
+		scaleX = sprite.scaleX;
+		scaleY = sprite.scaleY;
+		color.set(sprite.color);
+		dirty = sprite.dirty;
+	}
+
+	/**
 	 * Sets the position and size of the sprite when drawn, before scaling and
 	 * rotation are applied. If origin, rotation, or scale are changed, it is
 	 * slightly more efficient to set the bounds after those operations.
-	 *
 	 * @param x
-	 * @param height
-	 * @param width
 	 * @param y
+	 * @param width
+	 * @param height
 	 */
 	public void setBounds(float x, float y, float width, float height) {
 		this.x = x;
@@ -129,7 +225,6 @@ public class SideSprite extends WETextureRegion {
 		float x2 = x + width;
 		float y2 = y + height;
 		float[] vertices = this.vertices;
-		
 		vertices[X1] = x;
 		vertices[Y1] = y;
 
@@ -153,7 +248,6 @@ public class SideSprite extends WETextureRegion {
 	 * efficient to set the size after those operations. If both position and
 	 * size are to be changed, it is better to use
 	 * {@link #setBounds(float, float, float, float)}.
-	 *
 	 * @param width
 	 * @param height
 	 */
@@ -190,7 +284,6 @@ public class SideSprite extends WETextureRegion {
 	 * scale are changed, it is slightly more efficient to set the position
 	 * after those operations. If both position and size are to be changed, it
 	 * is better to use {@link #setBounds(float, float, float, float)}.
-	 *
 	 * @param x
 	 * @param y
 	 */
@@ -203,7 +296,6 @@ public class SideSprite extends WETextureRegion {
 	 * or scale are changed, it is slightly more efficient to set the position
 	 * after those operations. If both position and size are to be changed, it
 	 * is better to use {@link #setBounds(float, float, float, float)}.
-	 *
 	 * @param x
 	 */
 	public void setX(float x) {
@@ -215,7 +307,6 @@ public class SideSprite extends WETextureRegion {
 	 * or scale are changed, it is slightly more efficient to set the position
 	 * after those operations. If both position and size are to be changed, it
 	 * is better to use {@link #setBounds(float, float, float, float)}.
-	 *
 	 * @param y
 	 */
 	public void setY(float y) {
@@ -224,7 +315,6 @@ public class SideSprite extends WETextureRegion {
 
 	/**
 	 * Sets the x position so that it is centered on the given x parameter
-	 *
 	 * @param x
 	 */
 	public void setCenterX(float x) {
@@ -233,7 +323,6 @@ public class SideSprite extends WETextureRegion {
 
 	/**
 	 * Sets the y position so that it is centered on the given y parameter
-	 *
 	 * @param y
 	 */
 	public void setCenterY(float y) {
@@ -242,7 +331,6 @@ public class SideSprite extends WETextureRegion {
 
 	/**
 	 * Sets the position so that the sprite is centered on (x, y)
-	 *
 	 * @param x
 	 * @param y
 	 */
@@ -255,7 +343,6 @@ public class SideSprite extends WETextureRegion {
 	 * Sets the x position relative to the current position where the sprite
 	 * will be drawn. If origin, rotation, or scale are changed, it is slightly
 	 * more efficient to translate after those operations.
-	 *
 	 * @param xAmount
 	 */
 	public void translateX(float xAmount) {
@@ -266,7 +353,6 @@ public class SideSprite extends WETextureRegion {
 		}
 
 		float[] vertices = this.vertices;
-		
 		vertices[X1] += xAmount;
 		vertices[X2] += xAmount;
 		vertices[X3] += xAmount;
@@ -277,7 +363,6 @@ public class SideSprite extends WETextureRegion {
 	 * Sets the y position relative to the current position where the sprite
 	 * will be drawn. If origin, rotation, or scale are changed, it is slightly
 	 * more efficient to translate after those operations.
-	 *
 	 * @param yAmount
 	 */
 	public void translateY(float yAmount) {
@@ -298,7 +383,6 @@ public class SideSprite extends WETextureRegion {
 	 * Sets the position relative to the current position where the sprite will
 	 * be drawn. If origin, rotation, or scale are changed, it is slightly more
 	 * efficient to translate after those operations.
-	 *
 	 * @param xAmount
 	 * @param yAmount
 	 */
@@ -326,61 +410,19 @@ public class SideSprite extends WETextureRegion {
 
 	/**
 	 * Sets the color used to tint this sprite. Default is {@link Color#WHITE}.
-	 *
-	 * @param v1r
-	 * @param v1g
-	 * @param v1b
-	 * @param v2r
-	 * @param v2g
-	 * @param v2b
-	 * @param v3r
-	 * @param v3g
-	 * @param v3b
-	 * @param v4r
-	 * @param v4g
-	 * @param v4b
+	 * @param tint
 	 */
-	public void setColor(
-		float v1r,
-		float v1g,
-		float v1b,
-		float v2r,
-		float v2g,
-		float v2b,
-		float v3r,
-		float v3g,
-		float v3b,
-		float v4r,
-		float v4g,
-		float v4b
-	) {
-		if (v1r > 1) v1r = 1;
-		if (v1g > 1) v1g = 1;
-		if (v1b > 1) v1b = 1;
-		if (v2r > 1) v2r = 1;
-		if (v2g > 1) v2g = 1;
-		if (v2b > 1) v2b = 1;
-		if (v3r > 1) v3r = 1;
-		if (v3g > 1) v3g = 1;
-		if (v3b > 1) v3b = 1;
-		if (v4r > 1) v4r = 1;
-		if (v4g > 1) v4g = 1;
-		if (v4b > 1) v4b = 1;
-		
-		int v1 = (255 << 24) | ((int)(255 * v1b) << 16) | ((int)(255 * v1g) << 8) | ((int)(255 * v1r));
-		int v2 = (255 << 24) | ((int)(255 * v2b) << 16) | ((int)(255 * v2g) << 8) | ((int)(255 * v2r));
-		int v3 = (255 << 24) | ((int)(255 * v3b) << 16) | ((int)(255 * v3g) << 8) | ((int)(255 * v3r));
-		int v4 = (255 << 24) | ((int)(255 * v4b) << 16) | ((int)(255 * v4g) << 8) | ((int)(255 * v4r));
-		
-		vertices[C1] = Float.intBitsToFloat(v1 & 0xfeffffff);
-		vertices[C2] = Float.intBitsToFloat(v2 & 0xfeffffff);
-		vertices[C3] = Float.intBitsToFloat(v3 & 0xfeffffff);
-		vertices[C4] = Float.intBitsToFloat(v4 & 0xfeffffff);
+	public void setColor(Color tint) {
+		float color = tint.toFloatBits();
+		float[] vertices = this.vertices;
+		vertices[C1] = color;
+		vertices[C2] = color;
+		vertices[C3] = color;
+		vertices[C4] = color;
 	}
-	
-		/**
+
+	/**
 	 * Sets the alpha portion of the color used to tint this sprite.
-	 *
 	 * @param a
 	 */
 	public void setAlpha(float a) {
@@ -399,14 +441,16 @@ public class SideSprite extends WETextureRegion {
 	}
 
 	/**
-	 * @param r * @see #setColor(Color)
-	 * @param g
+	 * @param r
 	 * @param b
+	 * @param g
 	 * @param a
+	 * @see #setColor(Color)
 	 */
 	public void setColor(float r, float g, float b, float a) {
 		int intBits = ((int) (255 * a) << 24) | ((int) (255 * b) << 16) | ((int) (255 * g) << 8) | ((int) (255 * r));
 		float color = NumberUtils.intToFloatColor(intBits);
+		float[] vertices = this.vertices;
 		vertices[C1] = color;
 		vertices[C2] = color;
 		vertices[C3] = color;
@@ -414,11 +458,12 @@ public class SideSprite extends WETextureRegion {
 	}
 
 	/**
-	 * Sets the color to each vertice.
 	 * @param color
+	 * @see #setColor(Color)
 	 * @see Color#toFloatBits()
 	 */
 	public void setColor(float color) {
+		float[] vertices = this.vertices;
 		vertices[C1] = color;
 		vertices[C2] = color;
 		vertices[C3] = color;
@@ -428,7 +473,6 @@ public class SideSprite extends WETextureRegion {
 	/**
 	 * Sets the origin in relation to the sprite's position for scaling and
 	 * rotation.
-	 *
 	 * @param originX
 	 * @param originY
 	 */
@@ -450,7 +494,6 @@ public class SideSprite extends WETextureRegion {
 	/**
 	 * Sets the rotation of the sprite in degrees. Rotation is centered on the
 	 * origin set in {@link #setOrigin(float, float)}
-	 *
 	 * @param degrees
 	 */
 	public void setRotation(float degrees) {
@@ -469,7 +512,6 @@ public class SideSprite extends WETextureRegion {
 	 * Sets the sprite's rotation in degrees relative to the current rotation.
 	 * Rotation is centered on the origin set in
 	 * {@link #setOrigin(float, float)}
-	 *
 	 * @param degrees
 	 */
 	public void rotate(float degrees) {
@@ -484,7 +526,6 @@ public class SideSprite extends WETextureRegion {
 	 * Rotates this sprite 90 degrees in-place by rotating the texture
 	 * coordinates. This rotation is unaffected by {@link #setRotation(float)}
 	 * and {@link #rotate(float)}.
-	 *
 	 * @param clockwise
 	 */
 	public void rotate90(boolean clockwise) {
@@ -521,7 +562,6 @@ public class SideSprite extends WETextureRegion {
 	 * Sets the sprite's scale for both X and Y uniformly. The sprite scales out
 	 * from the origin. This will not affect the values returned by
 	 * {@link #getWidth()} and {@link #getHeight()}
-	 *
 	 * @param scaleXY
 	 */
 	public void setScale(float scaleXY) {
@@ -534,7 +574,6 @@ public class SideSprite extends WETextureRegion {
 	 * Sets the sprite's scale for both X and Y. The sprite scales out from the
 	 * origin. This will not affect the values returned by {@link #getWidth()}
 	 * and {@link #getHeight()}
-	 *
 	 * @param scaleX
 	 * @param scaleY
 	 */
@@ -546,10 +585,9 @@ public class SideSprite extends WETextureRegion {
 
 	/**
 	 * Sets the sprite's scale relative to the current scale. for example:
-	 * original scale 2 -&gt; sprite.scale(4) -&gt; final scale 6. The sprite
-	 * scales out from the origin. This will not affect the values returned by
+	 * original scale 2 -> sprite.scale(4) -> final scale 6. The sprite scales
+	 * out from the origin. This will not affect the values returned by
 	 * {@link #getWidth()} and {@link #getHeight()}
-	 *
 	 * @param amount
 	 */
 	public void scale(float amount) {
@@ -561,57 +599,36 @@ public class SideSprite extends WETextureRegion {
 	/**
 	 * Returns the packed vertices, colors, and texture coordinates for this
 	 * sprite.
-	 *
-	 * @return
+	 * @return 
 	 */
 	public float[] getVertices() {
 		if (dirty) {
 			dirty = false;
 
-			float localX1 = -originX;//bottom left
-			float localY1 = -originY + (side == Side.LEFT ? height * (1-Point.SQRT12) : 0);
-			
-			float localX2 = -originX;//top left
-			float localY2 = -originY + (side == Side.RIGHT ? height * Point.SQRT12 : height);
-			
-			float localX3 = -originX + width; //top right
-			float localY3 = -originY + (side == Side.LEFT ? height * Point.SQRT12 : height);
-			//bottom right
-			float localX4 = -originX + width;
-			float localY4 = -originY + (side == Side.RIGHT ? height * (1-Point.SQRT12) : 0f);
-			
-			float worldOriginX = this.x + originX;
-			float worldOriginY = this.y + originY;
-			
-			if (side == Side.TOP) {
-				localY1 += height * 0.5f;
-				localX2 += width * 0.5f;
-				localY3 -= height * 0.5f;
-				localX4 -= width * 0.5f;
-			}
-			
+			float[] vertices = this.vertices;
+			float localX = -originX;
+			float localY = -originY;
+			float localX2 = localX + width;
+			float localY2 = localY + height;
+			float worldOriginX = this.x - localX;
+			float worldOriginY = this.y - localY;
 			if (scaleX != 1 || scaleY != 1) {
-				localX1 *= scaleX;
-				localY1 *= scaleY;
+				localX *= scaleX;
+				localY *= scaleY;
 				localX2 *= scaleX;
-				localY2 *= scaleX;
-				localX3 *= scaleX;
-				localY3 *= scaleY;
-				localX4 *= scaleX;
-				localY4 *= scaleX;
+				localY2 *= scaleY;
 			}
-			
 			if (rotation != 0) {
 				final float cos = MathUtils.cosDeg(rotation);
 				final float sin = MathUtils.sinDeg(rotation);
-				final float localXCos = localX1 * cos;
-				final float localXSin = localX1 * sin;
-				final float localYCos = localY1 * cos;
-				final float localYSin = localY1 * sin;
-				final float localX2Cos = localX3 * cos;
-				final float localX2Sin = localX3 * sin;
-				final float localY2Cos = localY3 * cos;
-				final float localY2Sin = localY3 * sin;
+				final float localXCos = localX * cos;
+				final float localXSin = localX * sin;
+				final float localYCos = localY * cos;
+				final float localYSin = localY * sin;
+				final float localX2Cos = localX2 * cos;
+				final float localX2Sin = localX2 * sin;
+				final float localY2Cos = localY2 * cos;
+				final float localY2Sin = localY2 * sin;
 
 				final float x1 = localXCos - localYSin + worldOriginX;
 				final float y1 = localYCos + localXSin + worldOriginY;
@@ -631,119 +648,25 @@ public class SideSprite extends WETextureRegion {
 				vertices[X4] = x1 + (x3 - x2);
 				vertices[Y4] = y3 - (y2 - y1);
 			} else {
-				final float x1 = localX1 + worldOriginX;
-				final float y1 = localY1 + worldOriginY;
+				final float x1 = localX + worldOriginX;
+				final float y1 = localY + worldOriginY;
 				final float x2 = localX2 + worldOriginX;
 				final float y2 = localY2 + worldOriginY;
-				final float x3 = localX3 + worldOriginX;
-				final float y3 = localY3 + worldOriginY;
-				final float x4 = localX4 + worldOriginX;
-				final float y4 = localY4 + worldOriginY;
 
-				vertices[X1] = x1;//bottom left
+				vertices[X1] = x1;
 				vertices[Y1] = y1;
 
-				vertices[X2] = x2;//top left
+				vertices[X2] = x1;
 				vertices[Y2] = y2;
 
-				vertices[X3] = x3;//top right
-				vertices[Y3] = y3;
+				vertices[X3] = x2;
+				vertices[Y3] = y2;
 
-				vertices[X4] = x4;//bottom right
-				vertices[Y4] = y4;
+				vertices[X4] = x2;
+				vertices[Y4] = y1;
 			}
 		}
 		return vertices;
-	}
-	
-	/**
-	 * aply the ao to the vertice color
-	 */
-	protected void applyAO(){
-		//float to integer color
-		int intBits1 = Float.floatToRawIntBits(vertices[C1]);
-		int intBits2 = Float.floatToRawIntBits(vertices[C2]);
-		int intBits3 = Float.floatToRawIntBits(vertices[C3]);
-		int intBits4 = Float.floatToRawIntBits(vertices[C4]);
-			
-		float shadowColor1 = NumberUtils.intToFloatColor((((intBits1 >>> 24) & 0xff) << 24) | ((int) (((intBits1 >>> 16) & 0xff) * ambientOcclusion) << 16) | ((int) (((intBits1 >>> 8) & 0xff) * ambientOcclusion) << 8) | ((int) ((intBits1 & 0xff) * ambientOcclusion)));
-		float shadowColor2 = NumberUtils.intToFloatColor((((intBits2 >>> 24) & 0xff) << 24) | ((int) (((intBits2 >>> 16) & 0xff) * ambientOcclusion) << 16) | ((int) (((intBits2 >>> 8) & 0xff) * ambientOcclusion) << 8) | ((int) ((intBits2 & 0xff) * ambientOcclusion)));
-		float shadowColor3 = NumberUtils.intToFloatColor((((intBits3 >>> 24) & 0xff) << 24) | ((int) (((intBits3 >>> 16) & 0xff) * ambientOcclusion) << 16) | ((int) (((intBits3 >>> 8) & 0xff) * ambientOcclusion) << 8) | ((int) ((intBits3 & 0xff) * ambientOcclusion)));
-		float shadowColor4 = NumberUtils.intToFloatColor((((intBits4 >>> 24) & 0xff) << 24) | ((int) (((intBits4 >>> 16) & 0xff) * ambientOcclusion) << 16) | ((int) (((intBits4 >>> 8) & 0xff) * ambientOcclusion) << 8) | ((int) ((intBits2 & 0xff) * ambientOcclusion)));
-			
-		if (side == Side.LEFT && ((byte) (aoFlags)) != 0) {//only if left side and there is ambient occlusion
-			if ((aoFlags & (1 << 2)) != 0) {//if right
-				vertices[C3] = shadowColor3;
-				vertices[C4] = shadowColor4;
-			}
-			if ((aoFlags & (1 << 4)) != 0) {//if bottom
-				vertices[C1] = shadowColor1;
-				vertices[C4] = shadowColor4;
-			} else {
-				if ((aoFlags & (1 << 3)) != 0) {//if bottom right
-					vertices[C4] = shadowColor4;
-				}
-				if ((aoFlags & (1 << 5)) != 0) {//if bottom left
-					vertices[C1] = shadowColor1;
-				}
-			}
-			if ((aoFlags & (1 << 6)) != 0) {//if left
-				vertices[C1] = shadowColor1;
-				vertices[C2] = shadowColor2;
-			}
-		}
-
-		if (side == Side.TOP && ((byte) (aoFlags >> 8)) != 0) {//only if top side and there is ambient occlusion
-			if ((aoFlags & (1 << 9)) != 0) {//if back right
-				vertices[C2] = shadowColor2;
-				vertices[C3] = shadowColor3;
-			}
-
-			if ((aoFlags & (1 << 11)) != 0) {//if front right
-				vertices[C3] = shadowColor3;
-				vertices[C4] = shadowColor4;
-			} else if ((aoFlags & (1 << 10)) != 0) {//if right
-				vertices[C3] = shadowColor3;
-			}
-
-			//12 is never visible
-			if ((aoFlags & (1 << 13)) != 0) {//if front left
-				vertices[C1] = shadowColor1;
-				vertices[C4] = shadowColor4;
-			} else if ((aoFlags & (1 << 14)) != 0) {//if left
-				vertices[C1] = shadowColor1;
-			}
-			if ((aoFlags & (1 << 15)) != 0) {//if back left
-				vertices[C1] = shadowColor1;
-				vertices[C2] = shadowColor2;
-			} else if ((aoFlags & 1 << 8) != 0) {//if back
-				vertices[C2] = shadowColor2;
-			}
-		}
-
-		if (side == Side.RIGHT && ((byte) (aoFlags >> 16)) != 0) {//only if right side and there is ambient occlusion
-			if ((aoFlags & (1 << 18)) != 0) {//if right
-				vertices[C3] = shadowColor3;
-				vertices[C4] = shadowColor4;
-			}
-
-			if ((aoFlags & (1 << 20)) != 0) {//if bottom
-				vertices[C1] = shadowColor1;
-				vertices[C4] = shadowColor4;
-			} else {
-				if ((aoFlags & (1 << 19)) != 0) {//if bottom right
-					vertices[C4] = shadowColor4;
-				}
-				if ((aoFlags & (1 << 21)) != 0) {//if bottom left
-					vertices[C1] = shadowColor1;
-				}
-			}
-
-			if ((aoFlags & (1 << 22)) != 0) {//if left
-				vertices[C1] = shadowColor1;
-				vertices[C2] = shadowColor2;
-			}
-		}
 	}
 
 	/**
@@ -793,8 +716,7 @@ public class SideSprite extends WETextureRegion {
 	 * @param batch
 	 */
 	public void draw(Batch batch) {
-		applyAO();
-		batch.draw(getTexture(), getVertices(), 0, SPRITE_SIZE);
+		batch.draw(texture, getVertices(), 0, SPRITE_SIZE);
 	}
 
 	/**
@@ -843,8 +765,7 @@ public class SideSprite extends WETextureRegion {
 	 * The origin influences
 	 * {@link #setPosition(float, float)}, {@link #setRotation(float)} and the
 	 * expansion direction of scaling {@link #setScale(float, float)}
-	 *
-	 * @return
+	 * @return 
 	 */
 	public float getOriginX() {
 		return originX;
@@ -854,8 +775,7 @@ public class SideSprite extends WETextureRegion {
 	 * The origin influences
 	 * {@link #setPosition(float, float)}, {@link #setRotation(float)} and the
 	 * expansion direction of scaling {@link #setScale(float, float)}
-	 *
-	 * @return
+	 * @return 
 	 */
 	public float getOriginY() {
 		return originY;
@@ -864,8 +784,7 @@ public class SideSprite extends WETextureRegion {
 	/**
 	 * X scale of the sprite, independent of size set by
 	 * {@link #setSize(float, float)}
-	 *
-	 * @return
+	 * @return 
 	 */
 	public float getScaleX() {
 		return scaleX;
@@ -874,8 +793,7 @@ public class SideSprite extends WETextureRegion {
 	/**
 	 * Y scale of the sprite, independent of size set by
 	 * {@link #setSize(float, float)}
-	 *
-	 * @return
+	 * @return 
 	 */
 	public float getScaleY() {
 		return scaleY;
@@ -883,40 +801,48 @@ public class SideSprite extends WETextureRegion {
 
 	/**
 	 * Returns the color of this sprite. Changing the returned color will have
-	 * no affect, {@link #setColor(float)} or
+	 * no affect, {@link #setColor(Color)} or
 	 * {@link #setColor(float, float, float, float)} must be used.
-	 *
-	 * @return
+	 * @return 
 	 */
 	public Color getColor() {
 		int intBits = NumberUtils.floatToIntColor(vertices[C1]);
-		return new Color(
-			(intBits & 0xff) / 255f,
-			((intBits >>> 8) & 0xff) / 255f,
-			((intBits >>> 16) & 0xff) / 255f,
-			((intBits >>> 24) & 0xff) / 255f
-		);
+		Color color = this.color;
+		color.r = (intBits & 0xff) / 255f;
+		color.g = ((intBits >>> 8) & 0xff) / 255f;
+		color.b = ((intBits >>> 16) & 0xff) / 255f;
+		color.a = ((intBits >>> 24) & 0xff) / 255f;
+		return color;
 	}
 
-	@Override
+	/**
+	 *
+	 * @param u
+	 * @param v
+	 * @param u2
+	 * @param v2
+	 */
 	public void setRegion(float u, float v, float u2, float v2) {
 		super.setRegion(u, v, u2, v2);
 
-		final float f = RenderCell.VIEW_WIDTH4/(float) getTexture().getWidth();//s/4096=x, where s is a quarter of the block width which is by default s=50
+		float[] vertices = Sprite.this.vertices;
 		vertices[U1] = u;
-		vertices[V1] = v2 - ((side == Side.LEFT || side == Side.TOP) ? f : 0f);
+		vertices[V1] = v2;
 
-		vertices[U2] = u + (side == Side.TOP ? f*2 : 0f);
-		vertices[V2] = v + (side == Side.RIGHT ? f : 0f);
+		vertices[U2] = u;
+		vertices[V2] = v;
 
 		vertices[U3] = u2;
-		vertices[V3] = v + (side == Side.LEFT ? f : 0f) + (side == Side.TOP ? f : 0f);
+		vertices[V3] = v;
 
-		vertices[U4] = u2 - (side == Side.TOP ? f*2 : 0f);
-		vertices[V4] = v2 - (side == Side.RIGHT ? f : 0f);
+		vertices[U4] = u2;
+		vertices[V4] = v2;
 	}
 
-	@Override
+	/**
+	 *
+	 * @param u
+	 */
 	public void setU(float u) {
 		super.setU(u);
 		vertices[U1] = u;
@@ -927,7 +853,6 @@ public class SideSprite extends WETextureRegion {
 	 *
 	 * @param v
 	 */
-	@Override
 	public void setV(float v) {
 		super.setV(v);
 		vertices[V2] = v;
@@ -938,24 +863,21 @@ public class SideSprite extends WETextureRegion {
 	 *
 	 * @param u2
 	 */
-	@Override
 	public void setU2(float u2) {
 		super.setU2(u2);
-		vertices[U3] = u2*0.7f;
-		vertices[U4] = u2*0.7f;
+		vertices[U3] = u2;
+		vertices[U4] = u2;
 	}
 
 	/**
 	 *
 	 * @param v2
 	 */
-	@Override
 	public void setV2(float v2) {
 		super.setV2(v2);
 		vertices[V1] = v2;
 		vertices[V4] = v2;
 	}
-
 
 	/**
 	 * Set the sprite's flip state regardless of current condition
@@ -984,7 +906,7 @@ public class SideSprite extends WETextureRegion {
 	@Override
 	public void flip(boolean x, boolean y) {
 		super.flip(x, y);
-		float[] vertices = this.vertices;
+		float[] vertices = Sprite.this.vertices;
 		if (x) {
 			float temp = vertices[U1];
 			vertices[U1] = vertices[U3];
@@ -1005,12 +927,12 @@ public class SideSprite extends WETextureRegion {
 
 	@Override
 	public void scroll(float xAmount, float yAmount) {
-		float[] vertices = SideSprite.this.vertices;
+		float[] vertices = Sprite.this.vertices;
 		if (xAmount != 0) {
 			float u = (vertices[U1] + xAmount) % 1;
-			float u2 = u + width / getTexture().getWidth();
-			this.setU(u);
-			this.setU2(u2);
+			float u2 = u + width / texture.getWidth();
+			this.u = u;
+			this.u2 = u2;
 			vertices[U1] = u;
 			vertices[U2] = u;
 			vertices[U3] = u2;
@@ -1018,21 +940,13 @@ public class SideSprite extends WETextureRegion {
 		}
 		if (yAmount != 0) {
 			float v = (vertices[V2] + yAmount) % 1;
-			float v2 = v + height / getTexture().getHeight();
-			setV(v);
-			setV2(v2);
+			float v2 = v + height / texture.getHeight();
+			this.v = v;
+			this.v2 = v2;
 			vertices[V1] = v2;
 			vertices[V2] = v;
 			vertices[V3] = v;
 			vertices[V4] = v2;
 		}
-	}
-
-	/**
-	 *
-	 * @param aoFlags
-	 */
-	public void setAoFlags(int aoFlags) {
-		this.aoFlags = aoFlags;
 	}
 }
