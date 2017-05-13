@@ -218,9 +218,9 @@ public class GameView implements GameManager {
 		//Setup shader
 		ShaderProgram.pedantic = false;
 
-		ShaderProgram newshader = new ShaderProgram(vertexShader, fragmentShader);
-		if (newshader.isCompiled()) {
-			shader = newshader;
+		ShaderProgram shader = new ShaderProgram(vertexShader, fragmentShader);
+		if (shader.isCompiled()) {
+			this.shader = shader;
 			
 			//print any warnings
 			if (!shader.getLog().isEmpty()) {
@@ -233,7 +233,7 @@ public class GameView implements GameManager {
 			shader.setUniformi("u_normals", 1); //GL_TEXTURE1
 			shader.end();
 		} else {
-			throw new Exception("Could not compile shader: " + newshader.getLog());
+			throw new Exception("Could not compile shader: " + shader.getLog());
 		}
 	}
 
