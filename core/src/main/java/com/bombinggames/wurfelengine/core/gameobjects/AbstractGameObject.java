@@ -32,7 +32,6 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
-import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
@@ -45,6 +44,7 @@ import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_DEPTH2;
 import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
 import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_WIDTH2;
+import com.bombinggames.wurfelengine.core.map.rendering.Sprite;
 import java.io.FileNotFoundException;
 import java.io.Serializable;
 

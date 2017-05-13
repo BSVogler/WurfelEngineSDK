@@ -39,7 +39,31 @@ import com.badlogic.gdx.utils.NumberUtils;
  * @author Nathan Sweet
  */
 public class SpriteBatchWithZAxis implements Batch {
-
+	static public final int X1 = 0;
+	static public final int Y1 = 1;
+	static public final int Z1 = 2;
+	static public final int C1 = 3;
+	static public final int U1 = 4;
+	static public final int V1 = 5;
+	static public final int X2 = 6;
+	static public final int Y2 = 7;
+	static public final int Z2 = 8;
+	static public final int C2 = 9;
+	static public final int U2 = 10;
+	static public final int V2 = 11;
+	static public final int X3 = 12;
+	static public final int Y3 = 13;
+	static public final int Z3 = 14;
+	static public final int C3 = 15;
+	static public final int U3 = 16;
+	static public final int V3 = 17;
+	static public final int X4 = 18;
+	static public final int Y4 = 19;
+	static public final int Z4 = 20;
+	static public final int C4 = 21;
+	static public final int U4 = 22;
+	static public final int V4 = 23;
+	
 	private Mesh mesh;
 
 	final float[] vertices;
@@ -123,8 +147,12 @@ public class SpriteBatchWithZAxis implements Batch {
 
 		VertexDataType vertexDataType = (Gdx.gl30 != null) ? VertexDataType.VertexBufferObjectWithVAO : VertexDataType.VertexArray;
 
-		mesh = new Mesh(vertexDataType, false, size * 4, size * 6,
-			new VertexAttribute(Usage.Position, 2, ShaderProgram.POSITION_ATTRIBUTE),
+		mesh = new Mesh(
+			vertexDataType,
+			false,
+			size * 4,//number of max vertices, each sprite has four vertices
+			size * 10,//why 6 tho?
+			new VertexAttribute(Usage.Position, 3, ShaderProgram.POSITION_ATTRIBUTE),
 			new VertexAttribute(Usage.ColorPacked, 4, ShaderProgram.COLOR_ATTRIBUTE),
 			new VertexAttribute(Usage.TextureCoordinates, 2, ShaderProgram.TEXCOORD_ATTRIBUTE + "0"));
 
@@ -636,6 +664,7 @@ public class SpriteBatchWithZAxis implements Batch {
 		}
 		int copyCount = Math.min(remainingVertices, count);
 
+		//copy sprite vertices into mesh vertices
 		System.arraycopy(spriteVertices, offset, vertices, idx, copyCount);
 		idx += copyCount;
 		count -= copyCount;
@@ -1034,13 +1063,15 @@ public class SpriteBatchWithZAxis implements Batch {
 			return;
 		}
 
+		//stats
 		renderCalls++;
 		totalRenderCalls++;
-		int spritesInBatch = idx / 20;
+		int spritesInBatch = idx / Sprite.SPRITE_SIZE;//the number of sprites
 		if (spritesInBatch > maxSpritesInBatch) {
 			maxSpritesInBatch = spritesInBatch;
 		}
-		int count = spritesInBatch * 6;
+		
+		int count = spritesInBatch * 6;//why 6??? two triangels with 3 vertices
 
 		lastTexture.bind();
 		Mesh mesh = this.mesh;

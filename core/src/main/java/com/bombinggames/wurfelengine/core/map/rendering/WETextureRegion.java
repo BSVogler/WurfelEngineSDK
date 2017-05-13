@@ -111,7 +111,7 @@ public class WETextureRegion{
 	 * @param x
 	 * @param y
 	 */
-	public WETextureRegion(WETextureRegion region, int x, int y, int width, int height) {
+	public WETextureRegion(TextureRegion region, int x, int y, int width, int height) {
 		setRegion(region, x, y, width, height);
 	}
 
@@ -200,8 +200,8 @@ public class WETextureRegion{
 	 * @param width
 	 * @param height
 	 */
-	public void setRegion(WETextureRegion region, int x, int y, int width, int height) {
-		texture = region.texture;
+	public void setRegion(TextureRegion region, int x, int y, int width, int height) {
+		texture = region.getTexture();
 		setRegion(region.getRegionX() + x, region.getRegionY() + y, width, height);
 	}
 

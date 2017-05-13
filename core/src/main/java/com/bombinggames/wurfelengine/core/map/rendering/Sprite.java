@@ -25,29 +25,30 @@ package com.bombinggames.wurfelengine.core.map.rendering;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Batch;
-import static com.badlogic.gdx.graphics.g2d.Batch.C1;
-import static com.badlogic.gdx.graphics.g2d.Batch.C2;
-import static com.badlogic.gdx.graphics.g2d.Batch.C3;
-import static com.badlogic.gdx.graphics.g2d.Batch.C4;
-import static com.badlogic.gdx.graphics.g2d.Batch.U1;
-import static com.badlogic.gdx.graphics.g2d.Batch.U2;
-import static com.badlogic.gdx.graphics.g2d.Batch.U3;
-import static com.badlogic.gdx.graphics.g2d.Batch.U4;
-import static com.badlogic.gdx.graphics.g2d.Batch.V1;
-import static com.badlogic.gdx.graphics.g2d.Batch.V2;
-import static com.badlogic.gdx.graphics.g2d.Batch.V3;
-import static com.badlogic.gdx.graphics.g2d.Batch.V4;
-import static com.badlogic.gdx.graphics.g2d.Batch.X1;
-import static com.badlogic.gdx.graphics.g2d.Batch.X2;
-import static com.badlogic.gdx.graphics.g2d.Batch.X3;
-import static com.badlogic.gdx.graphics.g2d.Batch.X4;
-import static com.badlogic.gdx.graphics.g2d.Batch.Y1;
-import static com.badlogic.gdx.graphics.g2d.Batch.Y2;
-import static com.badlogic.gdx.graphics.g2d.Batch.Y3;
-import static com.badlogic.gdx.graphics.g2d.Batch.Y4;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.NumberUtils;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.C1;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.C2;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.C3;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.C4;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.U1;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.U2;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.U3;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.U4;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.V1;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.V2;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.V3;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.V4;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.X1;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.X2;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.X3;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.X4;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Y1;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Y2;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Y3;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Y4;
 
 /**
  * Holds the geometry, color, and texture information for drawing 2D sprites
@@ -65,7 +66,7 @@ import com.badlogic.gdx.utils.NumberUtils;
  */
 public class Sprite extends WETextureRegion {
 
-	static final int VERTEX_SIZE = 2 + 1 + 2;
+	static final int VERTEX_SIZE = 3 + 1 + 2;//x,y,z+color+u,v
 	static final int SPRITE_SIZE = 4 * VERTEX_SIZE;
 
 	final float[] vertices = new float[SPRITE_SIZE];
@@ -139,7 +140,7 @@ public class Sprite extends WETextureRegion {
 	 * the other
 	 * @param region
 	 */
-	public Sprite(WETextureRegion region) {
+	public Sprite(TextureRegion region) {
 		setRegion(region);
 		setColor(1, 1, 1, 1);
 		setSize(region.getRegionWidth(), region.getRegionHeight());
@@ -158,7 +159,7 @@ public class Sprite extends WETextureRegion {
 	 * @param srcHeight The height of the texture region. May be negative to
 	 * flip the sprite when drawn.
 	 */
-	public Sprite(WETextureRegion region, int srcX, int srcY, int srcWidth, int srcHeight) {
+	public Sprite(TextureRegion region, int srcX, int srcY, int srcWidth, int srcHeight) {
 		setRegion(region, srcX, srcY, srcWidth, srcHeight);
 		setColor(1, 1, 1, 1);
 		setSize(Math.abs(srcWidth), Math.abs(srcHeight));
@@ -173,7 +174,7 @@ public class Sprite extends WETextureRegion {
 	public Sprite(Sprite sprite) {
 		set(sprite);
 	}
-
+	
 	/**
 	 * Make this sprite a copy in every way of the specified sprite
 	 * @param sprite
