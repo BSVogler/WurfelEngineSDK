@@ -355,12 +355,16 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 			sprite.setRotation(rotation);
 			//sprite.setOrigin(0, 0);
 			sprite.setScale(scaling);
+			float height=0;
 
+			if (getPosition()!=null)
+				height = getPoint().getZ();
 			sprite.setPosition(
 				xPos + texture.offsetX - texture.originalWidth / 2,
 				yPos//center
 				- VIEW_HEIGHT2
-				+ texture.offsetY
+				+ texture.offsetY,
+				height
 			);
 
 			//hack for transient field tint

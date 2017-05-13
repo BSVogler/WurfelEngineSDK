@@ -632,7 +632,7 @@ public class RenderCell extends AbstractGameObject {
 	public void render(final GameView view, final Camera camera) {
 		if (!isHidden()) {
 			if (hasSides()) {
-				Coordinate coords = getPosition();
+				Coordinate coords = getCoord();
 				byte clipping = getClipping();
 				if ((clipping & (1 << 1)) == 0) {
 					renderSide(view, camera, coords, Side.TOP, staticShade);
@@ -660,9 +660,9 @@ public class RenderCell extends AbstractGameObject {
 	public void render(final GameView view, final int xPos, final int yPos) {
 		if (!isHidden()) {
 			if (hasSides()) {
-				renderSide(view, xPos, yPos + (VIEW_HEIGHT + VIEW_DEPTH), Side.TOP);
-				renderSide(view, xPos, yPos, Side.LEFT);
-				renderSide(view, xPos + VIEW_WIDTH2, yPos, Side.RIGHT);
+				renderSide(view, xPos, yPos + (VIEW_HEIGHT + VIEW_DEPTH),0, Side.TOP);
+				renderSide(view, xPos, yPos, 0, Side.LEFT);
+				renderSide(view, xPos + VIEW_WIDTH2, yPos, 0,Side.RIGHT);
 			} else {
 				super.render(view, xPos, yPos);
 			}
@@ -685,6 +685,7 @@ public class RenderCell extends AbstractGameObject {
 					view,
 					(int) (xPos - VIEW_WIDTH2 * scale),
 					(int) (yPos + VIEW_HEIGHT * scale),
+					0,
 					Side.TOP,
 					color
 				);
@@ -700,6 +701,7 @@ public class RenderCell extends AbstractGameObject {
 					view,
 					(int) (xPos - VIEW_WIDTH2 * scale),
 					yPos,
+					0,
 					Side.LEFT,
 					color
 				);
@@ -711,6 +713,7 @@ public class RenderCell extends AbstractGameObject {
 					view,
 					xPos,
 					yPos,
+					0,
 					Side.RIGHT,
 					color
 				);
@@ -754,6 +757,7 @@ public class RenderCell extends AbstractGameObject {
 			view,
             coords.getViewSpcX() - VIEW_WIDTH2 + ( side == Side.RIGHT ? (int) (VIEW_WIDTH2*(getScaling())) : 0),//right side is  half a block more to the right,
             coords.getViewSpcY() - VIEW_HEIGHT2 + ( side == Side.TOP ? (int) (VIEW_HEIGHT*(getScaling())) : 0),//the top is drawn a quarter blocks higher,
+			(int) getCoord().getZPoint(),
             side,
             staticShade ?
 				side == Side.RIGHT
@@ -828,9 +832,10 @@ public class RenderCell extends AbstractGameObject {
 	 * @param view the view using this render method
 	 * @param xPos rendering position
 	 * @param yPos rendering position
+	 * @param zPos
 	 * @param side The number identifying the side. 0=left, 1=top, 2=right
 	 */
-	public void renderSide(final GameView view, final int xPos, final int yPos, final Side side) {
+	public void renderSide(final GameView view, final int xPos, final int yPos, int zPos, final Side side) {
 		Color color;
 		if (Controller.getLightEngine() != null && !Controller.getLightEngine().isShadingPixelBased()) {
 			color = Controller.getLightEngine().getColor(side, getPosition());
@@ -842,6 +847,7 @@ public class RenderCell extends AbstractGameObject {
 			view,
 			xPos,
 			yPos,
+			zPos,
 			side,
 			color
 		);
@@ -853,11 +859,12 @@ public class RenderCell extends AbstractGameObject {
 	 * @param view the view using this render method
 	 * @param xPos rendering position
 	 * @param yPos rendering position
+	 * @param zPos
 	 * @param side The number identifying the side. 0=left, 1=top, 2=right
 	 * @param color a tint in which the sprite gets rendered. If null color gets
 	 * ignored
 	 */
-	public void renderSide(final GameView view, final int xPos, final int yPos, final Side side, Color color) {
+	public void renderSide(final GameView view, final int xPos, final int yPos, final int zPos, final Side side, Color color) {
 		byte id = getSpriteId();
 		if (id <= 0) {
 			return;
@@ -890,7 +897,7 @@ public class RenderCell extends AbstractGameObject {
 				break;
 		}
 		//sprite.setRegion(getBlockSprite(id, value, side).getTexture());
-		sprite.setPosition(xPos, yPos);
+		sprite.setPosition(xPos, yPos, zPos);
 		if (getScaling() != 1) {
 			sprite.setOrigin(0, 0);
 			sprite.setScale(getScaling());

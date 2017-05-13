@@ -58,6 +58,10 @@ import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZA
 import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Y2;
 import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Y3;
 import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Y4;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Z1;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Z2;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Z3;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Z4;
 
 /**
  *
@@ -81,7 +85,7 @@ public class SideSprite extends WETextureRegion {
 	}
 	
 	final float[] vertices = new float[SPRITE_SIZE];
-	private float x, y;
+	private float x, y, z;
 	private float width, height;
 	private float originX, originY;
 	private float rotation;
@@ -119,6 +123,7 @@ public class SideSprite extends WETextureRegion {
 	public void setBounds(float x, float y, float width, float height) {
 		this.x = x;
 		this.y = y;
+		this.z = 0;
 		this.width = width;
 		this.height = height;
 
@@ -193,9 +198,10 @@ public class SideSprite extends WETextureRegion {
 	 *
 	 * @param x
 	 * @param y
+	 * @param z
 	 */
-	public void setPosition(float x, float y) {
-		translate(x - this.x, y - this.y);
+	public void setPosition(float x, float y, float z) {
+		translate(x - this.x, y - this.y, z- this.z);
 	}
 
 	/**
@@ -301,10 +307,12 @@ public class SideSprite extends WETextureRegion {
 	 *
 	 * @param xAmount
 	 * @param yAmount
+	 * @param zAmount
 	 */
-	public void translate(float xAmount, float yAmount) {
+	public void translate(float xAmount, float yAmount, float zAmount) {
 		x += xAmount;
 		y += yAmount;
+		z += zAmount;
 
 		if (dirty) {
 			return;
@@ -313,15 +321,19 @@ public class SideSprite extends WETextureRegion {
 		float[] vertices = this.vertices;
 		vertices[X1] += xAmount;
 		vertices[Y1] += yAmount;
+		vertices[Z1] += zAmount;
 
 		vertices[X2] += xAmount;
 		vertices[Y2] += yAmount;
+		vertices[Z2] += zAmount;
 
 		vertices[X3] += xAmount;
 		vertices[Y3] += yAmount;
+		vertices[Z3] += zAmount;
 
 		vertices[X4] += xAmount;
 		vertices[Y4] += yAmount;
+		vertices[Z4] += zAmount;
 	}
 
 	/**
@@ -642,7 +654,7 @@ public class SideSprite extends WETextureRegion {
 
 				vertices[X1] = x1;//bottom left
 				vertices[Y1] = y1;
-
+				
 				vertices[X2] = x2;//top left
 				vertices[Y2] = y2;
 
@@ -652,6 +664,10 @@ public class SideSprite extends WETextureRegion {
 				vertices[X4] = x4;//bottom right
 				vertices[Y4] = y4;
 			}
+			vertices[Z1]=z;
+			vertices[Z2]=z;
+			vertices[Z3]=z;
+			vertices[Z4]=z;
 			
 		}
 		applyAO();

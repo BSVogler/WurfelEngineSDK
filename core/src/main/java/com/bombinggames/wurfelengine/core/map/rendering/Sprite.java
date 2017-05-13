@@ -49,6 +49,10 @@ import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZA
 import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Y2;
 import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Y3;
 import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Y4;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Z1;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Z2;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Z3;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Z4;
 
 /**
  * Holds the geometry, color, and texture information for drawing 2D sprites
@@ -71,7 +75,7 @@ public class Sprite extends WETextureRegion {
 
 	final float[] vertices = new float[SPRITE_SIZE];
 	private final Color color = new Color(1, 1, 1, 1);
-	private float x, y;
+	private float x, y, z;
 	float width, height;
 	private float originX, originY;
 	private float rotation;
@@ -287,9 +291,10 @@ public class Sprite extends WETextureRegion {
 	 * is better to use {@link #setBounds(float, float, float, float)}.
 	 * @param x
 	 * @param y
+	 * @param z
 	 */
-	public void setPosition(float x, float y) {
-		translate(x - this.x, y - this.y);
+	public void setPosition(float x, float y, float z) {
+		translate(x - this.x, y - this.y, z - this.z);
 	}
 
 	/**
@@ -384,12 +389,15 @@ public class Sprite extends WETextureRegion {
 	 * Sets the position relative to the current position where the sprite will
 	 * be drawn. If origin, rotation, or scale are changed, it is slightly more
 	 * efficient to translate after those operations.
+	 *
 	 * @param xAmount
 	 * @param yAmount
+	 * @param zAmount
 	 */
-	public void translate(float xAmount, float yAmount) {
+	public void translate(float xAmount, float yAmount, float zAmount) {
 		x += xAmount;
 		y += yAmount;
+		z += zAmount;
 
 		if (dirty) {
 			return;
@@ -398,17 +406,21 @@ public class Sprite extends WETextureRegion {
 		float[] vertices = this.vertices;
 		vertices[X1] += xAmount;
 		vertices[Y1] += yAmount;
+		vertices[Z1] += zAmount;
 
 		vertices[X2] += xAmount;
 		vertices[Y2] += yAmount;
+		vertices[Z2] += zAmount;
 
 		vertices[X3] += xAmount;
 		vertices[Y3] += yAmount;
+		vertices[Z3] += zAmount;
 
 		vertices[X4] += xAmount;
 		vertices[Y4] += yAmount;
+		vertices[Z4] += zAmount;
 	}
-
+	
 	/**
 	 * Sets the color used to tint this sprite. Default is {@link Color#WHITE}.
 	 * @param tint
@@ -666,6 +678,11 @@ public class Sprite extends WETextureRegion {
 				vertices[X4] = x2;
 				vertices[Y4] = y1;
 			}
+			
+			vertices[Z1]=z;
+			vertices[Z2]=z;
+			vertices[Z3]=z;
+			vertices[Z4]=z;
 		}
 		return vertices;
 	}
