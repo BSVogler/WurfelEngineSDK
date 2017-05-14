@@ -37,7 +37,6 @@ import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.NumberUtils;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
-import com.bombinggames.wurfelengine.core.map.Point;
 import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.C1;
 import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.C2;
 import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.C3;
@@ -580,26 +579,47 @@ public class SideSprite extends WETextureRegion {
 		if (dirty) {
 			dirty = false;
 
-			float localX1 = -originX;//bottom left
-			float localY1 = -originY + (side == Side.LEFT ? height * (1-Point.SQRT12) : 0);
+			float localX1 = -originX + (side == Side.TOP ? -RenderCell.GAME_DIAGLENGTH2 : 0);//bottom left/left
+			float localY1 = -originY;
 			
-			float localX2 = -originX;//top left
-			float localY2 = -originY + (side == Side.RIGHT ? height * Point.SQRT12 : height);
+			float localX2 = -originX;//top left /top
+			float localY2 = -originY + (side == Side.TOP ? -RenderCell.GAME_DIAGLENGTH2 : 0);
 			
-			float localX3 = -originX + width; //top right
-			float localY3 = -originY + (side == Side.LEFT ? height * Point.SQRT12 : height);
+			float localX3 = -originX + (side == Side.TOP ? RenderCell.GAME_DIAGLENGTH2 : 0); //top right/right
+			float localY3 = -originY;
 			//bottom right
-			float localX4 = -originX + width;
-			float localY4 = -originY + (side == Side.RIGHT ? height * (1-Point.SQRT12) : 0f);
+			float localX4 = -originX;
+			float localY4 = -originY + (side == Side.TOP ? RenderCell.GAME_DIAGLENGTH2 : 0f);
+			
+			vertices[Z1]=z;
+			vertices[Z2]=z;
+			vertices[Z3]=z;
+			vertices[Z4]=z;
 			
 			float worldOriginX = this.x + originX;
 			float worldOriginY = this.y + originY;
 			
-			if (side == Side.TOP) {
-				localY1 += height * 0.5f;
-				localX2 += width * 0.5f;
-				localY3 -= height * 0.5f;
-				localX4 -= width * 0.5f;
+			if (side == Side.LEFT){
+				localX1 += -RenderCell.GAME_DIAGLENGTH2;
+				//localY1 += ;
+				localX2 += -RenderCell.GAME_DIAGLENGTH2;
+				vertices[Z2]+=RenderCell.GAME_EDGELENGTH;
+				localY3 += RenderCell.GAME_DIAGLENGTH2;
+				vertices[Z3]+=RenderCell.GAME_EDGELENGTH;
+				localY4 += RenderCell.GAME_DIAGLENGTH2;
+			} else if (side==Side.TOP) {
+				vertices[Z1]+=RenderCell.GAME_EDGELENGTH;
+				vertices[Z2]+=RenderCell.GAME_EDGELENGTH;
+				vertices[Z3]+=RenderCell.GAME_EDGELENGTH;
+				vertices[Z4]+=RenderCell.GAME_EDGELENGTH;
+			} else{
+				//localY1 += ;
+				localY1 += RenderCell.GAME_DIAGLENGTH2;
+				localY2 += RenderCell.GAME_DIAGLENGTH2;
+				localX3 += RenderCell.GAME_DIAGLENGTH2;
+				vertices[Z2]+=RenderCell.GAME_EDGELENGTH;
+				vertices[Z3]+=RenderCell.GAME_EDGELENGTH;
+				localX4 += RenderCell.GAME_DIAGLENGTH2;
 			}
 			
 			if (scaleX != 1 || scaleY != 1) {
@@ -663,12 +683,7 @@ public class SideSprite extends WETextureRegion {
 
 				vertices[X4] = x4;//bottom right
 				vertices[Y4] = y4;
-			}
-			vertices[Z1]=z;
-			vertices[Z2]=z;
-			vertices[Z3]=z;
-			vertices[Z4]=z;
-			
+			}				
 		}
 		applyAO();
 		return vertices;

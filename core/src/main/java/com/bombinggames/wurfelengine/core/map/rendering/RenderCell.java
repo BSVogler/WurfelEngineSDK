@@ -753,11 +753,12 @@ public class RenderCell extends AbstractGameObject {
 			color = Controller.getLightEngine().getColor(side, getPosition()).mul(color.r + 0.5f, color.g + 0.5f, color.b + 0.5f, color.a + 0.5f);
 		}
 		
+		Point tmpPoint = Point.getShared().setFromCoord(coord);
         renderSide(
 			view,
-            coords.getViewSpcX() - VIEW_WIDTH2 + ( side == Side.RIGHT ? (int) (VIEW_WIDTH2*(getScaling())) : 0),//right side is  half a block more to the right,
-            coords.getViewSpcY() - VIEW_HEIGHT2 + ( side == Side.TOP ? (int) (VIEW_HEIGHT*(getScaling())) : 0),//the top is drawn a quarter blocks higher,
-			(int) getCoord().getZPoint(),
+			(int) tmpPoint.getX(), //right side is  half a block more to the right,
+            (int) tmpPoint.getY(),//the top is drawn a quarter blocks higher,
+			(int) tmpPoint.getZ(),
             side,
             staticShade ?
 				side == Side.RIGHT
