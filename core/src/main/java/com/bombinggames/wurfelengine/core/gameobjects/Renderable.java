@@ -65,7 +65,7 @@ public interface Renderable {
 	public Position getPosition();
 
 	/**
-	 * can be copy safe but may not
+	 * not copy save
 	 *
 	 * @return
 	 * @see #getPosition()
