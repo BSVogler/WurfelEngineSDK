@@ -632,16 +632,15 @@ public class RenderCell extends AbstractGameObject {
 	public void render(final GameView view, final Camera camera) {
 		if (!isHidden()) {
 			if (hasSides()) {
-				Coordinate coords = getCoord();
 				byte clipping = getClipping();
 				if ((clipping & (1 << 1)) == 0) {
-					renderSide(view, camera, coords, Side.TOP, staticShade);
+					renderSide(view, camera, Side.TOP, staticShade);
 				}
 				if ((clipping & 1) == 0) {
-					renderSide(view, camera, coords, Side.LEFT, staticShade);
+					renderSide(view, camera, Side.LEFT, staticShade);
 				}
 				if ((clipping & (1 << 2)) == 0) {
-					renderSide(view, camera, coords, Side.RIGHT, staticShade);
+					renderSide(view, camera, Side.RIGHT, staticShade);
 				}
 			} else {
 				super.render(view, camera);
@@ -672,14 +671,18 @@ public class RenderCell extends AbstractGameObject {
     /**
      * Renders the whole block at a custom position.
      * @param view the view using this render method
+	 * @param point
      * @param xPos rendering position of the center
      * @param yPos rendering position of the center
      * @param color when the block has sides its sides gets shaded using this color.
      * @param staticShade makes one side brighter, opposite side darker
      */
-	public void render(final GameView view, final int xPos, final int yPos, Color color, final boolean staticShade) {
+	public void render(final GameView view, Point point, Color color, final boolean staticShade) {
 		if (!isHidden()) {
 			if (hasSides()) {
+				float xPos = getPoint().getX();
+				float yPos = getPoint().getY();
+				float zPos = getPoint().getZ();
 				float scale = getScaling();
 				renderSide(
 					view,
@@ -699,9 +702,9 @@ public class RenderCell extends AbstractGameObject {
 				}
 				renderSide(
 					view,
-					(int) (xPos - VIEW_WIDTH2 * scale),
+					xPos,
 					yPos,
-					0,
+					zPos,
 					Side.LEFT,
 					color
 				);
@@ -713,12 +716,12 @@ public class RenderCell extends AbstractGameObject {
 					view,
 					xPos,
 					yPos,
-					0,
+					zPos,
 					Side.RIGHT,
 					color
 				);
 			} else {
-				super.render(view, xPos, yPos + VIEW_DEPTH4, color);
+				super.render(view, getPoint(), color);
 			}
 		}
 	}
@@ -753,7 +756,7 @@ public class RenderCell extends AbstractGameObject {
 			color = Controller.getLightEngine().getColor(side, getPosition()).mul(color.r + 0.5f, color.g + 0.5f, color.b + 0.5f, color.a + 0.5f);
 		}
 		
-		Point tmpPoint = Point.getShared().setFromCoord(coord);
+		Point tmpPoint = getPoint();
         renderSide(
 			view,
 			(int) tmpPoint.getX(), //right side is  half a block more to the right,
@@ -865,7 +868,7 @@ public class RenderCell extends AbstractGameObject {
 	 * @param color a tint in which the sprite gets rendered. If null color gets
 	 * ignored
 	 */
-	public void renderSide(final GameView view, final int xPos, final int yPos, final int zPos, final Side side, Color color) {
+	public void renderSide(final GameView view, final float xPos, final float yPos, final float zPos, final Side side, Color color) {
 		byte id = getSpriteId();
 		if (id <= 0) {
 			return;
