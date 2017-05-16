@@ -529,6 +529,7 @@ public class RenderCell extends AbstractGameObject {
 	private SideSprite site1;
 	private SideSprite site3;
 	private SideSprite site2;
+	private GameSpaceSprite site1;
 	/**
 	 * frame number to avoid multiple calculations in one frame
 	 */

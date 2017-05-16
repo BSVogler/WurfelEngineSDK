@@ -158,7 +158,7 @@ public class SpriteBatchWithZAxis implements Batch {
 
 		projectionMatrix.setToOrtho2D(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 
-		vertices = new float[size * SideSprite.SPRITE_SIZE];
+		vertices = new float[size * GameSpaceSprite.SPRITE_SIZE];
 
 		int len = size * 6;
 		short[] indices = new short[len];
@@ -1066,7 +1066,7 @@ public class SpriteBatchWithZAxis implements Batch {
 		//stats
 		renderCalls++;
 		totalRenderCalls++;
-		int spritesInBatch = idx / Sprite.SPRITE_SIZE;//the number of sprites
+		int spritesInBatch = idx / GameSpaceSprite.SPRITE_SIZE;//the number of sprites
 		if (spritesInBatch > maxSpritesInBatch) {
 			maxSpritesInBatch = spritesInBatch;
 		}

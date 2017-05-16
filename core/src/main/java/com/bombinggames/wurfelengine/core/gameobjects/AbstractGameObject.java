@@ -40,11 +40,11 @@ import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
+import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_DEPTH2;
 import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
 import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_WIDTH2;
-import com.bombinggames.wurfelengine.core.map.rendering.Sprite;
 import java.io.FileNotFoundException;
 import java.io.Serializable;
 
@@ -247,7 +247,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * flag 
 	 */
 	private int marked;
-	private Sprite sprite;
+	private GameSpaceSprite sprite;
 
 	/**
 	 * Creates an object.

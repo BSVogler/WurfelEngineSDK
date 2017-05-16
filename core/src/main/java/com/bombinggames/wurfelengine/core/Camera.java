@@ -52,7 +52,7 @@ import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
-import com.bombinggames.wurfelengine.core.map.rendering.SideSprite;
+import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import java.util.ArrayList;
 import java.util.LinkedList;
 
@@ -510,7 +510,7 @@ public class Camera implements Telegraph {
 
 			//settings for this frame
 			RenderCell.setStaticShade(WE.getCVars().getValueB("enableAutoShade"));
-			SideSprite.setAO(WE.getCVars().getValueF("ambientOcclusion"));
+			GameSpaceSprite.setAO(WE.getCVars().getValueF("ambientOcclusion"));
 			
 			//render vom bottom to top
 			for (Renderable obj : depthlist) {

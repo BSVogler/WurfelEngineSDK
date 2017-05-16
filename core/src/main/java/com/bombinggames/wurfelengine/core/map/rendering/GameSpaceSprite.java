@@ -66,7 +66,7 @@ import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZA
  *
  * @author Benedikt Vogler
  */
-public class SideSprite extends WETextureRegion {
+public class GameSpaceSprite extends WETextureRegion {
 
 	static final int VERTEX_SIZE = 3 + 1 + 2;//x,y,z + color + u,v
 	static final int SPRITE_SIZE = 4 * VERTEX_SIZE;//four edges
@@ -97,13 +97,27 @@ public class SideSprite extends WETextureRegion {
 	/**
 	 * An object helping with rendering a blokc made out of sides
 	 * @param region the texture used for rendering this side
-	 * @param side which side does this represent?
+	 * @param side which side does this represent?, if null is no block side
 	 * @param aoFlags 
 	 */
-	public SideSprite(TextureRegion region, Side side, int aoFlags) {
+	public GameSpaceSprite(TextureRegion region, Side side, int aoFlags) {
 		this.side = side;
 		setRegion(region);
 		this.aoFlags = aoFlags;
+		setColor(1, 1, 1, 1);
+		setSize(region.getRegionWidth(), region.getRegionHeight());
+		setOrigin(width / 2, height / 2);
+	}
+	
+		/**
+	 * Creates a sprite based on a specific TextureRegion, the new sprite's
+	 * region is a copy of the parameter region - altering one does not affect
+	 * the other
+	 * @param region
+	 */
+	public GameSpaceSprite(TextureRegion region) {
+		setRegion(region);
+		this.side = null;
 		setColor(1, 1, 1, 1);
 		setSize(region.getRegionWidth(), region.getRegionHeight());
 		setOrigin(width / 2, height / 2);
@@ -435,6 +449,14 @@ public class SideSprite extends WETextureRegion {
 		vertices[C3] = color;
 		vertices[C4] = color;
 	}
+	
+	/**
+	 * Sets the color used to tint this sprite. Default is {@link Color#WHITE}.
+	 * @param tint
+	 */
+	public void setColor(Color tint) {
+		setColor(tint.toFloatBits());
+	}
 
 	/**
 	 * Sets the origin in relation to the sprite's position for scaling and
@@ -579,17 +601,21 @@ public class SideSprite extends WETextureRegion {
 		if (dirty) {
 			dirty = false;
 
-			float localX1 = -originX + (side == Side.TOP ? -RenderCell.GAME_DIAGLENGTH2 : 0);//bottom left/left
+			float[] vertices = this.vertices;
+			//bottom left/left
+			float localX1 = -originX ;
 			float localY1 = -originY;
 			
-			float localX2 = -originX;//top left /top
-			float localY2 = -originY + (side == Side.TOP ? -RenderCell.GAME_DIAGLENGTH2 : 0);
+			//top left /top
+			float localX2 = -originX;
+			float localY2 = -originY;
 			
-			float localX3 = -originX + (side == Side.TOP ? RenderCell.GAME_DIAGLENGTH2 : 0); //top right/right
+			//top right/right
+			float localX3 = -originX; 
 			float localY3 = -originY;
 			//bottom right
 			float localX4 = -originX;
-			float localY4 = -originY + (side == Side.TOP ? RenderCell.GAME_DIAGLENGTH2 : 0f);
+			float localY4 = -originY;
 			
 			vertices[Z1]=z;
 			vertices[Z2]=z;
@@ -601,25 +627,32 @@ public class SideSprite extends WETextureRegion {
 			
 			if (side == Side.LEFT){
 				localX1 += -RenderCell.GAME_DIAGLENGTH2;
-				//localY1 += ;
 				localX2 += -RenderCell.GAME_DIAGLENGTH2;
 				vertices[Z2]+=RenderCell.GAME_EDGELENGTH;
 				localY3 += RenderCell.GAME_DIAGLENGTH2;
 				vertices[Z3]+=RenderCell.GAME_EDGELENGTH;
 				localY4 += RenderCell.GAME_DIAGLENGTH2;
 			} else if (side==Side.TOP) {
-				vertices[Z1]+=RenderCell.GAME_EDGELENGTH;
-				vertices[Z2]+=RenderCell.GAME_EDGELENGTH;
-				vertices[Z3]+=RenderCell.GAME_EDGELENGTH;
-				vertices[Z4]+=RenderCell.GAME_EDGELENGTH;
-			} else{
-				//localY1 += ;
+				localX1 -= RenderCell.GAME_DIAGLENGTH2;
+				localY2 -= RenderCell.GAME_DIAGLENGTH2;
+				localX3 += RenderCell.GAME_DIAGLENGTH2;
+				localY4 += RenderCell.GAME_DIAGLENGTH2;
+				vertices[Z1] += RenderCell.GAME_EDGELENGTH;
+				vertices[Z2] += RenderCell.GAME_EDGELENGTH;
+				vertices[Z3] += RenderCell.GAME_EDGELENGTH;
+				vertices[Z4] += RenderCell.GAME_EDGELENGTH;
+			} else if (side==Side.RIGHT){
 				localY1 += RenderCell.GAME_DIAGLENGTH2;
 				localY2 += RenderCell.GAME_DIAGLENGTH2;
-				localX3 += RenderCell.GAME_DIAGLENGTH2;
 				vertices[Z2]+=RenderCell.GAME_EDGELENGTH;
+				localX3 += RenderCell.GAME_DIAGLENGTH2;
 				vertices[Z3]+=RenderCell.GAME_EDGELENGTH;
 				localX4 += RenderCell.GAME_DIAGLENGTH2;
+			} else {
+				localX2+=width;
+				localX1+=width;
+				vertices[Z2]+=height;
+				vertices[Z3]+=height;
 			}
 			
 			if (scaleX != 1 || scaleY != 1) {
@@ -685,7 +718,9 @@ public class SideSprite extends WETextureRegion {
 				vertices[Y4] = y4;
 			}				
 		}
-		applyAO();
+		if (side != null) {
+			applyAO();
+		}
 		return vertices;
 	}
 	
@@ -1037,7 +1072,7 @@ public class SideSprite extends WETextureRegion {
 
 	@Override
 	public void scroll(float xAmount, float yAmount) {
-		float[] vertices = SideSprite.this.vertices;
+		float[] vertices = GameSpaceSprite.this.vertices;
 		if (xAmount != 0) {
 			float u = (vertices[U1] + xAmount) % 1;
 			float u2 = u + width / getTexture().getWidth();
