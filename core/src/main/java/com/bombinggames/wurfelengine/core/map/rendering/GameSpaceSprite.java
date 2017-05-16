@@ -85,6 +85,9 @@ public class GameSpaceSprite extends WETextureRegion {
 	
 	final float[] vertices = new float[SPRITE_SIZE];
 	private float x, y, z;
+	/**
+	 * world space
+	 */
 	private float width, height;
 	private float originX, originY;
 	private float rotation;
@@ -138,7 +141,7 @@ public class GameSpaceSprite extends WETextureRegion {
 		this.y = y;
 		this.z = 0;
 		this.width = width;
-		this.height = height;
+		this.height = height/RenderCell.PROJECTIONFACTORZ;
 
 		if (dirty) {
 			return;
@@ -173,11 +176,11 @@ public class GameSpaceSprite extends WETextureRegion {
 	 * {@link #setBounds(float, float, float, float)}.
 	 *
 	 * @param width
-	 * @param height
+	 * @param height view space
 	 */
 	public void setSize(float width, float height) {
 		this.width = width;
-		this.height = height;
+		this.height = height/RenderCell.PROJECTIONFACTORZ;
 
 		if (dirty) {
 			return;
@@ -602,59 +605,60 @@ public class GameSpaceSprite extends WETextureRegion {
 			dirty = false;
 
 			float[] vertices = this.vertices;
+			//local coordiante system with origin in the field origin
 			//bottom left/left
 			float localX1 = -originX ;
 			float localY1 = -originY;
+			float localZ1 = -originY;
 			
 			//top left /top
 			float localX2 = -originX;
 			float localY2 = -originY;
+			float localZ2 = -originY;
 			
 			//top right/right
 			float localX3 = -originX; 
 			float localY3 = -originY;
+			float localZ3 = -originY;
 			//bottom right
 			float localX4 = -originX;
 			float localY4 = -originY;
-			
-			vertices[Z1]=z;
-			vertices[Z2]=z;
-			vertices[Z3]=z;
-			vertices[Z4]=z;
+			float localZ4 = -originY;
 			
 			float worldOriginX = this.x + originX;
 			float worldOriginY = this.y + originY;
+			float worldOriginZ = this.z + originY;
 			
-			if (side == Side.LEFT){
+			if (side == Side.LEFT) {
 				localX1 += -RenderCell.GAME_DIAGLENGTH2;
 				localX2 += -RenderCell.GAME_DIAGLENGTH2;
-				vertices[Z2]+=RenderCell.GAME_EDGELENGTH;
+				localZ2 += RenderCell.GAME_EDGELENGTH;
 				localY3 += RenderCell.GAME_DIAGLENGTH2;
-				vertices[Z3]+=RenderCell.GAME_EDGELENGTH;
+				localZ3 += RenderCell.GAME_EDGELENGTH;
 				localY4 += RenderCell.GAME_DIAGLENGTH2;
-			} else if (side==Side.TOP) {
+			} else if (side == Side.TOP) {
 				localX1 -= RenderCell.GAME_DIAGLENGTH2;
 				localY2 -= RenderCell.GAME_DIAGLENGTH2;
 				localX3 += RenderCell.GAME_DIAGLENGTH2;
 				localY4 += RenderCell.GAME_DIAGLENGTH2;
-				vertices[Z1] += RenderCell.GAME_EDGELENGTH;
-				vertices[Z2] += RenderCell.GAME_EDGELENGTH;
-				vertices[Z3] += RenderCell.GAME_EDGELENGTH;
-				vertices[Z4] += RenderCell.GAME_EDGELENGTH;
-			} else if (side==Side.RIGHT){
+				localZ1 += RenderCell.GAME_EDGELENGTH;
+				localZ2 += RenderCell.GAME_EDGELENGTH;
+				localZ3 += RenderCell.GAME_EDGELENGTH;
+				localZ4 += RenderCell.GAME_EDGELENGTH;
+			} else if (side == Side.RIGHT) {
 				localY1 += RenderCell.GAME_DIAGLENGTH2;
 				localY2 += RenderCell.GAME_DIAGLENGTH2;
-				vertices[Z2]+=RenderCell.GAME_EDGELENGTH;
+				localZ2 += RenderCell.GAME_EDGELENGTH;
 				localX3 += RenderCell.GAME_DIAGLENGTH2;
-				vertices[Z3]+=RenderCell.GAME_EDGELENGTH;
+				localZ3 += RenderCell.GAME_EDGELENGTH;
 				localX4 += RenderCell.GAME_DIAGLENGTH2;
 			} else {
-				localX2+=width;
-				localX1+=width;
-				vertices[Z2]+=height;
-				vertices[Z3]+=height;
+				localX2 += width;
+				localX1 += width;
+				localZ2 += height;
+				localZ3 += height;
 			}
-			
+
 			if (scaleX != 1 || scaleY != 1) {
 				localX1 *= scaleX;
 				localY1 *= scaleY;
@@ -671,52 +675,44 @@ public class GameSpaceSprite extends WETextureRegion {
 				final float sin = MathUtils.sinDeg(rotation);
 				final float localXCos = localX1 * cos;
 				final float localXSin = localX1 * sin;
-				final float localYCos = localY1 * cos;
-				final float localYSin = localY1 * sin;
+				final float localZCos = localZ1 * cos;
+				final float localZSin = localZ1 * sin;
 				final float localX2Cos = localX3 * cos;
 				final float localX2Sin = localX3 * sin;
-				final float localY2Cos = localY3 * cos;
-				final float localY2Sin = localY3 * sin;
+				final float localZ2Cos = localZ3 * cos;
+				final float localZ2Sin = localZ3 * sin;
 
-				final float x1 = localXCos - localYSin + worldOriginX;
-				final float y1 = localYCos + localXSin + worldOriginY;
+				final float x1 = localXCos - localZSin + worldOriginX;
+				final float z1 = localZCos + localXSin + worldOriginZ;
 				vertices[X1] = x1;
-				vertices[Y1] = y1;
+				vertices[Z1] = z1;
 
-				final float x2 = localXCos - localY2Sin + worldOriginX;
-				final float y2 = localY2Cos + localXSin + worldOriginY;
+				final float x2 = localXCos - localZ2Sin + worldOriginX;
+				final float z2 = localZ2Cos + localXSin + worldOriginZ;
 				vertices[X2] = x2;
-				vertices[Y2] = y2;
+				vertices[Z2] = z2;
 
-				final float x3 = localX2Cos - localY2Sin + worldOriginX;
-				final float y3 = localY2Cos + localX2Sin + worldOriginY;
+				final float x3 = localX2Cos - localZ2Sin + worldOriginX;
+				final float z3 = localZ2Cos + localX2Sin + worldOriginZ;
 				vertices[X3] = x3;
-				vertices[Y3] = y3;
+				vertices[Z3] = z3;
 
 				vertices[X4] = x1 + (x3 - x2);
-				vertices[Y4] = y3 - (y2 - y1);
+				vertices[Z4] = z3 - (z2 - z1);
 			} else {
-				final float x1 = localX1 + worldOriginX;
-				final float y1 = localY1 + worldOriginY;
-				final float x2 = localX2 + worldOriginX;
-				final float y2 = localY2 + worldOriginY;
-				final float x3 = localX3 + worldOriginX;
-				final float y3 = localY3 + worldOriginY;
-				final float x4 = localX4 + worldOriginX;
-				final float y4 = localY4 + worldOriginY;
-
-				vertices[X1] = x1;//bottom left
-				vertices[Y1] = y1;
-				
-				vertices[X2] = x2;//top left
-				vertices[Y2] = y2;
-
-				vertices[X3] = x3;//top right
-				vertices[Y3] = y3;
-
-				vertices[X4] = x4;//bottom right
-				vertices[Y4] = y4;
-			}				
+				vertices[X1] = localX1 + worldOriginX;
+				vertices[Z1] = localZ1 + worldOriginZ;
+				vertices[X2] = localX2 + worldOriginX;
+				vertices[Z2] = localZ2 + worldOriginZ;
+				vertices[X3] = localX3 + worldOriginX;
+				vertices[Z3] = localZ3 + worldOriginZ;
+				vertices[X4] = localX4 + worldOriginX;
+				vertices[Z4] = localZ4 + worldOriginZ;
+			}
+			vertices[Y1] = localY1 + worldOriginY;
+			vertices[Y2] = localY2 + worldOriginY;
+			vertices[Y3] = localY3 + worldOriginY;
+			vertices[Y4] = localY4 + worldOriginY;			
 		}
 		if (side != null) {
 			applyAO();
