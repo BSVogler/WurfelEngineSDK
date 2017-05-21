@@ -812,12 +812,12 @@ public class RenderCell extends AbstractGameObject {
 	 *
 	 * @param view
 	 * @param camera
-	 * @param aopos
+	 * @param pos
 	 * @param value damage sprite value
 	 */
-	private void renderDamageOverlay(final GameView view, final Camera camera, final Position aopos, final byte value) {
+	private void renderDamageOverlay(final GameView view, final Camera camera, final Position pos, final byte value) {
 		destruct.setSpriteValue(value);
-		destruct.setPosition(aopos);
+		destruct.setPosition(pos);
 		destruct.getColor().set(0.5f, 0.5f, 0.5f, 0.7f);
 		destruct.render(view, camera);
 	}
