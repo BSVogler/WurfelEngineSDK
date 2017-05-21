@@ -56,7 +56,7 @@ public interface Renderable {
 	public void render(GameView view, Camera camera);
 
 	/**
-	 * Return the coordinates of the object in the game world. Not copy safe.
+	 * Return the coordinates of the object in the game world. Not copy safe as it points to the interaly used object.
 	 *
 	 * @return Reference to the position object which points to the location in
 	 * the game world.
