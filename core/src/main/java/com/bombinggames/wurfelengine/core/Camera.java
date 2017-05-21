@@ -311,7 +311,7 @@ public class Camera implements Telegraph {
 				position.y += (float) (Math.random() * shakeAmplitude*dt % shakeAmplitude)-shakeAmplitude*0.5;
 			}
 
-			//move camera to the focus
+			//move camera to the position
 			viewMat.setToLookAt(
 				new Vector3(position, 0),
 				new Vector3(position, -1),
@@ -331,6 +331,12 @@ public class Camera implements Telegraph {
 			//set up projection matrices
 			combined.set(projection);
 			Matrix4.mul(combined.val, viewMat.val);
+			
+			//wurfel engine projection matrix
+			//there is some scaling in M11, keep it
+			combined.val[Matrix4.M12] = combined.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
+			combined.val[Matrix4.M11] *= -0.5f;
+			combined.val[Matrix4.M22] = 0; // at z=0
 			
 			//recalculate the center position
 			updateCenter();
