@@ -682,12 +682,11 @@ public class RenderCell extends AbstractGameObject {
 				float xPos = getPoint().getX();
 				float yPos = getPoint().getY();
 				float zPos = getPoint().getZ();
-				float scale = getScaling();
 				renderSide(
 					view,
-					(int) (xPos - VIEW_WIDTH2 * scale),
-					(int) (yPos + VIEW_HEIGHT * scale),
-					0,
+					xPos,
+					yPos,
+					zPos,
 					Side.TOP,
 					color
 				);
@@ -729,14 +728,12 @@ public class RenderCell extends AbstractGameObject {
      * Render a side of a block at the position of the coordinates.
      * @param view the view using this render method
 	 * @param camera
-     * @param coords the coordinates where to render 
      * @param side The number identifying the side. 0=left, 1=top, 2=right
 	 * @param staticShade
      */
     public void renderSide(
 		final GameView view,
 		final Camera camera,
-		final Position coords,
 		final Side side,
 		final boolean staticShade
 	){
