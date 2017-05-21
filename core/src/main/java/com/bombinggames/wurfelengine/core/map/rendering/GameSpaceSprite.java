@@ -619,7 +619,7 @@ public class GameSpaceSprite extends WETextureRegion {
 			float[] vertices = this.vertices;
 			//local coordiante system with origin in the field origin
 			//bottom left/left
-			float localX1 = -originX ;
+			float localX1 = -originX;
 			float localY1 = -originY;
 			float localZ1 = -originY;
 			
@@ -637,9 +637,9 @@ public class GameSpaceSprite extends WETextureRegion {
 			float localY4 = -originY;
 			float localZ4 = -originY;
 			
-			float worldOriginX = this.x + originX;
+			float worldOriginX = this.x + originX + left;
 			float worldOriginY = this.y + originY;
-			float worldOriginZ = this.z + originY;
+			float worldOriginZ = (float) (this.z + originY+top);
 			
 			if (side == Side.LEFT) {
 				localX1 += -RenderCell.GAME_DIAGLENGTH2;
