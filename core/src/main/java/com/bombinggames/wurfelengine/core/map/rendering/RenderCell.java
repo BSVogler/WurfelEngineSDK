@@ -880,23 +880,23 @@ public class RenderCell extends AbstractGameObject {
 		}
 
 		//lazy init
-		SideSprite sprite;
+		GameSpaceSprite sprite;
 		switch (side) {
 			case LEFT:
 				if (site1 == null) {
-					site1 = new SideSprite(getBlockSprite(id, value, side), side, aoFlags);
+					site1 = new GameSpaceSprite(getBlockSprite(id, value, side), side, aoFlags);
 				}
 				sprite = site1;
 				break;
 			case TOP:
 				if (site2 == null) {
-					site2 = new SideSprite(getBlockSprite(id, value, side), side, aoFlags);
+					site2 = new GameSpaceSprite(getBlockSprite(id, value, side), side, aoFlags);
 				}
 				sprite = site2;
 				break;
 			default:
 				if (site3 == null) {
-					site3 = new SideSprite(getBlockSprite(id, value, side), side, aoFlags);
+					site3 = new GameSpaceSprite(getBlockSprite(id, value, side), side, aoFlags);
 				}
 				sprite = site3;
 				break;
