@@ -462,6 +462,9 @@ public class Camera implements Telegraph {
 
 			view.getSpriteBatch().setProjectionMatrix(combined);
 			view.getShapeRenderer().setProjectionMatrix(combined);
+			
+			ShaderProgram shader = view.getShader();
+			
 			//set up the viewport, yIndex-up
 			HdpiUtils.glViewport(
 				screenPosX,
@@ -488,10 +491,11 @@ public class Camera implements Telegraph {
 				shader.setUniformf("playerpos",focusEntity.getPoint());
 			//send a Vector4f to GLSL
 			if (WE.getCVars().getValueB("enablelightengine")) {
+				shader.setUniformf(
 					"sunNormal",
 					Controller.getLightEngine().getSun(getCenter()).getNormal()
 				);
-				view.getShader().setUniformf(
+				shader.setUniformf(
 					"sunColor",
 					Controller.getLightEngine().getSun(getCenter()).getLight()
 				);
