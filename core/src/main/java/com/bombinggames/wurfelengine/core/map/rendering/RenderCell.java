@@ -525,10 +525,9 @@ public class RenderCell extends AbstractGameObject {
 	 * for topological sort. At the end contains both entities and blocks
 	 */
 	private final LinkedList<AbstractGameObject> coveredEnts = new LinkedList<>();
-	private SideSprite site1;
-	private SideSprite site3;
-	private SideSprite site2;
 	private GameSpaceSprite site1;
+	private GameSpaceSprite site3;
+	private GameSpaceSprite site2;
 	/**
 	 * frame number to avoid multiple calculations in one frame
 	 */
@@ -780,23 +779,26 @@ public class RenderCell extends AbstractGameObject {
 				//render damage
 				switch (side) {
 					case LEFT:
-						renderDamageOverlay(view,
+						renderDamageOverlay(
+							view,
 							camera,
-							getPosition().toPoint().add(-RenderCell.GAME_DIAGLENGTH2 / 2, 0, 0),
+							tmpPoint.add(-RenderCell.GAME_DIAGLENGTH2 / 2, 0, 0),
 							(byte) (3 * damageOverlayStep)
 						);
 						break;
 					case TOP:
-						renderDamageOverlay(view,
+						renderDamageOverlay(
+							view,
 							camera,
-							getPosition().toPoint().add(0, 0, RenderCell.GAME_EDGELENGTH),
+							getPoint().add(0, 0, RenderCell.GAME_EDGELENGTH),
 							(byte) (3 * damageOverlayStep + 1)
 						);
 						break;
 					case RIGHT:
-						renderDamageOverlay(view,
+						renderDamageOverlay(
+							view,
 							camera,
-							getPosition().toPoint().add(RenderCell.GAME_DIAGLENGTH2 / 2, 0, 0),
+							getPoint().add(RenderCell.GAME_DIAGLENGTH2 / 2, 0, 0),
 							(byte) (3 * damageOverlayStep + 2)
 						);
 						break;
