@@ -68,7 +68,6 @@ public class RenderCell extends AbstractGameObject {
      * a list where a representing color of the block is stored
      */
     private static final Color[][] COLORLIST = new Color[RenderCell.OBJECTTYPESNUM][RenderCell.VALUESNUM];
-	private static boolean fogEnabled;
 	private static boolean staticShade;
 	/**
 	 * frame number of last rebuild
@@ -742,17 +741,9 @@ public class RenderCell extends AbstractGameObject {
 		final Side side,
 		final boolean staticShade
 	){
-		Color color = tmpColor;
-		if (fogEnabled) {
-			//can use CVars for dynamic change. using harcored values for performance reasons
-			float factor = (float) (Math.exp(0.025f * (camera.getVisibleFrontBorderHigh() - coords.toCoord().getY() - 18.0)) - 1);
-			//float factor = (float) (Math.exp( 0.0005f*(coords.getDepth(view)-500) )-1 );
-			color.set(0.5f + 0.3f * factor, 0.5f + 0.4f * factor, 0.5f + 1f * factor, 1);
-		} else {
-			color.set(Color.GRAY);
-		}
 
 		//if vertex shaded then use different shading for each side
+		Color color = tmpColor.set(Color.GRAY);
 		if (Controller.getLightEngine() != null && !Controller.getLightEngine().isShadingPixelBased()) {
 			color = Controller.getLightEngine().getColor(side, getPosition()).mul(color.r + 0.5f, color.g + 0.5f, color.b + 0.5f, color.a + 0.5f);
 		}
