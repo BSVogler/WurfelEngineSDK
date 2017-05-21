@@ -32,11 +32,13 @@ package com.bombinggames.wurfelengine.core.map.rendering;
 
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.Batch;
+import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.NumberUtils;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
 import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.C1;
 import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.C2;
 import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.C3;
@@ -91,11 +93,16 @@ public class GameSpaceSprite extends WETextureRegion {
 	private float width, height;
 	private float originX, originY;
 	private float rotation;
+	/**
+	 * scale is in viewspace
+	 */
 	private float scaleX = 1, scaleY = 1;
 	private boolean dirty = true;
 	private Rectangle bounds;
 	private final Side side;
 	private int aoFlags;
+	private float top;
+	private float left;
 	
 	/**
 	 * An object helping with rendering a blokc made out of sides
@@ -114,16 +121,21 @@ public class GameSpaceSprite extends WETextureRegion {
 	
 		/**
 	 * Creates a sprite based on a specific TextureRegion, the new sprite's
-	 * region is a copy of the parameter region - altering one does not affect
+	 * region is a cospy of the parameter region - altering one does not affect
 	 * the other
 	 * @param region
 	 */
-	public GameSpaceSprite(TextureRegion region) {
+	public GameSpaceSprite(TextureAtlas.AtlasRegion region) {
 		setRegion(region);
 		this.side = null;
 		setColor(1, 1, 1, 1);
 		setSize(region.getRegionWidth(), region.getRegionHeight());
-		setOrigin(width / 2, height / 2);
+		this.left = + region.offsetX - region.originalWidth / 2 ;
+		this.top = (region.offsetY)/RenderCell.PROJECTIONFACTORZ;
+		setOrigin( 
+			region.originalWidth / 2 - region.offsetX,
+			VIEW_HEIGHT2 - region.offsetY
+		);
 	}
 
 	/**
@@ -212,9 +224,9 @@ public class GameSpaceSprite extends WETextureRegion {
 	 * after those operations. If both position and size are to be changed, it
 	 * is better to use {@link #setBounds(float, float, float, float)}.
 	 *
-	 * @param x
-	 * @param y
-	 * @param z
+	 * @param x game space
+	 * @param y game space
+	 * @param z game space
 	 */
 	public void setPosition(float x, float y, float z) {
 		translate(x - this.x, y - this.y, z- this.z);
@@ -590,7 +602,7 @@ public class GameSpaceSprite extends WETextureRegion {
 	 */
 	public void scale(float amount) {
 		this.scaleX += amount;
-		this.scaleY += amount;
+		this.scaleY += amount/RenderCell.PROJECTIONFACTORZ;
 		dirty = true;
 	}
 
@@ -653,21 +665,21 @@ public class GameSpaceSprite extends WETextureRegion {
 				localZ3 += RenderCell.GAME_EDGELENGTH;
 				localX4 += RenderCell.GAME_DIAGLENGTH2;
 			} else {
-				localX2 += width;
-				localX1 += width;
+				localX3 += width;
+				localX4 += width;
 				localZ2 += height;
 				localZ3 += height;
 			}
 
 			if (scaleX != 1 || scaleY != 1) {
 				localX1 *= scaleX;
-				localY1 *= scaleY;
+				localZ1 *= scaleY;
 				localX2 *= scaleX;
-				localY2 *= scaleX;
+				localZ2 *= scaleX;
 				localX3 *= scaleX;
-				localY3 *= scaleY;
+				localZ3 *= scaleY;
 				localX4 *= scaleX;
-				localY4 *= scaleX;
+				localZ4 *= scaleX;
 			}
 			
 			if (rotation != 0) {
