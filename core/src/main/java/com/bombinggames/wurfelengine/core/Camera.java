@@ -995,15 +995,15 @@ public class Camera implements Telegraph {
 	}
 
 	/**
-	 * Returns the focuspoint
+	 * Returns the focuspoint. Approximated because is stored in view space and backtransformation is a line.
 	 *
 	 * @return in game space, copy safe
 	 */
 	public Point getCenter() {
 		return (Point) center.set(
 			position.x,
-			-position.y * 2,
-			0
+			-(position.y-RenderCell.VIEW_HEIGHT2*Chunk.getBlocksZ()) / RenderCell.PROJECTIONFACTORY,
+			RenderCell.GAME_EDGELENGTH2*Chunk.getBlocksZ()
 		);//view to game
 	}
 	
