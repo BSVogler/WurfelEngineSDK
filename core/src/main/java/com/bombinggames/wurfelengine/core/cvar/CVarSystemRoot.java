@@ -55,7 +55,6 @@ public class CVarSystemRoot extends AbstractCVarSystem {
 		register(new BooleanCVar(false), "LEnormalMapRendering");
 		register(new IntCVar(1920), "renderResolutionWidth");
 		register(new BooleanCVar(true), "enableLightEngine");
-		register(new BooleanCVar(true), "enableFog");
 		register(new FloatCVar(0.3f), "fogR");
 		register(new FloatCVar(0.4f), "fogG");
 		register(new FloatCVar(1.0f), "fogB");
