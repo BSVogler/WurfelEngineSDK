@@ -419,6 +419,11 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 			}
 		}
 	}
+	
+	public void updateSpriteCache(){
+		AtlasRegion texture = AbstractGameObject.getSprite(getSpriteCategory(), getSpriteId(), getSpriteValue());
+		sprite = new GameSpaceSprite(texture);
+	}
 
 	//getter & setter
 	/**

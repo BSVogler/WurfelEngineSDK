@@ -690,7 +690,10 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * @param id
 	 */
 	public void setSpriteId(byte id){
-		this.spriteId = id;
+		if (id != this.spriteId) {
+			this.spriteId = id;
+			updateSpriteCache();
+		}
 	}
 	
 	/**
@@ -698,6 +701,9 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * @param value
 	 */
 	public void setSpriteValue(byte value){
-		this.value = value;
+		if (value != this.value) {
+			this.value = value;
+			updateSpriteCache();
+		}
 	}
 }
