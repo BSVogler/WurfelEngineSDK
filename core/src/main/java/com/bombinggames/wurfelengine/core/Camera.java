@@ -471,9 +471,16 @@ public class Camera implements Telegraph {
 
 			view.setDebugRendering(false);
 			view.getSpriteBatch().begin();
+			view.getShader().setUniformf("cameray",getCenter().getY());
+			view.getShader().setUniformf("fogColor",
+				WE.getCVars().getValueF("fogR"),
+				WE.getCVars().getValueF("fogG"),
+				WE.getCVars().getValueF("fogB")
+			);
+			if (focusEntity!=null)
+				shader.setUniformf("playerpos",focusEntity.getPoint());
 			//send a Vector4f to GLSL
 			if (WE.getCVars().getValueB("enablelightengine")) {
-				view.getShader().setUniformf(
 					"sunNormal",
 					Controller.getLightEngine().getSun(getCenter()).getNormal()
 				);
