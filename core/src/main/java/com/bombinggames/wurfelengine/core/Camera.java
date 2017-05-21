@@ -37,6 +37,7 @@ import com.badlogic.gdx.ai.msg.Telegraph;
 import com.badlogic.gdx.graphics.Color;
 import static com.badlogic.gdx.graphics.GL20.GL_BLEND;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
+import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector2;
@@ -477,7 +478,7 @@ public class Camera implements Telegraph {
 
 			view.setDebugRendering(false);
 			view.getSpriteBatch().begin();
-			view.getShader().setUniformf("cameray",getCenter().getY());
+			view.getShader().setUniformf("cameraPos",getCenter());
 			view.getShader().setUniformf("fogColor",
 				WE.getCVars().getValueF("fogR"),
 				WE.getCVars().getValueF("fogG"),
