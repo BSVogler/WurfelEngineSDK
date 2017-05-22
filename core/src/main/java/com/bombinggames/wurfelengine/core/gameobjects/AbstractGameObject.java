@@ -323,36 +323,29 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * Renders at a custom position with a custom light.
 	 *
 	 * @param view
-	 * @param xPos rendering position, center of sprite in projection space (?)
-	 * @param yPos rendering position, center of sprite in projection space (?)
+	 * @param point
 	 * @param color color which gets multiplied with the tint. No change ( =
-	 * multiply with 1) is when passed RGBA 0x80808080.
+	 * multiply with 1) is when passed RGBA 0x80808080. Null uses tint.
 	 */
-	public void render(GameView view, int xPos, int yPos, Color color) {
+	public void render(GameView view, Point point, Color color) {
 		byte id = getSpriteId();
 		byte value = getSpriteValue();
 		if (id > 0 && value >= 0) {
-			AtlasRegion texture = AbstractGameObject.getSprite(getSpriteCategory(), id, value);
 			if (sprite==null) {
-				sprite = new Sprite(texture);
+				updateSpriteCache();
 			}
-			sprite.setOrigin(
-				texture.originalWidth / 2 - texture.offsetX,
-				VIEW_HEIGHT2 - texture.offsetY
-			);
-			sprite.setRotation(rotation);
+			if (rotation != sprite.getRotation()) {
+				sprite.setRotation(rotation);
+			}
 			//sprite.setOrigin(0, 0);
-			sprite.setScale(scaling);
-			float height=0;
+			if (scaling != sprite.getScaleX()) {
+				sprite.setScale(scaling);
+			}
 
-			if (getPosition()!=null)
-				height = getPoint().getZ();
 			sprite.setPosition(
-				xPos + texture.offsetX - texture.originalWidth / 2,
-				yPos//center
-				- VIEW_HEIGHT2
-				+ texture.offsetY,
-				height
+				point.getX(),
+				point.getY()+RenderCell.GAME_DIAGLENGTH2,//center, move a bit to draw front
+				point.getZ()
 			);
 
 			//hack for transient field tint
