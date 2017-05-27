@@ -597,7 +597,25 @@ public class WE {
 		Gdx.app.debug("Shader", "loading");
 		//shaders are very fast to load and the asset loader does not support text files out of the box
 		String fragmentShader = internal ? Gdx.files.internal(fragmentPath).readString() : Gdx.files.absolute(fragmentPath).readString();
-		String vertexShader = internal ? Gdx.files.internal(vertexPath).readString() : Gdx.files.absolute(vertexPath).readString();
+		
+		String vertexShader;
+		if (vertexPath==null){
+			vertexShader = "attribute vec4 a_position;    \n" + 
+                      "attribute vec4 a_color;\n" +
+                      "attribute vec2 a_texCoord0;\n" + 
+                      "uniform mat4 u_projTrans;\n" + 
+                      "varying vec4 v_color;" + 
+                      "varying vec2 v_texCoords;" + 
+                      "void main()                  \n" + 
+                      "{                            \n" + 
+                      "   v_color = vec4(1, 1, 1, 1); \n" + 
+                      "   v_texCoords = a_texCoord0; \n" + 
+                      "   gl_Position =  u_projTrans * a_position;  \n"      + 
+                      "}                            \n";
+		
+		} else {
+			vertexShader = internal ? Gdx.files.internal(vertexPath).readString() : Gdx.files.absolute(vertexPath).readString();
+		}
 		//Setup shader
 		ShaderProgram.pedantic = false;
 
