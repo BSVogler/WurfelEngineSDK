@@ -515,7 +515,7 @@ public class GameView implements GameManager {
 			spriteBatch.begin();
 		}
 		WE.getEngineView().getFont().setColor(Color.WHITE.cpy());
-		WE.getEngineView().getFont().draw(spriteBatch, msg, xPos, yPos);
+		//WE.getEngineView().getFont().draw(spriteBatch, msg, xPos, yPos);
 		if (openbatch) {
 			spriteBatch.end();
 		}
@@ -531,7 +531,7 @@ public class GameView implements GameManager {
     public void drawString(final String msg, final int xPos, final int yPos, final Color color) {
         spriteBatch.setColor(Color.WHITE.cpy());
 		WE.getEngineView().getFont().setColor(color);
-		WE.getEngineView().getFont().draw(spriteBatch, msg, xPos, yPos);
+		//WE.getEngineView().getFont().draw(spriteBatch, msg, xPos, yPos);
     }
 
     /**
