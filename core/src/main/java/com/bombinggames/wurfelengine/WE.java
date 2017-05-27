@@ -38,6 +38,7 @@ import com.badlogic.gdx.Graphics.DisplayMode;
 import com.badlogic.gdx.assets.AssetManager;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
+import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.bombinggames.wurfelengine.core.AbstractMainMenu;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.EngineView;
@@ -590,6 +591,27 @@ public class WE {
 	 */
 	public static CVarSystemRoot getCVars() {
 		return CVARS;
+	}
+	
+	public static ShaderProgram loadShader(boolean internal, String fragmentPath, String vertexPath) throws Exception {
+		Gdx.app.debug("Shader", "loading");
+		//shaders are very fast to load and the asset loader does not support text files out of the box
+		String fragmentShader = internal ? Gdx.files.internal(fragmentPath).readString() : Gdx.files.absolute(fragmentPath).readString();
+		String vertexShader = internal ? Gdx.files.internal(vertexPath).readString() : Gdx.files.absolute(vertexPath).readString();
+		//Setup shader
+		ShaderProgram.pedantic = false;
+
+		ShaderProgram shader = new ShaderProgram(vertexShader, fragmentShader);
+		if (shader.isCompiled()) {
+			
+			//print any warnings
+			if (!shader.getLog().isEmpty()) {
+				Gdx.app.debug("shaderloading", shader.getLog());
+			}
+			return shader;
+		} else {
+			throw new Exception("Could not compile shader: " + shader.getLog());
+		}
 	}
 
 	private static class WEGame extends Game {

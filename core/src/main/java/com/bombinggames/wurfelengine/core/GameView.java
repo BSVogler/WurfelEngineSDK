@@ -30,11 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core;
 
-import java.io.FileNotFoundException;
-import java.util.ArrayList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input.Keys;
 import com.badlogic.gdx.ai.msg.MessageManager;
@@ -57,6 +52,10 @@ import com.bombinggames.wurfelengine.core.map.LoadMenu;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
+import java.io.FileNotFoundException;
+import java.util.ArrayList;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * The GameView manages everything what should be drawn in an active game in game space.
@@ -140,11 +139,7 @@ public class GameView implements GameManager {
 	 */
 	public void init(final Controller controller, final GameView oldView) {
 		Gdx.app.debug("GameView", "Initializing");
-		try {
-			loadShaders();
-		} catch (Exception ex) {
-			Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
-		}
+		loadShaders();
 
 		this.controller = controller;
 
@@ -201,41 +196,34 @@ public class GameView implements GameManager {
 
 	/**
 	 * reloads the shaders
-	 * @throws java.lang.Exception
 	 */
-	public void loadShaders() throws Exception {
+	public void loadShaders(){
 		Gdx.app.debug("Shader", "loading");
-		//shaders are very fast to load and the asset loader does not support text files out of the box
-		String fragmentShader = Gdx.files.internal(
-			"com/bombinggames/wurfelengine/core/fragment"
+		String fragmentShader = "com/bombinggames/wurfelengine/core/fragment"
 			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
-			+ ".fs"
-		).readString();
-		String vertexShader = Gdx.files.internal(
-			"com/bombinggames/wurfelengine/core/vertex"
+			+ ".fs";
+		String vertexShader = "com/bombinggames/wurfelengine/core/vertex"
 			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
-			+ ".vs"
-		).readString();
-		//Setup shader
-		ShaderProgram.pedantic = false;
-
-		ShaderProgram newshader = new ShaderProgram(vertexShader, fragmentShader);
-		if (newshader.isCompiled()) {
-			shader = newshader;
-			
-			//print any warnings
-			if (!shader.getLog().isEmpty()) {
-				System.out.println(shader.getLog());
-			}
-
-			//setup default uniforms
+			+ ".vs";
+		
+		try {
+			ShaderProgram newshader = WE.loadShader(true, fragmentShader, vertexShader);
+			if (newshader!=null){
+				shader = newshader;
+				//setup default uniforms
 			shader.begin();
 			//our normal map
 			shader.setUniformi("u_normals", 1); //GL_TEXTURE1
 			shader.end();
-		} else {
-			throw new Exception("Could not compile shader: " + newshader.getLog());
-		}
+			}
+		}catch (Exception ex){
+			WE.getConsole().add(ex.getLocalizedMessage());
+			//could not load initial shader
+			if (shader == null){
+				Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
+		
+			}
+		} 
 	}
 
 	@Override
