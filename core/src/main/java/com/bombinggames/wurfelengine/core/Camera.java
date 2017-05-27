@@ -89,7 +89,7 @@ public class Camera implements Telegraph {
 	/**
 	 * the viewport width&height. Origin top left.
 	 */
-	private int screenWidth, heightScreen;
+	private int screenWidth, screenHeight;
 
 	/**
 	 * the position on the screen (viewportWidth/Height ist the affiliated).
@@ -164,7 +164,7 @@ public class Camera implements Telegraph {
 	public Camera(final GameView view) {
 		gameView = view;
 		screenWidth = Gdx.graphics.getBackBufferWidth();
-		heightScreen = Gdx.graphics.getBackBufferHeight();
+		screenHeight = Gdx.graphics.getBackBufferHeight();
 		updateViewSpaceSize();
 		widthProj = (int) (widthView / zoom);//update cache
 
@@ -192,7 +192,7 @@ public class Camera implements Telegraph {
 	public Camera(final GameView view, final int x, final int y, final int width, final int height) {
 		gameView = view;
 		screenWidth = width;
-		heightScreen = height;
+		screenHeight = height;
 		screenPosX = x;
 		screenPosY = y;
 		renderResWidth = WE.getCVars().getValueI("renderResolutionWidth");
@@ -226,7 +226,7 @@ public class Camera implements Telegraph {
 	public Camera(final GameView view, final int x, final int y, final int width, final int height, final Point center) {
 		gameView = view;
 		screenWidth = width;
-		heightScreen = height;
+		screenHeight = height;
 		screenPosX = x;
 		screenPosY = y;
 		renderResWidth = WE.getCVars().getValueI("renderResolutionWidth");
@@ -466,11 +466,10 @@ public class Camera implements Telegraph {
 			ShaderProgram shader = view.getShader();
 			
 			//set up the viewport, yIndex-up
-			HdpiUtils.glViewport(
-				screenPosX,
-				Gdx.graphics.getHeight() - heightScreen - screenPosY,
+			HdpiUtils.glViewport(screenPosX,
+				Gdx.graphics.getHeight() - screenHeight - screenPosY,
 				screenWidth,
-				heightScreen
+				screenHeight
 			);
 
 			//render map
@@ -857,7 +856,7 @@ public class Camera implements Telegraph {
 	 * updates the cache
 	 */
 	private void updateViewSpaceSize() {
-		heightView = (int) (heightScreen / getScreenSpaceScaling());
+		heightView = (int) (screenHeight / getScreenSpaceScaling());
 		heightProj = (int) (heightView / zoom);
 	}
 
@@ -906,7 +905,7 @@ public class Camera implements Telegraph {
 	 * @return the value before scaling
 	 */
 	public int getHeightInScreenSpc() {
-		return heightScreen;
+		return screenHeight;
 	}
 
 	/**
@@ -935,7 +934,7 @@ public class Camera implements Telegraph {
 	public void setFullWindow(boolean fullWindow) {
 		this.fullWindow = fullWindow;
 		this.screenWidth = Gdx.graphics.getWidth();
-		this.heightScreen = Gdx.graphics.getHeight();
+		this.screenHeight = Gdx.graphics.getHeight();
 		this.screenPosX = 0;
 		this.screenPosY = 0;
 		updateViewSpaceSize();
@@ -950,7 +949,7 @@ public class Camera implements Telegraph {
 	public void resize(int width, int height) {
 		if (fullWindow) {
 			this.screenWidth = width;
-			this.heightScreen = height;
+			this.screenHeight = height;
 			this.screenPosX = 0;
 			this.screenPosY = 0;
 			updateViewSpaceSize();
@@ -968,7 +967,7 @@ public class Camera implements Telegraph {
 			fullWindow = false;
 		}
 		this.screenWidth = width;
-		this.heightScreen = height;
+		this.screenHeight = height;
 		updateViewSpaceSize();
 	}
 
