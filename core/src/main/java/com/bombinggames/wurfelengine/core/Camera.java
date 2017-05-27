@@ -36,6 +36,9 @@ import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
 import com.badlogic.gdx.graphics.Color;
 import static com.badlogic.gdx.graphics.GL20.GL_BLEND;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.graphics.glutils.FrameBuffer;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
@@ -51,9 +54,9 @@ import com.bombinggames.wurfelengine.core.map.Iterators.CoveredByCameraIterator;
 import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
+import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
-import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import java.util.ArrayList;
 import java.util.LinkedList;
 
@@ -143,6 +146,10 @@ public class Camera implements Telegraph {
 	private int id;
 	private LinkedList<RenderCell> cacheTopLevel = new LinkedList<>();
 	private int sampleNum;
+	private SpriteBatch viewSpaceBatch = new SpriteBatch();
+	private FrameBuffer fbo;
+	private TextureRegion fboRegion;
+	private ShaderProgram postprocessshader;
 
 	/**
 	 * Updates the needed chunks after recaclucating the center chunk of the
@@ -174,6 +181,7 @@ public class Camera implements Telegraph {
 		fullWindow = true;
 		initFocus();
 		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
+		loadShader();
 	}
 	
 	/**
@@ -205,6 +213,7 @@ public class Camera implements Telegraph {
 		position.y = center.getViewSpcY();
 		initFocus();
 		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
+		loadShader();
 	}
 
 	/**
@@ -238,6 +247,7 @@ public class Camera implements Telegraph {
 		position.y = center.getViewSpcY();
 		initFocus();
 		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
+		loadShader();
 	}
 
 	/**
@@ -278,8 +288,51 @@ public class Camera implements Telegraph {
 						+ focusEntity.getDimensionZ() * RenderCell.PROJECTIONFACTORZ/2);//have middle of object in center
 		initFocus();
 		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
+		this.postprocessshader = loadShader(WE.getWorkingDirectory().getAbsolutePath()+"/postprocess.fs");
 	}
 
+	/**
+	 * @param fragmentpath
+	 * @return 
+	 * 
+	 */
+	public ShaderProgram loadShader(String fragmentpath){
+		String fragmentShader = Gdx.files.absolute(fragmentpath).readString();
+		//default vertex shader
+		String vertexShader = "attribute vec4 a_position;    \n" + 
+                      "attribute vec4 a_color;\n" +
+                      "attribute vec2 a_texCoord0;\n" + 
+                      "uniform mat4 u_projTrans;\n" + 
+                      "varying vec4 v_color;" + 
+                      "varying vec2 v_texCoords;" + 
+                      "void main()                  \n" + 
+                      "{                            \n" + 
+                      "   v_color = vec4(1, 1, 1, 1); \n" + 
+                      "   v_texCoords = a_texCoord0; \n" + 
+                      "   gl_Position =  u_projTrans * a_position;  \n"      + 
+                      "}                            \n";
+		
+		ShaderProgram shader = new ShaderProgram(vertexShader, fragmentShader);
+		
+		if (shader.isCompiled()) {
+
+			//print any warnings
+			if (!shader.getLog().isEmpty()) {
+				System.out.println(shader.getLog());
+			}
+
+			//setup default uniforms
+			shader.begin();
+			//our normal map
+			shader.setUniformi("u_normals", 1); //GL_TEXTURE1
+			shader.end();
+			return shader;
+		} else {
+			WE.getConsole().add("Could not compile shader: " + shader.getLog());
+			return null;
+		}
+	}
+	
 	/**
 	 * Updates the camera.
 	 *
@@ -459,12 +512,30 @@ public class Camera implements Telegraph {
 	 */
 	public void render(final GameView view, final Camera camera) {
 		if (active && Controller.getMap() != null) { //render only if map exists
-
+			
+			//render offscreen
+//			screenWidth=1024;
+//			screenHeight=1024;
+//			updateViewSpaceSize();
+//			if (fbo == null) {
+//				fbo = new FrameBuffer(Format.RGBA8888, screenWidth, screenHeight, false);
+//			}
+//			if (fboRegion == null) {
+//				fboRegion = new TextureRegion(fbo.getColorBufferTexture(), 0, 0,
+//					screenWidth, screenHeight);
+//				fboRegion.flip(false, true);
+//			}
+//			fbo.begin();
+//			
+//			Gdx.gl.glClearColor(0f, 1f, 0f, 0f);
+//			Gdx.gl.glClear(GL_COLOR_BUFFER_BIT);
+				
 			view.getSpriteBatch().setProjectionMatrix(combined);
 			view.getShapeRenderer().setProjectionMatrix(combined);
 			
 			ShaderProgram shader = view.getShader();
 			
+			view.getSpriteBatch().setShader(shader);
 			//set up the viewport, yIndex-up
 			HdpiUtils.glViewport(screenPosX,
 				Gdx.graphics.getHeight() - screenHeight - screenPosY,
@@ -550,6 +621,20 @@ public class Camera implements Telegraph {
 			if (WE.getCVars().getValueB("DevDebugRendering")) {
 				drawDebug(view, camera);
 			}
+			//to render offscreen onscreen
+//			fbo.end();
+//			
+//			OrthographicCamera cam = new OrthographicCamera(Gdx.graphics.getWidth(),
+//				Gdx.graphics.getHeight());
+//			cam.setToOrtho(false, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+//			viewSpaceBatch.setProjectionMatrix(cam.combined);
+//			viewSpaceBatch.setShader(postprocessshader);
+//			//fboRegion.getTexture().bind();
+//			viewSpaceBatch.begin();
+//			Gdx.gl.glClearColor(1f, 0f, 0f, 0f);
+//			Gdx.gl.glClear(GL_COLOR_BUFFER_BIT);
+//			viewSpaceBatch.draw(fboRegion, 0, 0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());
+//			viewSpaceBatch.end();
 		}
 	}
 
