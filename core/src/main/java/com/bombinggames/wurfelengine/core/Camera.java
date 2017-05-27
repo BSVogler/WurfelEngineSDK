@@ -59,6 +59,8 @@ import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Creates a virtual camera wich displays the game world on the viewport. A camer acan be locked to an entity.
@@ -266,6 +268,7 @@ public class Camera implements Telegraph {
 	 * @param view
 	 */
 	public Camera(final GameView view, final int x, final int y, final int width, final int height, final AbstractEntity focusentity) {
+		loadShader();
 		gameView = view;
 		screenWidth = width;
 		screenHeight = height;
@@ -288,48 +291,22 @@ public class Camera implements Telegraph {
 						+ focusEntity.getDimensionZ() * RenderCell.PROJECTIONFACTORZ/2);//have middle of object in center
 		initFocus();
 		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
-		this.postprocessshader = loadShader(WE.getWorkingDirectory().getAbsolutePath()+"/postprocess.fs");
 	}
 
 	/**
-	 * @param fragmentpath
-	 * @return 
 	 * 
 	 */
-	public ShaderProgram loadShader(String fragmentpath){
-		String fragmentShader = Gdx.files.absolute(fragmentpath).readString();
-		//default vertex shader
-		String vertexShader = "attribute vec4 a_position;    \n" + 
-                      "attribute vec4 a_color;\n" +
-                      "attribute vec2 a_texCoord0;\n" + 
-                      "uniform mat4 u_projTrans;\n" + 
-                      "varying vec4 v_color;" + 
-                      "varying vec2 v_texCoords;" + 
-                      "void main()                  \n" + 
-                      "{                            \n" + 
-                      "   v_color = vec4(1, 1, 1, 1); \n" + 
-                      "   v_texCoords = a_texCoord0; \n" + 
-                      "   gl_Position =  u_projTrans * a_position;  \n"      + 
-                      "}                            \n";
+	public void loadShader(){
+		try {
+			ShaderProgram newshader = WE.loadShader(true, WE.getWorkingDirectory().getAbsolutePath()+"/postprocess.fs", null);
+			postprocessshader = newshader;
+	} catch (Exception ex){
+			WE.getConsole().add(ex.getLocalizedMessage());
+			//could not load initial shader
+			if (postprocessshader == null){
+				Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
 		
-		ShaderProgram shader = new ShaderProgram(vertexShader, fragmentShader);
-		
-		if (shader.isCompiled()) {
-
-			//print any warnings
-			if (!shader.getLog().isEmpty()) {
-				System.out.println(shader.getLog());
 			}
-
-			//setup default uniforms
-			shader.begin();
-			//our normal map
-			shader.setUniformi("u_normals", 1); //GL_TEXTURE1
-			shader.end();
-			return shader;
-		} else {
-			WE.getConsole().add("Could not compile shader: " + shader.getLog());
-			return null;
 		}
 	}
 	

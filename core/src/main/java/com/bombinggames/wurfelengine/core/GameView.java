@@ -139,11 +139,7 @@ public class GameView implements GameManager {
 	 */
 	public void init(final Controller controller, final GameView oldView) {
 		Gdx.app.debug("GameView", "Initializing");
-		try {
-			loadShaders();
-		} catch (Exception ex) {
-			Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
-		}
+		loadShaders();
 
 		this.controller = controller;
 
@@ -200,44 +196,37 @@ public class GameView implements GameManager {
 
 	/**
 	 * reloads the shaders
-	 * @throws java.lang.Exception
 	 */
-	public void loadShaders() throws Exception {
+	public void loadShaders(){
 		Gdx.app.debug("Shader", "loading");
-		//shaders are very fast to load and the asset loader does not support text files out of the box
-		String fragmentShader = Gdx.files.absolute(
-			"/Users/Benedikt/Library/Application Support/Caveland/fragment"
+		String fragmentShader = "/Users/Benedikt/Library/Application Support/Caveland/fragment"
 			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
-			+ ".fs"
-		).readString();
-		String vertexShader = Gdx.files.absolute(
-			"/Users/Benedikt/Library/Application Support/Caveland/vertex"
+			+ ".fs";
+		String vertexShader = "/Users/Benedikt/Library/Application Support/Caveland/vertex"
 			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
-			+ ".vs"
-		).readString();
-		//Setup shader
-		ShaderProgram.pedantic = false;
-
-		ShaderProgram shader = new ShaderProgram(vertexShader, fragmentShader);
-		if (shader.isCompiled()) {
-			this.shader = shader;
-			
-			//print any warnings
-			if (!shader.getLog().isEmpty()) {
-				System.out.println(shader.getLog());
+			+ ".vs";
+		
+		try {
+			ShaderProgram newshader = WE.loadShader(false, fragmentShader, vertexShader);
+			if (newshader!=null){
+				shader = newshader;
+				//setup default uniforms
+				shader.begin();
+				//our normal map
+				shader.setUniformi("u_normals", 1); //GL_TEXTURE1
+				shader.end();
 			}
-
-			//setup default uniforms
-			shader.begin();
-			//our normal map
-			shader.setUniformi("u_normals", 1); //GL_TEXTURE1
-			shader.end();
-		} else {
-			throw new Exception("Could not compile shader: " + shader.getLog());
-		}
-		for (Camera camera : cameras) {
-			camera.loadShader();
-		}
+			for (Camera camera : cameras) {
+				camera.loadShader();
+			}
+		}catch (Exception ex){
+			WE.getConsole().add(ex.getLocalizedMessage());
+			//could not load initial shader
+			if (shader == null){
+				Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
+		
+			}
+		} 
 	}
 
 	@Override
