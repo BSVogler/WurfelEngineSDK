@@ -235,6 +235,9 @@ public class GameView implements GameManager {
 		} else {
 			throw new Exception("Could not compile shader: " + shader.getLog());
 		}
+		for (Camera camera : cameras) {
+			camera.loadShader();
+		}
 	}
 
 	@Override
