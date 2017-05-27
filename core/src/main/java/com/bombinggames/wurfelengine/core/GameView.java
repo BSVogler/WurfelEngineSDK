@@ -205,13 +205,13 @@ public class GameView implements GameManager {
 	public void loadShaders() throws Exception {
 		Gdx.app.debug("Shader", "loading");
 		//shaders are very fast to load and the asset loader does not support text files out of the box
-		String fragmentShader = Gdx.files.internal(
-			"com/bombinggames/wurfelengine/core/fragment"
+		String fragmentShader = Gdx.files.absolute(
+			"/Users/Benedikt/Library/Application Support/Caveland/fragment"
 			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
 			+ ".fs"
 		).readString();
-		String vertexShader = Gdx.files.internal(
-			"com/bombinggames/wurfelengine/core/vertex"
+		String vertexShader = Gdx.files.absolute(
+			"/Users/Benedikt/Library/Application Support/Caveland/vertex"
 			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
 			+ ".vs"
 		).readString();
