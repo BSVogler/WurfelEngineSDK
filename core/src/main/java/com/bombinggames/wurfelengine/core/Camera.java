@@ -258,7 +258,7 @@ public class Camera implements Telegraph {
 	public Camera(final GameView view, final int x, final int y, final int width, final int height, final AbstractEntity focusentity) {
 		gameView = view;
 		screenWidth = width;
-		heightScreen = height;
+		screenHeight = height;
 		screenPosX = x;
 		screenPosY = y;
 		renderResWidth = WE.getCVars().getValueI("renderResolutionWidth");
