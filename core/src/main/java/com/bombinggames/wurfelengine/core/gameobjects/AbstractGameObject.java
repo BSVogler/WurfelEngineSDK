@@ -42,9 +42,6 @@ import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_DEPTH2;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_WIDTH2;
 import java.io.FileNotFoundException;
 import java.io.Serializable;
 
@@ -316,7 +313,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * @param yPos rendering position, center of sprite in projection (?) space
 	 */
 	public void render(GameView view, int xPos, int yPos) {
-		render(view, xPos, yPos, null);
+		//render(view, xPos, yPos, null);
 	}
 
 	/**
@@ -376,23 +373,23 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 					sprite.getHeight()
 				);
 				//crossing lines
-				sh.line(
-					xPos - VIEW_WIDTH2,
-					yPos - VIEW_DEPTH2,
-					xPos + VIEW_WIDTH2,
-					yPos + VIEW_DEPTH2
-				);
-				sh.line(
-					xPos - VIEW_WIDTH2,
-					yPos + VIEW_DEPTH2,
-					xPos + VIEW_WIDTH2,
-					yPos - VIEW_DEPTH2
-				);
-				//bounding box
-				sh.line(xPos - VIEW_WIDTH2, yPos, xPos, yPos - VIEW_DEPTH2);
-				sh.line(xPos - VIEW_WIDTH2, yPos, xPos, yPos + VIEW_DEPTH2);
-				sh.line(xPos, yPos - VIEW_DEPTH2, xPos + VIEW_WIDTH2, yPos);
-				sh.line(xPos, yPos + VIEW_DEPTH2, xPos + VIEW_WIDTH2, yPos);
+//				sh.line(
+//					xPos - VIEW_WIDTH2,
+//					yPos - VIEW_DEPTH2,
+//					xPos + VIEW_WIDTH2,
+//					yPos + VIEW_DEPTH2
+//				);
+//				sh.line(
+//					xPos - VIEW_WIDTH2,
+//					yPos + VIEW_DEPTH2,
+//					xPos + VIEW_WIDTH2,
+//					yPos - VIEW_DEPTH2
+//				);
+//				//bounding box
+//				sh.line(xPos - VIEW_WIDTH2, yPos, xPos, yPos - VIEW_DEPTH2);
+//				sh.line(xPos - VIEW_WIDTH2, yPos, xPos, yPos + VIEW_DEPTH2);
+//				sh.line(xPos, yPos - VIEW_DEPTH2, xPos + VIEW_WIDTH2, yPos);
+//				sh.line(xPos, yPos + VIEW_DEPTH2, xPos + VIEW_WIDTH2, yPos);
 				sh.end();
 			} else {
 				sprite.draw(view.getSpriteBatch());
