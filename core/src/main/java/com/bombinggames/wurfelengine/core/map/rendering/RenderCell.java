@@ -1303,7 +1303,7 @@ public class RenderCell extends AbstractGameObject {
 					return -1;
 				}
 			});
-			coveredEnts.addAll(covered);
+			coveredEnts.addAll(covered);//must be this way bc coveredEnts is cleared after this
 			return coveredEnts;
 		}
 		return covered;
