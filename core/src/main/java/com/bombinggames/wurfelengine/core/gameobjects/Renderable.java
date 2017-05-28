@@ -73,7 +73,7 @@ public interface Renderable {
 	public Point getPoint();
 
 	/**
-	 * can be copy safe but may not
+	 * not copy save
 	 *
 	 * @return
 	 * @see #getPosition()
