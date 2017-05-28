@@ -39,7 +39,6 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
 import com.bombinggames.wurfelengine.core.gameobjects.SimpleEntity;
-import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.CustomBlocks;
 import com.bombinggames.wurfelengine.core.map.Point;
@@ -1305,10 +1304,10 @@ public class RenderCell extends AbstractGameObject {
 			});
 			coveredEnts.addAll(covered);//must be this way bc coveredEnts is cleared after this
 			return coveredEnts;
-		}
+	}
 		return covered;
 	}
-	
+
 	/**
 	 * Rebuilds the list of covered cells by this cell.
 	 * @param rs 
@@ -1334,7 +1333,13 @@ public class RenderCell extends AbstractGameObject {
 				covered.add(cell);
 			}
 			
-			nghb.goToNeighbour(3).add(0, 0, 1);//go back to origin
+			//bottom front
+			cell = rs.getCell(nghb.goToNeighbour(3).goToNeighbour(4));
+//			if (cell != null) {
+//				covered.add(cell);
+//			}
+			
+			nghb.goToNeighbour(0).add(0, 0, 1);//go back to origin
 		}
 		
 		cell = rs.getCell(nghb.goToNeighbour(1));//back right
@@ -1346,19 +1351,10 @@ public class RenderCell extends AbstractGameObject {
 		if (cell != null) {
 			covered.add(cell);
 		}
-		if (nghb.getZ() < Chunk.getBlocksZ() - 1) {
-			cell = rs.getCell(nghb.add(0, 0, 1));//back left above
-			if (cell != null) {
-				covered.add(cell);
-			}
-			cell = rs.getCell(nghb.goToNeighbour(2));//back right above
-			if (cell != null) {
-				covered.add(cell);
-			}
-			nghb.add(-1, 0, -1);//back to back left
-		}
+	
 
 		nghb.goToNeighbour(3);//return to origin
+		
 		lastRebuild = Gdx.graphics.getFrameId();
 	}
 

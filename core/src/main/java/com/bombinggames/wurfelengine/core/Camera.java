@@ -633,6 +633,7 @@ public class Camera implements Telegraph {
 				
 		//add entities by inserting them into the render store
 		ArrayList<RenderCell> modifiedCells = this.modifiedCells;
+		ArrayList<AbstractEntity> entsInCell = new ArrayList<>(ents.size());
 		modifiedCells.clear();
 		modifiedCells.ensureCapacity(ents.size());
 		LinkedList<AbstractEntity> renderAppendix = this.renderAppendix;
@@ -645,8 +646,7 @@ public class Camera implements Telegraph {
 				&& inViewFrustum(ent.getPosition())
 				&& ent.getPosition().getZ() < gameView.getRenderStorage().getZRenderingLimit()
 			) {
-				RenderCell cellAbove = gameView.getRenderStorage().getCell(ent.getPosition().add(0, 0, RenderCell.GAME_EDGELENGTH));//add in cell above
-				ent.getPosition().add(0, 0, -RenderCell.GAME_EDGELENGTH);//reverse change from line above
+				RenderCell cellAbove = gameView.getRenderStorage().getCell(ent.getPosition());
 				//in the renderstorage no nullpointer should exists, escept object is outside the array
 				if (cellAbove == RenderChunk.CELLOUTSIDE) {
 					renderAppendix.add(ent);//render at the end
@@ -662,8 +662,7 @@ public class Camera implements Telegraph {
 		for (RenderCell cell : cacheTopLevel) {
 			if (cell != RenderChunk.CELLOUTSIDE && inViewFrustum(cell.getPosition())) {
 				visit(cell);
-			}
-		}
+			}}
 		//remove ents from modified blocks
 		for (RenderCell modifiedCell : modifiedCells) {
 			modifiedCell.clearCoveredEnts();
