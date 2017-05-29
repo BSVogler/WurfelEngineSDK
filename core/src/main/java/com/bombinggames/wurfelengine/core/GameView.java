@@ -112,7 +112,8 @@ public class GameView implements GameManager {
      * game related stage. e.g. holds hud and gui
      */
     private Stage stage;
-    private final SpriteBatchWithZAxis spriteBatch = new SpriteBatchWithZAxis(2000);
+    private final SpriteBatchWithZAxis gameSpaceSpriteBatch = new SpriteBatchWithZAxis(2000);
+	private final SpriteBatch projectionSpaceSpriteBatch = new SpriteBatch(1000);
     
     private LoadMenu loadMenu;
     
@@ -157,7 +158,7 @@ public class GameView implements GameManager {
 				Gdx.graphics.getWidth(),
 				Gdx.graphics.getHeight()
 			),
-			spriteBatch
+			projectionSpaceSpriteBatch
 		);//spawn at fullscreen
 
 		useDefaultShader();//set default shader
@@ -351,7 +352,7 @@ public class GameView implements GameManager {
                
         //render HUD and GUI
 		useDefaultShader();
-		spriteBatch.setProjectionMatrix(libGDXcamera.combined);
+		gameSpaceSpriteBatch.setProjectionMatrix(libGDXcamera.combined);
 		shRenderer.setProjectionMatrix(libGDXcamera.combined);
 		//spriteBatch.setTransformMatrix(new Matrix4());//reset transformation
 		shRenderer.setTransformMatrix(new Matrix4());//reset transformation
@@ -500,13 +501,13 @@ public class GameView implements GameManager {
 	 */
 	public void drawString(final String msg, final int xPos, final int yPos, boolean openbatch) {
 		if (openbatch) {
-			spriteBatch.setProjectionMatrix(libGDXcamera.combined);
-			spriteBatch.begin();
+			projectionSpaceSpriteBatch.setProjectionMatrix(libGDXcamera.combined);
+			projectionSpaceSpriteBatch.begin();
 		}
 		WE.getEngineView().getFont().setColor(Color.WHITE.cpy());
-		//WE.getEngineView().getFont().draw(spriteBatch, msg, xPos, yPos);
+		WE.getEngineView().getFont().draw(projectionSpaceSpriteBatch, msg, xPos, yPos);
 		if (openbatch) {
-			spriteBatch.end();
+			projectionSpaceSpriteBatch.end();
 		}
 	}
     
@@ -595,10 +596,20 @@ public class GameView implements GameManager {
      * Game view dependent spriteBatch
      * @return 
      */
-    public SpriteBatchWithZAxis getSpriteBatch() {
-        return spriteBatch;
+    public SpriteBatchWithZAxis getGameSpaceSpriteBatch() {
+        return gameSpaceSpriteBatch;
     }
-    
+	
+
+	/**
+	 * Get the value of projectionSpaceSpriteBatch
+	 *
+	 * @return the value of projectionSpaceSpriteBatch
+	 */
+	public SpriteBatch getProjectionSpaceSpriteBatch() {
+		return projectionSpaceSpriteBatch;
+	}
+
     /**
      *
      * @return
@@ -612,7 +623,7 @@ public class GameView implements GameManager {
 	 *
 	 */
 	public void useDefaultShader(){
-		spriteBatch.setShader(null);
+		gameSpaceSpriteBatch.setShader(null);
 		useDefaultShader = true;
 	}
 
@@ -629,7 +640,7 @@ public class GameView implements GameManager {
 	 * @param shader 
 	 */
 	public void setShader(ShaderProgram shader){
-		spriteBatch.setShader(shader);
+		gameSpaceSpriteBatch.setShader(shader);
 		useDefaultShader = false;
 	}
 
@@ -651,7 +662,7 @@ public class GameView implements GameManager {
 			MessageManager.getInstance().removeListener(this.renderstorage, Events.mapChanged.getId());	
 		renderstorage.dispose();
 		shRenderer.dispose();
-		spriteBatch.dispose();
+		gameSpaceSpriteBatch.dispose();
 		stage.dispose();
 		
 		cameraIdCounter=0;

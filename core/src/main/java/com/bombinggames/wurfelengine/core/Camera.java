@@ -36,7 +36,6 @@ import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
 import com.badlogic.gdx.graphics.Color;
 import static com.badlogic.gdx.graphics.GL20.GL_BLEND;
-import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.FrameBuffer;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
@@ -149,7 +148,6 @@ public class Camera implements Telegraph {
 	private int id;
 	private LinkedList<RenderCell> cacheTopLevel = new LinkedList<>();
 	private int sampleNum;
-	private SpriteBatch viewSpaceBatch = new SpriteBatch();
 	private FrameBuffer fbo;
 	private TextureRegion fboRegion;
 	private ShaderProgram postprocessshader;
@@ -508,12 +506,12 @@ public class Camera implements Telegraph {
 //			Gdx.gl.glClearColor(0f, 1f, 0f, 0f);
 //			Gdx.gl.glClear(GL_COLOR_BUFFER_BIT);
 				
-			view.getSpriteBatch().setProjectionMatrix(combined);
+			view.getGameSpaceSpriteBatch().setProjectionMatrix(combined);
 			view.getShapeRenderer().setProjectionMatrix(combined);
 			
 			ShaderProgram shader = view.getShader();
 			
-			view.getSpriteBatch().setShader(shader);
+			view.getGameSpaceSpriteBatch().setShader(shader);
 			//set up the viewport, yIndex-up
 			HdpiUtils.glViewport(screenPosX,
 				Gdx.graphics.getHeight() - screenHeight - screenPosY,
@@ -528,7 +526,7 @@ public class Camera implements Telegraph {
 			//Gdx.gl20.glBlendFunc(GL_SRC_ALPHA, GL20.GL_CONSTANT_COLOR);
 
 			view.setDebugRendering(false);
-			view.getSpriteBatch().begin();
+			view.getGameSpaceSpriteBatch().begin();
 			view.getShader().setUniformf("cameraPos",getCenter());
 			view.getShader().setUniformf("fogColor",
 				WE.getCVars().getValueF("fogR"),
@@ -582,17 +580,17 @@ public class Camera implements Telegraph {
 			for (Renderable obj : depthlist) {
 				obj.render(view, camera);
 			}
-			view.getSpriteBatch().end();
+			view.getGameSpaceSpriteBatch().end();
 
 			//if debugging render outline again
 			if (WE.getCVars().getValueB("DevDebugRendering")) {
 				view.setDebugRendering(true);
-				view.getSpriteBatch().begin();
+				view.getGameSpaceSpriteBatch().begin();
 				//render vom bottom to top
 				for (Renderable obj : depthlist) {
 					obj.render(view, camera);
 				}
-				view.getSpriteBatch().end();
+				view.getGameSpaceSpriteBatch().end();
 			}
 
 			//outline 3x3 chunks

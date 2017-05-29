@@ -392,7 +392,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 //				sh.line(xPos, yPos + VIEW_DEPTH2, xPos + VIEW_WIDTH2, yPos);
 				sh.end();
 			} else {
-				sprite.draw(view.getSpriteBatch());
+				sprite.draw(view.getGameSpaceSpriteBatch());
 				drawCalls++;
 			}
 		}

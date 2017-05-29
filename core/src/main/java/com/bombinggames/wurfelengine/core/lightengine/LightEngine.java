@@ -499,7 +499,7 @@ public class LightEngine {
 			}
 			shR.end();
 
-			view.getSpriteBatch().begin();
+			view.getProjectionSpaceSpriteBatch().begin();
 			int y = Gdx.graphics.getHeight() - 150;
 			view.drawString(
 				"Lat: " + sun.getHeight() + "\n"
@@ -525,7 +525,7 @@ public class LightEngine {
 			view.drawString("Ambient: ", 600, y + 110, false);
 			view.drawString("Diffuse: ", 680, y + 110, false);
 			view.drawString(getAmbient(pos).toString(), 620, y += 10, false);
-			view.getSpriteBatch().end();
+			view.getProjectionSpaceSpriteBatch().end();
 			// view.drawString("avg. color: "+sun.getColor().toString(), 600, y+=10, Color.WHITE);
 
 			shR.begin(ShapeType.Filled);

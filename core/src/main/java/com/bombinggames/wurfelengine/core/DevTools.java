@@ -186,9 +186,9 @@ public class DevTools {
                     yPos-maxHeight+avg*3000
                 );
                 String deltaT = new DecimalFormat("#.##").format(avg*1000);
-				view.getSpriteBatch().begin();
+				view.getProjectionSpaceSpriteBatch().begin();
 				view.drawString("d: " + deltaT, xPos, (int) (yPos-maxHeight+avg*3000), new Color(0, 0.3f, 0.8f, 0.7f));
-				view.getSpriteBatch().end();
+				view.getProjectionSpaceSpriteBatch().end();
             }
            
             shr.end(); 
