@@ -653,6 +653,7 @@ public class Camera implements Telegraph {
 				} else {
 					cellAbove.addCoveredEnts(ent);//cell covers entities inside
 					modifiedCells.add(cellAbove);
+					entsInCell.add(ent);
 				}
 			}
 		}
