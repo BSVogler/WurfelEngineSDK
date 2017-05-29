@@ -134,6 +134,7 @@ public class Camera implements Telegraph {
 	private int maxsprites;
 	private final Point center = new Point(0, 0, 0);
 	private final ArrayList<RenderCell> modifiedCells = new ArrayList<>(30);
+	private final ArrayList<AbstractEntity> entsInCells = new ArrayList<>(30);
 	/**
 	 * is rendered at the end
 	 */
@@ -633,7 +634,9 @@ public class Camera implements Telegraph {
 				
 		//add entities by inserting them into the render store
 		ArrayList<RenderCell> modifiedCells = this.modifiedCells;
-		ArrayList<AbstractEntity> entsInCell = new ArrayList<>(ents.size());
+		ArrayList<AbstractEntity> entsInCells = this.entsInCells;
+		entsInCells.clear();
+		entsInCells.ensureCapacity(ents.size());
 		modifiedCells.clear();
 		modifiedCells.ensureCapacity(ents.size());
 		LinkedList<AbstractEntity> renderAppendix = this.renderAppendix;
@@ -653,7 +656,7 @@ public class Camera implements Telegraph {
 				} else {
 					cellAbove.addCoveredEnts(ent);//cell covers entities inside
 					modifiedCells.add(cellAbove);
-					entsInCell.add(ent);
+					entsInCells.add(ent);
 				}
 			}
 		}
@@ -663,7 +666,8 @@ public class Camera implements Telegraph {
 		for (RenderCell cell : cacheTopLevel) {
 			if (cell != RenderChunk.CELLOUTSIDE && inViewFrustum(cell.getPosition())) {
 				visit(cell);
-			}}
+			}
+		}
 		//remove ents from modified blocks
 		for (RenderCell modifiedCell : modifiedCells) {
 			modifiedCell.clearCoveredEnts();
