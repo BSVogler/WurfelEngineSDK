@@ -30,44 +30,48 @@
  */
 package com.bombinggames.wurfelengine.core.map.rendering;
 
-import static com.badlogic.gdx.graphics.g2d.Batch.C1;
-import static com.badlogic.gdx.graphics.g2d.Batch.C2;
-import static com.badlogic.gdx.graphics.g2d.Batch.C3;
-import static com.badlogic.gdx.graphics.g2d.Batch.C4;
-import static com.badlogic.gdx.graphics.g2d.Batch.U1;
-import static com.badlogic.gdx.graphics.g2d.Batch.U2;
-import static com.badlogic.gdx.graphics.g2d.Batch.U3;
-import static com.badlogic.gdx.graphics.g2d.Batch.U4;
-import static com.badlogic.gdx.graphics.g2d.Batch.V1;
-import static com.badlogic.gdx.graphics.g2d.Batch.V2;
-import static com.badlogic.gdx.graphics.g2d.Batch.V3;
-import static com.badlogic.gdx.graphics.g2d.Batch.V4;
-import static com.badlogic.gdx.graphics.g2d.Batch.X1;
-import static com.badlogic.gdx.graphics.g2d.Batch.X2;
-import static com.badlogic.gdx.graphics.g2d.Batch.X3;
-import static com.badlogic.gdx.graphics.g2d.Batch.X4;
-import static com.badlogic.gdx.graphics.g2d.Batch.Y1;
-import static com.badlogic.gdx.graphics.g2d.Batch.Y2;
-import static com.badlogic.gdx.graphics.g2d.Batch.Y3;
-import static com.badlogic.gdx.graphics.g2d.Batch.Y4;
-
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.Batch;
+import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.NumberUtils;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
-import com.bombinggames.wurfelengine.core.map.Point;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.C1;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.C2;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.C3;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.C4;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.U1;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.U2;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.U3;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.U4;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.V1;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.V2;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.V3;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.V4;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.X1;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.X2;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.X3;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.X4;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Y1;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Y2;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Y3;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Y4;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Z1;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Z2;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Z3;
+import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis.Z4;
 
 /**
  *
  * @author Benedikt Vogler
  */
-public class SideSprite extends TextureRegion {
+public class GameSpaceSprite extends WETextureRegion {
 
-	static final int VERTEX_SIZE = 2 + 1 + 2;
-	static final int SPRITE_SIZE = 4 * VERTEX_SIZE;
+	static final int VERTEX_SIZE = 3 + 1 + 2;//x,y,z + color + u,v
+	static final int SPRITE_SIZE = 4 * VERTEX_SIZE;//four edges
 	/**
 	 * the brightness of the ao
 	 */
@@ -82,29 +86,56 @@ public class SideSprite extends TextureRegion {
 	}
 	
 	final float[] vertices = new float[SPRITE_SIZE];
-	private float x, y;
+	private float x, y, z;
+	/**
+	 * world space
+	 */
 	private float width, height;
 	private float originX, originY;
 	private float rotation;
+	/**
+	 * scale is in viewspace
+	 */
 	private float scaleX = 1, scaleY = 1;
 	private boolean dirty = true;
 	private Rectangle bounds;
 	private final Side side;
 	private int aoFlags;
+	private float top;
+	private float left;
 	
 	/**
 	 * An object helping with rendering a blokc made out of sides
 	 * @param region the texture used for rendering this side
-	 * @param side which side does this represent?
+	 * @param side which side does this represent?, if null is no block side
 	 * @param aoFlags 
 	 */
-	public SideSprite(TextureRegion region, Side side, int aoFlags) {
+	public GameSpaceSprite(TextureRegion region, Side side, int aoFlags) {
 		this.side = side;
 		setRegion(region);
 		this.aoFlags = aoFlags;
 		setColor(1, 1, 1, 1);
 		setSize(region.getRegionWidth(), region.getRegionHeight());
 		setOrigin(width / 2, height / 2);
+	}
+	
+		/**
+	 * Creates a sprite based on a specific TextureRegion, the new sprite's
+	 * region is a cospy of the parameter region - altering one does not affect
+	 * the other
+	 * @param region
+	 */
+	public GameSpaceSprite(TextureAtlas.AtlasRegion region) {
+		setRegion(region);
+		this.side = null;
+		setColor(1, 1, 1, 1);
+		setSize(region.getRegionWidth(), region.getRegionHeight());
+		this.left = + region.offsetX - region.originalWidth / 2 ;
+		this.top = (region.offsetY)/RenderCell.PROJECTIONFACTORZ;
+		setOrigin( 
+			region.originalWidth / 2 - region.offsetX,
+			VIEW_HEIGHT2 - region.offsetY
+		);
 	}
 
 	/**
@@ -120,8 +151,9 @@ public class SideSprite extends TextureRegion {
 	public void setBounds(float x, float y, float width, float height) {
 		this.x = x;
 		this.y = y;
+		this.z = 0;
 		this.width = width;
-		this.height = height;
+		this.height = height/RenderCell.PROJECTIONFACTORZ;
 
 		if (dirty) {
 			return;
@@ -156,11 +188,11 @@ public class SideSprite extends TextureRegion {
 	 * {@link #setBounds(float, float, float, float)}.
 	 *
 	 * @param width
-	 * @param height
+	 * @param height view space
 	 */
 	public void setSize(float width, float height) {
 		this.width = width;
-		this.height = height;
+		this.height = height/RenderCell.PROJECTIONFACTORZ;
 
 		if (dirty) {
 			return;
@@ -192,11 +224,12 @@ public class SideSprite extends TextureRegion {
 	 * after those operations. If both position and size are to be changed, it
 	 * is better to use {@link #setBounds(float, float, float, float)}.
 	 *
-	 * @param x
-	 * @param y
+	 * @param x game space
+	 * @param y game space
+	 * @param z game space
 	 */
-	public void setPosition(float x, float y) {
-		translate(x - this.x, y - this.y);
+	public void setPosition(float x, float y, float z) {
+		translate(x - this.x, y - this.y, z- this.z);
 	}
 
 	/**
@@ -302,10 +335,12 @@ public class SideSprite extends TextureRegion {
 	 *
 	 * @param xAmount
 	 * @param yAmount
+	 * @param zAmount
 	 */
-	public void translate(float xAmount, float yAmount) {
+	public void translate(float xAmount, float yAmount, float zAmount) {
 		x += xAmount;
 		y += yAmount;
+		z += zAmount;
 
 		if (dirty) {
 			return;
@@ -314,15 +349,19 @@ public class SideSprite extends TextureRegion {
 		float[] vertices = this.vertices;
 		vertices[X1] += xAmount;
 		vertices[Y1] += yAmount;
+		vertices[Z1] += zAmount;
 
 		vertices[X2] += xAmount;
 		vertices[Y2] += yAmount;
+		vertices[Z2] += zAmount;
 
 		vertices[X3] += xAmount;
 		vertices[Y3] += yAmount;
+		vertices[Z3] += zAmount;
 
 		vertices[X4] += xAmount;
 		vertices[Y4] += yAmount;
+		vertices[Z4] += zAmount;
 	}
 
 	/**
@@ -424,6 +463,14 @@ public class SideSprite extends TextureRegion {
 		vertices[C2] = color;
 		vertices[C3] = color;
 		vertices[C4] = color;
+	}
+	
+	/**
+	 * Sets the color used to tint this sprite. Default is {@link Color#WHITE}.
+	 * @param tint
+	 */
+	public void setColor(Color tint) {
+		setColor(tint.toFloatBits());
 	}
 
 	/**
@@ -555,7 +602,7 @@ public class SideSprite extends TextureRegion {
 	 */
 	public void scale(float amount) {
 		this.scaleX += amount;
-		this.scaleY += amount;
+		this.scaleY += amount/RenderCell.PROJECTIONFACTORZ;
 		dirty = true;
 	}
 
@@ -569,37 +616,70 @@ public class SideSprite extends TextureRegion {
 		if (dirty) {
 			dirty = false;
 
-			float localX1 = -originX;//bottom left
-			float localY1 = -originY + (side == Side.LEFT ? height * (1-Point.SQRT12) : 0);
+			float[] vertices = this.vertices;
+			//local coordiante system with origin in the field origin
+			//bottom left/left
+			float localX1 = -originX;
+			float localY1 = -originY;
+			float localZ1 = -originY;
 			
-			float localX2 = -originX;//top left
-			float localY2 = -originY + (side == Side.RIGHT ? height * Point.SQRT12 : height);
+			//top left /top
+			float localX2 = -originX;
+			float localY2 = -originY;
+			float localZ2 = -originY;
 			
-			float localX3 = -originX + width; //top right
-			float localY3 = -originY + (side == Side.LEFT ? height * Point.SQRT12 : height);
+			//top right/right
+			float localX3 = -originX; 
+			float localY3 = -originY;
+			float localZ3 = -originY;
 			//bottom right
-			float localX4 = -originX + width;
-			float localY4 = -originY + (side == Side.RIGHT ? height * (1-Point.SQRT12) : 0f);
+			float localX4 = -originX;
+			float localY4 = -originY;
+			float localZ4 = -originY;
 			
-			float worldOriginX = this.x + originX;
+			float worldOriginX = this.x + originX + left;
 			float worldOriginY = this.y + originY;
+			float worldOriginZ = this.z + originY+top;
 			
-			if (side == Side.TOP) {
-				localY1 += height * 0.5f;
-				localX2 += width * 0.5f;
-				localY3 -= height * 0.5f;
-				localX4 -= width * 0.5f;
+			if (side == Side.LEFT) {
+				localX1 += -RenderCell.GAME_DIAGLENGTH2;
+				localX2 += -RenderCell.GAME_DIAGLENGTH2;
+				localZ2 += RenderCell.GAME_EDGELENGTH;
+				localY3 += RenderCell.GAME_DIAGLENGTH2;
+				localZ3 += RenderCell.GAME_EDGELENGTH;
+				localY4 += RenderCell.GAME_DIAGLENGTH2;
+			} else if (side == Side.TOP) {
+				localX1 -= RenderCell.GAME_DIAGLENGTH2;
+				localY2 -= RenderCell.GAME_DIAGLENGTH2;
+				localX3 += RenderCell.GAME_DIAGLENGTH2;
+				localY4 += RenderCell.GAME_DIAGLENGTH2;
+				localZ1 += RenderCell.GAME_EDGELENGTH;
+				localZ2 += RenderCell.GAME_EDGELENGTH;
+				localZ3 += RenderCell.GAME_EDGELENGTH;
+				localZ4 += RenderCell.GAME_EDGELENGTH;
+			} else if (side == Side.RIGHT) {
+				localY1 += RenderCell.GAME_DIAGLENGTH2;
+				localY2 += RenderCell.GAME_DIAGLENGTH2;
+				localZ2 += RenderCell.GAME_EDGELENGTH;
+				localX3 += RenderCell.GAME_DIAGLENGTH2;
+				localZ3 += RenderCell.GAME_EDGELENGTH;
+				localX4 += RenderCell.GAME_DIAGLENGTH2;
+			} else {
+				localX3 += width;
+				localX4 += width;
+				localZ2 += height;
+				localZ3 += height;
 			}
-			
+
 			if (scaleX != 1 || scaleY != 1) {
 				localX1 *= scaleX;
-				localY1 *= scaleY;
+				localZ1 *= scaleY;
 				localX2 *= scaleX;
-				localY2 *= scaleX;
+				localZ2 *= scaleX;
 				localX3 *= scaleX;
-				localY3 *= scaleY;
+				localZ3 *= scaleY;
 				localX4 *= scaleX;
-				localY4 *= scaleX;
+				localZ4 *= scaleX;
 			}
 			
 			if (rotation != 0) {
@@ -607,58 +687,53 @@ public class SideSprite extends TextureRegion {
 				final float sin = MathUtils.sinDeg(rotation);
 				final float localXCos = localX1 * cos;
 				final float localXSin = localX1 * sin;
-				final float localYCos = localY1 * cos;
-				final float localYSin = localY1 * sin;
+				final float localZCos = localZ1 * cos;
+				final float localZSin = localZ1 * sin;
 				final float localX2Cos = localX3 * cos;
 				final float localX2Sin = localX3 * sin;
-				final float localY2Cos = localY3 * cos;
-				final float localY2Sin = localY3 * sin;
+				final float localZ2Cos = localZ3 * cos;
+				final float localZ2Sin = localZ3 * sin;
 
-				final float x1 = localXCos - localYSin + worldOriginX;
-				final float y1 = localYCos + localXSin + worldOriginY;
+				final float x1 = localXCos - localZSin + worldOriginX;
+				final float z1 = localZCos + localXSin + worldOriginZ;
 				vertices[X1] = x1;
-				vertices[Y1] = y1;
+				vertices[Z1] = z1;
 
-				final float x2 = localXCos - localY2Sin + worldOriginX;
-				final float y2 = localY2Cos + localXSin + worldOriginY;
+				final float x2 = localXCos - localZ2Sin + worldOriginX;
+				final float z2 = localZ2Cos + localXSin + worldOriginZ;
 				vertices[X2] = x2;
-				vertices[Y2] = y2;
+				vertices[Z2] = z2;
 
-				final float x3 = localX2Cos - localY2Sin + worldOriginX;
-				final float y3 = localY2Cos + localX2Sin + worldOriginY;
+				final float x3 = localX2Cos - localZ2Sin + worldOriginX;
+				final float z3 = localZ2Cos + localX2Sin + worldOriginZ;
 				vertices[X3] = x3;
-				vertices[Y3] = y3;
+				vertices[Z3] = z3;
 
 				vertices[X4] = x1 + (x3 - x2);
-				vertices[Y4] = y3 - (y2 - y1);
+				vertices[Z4] = z3 - (z2 - z1);
 			} else {
-				final float x1 = localX1 + worldOriginX;
-				final float y1 = localY1 + worldOriginY;
-				final float x2 = localX2 + worldOriginX;
-				final float y2 = localY2 + worldOriginY;
-				final float x3 = localX3 + worldOriginX;
-				final float y3 = localY3 + worldOriginY;
-				final float x4 = localX4 + worldOriginX;
-				final float y4 = localY4 + worldOriginY;
-
-				vertices[X1] = x1;//bottom left
-				vertices[Y1] = y1;
-
-				vertices[X2] = x2;//top left
-				vertices[Y2] = y2;
-
-				vertices[X3] = x3;//top right
-				vertices[Y3] = y3;
-
-				vertices[X4] = x4;//bottom right
-				vertices[Y4] = y4;
+				vertices[X1] = localX1 + worldOriginX;
+				vertices[Z1] = localZ1 + worldOriginZ;
+				vertices[X2] = localX2 + worldOriginX;
+				vertices[Z2] = localZ2 + worldOriginZ;
+				vertices[X3] = localX3 + worldOriginX;
+				vertices[Z3] = localZ3 + worldOriginZ;
+				vertices[X4] = localX4 + worldOriginX;
+				vertices[Z4] = localZ4 + worldOriginZ;
 			}
+			vertices[Y1] = localY1 + worldOriginY;
+			vertices[Y2] = localY2 + worldOriginY;
+			vertices[Y3] = localY3 + worldOriginY;
+			vertices[Y4] = localY4 + worldOriginY;			
+		}
+		if (side != null) {
+			applyAO();
 		}
 		return vertices;
 	}
 	
 	/**
-	 * aply the ao to the vertice color
+	 * apply the ao to the vertice color
 	 */
 	protected void applyAO(){
 		//float to integer color
@@ -794,7 +869,6 @@ public class SideSprite extends TextureRegion {
 	 * @param batch
 	 */
 	public void draw(Batch batch) {
-		applyAO();
 		batch.draw(getTexture(), getVertices(), 0, SPRITE_SIZE);
 	}
 
@@ -1006,7 +1080,7 @@ public class SideSprite extends TextureRegion {
 
 	@Override
 	public void scroll(float xAmount, float yAmount) {
-		float[] vertices = SideSprite.this.vertices;
+		float[] vertices = GameSpaceSprite.this.vertices;
 		if (xAmount != 0) {
 			float u = (vertices[U1] + xAmount) % 1;
 			float u2 = u + width / getTexture().getWidth();

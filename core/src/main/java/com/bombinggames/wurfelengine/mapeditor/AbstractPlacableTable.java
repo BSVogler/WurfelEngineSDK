@@ -58,7 +58,7 @@ public abstract class AbstractPlacableTable extends Table {
 		setWidth(400);
 		setHeight(Gdx.graphics.getHeight() * 0.80f);
 		setY(10);
-		setX(30);
+		setX(20);
 	}
 
 	/**

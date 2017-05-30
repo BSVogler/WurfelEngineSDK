@@ -597,7 +597,6 @@ public class WE {
 		Gdx.app.debug("Shader", "loading");
 		//shaders are very fast to load and the asset loader does not support text files out of the box
 		String fragmentShader = internal ? Gdx.files.internal(fragmentPath).readString() : Gdx.files.absolute(fragmentPath).readString();
-		
 		String vertexShader;
 		if (vertexPath==null){
 			vertexShader = "attribute vec4 a_position;    \n" + 

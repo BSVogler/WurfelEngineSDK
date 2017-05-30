@@ -578,24 +578,45 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 //			coord.goToNeighbour(5);
 
 			//render this ent before blocks below
-			if (coord.getZ()<0){
+			
 				//add bottom layer
-				block = rs.getCell(coord);//front
+				block = rs.getCell(coord);//self
 				if (block != null) {
 					covered.add(block);
 				}
-			} else {
-				if (coord.getZ() > 0) {
-	//				if (block != null) {
-	//					covered.add(block);
-	//				}
-					block = rs.getCell(coord.add(0, 0, -2).goToNeighbour(4));//front
-					if (block != null) {
-						covered.add(block);
-					}
+//			} else {
+
+			if (coord.getZ() < Chunk.getBlocksZ()) {
+				block = rs.getCell(coord.goToNeighbour(7).add(0, 0, 1));//back left
+				if (block != null) {
+					covered.add(block);
 				}
+
+				block = rs.getCell(coord.goToNeighbour(2));//back right
+				if (block != null) {
+					covered.add(block);
+				}
+				coord.goToNeighbour(5).add(0, 0, -1);
 			}
+		
+			if (coord.getZ() > 0){
+				coord.add(0, 0, -1);//bottom
+				block = rs.getCell(coord.goToNeighbour(5));//front left
+				if (block != null) {
+					covered.add(block);
+				}
+
+				block = rs.getCell(coord.goToNeighbour(3));//front
+				if (block != null) {
+					covered.add(block);
+				}
 				
+				block = rs.getCell(coord.goToNeighbour(1));//front right
+				if (block != null) {
+					covered.add(block);
+				}
+				coord.goToNeighbour(7).add(0, 0, 1);
+			}
 		}
 		return covered;
 	}
@@ -690,7 +711,10 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * @param id
 	 */
 	public void setSpriteId(byte id){
-		this.spriteId = id;
+		if (id != this.spriteId) {
+			this.spriteId = id;
+			updateSpriteCache();
+		}
 	}
 	
 	/**
@@ -698,6 +722,9 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * @param value
 	 */
 	public void setSpriteValue(byte value){
-		this.value = value;
+		if (value != this.value) {
+			this.value = value;
+			updateSpriteCache();
+		}
 	}
 }

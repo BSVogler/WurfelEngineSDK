@@ -35,16 +35,14 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
+import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_DEPTH2;
 import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_WIDTH2;
 import java.io.FileNotFoundException;
 import java.io.Serializable;
 
@@ -247,6 +245,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * flag 
 	 */
 	private int marked;
+	private GameSpaceSprite sprite;
 
 	/**
 	 * Creates an object.
@@ -298,63 +297,38 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 
 	@Override
 	public void render(GameView view, Camera camera) {
-		if (!hidden && getPosition()!=null) {
-			Color fogcolor = null;
-			if (WE.getCVars().getValueB("enableFog")) {
-				//can use CVars for dynamic change. using harcored values for performance reasons
-				float factor = (float) (Math.exp(0.025f * (camera.getVisibleFrontBorderHigh() - getPosition().toCoord().getY() - 18.0)) - 1);
-				fogcolor = new Color(
-					0.5f + 0.3f * factor,
-					0.5f + 0.4f * factor,
-					0.5f + 0.1f * factor,
-					0.5f
-				);
-			}
-			render(
-				view,
-				getPosition().getViewSpcX(),
-				getPosition().getViewSpcY(),
-				fogcolor
-			);
+		if (!hidden && getPosition() != null) {
+			render(view);
 		}
 	}
 
 	/**
-	 * Renders at a custom position.
+	 * Renders at a custom position in projection space. uses heap
 	 *
 	 * @param view
-	 * @param xPos rendering position, center of sprite in projection (?) space
-	 * @param yPos rendering position, center of sprite in projection (?) space
+	 * @param xPos rendering position, center of sprite in projection space
+	 * @param yPos rendering position, center of sprite in projection space
 	 */
 	public void render(GameView view, int xPos, int yPos) {
-		render(view, xPos, yPos, null);
-	}
-
-	/**
-	 * Renders at a custom position with a custom light.
-	 *
-	 * @param view
-	 * @param xPos rendering position, center of sprite in projection space (?)
-	 * @param yPos rendering position, center of sprite in projection space (?)
-	 * @param color color which gets multiplied with the tint. No change ( =
-	 * multiply with 1) is when passed RGBA 0x80808080.
-	 */
-	public void render(GameView view, int xPos, int yPos, Color color) {
 		byte id = getSpriteId();
 		byte value = getSpriteValue();
 		if (id > 0 && value >= 0) {
-			AtlasRegion texture = AbstractGameObject.getSprite(getSpriteCategory(), id, value);
+			AtlasRegion texture = AbstractGameObject.getSprite(getSpriteCategory(), getSpriteId(), getSpriteValue());
 			Sprite sprite = new Sprite(texture);
 			sprite.setOrigin(
 				texture.originalWidth / 2 - texture.offsetX,
 				VIEW_HEIGHT2 - texture.offsetY
 			);
-			sprite.setRotation(rotation);
-			//sprite.setOrigin(0, 0);
-			sprite.setScale(scaling);
+			if (rotation != sprite.getRotation()) {
+				sprite.setRotation(rotation);
+			}
+			
+			if (scaling != sprite.getScaleX()) {
+				sprite.setScale(scaling);
+			}
 
 			sprite.setPosition(
-				xPos + texture.offsetX - texture.originalWidth / 2,
+				xPos+texture.offsetX - texture.originalWidth / 2,
 				yPos//center
 				- VIEW_HEIGHT2
 				+ texture.offsetY
@@ -364,53 +338,54 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 			if (tint == null) {
 				tint = new Color(0.5f, 0.5f, 0.5f, 1f);
 			}
-			if (color != null) {
-				sprite.setColor(
-					tint.cpy().mul(
-						color.r + 0.5f,
-						color.g + 0.5f,
-						color.b + 0.5f,
-						color.a + 0.5f
-					)
-				);
-			} else {
-				sprite.setColor(tint);
+			sprite.setColor(tint);
+
+			sprite.draw(view.getProjectionSpaceSpriteBatch());
+			drawCalls++;
+		}
+	}
+
+	/**
+	 * Renders in game space.
+	 *
+	 * @param view
+	 */
+	public void render(GameView view) {
+		byte id = getSpriteId();
+		byte value = getSpriteValue();
+		if (id > 0 && value >= 0) {
+			if (sprite==null) {
+				updateSpriteCache();
+			}
+			if (rotation != sprite.getRotation()) {
+				sprite.setRotation(rotation);
+			}
+			//sprite.setOrigin(0, 0);
+			if (scaling != sprite.getScaleX()) {
+				sprite.setScale(scaling);
 			}
 
-			if (view.debugRendering()) {
-				ShapeRenderer sh = view.getShapeRenderer();
-				sh.begin(ShapeRenderer.ShapeType.Line);
-				//sprite outline
-				sh.rect(
-					sprite.getX(),
-					sprite.getY(),
-					sprite.getWidth(),
-					sprite.getHeight()
-				);
-				//crossing lines
-				sh.line(
-					xPos - VIEW_WIDTH2,
-					yPos - VIEW_DEPTH2,
-					xPos + VIEW_WIDTH2,
-					yPos + VIEW_DEPTH2
-				);
-				sh.line(
-					xPos - VIEW_WIDTH2,
-					yPos + VIEW_DEPTH2,
-					xPos + VIEW_WIDTH2,
-					yPos - VIEW_DEPTH2
-				);
-				//bounding box
-				sh.line(xPos - VIEW_WIDTH2, yPos, xPos, yPos - VIEW_DEPTH2);
-				sh.line(xPos - VIEW_WIDTH2, yPos, xPos, yPos + VIEW_DEPTH2);
-				sh.line(xPos, yPos - VIEW_DEPTH2, xPos + VIEW_WIDTH2, yPos);
-				sh.line(xPos, yPos + VIEW_DEPTH2, xPos + VIEW_WIDTH2, yPos);
-				sh.end();
-			} else {
-				sprite.draw(view.getSpriteBatch());
-				drawCalls++;
+			Point pos = getPoint();
+			sprite.setPosition(
+				pos.getX(),
+				pos.getY()+RenderCell.GAME_DIAGLENGTH2,//center, move a bit to draw front
+				pos.getZ()
+			);
+
+			//hack for transient field tint
+			if (tint == null) {
+				tint = new Color(0.5f, 0.5f, 0.5f, 1f);
 			}
+			sprite.setColor(tint);
+
+			sprite.draw(view.getGameSpaceSpriteBatch());
+			drawCalls++;
 		}
+	}
+	
+	public void updateSpriteCache(){
+		AtlasRegion texture = AbstractGameObject.getSprite(getSpriteCategory(), getSpriteId(), getSpriteValue());
+		sprite = new GameSpaceSprite(texture);
 	}
 
 	//getter & setter

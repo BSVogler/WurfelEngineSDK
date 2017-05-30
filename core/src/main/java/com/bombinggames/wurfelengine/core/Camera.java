@@ -36,7 +36,10 @@ import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
 import com.badlogic.gdx.graphics.Color;
 import static com.badlogic.gdx.graphics.GL20.GL_BLEND;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.graphics.glutils.FrameBuffer;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
+import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector2;
@@ -50,11 +53,13 @@ import com.bombinggames.wurfelengine.core.map.Iterators.CoveredByCameraIterator;
 import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
+import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
-import com.bombinggames.wurfelengine.core.map.rendering.SideSprite;
 import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Creates a virtual camera wich displays the game world on the viewport. A camer acan be locked to an entity.
@@ -88,7 +93,7 @@ public class Camera implements Telegraph {
 	/**
 	 * the viewport width&height. Origin top left.
 	 */
-	private int screenWidth, heightScreen;
+	private int screenWidth, screenHeight;
 
 	/**
 	 * the position on the screen (viewportWidth/Height ist the affiliated).
@@ -128,6 +133,7 @@ public class Camera implements Telegraph {
 	private int maxsprites;
 	private final Point center = new Point(0, 0, 0);
 	private final ArrayList<RenderCell> modifiedCells = new ArrayList<>(30);
+	private final ArrayList<AbstractEntity> entsInCells = new ArrayList<>(30);
 	/**
 	 * is rendered at the end
 	 */
@@ -142,6 +148,9 @@ public class Camera implements Telegraph {
 	private int id;
 	private LinkedList<RenderCell> cacheTopLevel = new LinkedList<>();
 	private int sampleNum;
+	private FrameBuffer fbo;
+	private TextureRegion fboRegion;
+	private ShaderProgram postprocessshader;
 
 	/**
 	 * Updates the needed chunks after recaclucating the center chunk of the
@@ -163,7 +172,7 @@ public class Camera implements Telegraph {
 	public Camera(final GameView view) {
 		gameView = view;
 		screenWidth = Gdx.graphics.getBackBufferWidth();
-		heightScreen = Gdx.graphics.getBackBufferHeight();
+		screenHeight = Gdx.graphics.getBackBufferHeight();
 		updateViewSpaceSize();
 		widthProj = (int) (widthView / zoom);//update cache
 
@@ -173,6 +182,7 @@ public class Camera implements Telegraph {
 		fullWindow = true;
 		initFocus();
 		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
+		loadShader();
 	}
 	
 	/**
@@ -191,7 +201,7 @@ public class Camera implements Telegraph {
 	public Camera(final GameView view, final int x, final int y, final int width, final int height) {
 		gameView = view;
 		screenWidth = width;
-		heightScreen = height;
+		screenHeight = height;
 		screenPosX = x;
 		screenPosY = y;
 		renderResWidth = WE.getCVars().getValueI("renderResolutionWidth");
@@ -204,6 +214,7 @@ public class Camera implements Telegraph {
 		position.y = center.getViewSpcY();
 		initFocus();
 		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
+		loadShader();
 	}
 
 	/**
@@ -225,7 +236,7 @@ public class Camera implements Telegraph {
 	public Camera(final GameView view, final int x, final int y, final int width, final int height, final Point center) {
 		gameView = view;
 		screenWidth = width;
-		heightScreen = height;
+		screenHeight = height;
 		screenPosX = x;
 		screenPosY = y;
 		renderResWidth = WE.getCVars().getValueI("renderResolutionWidth");
@@ -237,6 +248,7 @@ public class Camera implements Telegraph {
 		position.y = center.getViewSpcY();
 		initFocus();
 		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
+		loadShader();
 	}
 
 	/**
@@ -255,9 +267,10 @@ public class Camera implements Telegraph {
 	 * @param view
 	 */
 	public Camera(final GameView view, final int x, final int y, final int width, final int height, final AbstractEntity focusentity) {
+		loadShader();
 		gameView = view;
 		screenWidth = width;
-		heightScreen = height;
+		screenHeight = height;
 		screenPosX = x;
 		screenPosY = y;
 		renderResWidth = WE.getCVars().getValueI("renderResolutionWidth");
@@ -279,6 +292,23 @@ public class Camera implements Telegraph {
 		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
 	}
 
+	/**
+	 * 
+	 */
+	public void loadShader(){
+		try {
+			ShaderProgram newshader = WE.loadShader(true, WE.getWorkingDirectory().getAbsolutePath()+"/postprocess.fs", null);
+			postprocessshader = newshader;
+	} catch (Exception ex){
+			WE.getConsole().add(ex.getLocalizedMessage());
+			//could not load initial shader
+			if (postprocessshader == null){
+				Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
+		
+			}
+		}
+	}
+	
 	/**
 	 * Updates the camera.
 	 *
@@ -311,7 +341,7 @@ public class Camera implements Telegraph {
 				position.y += (float) (Math.random() * shakeAmplitude*dt % shakeAmplitude)-shakeAmplitude*0.5;
 			}
 
-			//move camera to the focus
+			//move camera to the position
 			viewMat.setToLookAt(
 				new Vector3(position, 0),
 				new Vector3(position, -1),
@@ -331,6 +361,12 @@ public class Camera implements Telegraph {
 			//set up projection matrices
 			combined.set(projection);
 			Matrix4.mul(combined.val, viewMat.val);
+			
+			//wurfel engine projection matrix
+			//there is some scaling in M11, keep it
+			combined.val[Matrix4.M12] = combined.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
+			combined.val[Matrix4.M11] *= -0.5f;
+			combined.val[Matrix4.M22] = 0; // at z=0
 			
 			//recalculate the center position
 			updateCenter();
@@ -452,15 +488,35 @@ public class Camera implements Telegraph {
 	 */
 	public void render(final GameView view, final Camera camera) {
 		if (active && Controller.getMap() != null) { //render only if map exists
-
-			view.getSpriteBatch().setProjectionMatrix(combined);
+			
+			//render offscreen
+//			screenWidth=1024;
+//			screenHeight=1024;
+//			updateViewSpaceSize();
+//			if (fbo == null) {
+//				fbo = new FrameBuffer(Format.RGBA8888, screenWidth, screenHeight, false);
+//			}
+//			if (fboRegion == null) {
+//				fboRegion = new TextureRegion(fbo.getColorBufferTexture(), 0, 0,
+//					screenWidth, screenHeight);
+//				fboRegion.flip(false, true);
+//			}
+//			fbo.begin();
+//			
+//			Gdx.gl.glClearColor(0f, 1f, 0f, 0f);
+//			Gdx.gl.glClear(GL_COLOR_BUFFER_BIT);
+				
+			view.getGameSpaceSpriteBatch().setProjectionMatrix(combined);
 			view.getShapeRenderer().setProjectionMatrix(combined);
+			
+			ShaderProgram shader = view.getShader();
+			
+			view.getGameSpaceSpriteBatch().setShader(shader);
 			//set up the viewport, yIndex-up
-			HdpiUtils.glViewport(
-				screenPosX,
-				Gdx.graphics.getHeight() - heightScreen - screenPosY,
+			HdpiUtils.glViewport(screenPosX,
+				Gdx.graphics.getHeight() - screenHeight - screenPosY,
 				screenWidth,
-				heightScreen
+				screenHeight
 			);
 
 			//render map
@@ -470,14 +526,22 @@ public class Camera implements Telegraph {
 			//Gdx.gl20.glBlendFunc(GL_SRC_ALPHA, GL20.GL_CONSTANT_COLOR);
 
 			view.setDebugRendering(false);
-			view.getSpriteBatch().begin();
+			view.getGameSpaceSpriteBatch().begin();
+			view.getShader().setUniformf("cameraPos",getCenter());
+			view.getShader().setUniformf("fogColor",
+				WE.getCVars().getValueF("fogR"),
+				WE.getCVars().getValueF("fogG"),
+				WE.getCVars().getValueF("fogB")
+			);
+			if (focusEntity!=null)
+				shader.setUniformf("playerpos",focusEntity.getPoint());
 			//send a Vector4f to GLSL
 			if (WE.getCVars().getValueB("enablelightengine")) {
-				view.getShader().setUniformf(
+				shader.setUniformf(
 					"sunNormal",
 					Controller.getLightEngine().getSun(getCenter()).getNormal()
 				);
-				view.getShader().setUniformf(
+				shader.setUniformf(
 					"sunColor",
 					Controller.getLightEngine().getSun(getCenter()).getLight()
 				);
@@ -510,29 +574,43 @@ public class Camera implements Telegraph {
 
 			//settings for this frame
 			RenderCell.setStaticShade(WE.getCVars().getValueB("enableAutoShade"));
-			SideSprite.setAO(WE.getCVars().getValueF("ambientOcclusion"));
+			GameSpaceSprite.setAO(WE.getCVars().getValueF("ambientOcclusion"));
 			
 			//render vom bottom to top
 			for (Renderable obj : depthlist) {
 				obj.render(view, camera);
 			}
-			view.getSpriteBatch().end();
+			view.getGameSpaceSpriteBatch().end();
 
 			//if debugging render outline again
 			if (WE.getCVars().getValueB("DevDebugRendering")) {
 				view.setDebugRendering(true);
-				view.getSpriteBatch().begin();
+				view.getGameSpaceSpriteBatch().begin();
 				//render vom bottom to top
 				for (Renderable obj : depthlist) {
 					obj.render(view, camera);
 				}
-				view.getSpriteBatch().end();
+				view.getGameSpaceSpriteBatch().end();
 			}
 
 			//outline 3x3 chunks
 			if (WE.getCVars().getValueB("DevDebugRendering")) {
 				drawDebug(view, camera);
 			}
+			//to render offscreen onscreen
+//			fbo.end();
+//			
+//			OrthographicCamera cam = new OrthographicCamera(Gdx.graphics.getWidth(),
+//				Gdx.graphics.getHeight());
+//			cam.setToOrtho(false, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+//			viewSpaceBatch.setProjectionMatrix(cam.combined);
+//			viewSpaceBatch.setShader(postprocessshader);
+//			//fboRegion.getTexture().bind();
+//			viewSpaceBatch.begin();
+//			Gdx.gl.glClearColor(1f, 0f, 0f, 0f);
+//			Gdx.gl.glClear(GL_COLOR_BUFFER_BIT);
+//			viewSpaceBatch.draw(fboRegion, 0, 0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());
+//			viewSpaceBatch.end();
 		}
 	}
 
@@ -554,6 +632,9 @@ public class Camera implements Telegraph {
 				
 		//add entities by inserting them into the render store
 		ArrayList<RenderCell> modifiedCells = this.modifiedCells;
+		ArrayList<AbstractEntity> entsInCells = this.entsInCells;
+		entsInCells.clear();
+		entsInCells.ensureCapacity(ents.size());
 		modifiedCells.clear();
 		modifiedCells.ensureCapacity(ents.size());
 		LinkedList<AbstractEntity> renderAppendix = this.renderAppendix;
@@ -566,14 +647,14 @@ public class Camera implements Telegraph {
 				&& inViewFrustum(ent.getPosition())
 				&& ent.getPosition().getZ() < gameView.getRenderStorage().getZRenderingLimit()
 			) {
-				RenderCell cellAbove = gameView.getRenderStorage().getCell(ent.getPosition().add(0, 0, RenderCell.GAME_EDGELENGTH));//add in cell above
-				ent.getPosition().add(0, 0, -RenderCell.GAME_EDGELENGTH);//reverse change from line above
+				RenderCell cellAbove = gameView.getRenderStorage().getCell(ent.getPosition());
 				//in the renderstorage no nullpointer should exists, escept object is outside the array
 				if (cellAbove == RenderChunk.CELLOUTSIDE) {
 					renderAppendix.add(ent);//render at the end
 				} else {
 					cellAbove.addCoveredEnts(ent);//cell covers entities inside
 					modifiedCells.add(cellAbove);
+					entsInCells.add(ent);
 				}
 			}
 		}
@@ -839,7 +920,7 @@ public class Camera implements Telegraph {
 	 * updates the cache
 	 */
 	private void updateViewSpaceSize() {
-		heightView = (int) (heightScreen / getScreenSpaceScaling());
+		heightView = (int) (screenHeight / getScreenSpaceScaling());
 		heightProj = (int) (heightView / zoom);
 	}
 
@@ -888,7 +969,7 @@ public class Camera implements Telegraph {
 	 * @return the value before scaling
 	 */
 	public int getHeightInScreenSpc() {
-		return heightScreen;
+		return screenHeight;
 	}
 
 	/**
@@ -917,7 +998,7 @@ public class Camera implements Telegraph {
 	public void setFullWindow(boolean fullWindow) {
 		this.fullWindow = fullWindow;
 		this.screenWidth = Gdx.graphics.getWidth();
-		this.heightScreen = Gdx.graphics.getHeight();
+		this.screenHeight = Gdx.graphics.getHeight();
 		this.screenPosX = 0;
 		this.screenPosY = 0;
 		updateViewSpaceSize();
@@ -932,7 +1013,7 @@ public class Camera implements Telegraph {
 	public void resize(int width, int height) {
 		if (fullWindow) {
 			this.screenWidth = width;
-			this.heightScreen = height;
+			this.screenHeight = height;
 			this.screenPosX = 0;
 			this.screenPosY = 0;
 			updateViewSpaceSize();
@@ -950,7 +1031,7 @@ public class Camera implements Telegraph {
 			fullWindow = false;
 		}
 		this.screenWidth = width;
-		this.heightScreen = height;
+		this.screenHeight = height;
 		updateViewSpaceSize();
 	}
 
@@ -982,15 +1063,15 @@ public class Camera implements Telegraph {
 	}
 
 	/**
-	 * Returns the focuspoint
+	 * Returns the focuspoint. Approximated because is stored in view space and backtransformation is a line.
 	 *
 	 * @return in game space, copy safe
 	 */
 	public Point getCenter() {
 		return (Point) center.set(
 			position.x,
-			-position.y * 2,
-			0
+			-(position.y-RenderCell.VIEW_HEIGHT2*Chunk.getBlocksZ()) / RenderCell.PROJECTIONFACTORY,
+			RenderCell.GAME_EDGELENGTH2*Chunk.getBlocksZ()
 		);//view to game
 	}
 	

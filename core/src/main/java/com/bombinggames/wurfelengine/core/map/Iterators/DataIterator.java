@@ -99,6 +99,10 @@ public class DataIterator<T> implements Iterator<T> {
 			|| pos[2] < limitZ);
 	}
 
+	/**
+	 * first iterates z then x then y
+	 * @return 
+	 */
 	@Override
 	public T next() {
 		if (pos[2] < limitZ) {// go higher if it can and go to x=0, y=0
