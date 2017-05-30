@@ -678,7 +678,7 @@ public class RenderCell extends AbstractGameObject {
 				renderSide(
 					view,
 					(int) (xPos - VIEW_WIDTH2*scaling),
-					(int) (yPos + (VIEW_HEIGHT)*scaling),
+					(int) (yPos + (VIEW_HEIGHT-VIEW_DEPTH2)*scaling),
 					Side.TOP,
 					color
 				);
@@ -689,7 +689,7 @@ public class RenderCell extends AbstractGameObject {
 				renderSide(
 					view,
 					(int) (xPos-VIEW_WIDTH2*scaling),
-					yPos,
+					(int) (yPos-VIEW_DEPTH2*scaling),
 					Side.LEFT,
 					color
 				);
@@ -700,7 +700,7 @@ public class RenderCell extends AbstractGameObject {
 				renderSide(
 					view,
 					xPos,
-					yPos,
+					(int) (yPos-VIEW_DEPTH2*scaling),
 					Side.RIGHT,
 					color
 				);
