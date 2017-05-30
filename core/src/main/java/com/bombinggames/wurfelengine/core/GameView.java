@@ -40,7 +40,6 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
-import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.utils.viewport.StretchViewport;
@@ -353,10 +352,9 @@ public class GameView implements GameManager {
                
         //render HUD and GUI
 		useDefaultShader();
+		//to screen space?
 		gameSpaceSpriteBatch.setProjectionMatrix(libGDXcamera.combined);
 		shRenderer.setProjectionMatrix(libGDXcamera.combined);
-		//spriteBatch.setTransformMatrix(new Matrix4());//reset transformation
-		shRenderer.setTransformMatrix(new Matrix4());//reset transformation
 
 		Gdx.gl20.glLineWidth(1);
 
@@ -374,6 +372,12 @@ public class GameView implements GameManager {
 
 		//render buttons
 		stage.draw();
+	}
+	
+	public void resetProjectionMatrix(){
+		//screen space to screen space
+		gameSpaceSpriteBatch.setProjectionMatrix(libGDXcamera.combined);
+		shRenderer.setProjectionMatrix(libGDXcamera.combined);
 	}
 
     /**

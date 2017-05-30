@@ -1111,8 +1111,8 @@ public class Camera implements Telegraph {
 	 */
 	private void drawDebug(GameView view, Camera camera) {
 		//outline 3x3 chunks
-		view.getShapeRenderer().setProjectionMatrix(combined);
 		ShapeRenderer sh = view.getShapeRenderer();
+		sh.setProjectionMatrix(combined);//draw in game space
 		sh.setColor(Color.RED.cpy());
 		sh.begin(ShapeRenderer.ShapeType.Line);
 		sh.rect(-Chunk.getGameWidth(),//one chunk to the left
