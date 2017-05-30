@@ -28,20 +28,16 @@
  */
 package com.bombinggames.wurfelengine.core.gameobjects;
 
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
-
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.msg.Telegram;
-import com.badlogic.gdx.graphics.Color;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Events;
-import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
 import com.bombinggames.wurfelengine.extension.AimBand;
 
 /**
@@ -492,23 +488,6 @@ public class MovableEntity extends AbstractEntity  {
 				}
 			}
 		}
-	}
-
-	@Override
-	public void render(GameView view, int xPos, int yPos) {
-		if (view.debugRendering()) {
-			ShapeRenderer sh = view.getShapeRenderer();
-			sh.begin(ShapeRenderer.ShapeType.Filled);
-			sh.setColor(Color.GREEN);
-			//life bar
-			sh.rect(xPos - RenderCell.VIEW_WIDTH2,
-				yPos + RenderCell.VIEW_HEIGHT,
-				getHealth() * RenderCell.VIEW_WIDTH / 1000,
-				5
-			);
-			sh.end();
-		}
-		super.render(view, xPos, yPos);
 	}
 
 	/**

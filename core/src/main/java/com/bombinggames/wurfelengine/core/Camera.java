@@ -506,8 +506,7 @@ public class Camera implements Telegraph {
 //			Gdx.gl.glClearColor(0f, 1f, 0f, 0f);
 //			Gdx.gl.glClear(GL_COLOR_BUFFER_BIT);
 				
-			view.getGameSpaceSpriteBatch().setProjectionMatrix(combined);
-			view.getShapeRenderer().setProjectionMatrix(combined);
+			view.getGameSpaceSpriteBatch().setProjectionMatrix(combined);//game space
 			
 			ShaderProgram shader = view.getShader();
 			
@@ -582,19 +581,9 @@ public class Camera implements Telegraph {
 			}
 			view.getGameSpaceSpriteBatch().end();
 
-			//if debugging render outline again
-			if (WE.getCVars().getValueB("DevDebugRendering")) {
-				view.setDebugRendering(true);
-				view.getGameSpaceSpriteBatch().begin();
-				//render vom bottom to top
-				for (Renderable obj : depthlist) {
-					obj.render(view, camera);
-				}
-				view.getGameSpaceSpriteBatch().end();
-			}
-
-			//outline 3x3 chunks
-			if (WE.getCVars().getValueB("DevDebugRendering")) {
+			//debug rendering
+			view.setDebugRendering(WE.getCVars().getValueB("DevDebugRendering"));
+			if (view.debugRendering()) {
 				drawDebug(view, camera);
 			}
 			//to render offscreen onscreen
@@ -1115,7 +1104,14 @@ public class Camera implements Telegraph {
 		this.active = active;
 	}
 
+	/**
+	 * 
+	 * @param view
+	 * @param camera 
+	 */
 	private void drawDebug(GameView view, Camera camera) {
+		//outline 3x3 chunks
+		view.getShapeRenderer().setProjectionMatrix(combined);
 		ShapeRenderer sh = view.getShapeRenderer();
 		sh.setColor(Color.RED.cpy());
 		sh.begin(ShapeRenderer.ShapeType.Line);
@@ -1147,6 +1143,22 @@ public class Camera implements Telegraph {
 			-Chunk.getGameDepth()
 		);
 		sh.end();
+		
+		view.resetProjectionMatrix();
+		sh.begin(ShapeRenderer.ShapeType.Filled);
+		//render vom bottom to top
+		for (AbstractEntity ent : Controller.getMap().getEntities()) {
+			sh.setColor(Color.GREEN);
+			//life bar
+			sh.rect(
+				ent.getPoint().getProjectionSpaceX(view, camera),
+				ent.getPoint().getProjectionSpaceY(view, camera) + RenderCell.VIEW_HEIGHT*ent.getScaling(),
+				ent.getHealth() / 100.0f * RenderCell.VIEW_WIDTH2*ent.getScaling(),
+				5
+			);
+		}
+		sh.end();
+		
 	}
 
 	/**
