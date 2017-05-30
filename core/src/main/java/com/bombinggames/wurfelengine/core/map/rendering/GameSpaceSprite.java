@@ -639,7 +639,7 @@ public class GameSpaceSprite extends WETextureRegion {
 			
 			float worldOriginX = this.x + originX + left;
 			float worldOriginY = this.y + originY;
-			float worldOriginZ = (float) (this.z + originY+top);
+			float worldOriginZ = this.z + originY+top;
 			
 			if (side == Side.LEFT) {
 				localX1 += -RenderCell.GAME_DIAGLENGTH2;
