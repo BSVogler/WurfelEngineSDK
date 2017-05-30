@@ -102,9 +102,7 @@ public class BlockDrawable extends TextureRegionDrawable {
 			block.resetLight();
 			block.render(WE.getGameplay().getView(),
 				(int) (x + RenderCell.VIEW_WIDTH2 * block.getScaling()),//should be with -getLeftWidth() but then deos not align
-				(int) y,
-				null,
-				true
+				(int) y
 			);
 
 			batch.end();
