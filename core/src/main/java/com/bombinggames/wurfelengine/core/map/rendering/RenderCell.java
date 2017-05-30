@@ -30,8 +30,8 @@ package com.bombinggames.wurfelengine.core.map.rendering;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.GameView;
@@ -495,9 +495,9 @@ public class RenderCell extends AbstractGameObject {
 	/**
 	 * Each side has four RGB101010 colors (each edge) with a each 10bit float
 	 * per color channel. The channel brightness is obtained by dividing bits by
-	 * fraction /2^10-1 = 1023. Each field is vertex (edge) 0-3. Vertex start at left, then top, then right.
+	 * fraction /2^10-1 = 1023. Each field index describes a vertex (edge) 0-3. Vertex start at left, then top, then right.
 	 */
-	private final int[] color = new int[3*4];
+	private final int[] color = new int[3*4];//three sides with four edges
 	/**
 	 * byte 0: left side, byte 1: top side, byte 2: right side.<br>In each byte the
 	 * bit order: <br>
@@ -657,9 +657,10 @@ public class RenderCell extends AbstractGameObject {
 	public void render(final GameView view, final int xPos, final int yPos) {
 		if (!isHidden()) {
 			if (hasSides()) {
-				renderSide(view, xPos, yPos + (VIEW_HEIGHT + VIEW_DEPTH),0, Side.TOP);
-				renderSide(view, xPos, yPos, 0, Side.LEFT);
-				renderSide(view, xPos + VIEW_WIDTH2, yPos, 0,Side.RIGHT);
+				float scaling = getScaling();
+				renderSide(view, (int) (xPos-VIEW_WIDTH2*scaling), (int) (yPos + (VIEW_HEIGHT)*scaling), Side.TOP);
+				renderSide(view, (int) (xPos-VIEW_WIDTH2*scaling), yPos, Side.LEFT);
+				renderSide(view, (int) (xPos), yPos,Side.RIGHT);
 			} else {
 				super.render(view, xPos, yPos);
 			}
@@ -669,23 +670,16 @@ public class RenderCell extends AbstractGameObject {
     /**
      * Renders the whole block at a custom position.
      * @param view the view using this render method
-	 * @param point
-     * @param xPos rendering position of the center
-     * @param yPos rendering position of the center
+	 * @param point game space position
      * @param color when the block has sides its sides gets shaded using this color.
      * @param staticShade makes one side brighter, opposite side darker
      */
 	public void render(final GameView view, Point point, Color color, final boolean staticShade) {
 		if (!isHidden()) {
 			if (hasSides()) {
-				float xPos = getPoint().getX();
-				float yPos = getPoint().getY();
-				float zPos = getPoint().getZ();
 				renderSide(
 					view,
-					xPos,
-					yPos,
-					zPos,
+					point,
 					Side.TOP,
 					color
 				);
@@ -699,9 +693,7 @@ public class RenderCell extends AbstractGameObject {
 				}
 				renderSide(
 					view,
-					xPos,
-					yPos,
-					zPos,
+					point,
 					Side.LEFT,
 					color
 				);
@@ -711,9 +703,7 @@ public class RenderCell extends AbstractGameObject {
 				}
 				renderSide(
 					view,
-					xPos,
-					yPos,
-					zPos,
+					point,
 					Side.RIGHT,
 					color
 				);
@@ -746,9 +736,7 @@ public class RenderCell extends AbstractGameObject {
 		Point tmpPoint = getPoint();
         renderSide(
 			view,
-			(int) tmpPoint.getX(), //right side is  half a block more to the right,
-            (int) tmpPoint.getY(),//the top is drawn a quarter blocks higher,
-			(int) tmpPoint.getZ(),
+			tmpPoint,
             side,
             staticShade ?
 				side == Side.RIGHT
@@ -806,30 +794,13 @@ public class RenderCell extends AbstractGameObject {
     }
 
 	/**
-	 * helper function
-	 *
-	 * @param view
-	 * @param camera
-	 * @param pos
-	 * @param value damage sprite value
-	 */
-	private void renderDamageOverlay(final GameView view, final Camera camera, final Position pos, final byte value) {
-		destruct.setSpriteValue(value);
-		destruct.setPosition(pos);
-		destruct.getColor().set(0.5f, 0.5f, 0.5f, 0.7f);
-		destruct.render(view, camera);
-	}
-
-	/**
-	 * Ignores lightlevel.
-	 *
+	 * uses heap
 	 * @param view the view using this render method
-	 * @param xPos rendering position
-	 * @param yPos rendering position
-	 * @param zPos
+	 * @param xPos projection position
+	 * @param yPos projection position
 	 * @param side The number identifying the side. 0=left, 1=top, 2=right
 	 */
-	public void renderSide(final GameView view, final int xPos, final int yPos, int zPos, final Side side) {
+	public void renderSide(final GameView view, final int xPos, int yPos, final Side side) {
 		Color color;
 		if (Controller.getLightEngine() != null && !Controller.getLightEngine().isShadingPixelBased()) {
 			color = Controller.getLightEngine().getColor(side, getPosition());
@@ -837,28 +808,51 @@ public class RenderCell extends AbstractGameObject {
 			color = Color.GRAY.cpy();
 		}
 
-		renderSide(
-			view,
-			xPos,
-			yPos,
-			zPos,
-			side,
-			color
-		);
+		byte id = getSpriteId();
+		if (id <= 0) {
+			return;
+		}
+		byte value = getSpriteValue();
+		if (value < 0) {
+			return;
+		}
+
+		Sprite sprite = new Sprite(getBlockSprite(id, value, side));
+		//sprite.setRegion(getBlockSprite(id, value, side).getTexture());
+		sprite.setPosition(xPos, yPos);
+		if (getScaling() != 1) {
+			sprite.setOrigin(0, 0);
+			sprite.setScale(getScaling());
+		}
+
+		//if (color != null) {
+		//	color.r *= getLightlevelR(side);
+		//	if (color.r > 1) {//values above 1 can not be casted later
+		//		color.r = 1;
+		//	}
+		//	color.g *= getLightlevelG(side);
+		//	if (color.g > 1) {//values above 1 can not be casted later
+		//		color.g = 1;
+		//	}
+		//	color.b *= getLightlevelB(side);
+		//	if (color.b > 1) {//values above 1 can not be casted later
+		//		color.b = 1;
+		//	}
+		sprite.setColor(color);
+		sprite.draw(view.getProjectionSpaceSpriteBatch());
+		increaseDrawCalls();
 	}
   /**
-	 * Draws a side of a cell at a custom position. Apllies color before
+	 * Draws a side of a cell at a custom position. Applies color before
 	 * rendering and takes the lightlevel into account.
 	 *
 	 * @param view the view using this render method
-	 * @param xPos rendering position
-	 * @param yPos rendering position
-	 * @param zPos
+	 * @param pos world space position
 	 * @param side The number identifying the side. 0=left, 1=top, 2=right
 	 * @param color a tint in which the sprite gets rendered. If null color gets
 	 * ignored
 	 */
-	public void renderSide(final GameView view, final float xPos, final float yPos, final float zPos, final Side side, Color color) {
+	public void renderSide(final GameView view, Point pos, final Side side, Color color) {
 		byte id = getSpriteId();
 		if (id <= 0) {
 			return;
@@ -891,54 +885,59 @@ public class RenderCell extends AbstractGameObject {
 				break;
 		}
 		//sprite.setRegion(getBlockSprite(id, value, side).getTexture());
-		sprite.setPosition(xPos, yPos, zPos);
+		sprite.setPosition(pos.getX(), pos.getY(), pos.getZ());
 		if (getScaling() != 1) {
 			sprite.setOrigin(0, 0);
 			sprite.setScale(getScaling());
 		}
 
-		//draw only outline or regularly?
-        if (view.debugRendering()){
-            ShapeRenderer sh = view.getShapeRenderer();
-            sh.begin(ShapeRenderer.ShapeType.Line);
-            sh.rect(xPos, yPos, sprite.getWidth(), sprite.getHeight());
-            sh.end();
-        } else {
-			//if (color != null) {
-			//			color.r *= getLightlevelR(side);
-			//			if (color.r > 1) {//values above 1 can not be casted later
-			//				color.r = 1;
-			//			}
-			//			color.g *= getLightlevelG(side);
-			//			if (color.g > 1) {//values above 1 can not be casted later
-			//				color.g = 1;
-			//			}
-			//			color.b *= getLightlevelB(side);
-			//			if (color.b > 1) {//values above 1 can not be casted later
-			//				color.b = 1;
-			//			}
-			int[] vertexcolor = this.color;
-			byte sidecode = side.getCode();
-			sprite.setColor(
-				((vertexcolor[sidecode*4+0] >> (20 - 10 * Channel.Red.id)) & 0x3FF) / 1023f,
-				((vertexcolor[sidecode*4+0] >> (20 - 10 * Channel.Green.id)) & 0x3FF) / 1023f,
-				((vertexcolor[sidecode*4+0] >> (20 - 10 * Channel.Blue.id)) & 0x3FF) / 1023f,
-				((vertexcolor[sidecode*4+1] >> (20 - 10 * Channel.Red.id)) & 0x3FF) / 1023f,
-				((vertexcolor[sidecode*4+1] >> (20 - 10 * Channel.Green.id)) & 0x3FF) / 1023f,
-				((vertexcolor[sidecode*4+1] >> (20 - 10 * Channel.Blue.id)) & 0x3FF) / 1023f,
-				((vertexcolor[sidecode*4+2] >> (20 - 10 * Channel.Red.id)) & 0x3FF) / 1023f,
-				((vertexcolor[sidecode*4+2] >> (20 - 10 * Channel.Green.id)) & 0x3FF) / 1023f,
-				((vertexcolor[sidecode*4+2] >> (20 - 10 * Channel.Blue.id)) & 0x3FF) / 1023f,
-				((vertexcolor[sidecode*4+3] >> (20 - 10 * Channel.Red.id)) & 0x3FF) / 1023f,
-				((vertexcolor[sidecode*4+3] >> (20 - 10 * Channel.Green.id)) & 0x3FF) / 1023f,
-				((vertexcolor[sidecode*4+3] >> (20 - 10 * Channel.Blue.id)) & 0x3FF) / 1023f
-			);
-			//}
-			sprite.draw(view.getSpriteBatch());
-			increaseDrawCalls();
-		}
+		//if (color != null) {
+		//	color.r *= getLightlevelR(side);
+		//	if (color.r > 1) {//values above 1 can not be casted later
+		//		color.r = 1;
+		//	}
+		//	color.g *= getLightlevelG(side);
+		//	if (color.g > 1) {//values above 1 can not be casted later
+		//		color.g = 1;
+		//	}
+		//	color.b *= getLightlevelB(side);
+		//	if (color.b > 1) {//values above 1 can not be casted later
+		//		color.b = 1;
+		//	}
+		int[] vertexcolor = this.color;
+		byte sidecode = (byte) (side.getCode()*4);//get offset
+		sprite.setColor(
+			((vertexcolor[sidecode+0] >> (20 - 10 * Channel.Red.id)) & 0x3FF) / 1023f,
+			((vertexcolor[sidecode+0] >> (20 - 10 * Channel.Green.id)) & 0x3FF) / 1023f,
+			((vertexcolor[sidecode+0] >> (20 - 10 * Channel.Blue.id)) & 0x3FF) / 1023f,
+			((vertexcolor[sidecode+1] >> (20 - 10 * Channel.Red.id)) & 0x3FF) / 1023f,
+			((vertexcolor[sidecode+1] >> (20 - 10 * Channel.Green.id)) & 0x3FF) / 1023f,
+			((vertexcolor[sidecode+1] >> (20 - 10 * Channel.Blue.id)) & 0x3FF) / 1023f,
+			((vertexcolor[sidecode+2] >> (20 - 10 * Channel.Red.id)) & 0x3FF) / 1023f,
+			((vertexcolor[sidecode+2] >> (20 - 10 * Channel.Green.id)) & 0x3FF) / 1023f,
+			((vertexcolor[sidecode+2] >> (20 - 10 * Channel.Blue.id)) & 0x3FF) / 1023f,
+			((vertexcolor[sidecode+3] >> (20 - 10 * Channel.Red.id)) & 0x3FF) / 1023f,
+			((vertexcolor[sidecode+3] >> (20 - 10 * Channel.Green.id)) & 0x3FF) / 1023f,
+			((vertexcolor[sidecode+3] >> (20 - 10 * Channel.Blue.id)) & 0x3FF) / 1023f
+		);
+		sprite.draw(view.getGameSpaceSpriteBatch());
+		increaseDrawCalls();
     }
 
+	/**
+	 * helper function
+	 *
+	 * @param view
+	 * @param camera
+	 * @param pos
+	 * @param value damage sprite value
+	 */
+	private void renderDamageOverlay(final GameView view, final Camera camera, final Position pos, final byte value) {
+		destruct.setSpriteValue(value);
+		destruct.setPosition(pos);
+		destruct.getColor().set(0.5f, 0.5f, 0.5f, 0.7f);
+		destruct.render(view, camera);
+	}
 	/**
 	 * Update the block. Should only be used for cosmetic logic because this is only called for blocks which are covered by a camera.
 	 * @param dt time in ms since last update
