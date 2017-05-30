@@ -71,17 +71,18 @@ public class BlockDrawable extends TextureRegionDrawable {
 
 	/**
 	 * Set game and sprite value of this block.
-	 * @param value 
+	 *
+	 * @param value
 	 */
 	protected void setValue(byte value) {
 		this.block.setValue(value);
 	}
-	
+
 	/**
 	 *
 	 * @return
 	 */
-	protected byte getValue(){
+	protected byte getValue() {
 		return this.block.getValue();
 	}
 
@@ -92,10 +93,50 @@ public class BlockDrawable extends TextureRegionDrawable {
 			block.resetLight();
 			block.render(
 				WE.getGameplay().getView(),
-				(int) (x),//should be with -getLeftWidth() but then deos not align
-				(int) y
+				(int) (x+offsetX),//should be with -getLeftWidth() but then deos not align
+				(int) (y+offsetY)
 			);
 		}
+	}
+
+	private float offsetX;
+
+	/**
+	 * Get the value of offstringX
+	 *
+	 * @return the value of offstringX
+	 */
+	public float getOffstringX() {
+		return offsetX;
+	}
+
+	/**
+	 * Set the value of offstringX
+	 *
+	 * @param offstringX new value of offstringX
+	 */
+	public void setOffsetX(float offstringX) {
+		this.offsetX = offstringX;
+	}
+
+	private float offsetY;
+
+	/**
+	 * Get the value of offstringY
+	 *
+	 * @return the value of offstringY
+	 */
+	public float getOffstringY() {
+		return offsetY;
+	}
+
+	/**
+	 * Set the value of offstringY
+	 *
+	 * @param offstringY new value of offstringY
+	 */
+	public void setOffsetY(float offstringY) {
+		this.offsetY = offstringY;
 	}
 
 	/**

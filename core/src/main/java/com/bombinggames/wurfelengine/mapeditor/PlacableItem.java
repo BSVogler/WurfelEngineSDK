@@ -24,7 +24,7 @@ public class PlacableItem extends Stack {
 	public PlacableItem(TextureRegionDrawable drawable, ClickListener result) {
 		//background
 		bgIcon = new Image(AbstractGameObject.getSprite('i', (byte) 10, (byte) 0));
-		bgIcon.setPosition(50, 0);
+		bgIcon.setPosition(0, 0);//position is ignored?
 		addActor(bgIcon);
 		bgIcon.addListener(result);
 
@@ -41,4 +41,11 @@ public class PlacableItem extends Stack {
 			fgImg.setScale(scaleXY);
 		}
 	}
+
+	@Override
+	public float getWidth() {
+		return bgIcon.getWidth();
+	}
+	
+	
 }
