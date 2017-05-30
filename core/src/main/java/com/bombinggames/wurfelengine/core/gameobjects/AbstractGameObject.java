@@ -32,6 +32,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
 import com.bombinggames.wurfelengine.WE;
@@ -41,6 +42,7 @@ import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
 import java.io.FileNotFoundException;
 import java.io.Serializable;
 
@@ -295,35 +297,60 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 
 	@Override
 	public void render(GameView view, Camera camera) {
-		if (!hidden && getPosition()!=null) {
-			render(
-				view,
-				getPoint(),
-				null
-			);
+		if (!hidden && getPosition() != null) {
+			render(view);
 		}
 	}
 
 	/**
-	 * Renders at a custom position.
+	 * Renders at a custom position in projection space. uses heap
 	 *
 	 * @param view
-	 * @param xPos rendering position, center of sprite in projection (?) space
-	 * @param yPos rendering position, center of sprite in projection (?) space
+	 * @param xPos rendering position, center of sprite in projection space
+	 * @param yPos rendering position, center of sprite in projection space
 	 */
 	public void render(GameView view, int xPos, int yPos) {
-		//render(view, xPos, yPos, null);
+		byte id = getSpriteId();
+		byte value = getSpriteValue();
+		if (id > 0 && value >= 0) {
+			AtlasRegion texture = AbstractGameObject.getSprite(getSpriteCategory(), getSpriteId(), getSpriteValue());
+			Sprite sprite = new Sprite(texture);
+			sprite.setOrigin(
+				texture.originalWidth / 2 - texture.offsetX,
+				VIEW_HEIGHT2 - texture.offsetY
+			);
+			if (rotation != sprite.getRotation()) {
+				sprite.setRotation(rotation);
+			}
+			
+			if (scaling != sprite.getScaleX()) {
+				sprite.setScale(scaling);
+			}
+
+			sprite.setPosition(
+				xPos+texture.offsetX - texture.originalWidth / 2,
+				yPos//center
+				- VIEW_HEIGHT2
+				+ texture.offsetY
+			);
+
+			//hack for transient field tint
+			if (tint == null) {
+				tint = new Color(0.5f, 0.5f, 0.5f, 1f);
+			}
+			sprite.setColor(tint);
+
+			sprite.draw(view.getProjectionSpaceSpriteBatch());
+			drawCalls++;
+		}
 	}
 
 	/**
-	 * Renders at a custom position with a custom light.
+	 * Renders in game space.
 	 *
 	 * @param view
-	 * @param point
-	 * @param color color which gets multiplied with the tint. No change ( =
-	 * multiply with 1) is when passed RGBA 0x80808080. Null uses tint.
 	 */
-	public void render(GameView view, Point point, Color color) {
+	public void render(GameView view) {
 		byte id = getSpriteId();
 		byte value = getSpriteValue();
 		if (id > 0 && value >= 0) {
@@ -338,28 +365,18 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 				sprite.setScale(scaling);
 			}
 
+			Point pos = getPoint();
 			sprite.setPosition(
-				point.getX(),
-				point.getY()+RenderCell.GAME_DIAGLENGTH2,//center, move a bit to draw front
-				point.getZ()
+				pos.getX(),
+				pos.getY()+RenderCell.GAME_DIAGLENGTH2,//center, move a bit to draw front
+				pos.getZ()
 			);
 
 			//hack for transient field tint
 			if (tint == null) {
 				tint = new Color(0.5f, 0.5f, 0.5f, 1f);
 			}
-			if (color != null) {
-				sprite.setColor(
-					tint.cpy().mul(
-						color.r + 0.5f,
-						color.g + 0.5f,
-						color.b + 0.5f,
-						color.a + 0.5f
-					)
-				);
-			} else {
-				sprite.setColor(tint);
-			}
+			sprite.setColor(tint);
 
 			sprite.draw(view.getGameSpaceSpriteBatch());
 			drawCalls++;

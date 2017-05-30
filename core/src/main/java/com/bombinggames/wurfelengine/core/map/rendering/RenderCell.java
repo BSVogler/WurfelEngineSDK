@@ -650,65 +650,62 @@ public class RenderCell extends AbstractGameObject {
 	 * Render the whole block at a custom position. Checks if hidden.
 	 *
 	 * @param view the view using this render method
-	 * @param xPos rendering position (screen)
-	 * @param yPos rendering position (screen)
+	 * @param xPos rendering position projection space of center
+	 * @param yPos rendering position projection space of center
 	 */
 	@Override
 	public void render(final GameView view, final int xPos, final int yPos) {
-		if (!isHidden()) {
-			if (hasSides()) {
-				float scaling = getScaling();
-				renderSide(view, (int) (xPos-VIEW_WIDTH2*scaling), (int) (yPos + (VIEW_HEIGHT)*scaling), Side.TOP);
-				renderSide(view, (int) (xPos-VIEW_WIDTH2*scaling), yPos, Side.LEFT);
-				renderSide(view, (int) (xPos), yPos,Side.RIGHT);
-			} else {
-				super.render(view, xPos, yPos);
-			}
-		}
+		render(view, xPos, yPos, true);
 	}
 
     /**
      * Renders the whole block at a custom position.
      * @param view the view using this render method
-	 * @param point game space position
-     * @param color when the block has sides its sides gets shaded using this color.
+	 * @param xPos projection space of center
+	 * @param yPos projection space of center
      * @param staticShade makes one side brighter, opposite side darker
      */
-	public void render(final GameView view, Point point, Color color, final boolean staticShade) {
+	public void render(final GameView view, final int xPos, final int yPos, final boolean staticShade) {
 		if (!isHidden()) {
 			if (hasSides()) {
+				float scaling = getScaling();
+				Color color;
+				if (staticShade) {
+					color = new Color(0.75f, 0.75f, 0.75f, 1);
+				} else {
+					color = new Color(0.5f, 0.5f, 0.5f, 1);
+				}
 				renderSide(
 					view,
-					point,
+					(int) (xPos - VIEW_WIDTH2*scaling),
+					(int) (yPos + (VIEW_HEIGHT)*scaling),
 					Side.TOP,
 					color
 				);
 
 				if (staticShade) {
-					if (color == null) {
-						color = new Color(0.75f, 0.75f, 0.75f, 1);
-					} else {
-						color = color.cpy().add(0.25f, 0.25f, 0.25f, 0);
-					}
+					color = color.add(0.25f, 0.25f, 0.25f, 0);
 				}
 				renderSide(
 					view,
-					point,
+					(int) (xPos-VIEW_WIDTH2*scaling),
+					yPos,
 					Side.LEFT,
 					color
 				);
 
 				if (staticShade) {
-					color = color.cpy().sub(0.25f, 0.25f, 0.25f, 0);
+					color = color.sub(0.25f, 0.25f, 0.25f, 0);
 				}
 				renderSide(
 					view,
-					point,
+					xPos,
+					yPos,
 					Side.RIGHT,
 					color
 				);
 			} else {
-				super.render(view, getPoint(), color);
+				super.render(view, xPos, yPos);
 			}
 		}
 	}
@@ -794,18 +791,20 @@ public class RenderCell extends AbstractGameObject {
     }
 
 	/**
-	 * uses heap
+	 * uses heap, projection space
 	 * @param view the view using this render method
 	 * @param xPos projection position
 	 * @param yPos projection position
 	 * @param side The number identifying the side. 0=left, 1=top, 2=right
+	 * @param color when set overwrites value from light engine
 	 */
-	public void renderSide(final GameView view, final int xPos, int yPos, final Side side) {
-		Color color;
-		if (Controller.getLightEngine() != null && !Controller.getLightEngine().isShadingPixelBased()) {
-			color = Controller.getLightEngine().getColor(side, getPosition());
-		} else {
-			color = Color.GRAY.cpy();
+	public void renderSide(final GameView view, final int xPos, int yPos, final Side side, Color color) {
+		if (color == null){
+			if (Controller.getLightEngine() != null && !Controller.getLightEngine().isShadingPixelBased()) {
+				color = Controller.getLightEngine().getColor(side, getPosition());
+			} else {
+				color = Color.GRAY.cpy();
+			}
 		}
 
 		byte id = getSpriteId();

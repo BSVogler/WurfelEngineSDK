@@ -38,7 +38,7 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 
 /**
- *
+ * Draw an entity in projection space.
  * @author Benedikt Vogler
  */
 public class EntityDrawable extends TextureRegionDrawable {
@@ -67,21 +67,8 @@ public class EntityDrawable extends TextureRegionDrawable {
 	@Override
     public void draw(Batch batch, float x, float y, float width, float height) {
 		if (instance != null) {
-			batch.end();
 			
-			//then use gameplay batch
-			boolean wasDefault = false;
-			if (WE.getGameplay().getView().isUsingDefaultShader()) {
-				WE.getGameplay().getView().setShader(WE.getGameplay().getView().getShader());
-				wasDefault = true;
-			}
-			WE.getGameplay().getView().getSpriteBatch().begin();
-			instance.render(WE.getGameplay().getView(), (int) ((int) x+RenderCell.VIEW_WIDTH2*instance.getScaling()), (int) y);
-			WE.getGameplay().getView().getSpriteBatch().end();
-			if (wasDefault) {
-				WE.getGameplay().getView().useDefaultShader();
-			}
-			batch.begin();
+			instance.render(WE.getGameplay().getView(), (int) (x+RenderCell.VIEW_WIDTH2*instance.getScaling()), (int) y);
 		}
     }
 	

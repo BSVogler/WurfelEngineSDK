@@ -88,28 +88,13 @@ public class BlockDrawable extends TextureRegionDrawable {
 	@Override
 	public void draw(Batch batch, float x, float y, float width, float height) {
 		if (block != null && block.getSpriteId() != 0) {
-			batch.end();//end current batch
-			//then use gameplay batch
-			boolean wasDefault = false;
-			if (WE.getGameplay().getView().isUsingDefaultShader()) {
-				WE.getGameplay().getView().setShader(WE.getGameplay().getView().getShader());
-				wasDefault = true;
-			}
-			//batch.setColor(new Color(1, 1, 1, 1));
-			batch.begin();
-
 			//block.setColor(new Color(1, 1, 1, 1));
 			block.resetLight();
-			block.render(WE.getGameplay().getView(),
-				(int) (x + RenderCell.VIEW_WIDTH2 * block.getScaling()),//should be with -getLeftWidth() but then deos not align
+			block.render(
+				WE.getGameplay().getView(),
+				(int) (x),//should be with -getLeftWidth() but then deos not align
 				(int) y
 			);
-
-			batch.end();
-			if (wasDefault) {
-				WE.getGameplay().getView().useDefaultShader();
-			}
-			batch.begin();
 		}
 	}
 
@@ -156,7 +141,7 @@ public class BlockDrawable extends TextureRegionDrawable {
 	 */
 	@Override
 	public float getTopHeight() {
-		return 0;
+		return RenderCell.VIEW_HEIGHT * block.getScaling();
 	}
 
 	/**
