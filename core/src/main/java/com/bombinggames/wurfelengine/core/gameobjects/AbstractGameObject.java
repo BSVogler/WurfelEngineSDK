@@ -34,7 +34,6 @@ import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.GameView;
@@ -362,39 +361,8 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 				sprite.setColor(tint);
 			}
 
-			if (view.debugRendering()) {
-				ShapeRenderer sh = view.getShapeRenderer();
-				sh.begin(ShapeRenderer.ShapeType.Line);
-				//sprite outline
-				sh.rect(
-					sprite.getX(),
-					sprite.getY(),
-					sprite.getWidth(),
-					sprite.getHeight()
-				);
-				//crossing lines
-//				sh.line(
-//					xPos - VIEW_WIDTH2,
-//					yPos - VIEW_DEPTH2,
-//					xPos + VIEW_WIDTH2,
-//					yPos + VIEW_DEPTH2
-//				);
-//				sh.line(
-//					xPos - VIEW_WIDTH2,
-//					yPos + VIEW_DEPTH2,
-//					xPos + VIEW_WIDTH2,
-//					yPos - VIEW_DEPTH2
-//				);
-//				//bounding box
-//				sh.line(xPos - VIEW_WIDTH2, yPos, xPos, yPos - VIEW_DEPTH2);
-//				sh.line(xPos - VIEW_WIDTH2, yPos, xPos, yPos + VIEW_DEPTH2);
-//				sh.line(xPos, yPos - VIEW_DEPTH2, xPos + VIEW_WIDTH2, yPos);
-//				sh.line(xPos, yPos + VIEW_DEPTH2, xPos + VIEW_WIDTH2, yPos);
-				sh.end();
-			} else {
-				sprite.draw(view.getGameSpaceSpriteBatch());
-				drawCalls++;
-			}
+			sprite.draw(view.getGameSpaceSpriteBatch());
+			drawCalls++;
 		}
 	}
 	
