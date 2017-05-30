@@ -36,6 +36,7 @@ import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
@@ -519,9 +520,9 @@ public class GameView implements GameManager {
      * @param color
      */
     public void drawString(final String msg, final int xPos, final int yPos, final Color color) {
-        spriteBatch.setColor(Color.WHITE.cpy());
+        projectionSpaceSpriteBatch.setColor(Color.WHITE.cpy());
 		WE.getEngineView().getFont().setColor(color);
-		//WE.getEngineView().getFont().draw(spriteBatch, msg, xPos, yPos);
+		WE.getEngineView().getFont().draw(projectionSpaceSpriteBatch, msg, xPos, yPos);
     }
 
     /**
