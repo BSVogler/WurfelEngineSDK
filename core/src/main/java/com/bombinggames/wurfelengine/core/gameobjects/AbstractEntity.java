@@ -106,7 +106,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	private char spriteCategory = 'e';
 	private boolean useRawDelta = false;
 	private float mass = 0.4f;
-	private final LinkedList<AbstractGameObject> covered = new LinkedList<>();
+	private final LinkedList<RenderCell> covered = new LinkedList<>();
 	private final LinkedList<Component> components = new LinkedList<>();
 	private byte value;
 	private byte spriteId;
@@ -553,38 +553,17 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 
 	
 	@Override
-	public LinkedList<AbstractGameObject> getCovered(RenderStorage rs) {
+	public LinkedList<RenderCell> getCoveredBlocks(RenderStorage rs) {
 		covered.clear();
 		if (position != null) {
 			Coordinate coord = getCoord();
-			//coord.add(0, 0, -1);//go one down because the ents are added one too high
 			RenderCell block;
-//			block = rs.getCell(coord);//draw block in this cell first
-//			if (block != null) {
-//				covered.add(ablock);
-//			}
-//			block = rs.getCell(coord.goToNeighbour(7));//block behind left
-//			if (block != null) {
-//				covered.add(block);
-//			}
-//			block = rs.getCell(coord.goToNeighbour(1));//block behind
-//			if (block != null) {
-//				covered.add(block);
-//			}
-//			block = rs.getCell(coord.goToNeighbour(3));//block behind right
-//			if (block != null) {
-//				covered.add(block);
-//			}
-//			coord.goToNeighbour(5);
-
-			//render this ent before blocks below
 			
-				//add bottom layer
-				block = rs.getCell(coord);//self
-				if (block != null) {
-					covered.add(block);
-				}
-//			} else {
+			//add bottom layer
+			block = rs.getCell(coord);//self
+			if (block != null) {
+				covered.add(block);
+			}
 
 			if (coord.getZ() < Chunk.getBlocksZ()) {
 				block = rs.getCell(coord.goToNeighbour(7).add(0, 0, 1));//back left

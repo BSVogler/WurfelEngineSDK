@@ -5,11 +5,12 @@ import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
 import java.util.LinkedList;
 
 /**
- * Interface for objects whether they are blocks and entities.
+ * Interface for objects in the game world whether they are blocks or entities.
  *
  * @author Benedikt Vogler
  */
@@ -89,10 +90,10 @@ public interface Renderable {
 	public boolean shouldBeRendered(Camera camera);
 
 	/**
-	 * get the stuff which must be rendered before
+	 * get the blocks which must be rendered before
 	 *
 	 * @param rs
 	 * @return
 	 */
-	public LinkedList<AbstractGameObject> getCovered(RenderStorage rs);
+	public LinkedList<RenderCell> getCoveredBlocks(RenderStorage rs);
 }

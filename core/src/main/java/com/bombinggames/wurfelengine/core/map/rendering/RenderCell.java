@@ -519,11 +519,11 @@ public class RenderCell extends AbstractGameObject {
 	/**
 	 * Stores references to neighbor blocks which are covered. For topological sort.
 	 */
-	private final LinkedList<AbstractGameObject> covered = new LinkedList<>();
+	private final LinkedList<RenderCell> covered = new LinkedList<>();
 	/**
 	 * for topological sort. At the end contains both entities and blocks
 	 */
-	private final LinkedList<AbstractGameObject> coveredEnts = new LinkedList<>();
+	private final LinkedList<AbstractEntity> coveredEnts = new LinkedList<>();
 	private GameSpaceSprite site1;
 	private GameSpaceSprite site3;
 	private GameSpaceSprite site2;
@@ -1282,12 +1282,15 @@ public class RenderCell extends AbstractGameObject {
 	}
 
 	@Override
-	public LinkedList<AbstractGameObject> getCovered(RenderStorage rs) {
+	public LinkedList<RenderCell> getCoveredBlocks(RenderStorage rs) {
 		if (lastRebuild < rebuildCoverList) {//only rebuild a maximum of one time per frame
 			rebuildCovered(rs);
 		}
+		return covered;
+	}
+	
+	public LinkedList<AbstractEntity> getCoveredEnts() {
 		if (!coveredEnts.isEmpty()) {
-			//sort valid in order of depth
 			coveredEnts.sort((AbstractGameObject o1, AbstractGameObject o2) -> {
 				float d1 = o1.getDepth();
 				float d2 = o2.getDepth();
@@ -1300,10 +1303,8 @@ public class RenderCell extends AbstractGameObject {
 					return -1;
 				}
 			});
-			coveredEnts.addAll(covered);//must be this way bc coveredEnts is cleared after this
-			return coveredEnts;
-	}
-		return covered;
+		}
+		return coveredEnts;
 	}
 
 	/**
@@ -1311,7 +1312,7 @@ public class RenderCell extends AbstractGameObject {
 	 * @param rs 
 	 */
 	private void rebuildCovered(RenderStorage rs) {
-		LinkedList<AbstractGameObject> covered = this.covered;
+		LinkedList<RenderCell> covered = this.covered;
 		covered.clear();
 		Coordinate nghb = getPosition();
 		RenderCell cell;

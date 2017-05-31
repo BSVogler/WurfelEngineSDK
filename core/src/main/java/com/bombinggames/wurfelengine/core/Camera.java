@@ -647,9 +647,10 @@ public class Camera implements Telegraph {
 				}
 			}
 		}
-		
+	
 		//iterate over every block in renderstorage
 		objectsToBeRendered = 0;
+			
 		for (RenderCell cell : cacheTopLevel) {
 			if (cell != RenderChunk.CELLOUTSIDE && inViewFrustum(cell.getPosition())) {
 				visit(cell);
@@ -705,17 +706,18 @@ public class Camera implements Telegraph {
 	 * topological sort
 	 * @param o root node
 	 */
-	private void visit(AbstractGameObject o) {
+	private void visit(AbstractEntity o) {
 		if (!o.isMarkedDS(id)) {
 			o.markAsVisitedDS(id);
-			LinkedList<AbstractGameObject> covered = o.getCovered(gameView.getRenderStorage());
+			LinkedList<RenderCell> covered = o.getCoveredBlocks(gameView.getRenderStorage());
 			if (!covered.isEmpty()) {
-				for (AbstractGameObject m : covered) {
+				for (RenderCell m : covered) {
 					if (inViewFrustum(m.getPosition())) {
 						visit(m);
 					}
 				}
 			}
+
 			if (
 				o.shouldBeRendered(this)
 				&& o.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
@@ -727,6 +729,56 @@ public class Camera implements Telegraph {
 			}
 		}
 	}
+	
+	/**
+	 * 
+	 * @param cell 
+	 */
+	public void visit(RenderCell cell){
+		if (!cell.isMarkedDS(id)) {
+			
+			//is a block
+			LinkedList<AbstractEntity> covered = cell.getCoveredEnts();
+
+			boolean injectEnt = false;
+			for (AbstractEntity m : covered) {//entities share graph in a cell, could be otimized here
+				if (!m.isMarkedDS(id))
+					injectEnt = true;
+				if (inViewFrustum(m.getPosition())) {
+					visit(m);
+				}
+			}
+			
+			if (injectEnt)
+				return;
+				
+			//continue regularly
+			cell.markAsVisitedDS(id);
+			
+			LinkedList<RenderCell> coveredBlocks = cell.getCoveredBlocks(gameView.getRenderStorage());
+			if (!coveredBlocks.isEmpty()) {
+				for (RenderCell m : coveredBlocks) {
+					if (inViewFrustum(m.getPosition())) {
+						visit(m);
+					}
+				}
+			}
+			
+			
+			if (
+				cell.shouldBeRendered(this)
+				&& cell.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
+				&& objectsToBeRendered < maxsprites
+			) {
+				//fill only up to available size
+				depthlist.add(cell);
+				objectsToBeRendered++;
+			}
+		}
+	}
+	
+	
+	
 
 	/**
 	 * checks if the projected position is inside the viewMat Frustum
@@ -1147,15 +1199,29 @@ public class Camera implements Telegraph {
 		view.resetProjectionMatrix();
 		sh.begin(ShapeRenderer.ShapeType.Filled);
 		//render vom bottom to top
-		for (AbstractEntity ent : Controller.getMap().getEntities()) {
-			sh.setColor(Color.GREEN);
-			//life bar
-			sh.rect(
-				ent.getPoint().getProjectionSpaceX(view, camera),
-				ent.getPoint().getProjectionSpaceY(view, camera) + RenderCell.VIEW_HEIGHT*ent.getScaling(),
-				ent.getHealth() / 100.0f * RenderCell.VIEW_WIDTH2*ent.getScaling(),
-				5
-			);
+//		for (AbstractEntity ent : Controller.getMap().getEntities()) {
+//			sh.setColor(Color.GREEN);
+//			//life bar
+//			sh.rect(
+//				ent.getPoint().getProjectionSpaceX(view, camera),
+//				ent.getPoint().getProjectionSpaceY(view, camera) + RenderCell.VIEW_HEIGHT*ent.getScaling(),
+//				ent.getHealth() / 100.0f * RenderCell.VIEW_WIDTH2*ent.getScaling(),
+//				5
+//			);
+//		}
+
+		Color linecolor =new Color(0, 1, 1, 1); 
+		sh.setColor(linecolor);
+		Renderable last = null;
+		for (Renderable current : depthlist) {
+			if (last==null){
+				last = current;
+				continue;
+			}
+			linecolor.add(1/(float) depthlist.size(), -1/(float) depthlist.size(), 0, 0);
+			sh.setColor(linecolor);
+			sh.line(last.getPosition().getProjectionSpaceX(view, camera), last.getPosition().getProjectionSpaceY(view, camera), current.getPosition().getProjectionSpaceX(view, camera), current.getPosition().getProjectionSpaceY(view, camera));
+			last = current;
 		}
 		sh.end();
 		
