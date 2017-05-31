@@ -101,7 +101,7 @@ public interface Position extends Serializable {
 	public abstract int getViewSpcY();
     
 	/**
-	 * equals screen space when zoom=1 with a single camera.
+	 * equals screen space when zoom=1 with a single, fullscreen camera.
 	 * @param View
 	 * @param camera
 	 * @return 

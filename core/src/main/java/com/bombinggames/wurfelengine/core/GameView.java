@@ -374,8 +374,10 @@ public class GameView implements GameManager {
 		stage.draw();
 	}
 	
+	/**
+	 * sets matrix to render in screen space coordinates
+	 */
 	public void resetProjectionMatrix(){
-		//screen space to screen space
 		gameSpaceSpriteBatch.setProjectionMatrix(libGDXcamera.combined);
 		shRenderer.setProjectionMatrix(libGDXcamera.combined);
 	}
