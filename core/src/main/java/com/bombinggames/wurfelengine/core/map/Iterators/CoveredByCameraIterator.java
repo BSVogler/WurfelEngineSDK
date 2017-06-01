@@ -34,20 +34,22 @@ import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
+import java.util.Iterator;
 import java.util.NoSuchElementException;
 
 /**
  * A map iterator which loops only over the chunks covered by the camera (0-8).
+ * Loops over the map areas covered by the camera.
  *
  * @author Benedikt Vogler
  */
-public class CoveredByCameraIterator {
+public class CoveredByCameraIterator implements Iterator<RenderCell> {
 
 	private int centerChunkX;
 	private int centerChunkY;
 	private final int startingZ;
 	private final RenderStorage renderStorage;
-	
+
 	/**
 	 * Always points to a block. Iterates over a chunk.
 	 */
@@ -73,13 +75,12 @@ public class CoveredByCameraIterator {
 			startingZ = 0;
 		}
 		this.startingZ = startingZ;
-		
+
 		this.renderStorage = renderStorage;
 		this.topLevel = topLevel;
 	}
-	
-		
-	public void reset(int centerCoordX, int centerCoordY){
+
+	public void reset(int centerCoordX, int centerCoordY) {
 		this.centerChunkX = centerCoordX;
 		this.centerChunkY = centerCoordY;
 		chunkNum = -1;
@@ -100,10 +101,11 @@ public class CoveredByCameraIterator {
 	}
 
 	/**
-	 * Loops over the map areas covered by the camera.
+	 * Returns the next element in the iteration.
 	 *
 	 * @return Can return null.
 	 */
+	@Override
 	public RenderCell next() throws NoSuchElementException {
 		//reached end of chunk?-> move to next chunk
 		if (blockIterator == null || !blockIterator.hasNext()) {
@@ -143,9 +145,9 @@ public class CoveredByCameraIterator {
 	}
 
 	/**
-	 * 
+	 *
 	 * @param current starting index: [0-8]
-	 * @return 
+	 * @return
 	 */
 	private RenderChunk getNextChunk(int current) {
 		while (current < 8) { //if has one move to next
@@ -165,6 +167,7 @@ public class CoveredByCameraIterator {
 	 *
 	 * @return
 	 */
+	@Override
 	public boolean hasNext() {
 		return chunkNum < 9 && ((blockIterator != null && blockIterator.hasNext()) || getNextChunk(chunkNum) != null);
 	}
