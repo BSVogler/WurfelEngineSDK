@@ -300,8 +300,8 @@ public class Minimap implements Telegraph {
 					sh.translate(0, -mapdata[0].length*scaleY, 0);//projection is y-up
 					sh.rect(scaleX * camera.getViewSpaceX() / RenderCell.VIEW_WIDTH,
 						scaleY * camera.getViewSpaceY() / RenderCell.VIEW_DEPTH2,
-						scaleX*camera.getWidthInProjSpc()/ RenderCell.VIEW_WIDTH,
-						scaleY*camera.getHeightInProjSpc()/ RenderCell.VIEW_DEPTH2
+						scaleX*camera.getWidthAfterProjSpc()/ RenderCell.VIEW_WIDTH,
+						scaleY*camera.getHeightAfterProjSpc()/ RenderCell.VIEW_DEPTH2
 					);
 
 					//player level getCameras() rectangle
@@ -321,8 +321,8 @@ public class Minimap implements Telegraph {
 					sh.rect(scaleX * camera.getViewSpaceX() / RenderCell.VIEW_WIDTH,
 						scaleY * camera.getViewSpaceY() / RenderCell.VIEW_DEPTH2
 							-scaleY *2*(Chunk.getBlocksZ() * RenderCell.VIEW_HEIGHT)/ RenderCell.VIEW_DEPTH,
-						scaleX*camera.getWidthInProjSpc() / RenderCell.VIEW_WIDTH,
-						scaleY*camera.getHeightInProjSpc() / RenderCell.VIEW_DEPTH2
+						scaleX*camera.getWidthAfterProjSpc() / RenderCell.VIEW_WIDTH,
+						scaleY*camera.getHeightAfterProjSpc() / RenderCell.VIEW_DEPTH2
 					);
 					
 				sh.end();

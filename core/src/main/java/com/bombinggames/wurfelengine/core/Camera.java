@@ -91,7 +91,7 @@ public class Camera implements Telegraph {
 	private final Matrix4 combined = new Matrix4();
 
 	/**
-	 * the viewport width&height. Origin top left.
+	 * the viewport size
 	 */
 	private int screenWidth, screenHeight;
 
@@ -114,10 +114,12 @@ public class Camera implements Telegraph {
 	private float shakeTime;
 
 	private final GameView gameView;
+	/**
+	 * game pixels after projection into view space
+	 */
 	private int widthView;
-	private int heightView;
-	private int heightProj;
-	private int widthProj;
+	private int heightAfterProj;
+	private int widthAfterProj;
 	private int centerChunkX;
 	private int centerChunkY;
 	/**
@@ -129,7 +131,6 @@ public class Camera implements Telegraph {
 	 * amount of objects to be rendered, used as an index during filling
 	 */
 	private int objectsToBeRendered = 0;
-	private int renderResWidth;
 	private int maxsprites;
 	private final Point center = new Point(0, 0, 0);
 	private final ArrayList<RenderCell> modifiedCells = new ArrayList<>(30);
@@ -173,8 +174,7 @@ public class Camera implements Telegraph {
 		gameView = view;
 		screenWidth = Gdx.graphics.getBackBufferWidth();
 		screenHeight = Gdx.graphics.getBackBufferHeight();
-		updateViewSpaceSize();
-		widthProj = (int) (widthView / zoom);//update cache
+		widthAfterProj = (int) (widthView / zoom);//update cache
 
 		Point center = Controller.getMap().getCenter();
 		position.x = center.getViewSpcX();
@@ -204,10 +204,8 @@ public class Camera implements Telegraph {
 		screenHeight = height;
 		screenPosX = x;
 		screenPosY = y;
-		renderResWidth = WE.getCVars().getValueI("renderResolutionWidth");
-		widthView = renderResWidth;
-		updateViewSpaceSize();
-		widthProj = (int) (widthView / zoom);//update cache
+		widthView = WE.getCVars().getValueI("renderResolutionWidth");
+		setZoom(1);
 
 		Point center = Controller.getMap().getCenter();
 		position.x = center.getViewSpcX();
@@ -235,15 +233,12 @@ public class Camera implements Telegraph {
 	 */
 	public Camera(final GameView view, final int x, final int y, final int width, final int height, final Point center) {
 		gameView = view;
-		screenWidth = width;
-		screenHeight = height;
 		screenPosX = x;
 		screenPosY = y;
-		renderResWidth = WE.getCVars().getValueI("renderResolutionWidth");
-		widthView = renderResWidth;
-		widthView = renderResWidth;
-		updateViewSpaceSize();
-		widthProj = (int) (widthView / zoom);//update cache
+		screenWidth = width;
+		screenHeight = height;
+		widthView = WE.getCVars().getValueI("renderResolutionWidth");
+		setZoom(1);
 		position.x = center.getViewSpcX();
 		position.y = center.getViewSpcY();
 		initFocus();
@@ -273,10 +268,8 @@ public class Camera implements Telegraph {
 		screenHeight = height;
 		screenPosX = x;
 		screenPosY = y;
-		renderResWidth = WE.getCVars().getValueI("renderResolutionWidth");
-		widthView = renderResWidth;
-		updateViewSpaceSize();
-		widthProj = (int) (widthView / zoom);//update cache
+		widthView = WE.getCVars().getValueI("renderResolutionWidth");;
+		setZoom(1);
 		if (focusentity == null) {
 			throw new NullPointerException("Parameter 'focusentity' is null");
 		}
@@ -350,10 +343,10 @@ public class Camera implements Telegraph {
 
 			//orthographic camera, libgdx stuff
 			projection.setToOrtho(
-				-getWidthInProjSpc() / 2,
-				getWidthInProjSpc() / 2,
-				-getHeightInProjSpc() / 2,
-				getHeightInProjSpc() / 2,
+				-getWidthAfterProjSpc() / 2,
+				getWidthAfterProjSpc() / 2,
+				-getHeightAfterProjSpc() / 2,
+				getHeightAfterProjSpc() / 2,
 				0,
 				1
 			);
@@ -513,11 +506,10 @@ public class Camera implements Telegraph {
 			view.getGameSpaceSpriteBatch().setShader(shader);
 			//set up the viewport, yIndex-up
 			HdpiUtils.glViewport(screenPosX,
-				Gdx.graphics.getHeight() - screenHeight - screenPosY,
-				screenWidth,
-				screenHeight
+				Gdx.graphics.getHeight() - getHeightScreenSpc() - screenPosY,
+				getWidthScreenSpc(),
+				getHeightScreenSpc()
 			);
-
 			//render map
 			createDepthList();
 			
@@ -742,19 +734,21 @@ public class Camera implements Telegraph {
 
 			boolean injectEnt = false;
 			for (AbstractEntity m : covered) {//entities share graph in a cell, could be otimized here
-				if (!m.isMarkedDS(id))
+				if (!m.isMarkedDS(id)) {
 					injectEnt = true;
+				}
 				if (inViewFrustum(m.getPosition())) {
 					visit(m);
 				}
 			}
-			
-			if (injectEnt)
+
+			if (injectEnt) {
 				return;
-				
+			}
+
 			//continue regularly
 			cell.markAsVisitedDS(id);
-			
+
 			LinkedList<RenderCell> coveredBlocks = cell.getCoveredBlocks(gameView.getRenderStorage());
 			if (!coveredBlocks.isEmpty()) {
 				for (RenderCell m : coveredBlocks) {
@@ -789,60 +783,22 @@ public class Camera implements Telegraph {
 	public boolean inViewFrustum(Position pos){
 		int vspY = pos.getViewSpcY();
 		if (!(
-				(position.y + (heightProj>>1))//fast division by two
+				(position.y + (heightAfterProj>>1))//fast division by two
 				>
 				(vspY - (RenderCell.VIEW_HEIGHT<<1))//bottom of sprite
 			&&
 				(vspY + RenderCell.VIEW_HEIGHT2 + RenderCell.VIEW_DEPTH)//top of sprite
 				>
-				position.y - (heightProj>>1))//fast division by two
+				position.y - (heightAfterProj>>1))//fast division by two
+//fast division by two
 		)
 			return false;
 		int dist = (int) (pos.getViewSpcX()-position.x); //left side of sprite
 		//left and right check in one clause by using distance via squaring
-		return dist * dist < ( (widthProj >> 1) + RenderCell.VIEW_WIDTH2) * ((widthProj >> 1) + RenderCell.VIEW_WIDTH2);
+		return dist * dist < ( (widthAfterProj >> 1) + RenderCell.VIEW_WIDTH2) * ((widthAfterProj >> 1) + RenderCell.VIEW_WIDTH2);
 	}
 
-	/**
-	 * Set the zoom factor.
-	 *
-	 * @param zoom 1 is default
-	 */
-	public void setZoom(float zoom) {
-		this.zoom = zoom;
-		updateViewSpaceSize();
-		widthProj = (int) (widthView / zoom);//update cache
-	}
-
-	/**
-	 * the width of the internal render resolution
-	 *
-	 * @param resolution
-	 */
-	public void setInternalRenderResolution(int resolution) {
-		renderResWidth = resolution;
-		widthView = renderResWidth;
-		updateViewSpaceSize();
-	}
-
-	/**
-	 * Returns the zoomfactor.
-	 *
-	 * @return zoomfactor applied on the game world
-	 */
-	public float getZoom() {
-		return zoom;
-	}
-
-	/**
-	 * Returns a scaling factor calculated by the width to achieve the same
-	 * viewport size with every resolution
-	 *
-	 * @return a scaling factor applied on the projection
-	 */
-	public float getScreenSpaceScaling() {
-		return screenWidth / (float) renderResWidth;
-	}
+	
 
 	/**
 	 * Returns the left border of the actual visible area.
@@ -850,7 +806,7 @@ public class Camera implements Telegraph {
 	 * @return left x position in view space
 	 */
 	public float getVisibleLeftBorderVS() {
-		return (position.x - widthProj*0.5f)- RenderCell.VIEW_WIDTH2;
+		return (position.x - widthAfterProj*0.5f)- RenderCell.VIEW_WIDTH2;
 	}
 
 	/**
@@ -859,7 +815,7 @@ public class Camera implements Telegraph {
 	 * @return the left (X) border coordinate
 	 */
 	public int getVisibleLeftBorder() {
-		return (int) ((position.x - widthProj*0.5) / RenderCell.VIEW_WIDTH - 1);
+		return (int) ((position.x - widthAfterProj*0.5) / RenderCell.VIEW_WIDTH - 1);
 	}
 
 	/**
@@ -869,7 +825,7 @@ public class Camera implements Telegraph {
 	 * @return measured in grid-coordinates
 	 */
 	public int getVisibleRightBorder() {
-		return (int) ((position.x + widthProj*0.5) / RenderCell.VIEW_WIDTH + 1);
+		return (int) ((position.x + widthAfterProj*0.5) / RenderCell.VIEW_WIDTH + 1);
 	}
 	
 	/**
@@ -879,7 +835,7 @@ public class Camera implements Telegraph {
 	 * @return measured in grid-coordinates
 	 */
 	public float getVisibleRightBorderVS() {
-		return position.x + widthProj*0.5f + RenderCell.VIEW_WIDTH2;
+		return position.x + widthAfterProj*0.5f + RenderCell.VIEW_WIDTH2;
 	}
 
 	/**
@@ -889,7 +845,7 @@ public class Camera implements Telegraph {
 	 */
 	public int getVisibleBackBorder() {
 		//TODO verify
-		return (int) ((position.y + heightProj * 0.5)//camera top border
+		return (int) ((position.y + heightAfterProj * 0.5)//camera top border
 			/ -RenderCell.VIEW_DEPTH2//back to game space
 			);
 	}
@@ -901,7 +857,7 @@ public class Camera implements Telegraph {
 	 * @see #getVisibleFrontBorderHigh()
 	 */
 	public int getVisibleFrontBorderLow() {
-		return (int) ((position.y - heightProj * 0.5) //bottom camera border
+		return (int) ((position.y - heightAfterProj * 0.5) //bottom camera border
 			/ -RenderCell.VIEW_DEPTH2 //back to game coordinates
 			);
 	}
@@ -913,7 +869,7 @@ public class Camera implements Telegraph {
 	 * @see #getVisibleFrontBorderLow()
 	 */
 	public int getVisibleFrontBorderHigh() {
-		return (int) ((position.y - heightProj * 0.5) //bottom camera border
+		return (int) ((position.y - heightAfterProj * 0.5) //bottom camera border
 			/ -RenderCell.VIEW_DEPTH2 //back to game coordinates
 			+ Chunk.getBlocksY() * 3 * RenderCell.VIEW_HEIGHT / RenderCell.VIEW_DEPTH2 //todo verify, try to add z component
 			);
@@ -938,54 +894,85 @@ public class Camera implements Telegraph {
 	}
 
 	/**
-	 * The amount of game pixel which are visible in X direction without zoom.
-	 * For screen pixels use {@link #getWidthInScreenSpc()}.
+	 * Set the zoom factor.
 	 *
-	 * @return in game pixels
+	 * @param zoom 1 is default
 	 */
-	public final int getWidthInViewSpc() {
+	public void setZoom(float zoom) {
+		this.zoom = zoom;
+		widthAfterProj = (int) (widthView / zoom);//update cache
+		heightAfterProj = (int) (getHeightAfterViewSpc() / zoom);
+	}
+
+	/**
+	 * the width of the internal render resolution
+	 *
+	 * @param resolution
+	 */
+	public void setInternalRenderResolution(int resolution) {
+		widthView = resolution;
+	}
+
+	/**
+	 * Returns the zoomfactor.
+	 *
+	 * @return zoomfactor applied on the game world
+	 */
+	public float getZoom() {
+		return zoom;
+	}
+
+	/**
+	 * Returns a scaling factor calculated by the width to achieve the same
+	 * viewport size with every resolution. If displayed twice as big as render resolution has factor 2.
+	 *
+	 * @return a scaling factor applied on the projection
+	 */
+	public float getProjScaling() {
+		return screenWidth / (float) widthView;
+	}
+	
+	/**
+	 * The amount of pixel which are visible in X direction without zoom.
+	 * For screen pixels use {@link #getWidthScreenSpc()}.
+	 *
+	 * @return in view space
+	 */
+	public final int getWidthViewSpc() {
 		return widthView;
 	}
 
 	/**
 	 * The amount of game pixel which are visible in Y direction without zoom.
-	 * For screen pixels use {@link #getHeightInScreenSpc() }.
+	 * For screen pixels use {@link #getHeightScreenSpc() }.
 	 *
-	 * @return in game pixels
+	 * @return in view space
 	 */
-	public final int getHeightInViewSpc() {
-		return heightView;
+	public final int getHeightAfterViewSpc() {
+		return (int) (screenHeight / getProjScaling());
 	}
 
 	/**
-	 * updates the cache
-	 */
-	private void updateViewSpaceSize() {
-		heightView = (int) (screenHeight / getScreenSpaceScaling());
-		heightProj = (int) (heightView / zoom);
-	}
-
-	/**
-	 * The amount of game world pixels which are visible in X direction after
+	 * The amount of game pixels which are visible in X direction after
 	 * the zoom has been applied. For screen pixels use
-	 * {@link #getWidthInScreenSpc()}.
+	 * {@link #getWidthScreenSpc()}.
 	 *
-	 * @return in viewMat pixels
+	 * @return in projection space
 	 */
-	public final int getWidthInProjSpc() {
-		return widthProj;
+	public final int getWidthAfterProjSpc() {
+		return widthAfterProj;
 	}
 
 	/**
 	 * The amount of game pixel which are visible in Y direction after the zoom
-	 * has been applied. For screen pixels use {@link #getHeightInScreenSpc() }.
+	 * has been applied. For screen pixels use {@link #getHeightScreenSpc() }.
 	 *
-	 * @return in projective pixels
+	 * @return in projection space
 	 */
-	public final int getHeightInProjSpc() {
-		return heightProj;
+	public final int getHeightAfterProjSpc() {
+		return heightAfterProj;
 	}
-
+	
 	/**
 	 * Returns the position of the cameras output (on the screen)
 	 *
@@ -1009,7 +996,7 @@ public class Camera implements Telegraph {
 	 *
 	 * @return the value before scaling
 	 */
-	public int getHeightInScreenSpc() {
+	public int getHeightScreenSpc() {
 		return screenHeight;
 	}
 
@@ -1018,7 +1005,7 @@ public class Camera implements Telegraph {
 	 *
 	 * @return the value before scaling
 	 */
-	public int getWidthInScreenSpc() {
+	public int getWidthScreenSpc() {
 		return screenWidth;
 	}
 
@@ -1038,11 +1025,12 @@ public class Camera implements Telegraph {
 	 */
 	public void setFullWindow(boolean fullWindow) {
 		this.fullWindow = fullWindow;
-		this.screenWidth = Gdx.graphics.getWidth();
-		this.screenHeight = Gdx.graphics.getHeight();
-		this.screenPosX = 0;
-		this.screenPosY = 0;
-		updateViewSpaceSize();
+		if (fullWindow){
+			this.screenWidth = Gdx.graphics.getWidth();
+			this.screenHeight = Gdx.graphics.getHeight();
+			this.screenPosX = 0;
+			this.screenPosY = 0;
+		}
 	}
 
 	/**
@@ -1057,7 +1045,6 @@ public class Camera implements Telegraph {
 			this.screenHeight = height;
 			this.screenPosX = 0;
 			this.screenPosY = 0;
-			updateViewSpaceSize();
 		}
 	}
 
@@ -1073,7 +1060,6 @@ public class Camera implements Telegraph {
 		}
 		this.screenWidth = width;
 		this.screenHeight = height;
-		updateViewSpaceSize();
 	}
 
 	/**

@@ -399,10 +399,10 @@ public class GameView implements GameManager {
      * @return view coordinate
      */
     public float screenXtoView(final int screenX, final Camera camera){
-        return screenX / camera.getScreenSpaceScaling()
+        return screenX / camera.getProjScaling()
 			- camera.getScreenPosX()
 			+ camera.getViewSpaceX()
-			- camera.getWidthInProjSpc()/2;//use left side
+			- camera.getWidthAfterProjSpc()/2;//use left side
     }
     
    /**
@@ -413,8 +413,8 @@ public class GameView implements GameManager {
      */
     public float screenYtoView(final int screenY, final Camera camera){
         return camera.getViewSpaceY() //to view space
-			+ camera.getHeightInProjSpc()/2//use top side, therefore /2
-			- screenY / camera.getScreenSpaceScaling() //to view space and then revert scaling
+			+ camera.getHeightAfterProjSpc()/2//use top side, therefore /2
+			- screenY / camera.getProjScaling() //to view space and then revert scaling
 			- camera.getScreenPosY(); //to projection space
     }
     
@@ -435,9 +435,9 @@ public class GameView implements GameManager {
 			} while (
 				i < cameras.size()
 				 && !(x > camera.getScreenPosX()
-				 && x < camera.getScreenPosX() + camera.getWidthInScreenSpc()
+				 && x < camera.getScreenPosX() + camera.getWidthScreenSpc()
 				 && y > camera.getScreenPosY()
-				&& y < camera.getScreenPosY()+camera.getHeightInScreenSpc())
+				&& y < camera.getScreenPosY()+camera.getHeightScreenSpc())
 			);
 
 			 //find points
@@ -484,7 +484,7 @@ public class GameView implements GameManager {
 	 * @return screen space
 	 */
 	public int viewToScreenX(int x, Camera camera) {
-		return (int) (x - camera.getViewSpaceX() + camera.getWidthInScreenSpc() / 2);
+		return (int) (x - camera.getViewSpaceX() + camera.getWidthScreenSpc() / 2);
 	}
 
 	/**
@@ -495,7 +495,7 @@ public class GameView implements GameManager {
 	 * @return screen space
 	 */
 	public int viewToScreenY(int y, Camera camera) {
-		return (int) (y - camera.getViewSpaceY() + camera.getHeightInScreenSpc() / 2);
+		return (int) (y - camera.getViewSpaceY() + camera.getHeightScreenSpc() / 2);
 	}
 
 	/**
