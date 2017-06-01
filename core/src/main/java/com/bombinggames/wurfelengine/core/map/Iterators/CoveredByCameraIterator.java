@@ -30,12 +30,11 @@
  */
 package com.bombinggames.wurfelengine.core.map.Iterators;
 
-import java.util.NoSuchElementException;
-
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
+import java.util.NoSuchElementException;
 
 /**
  * A map iterator which loops only over the chunks covered by the camera (0-8).
@@ -44,18 +43,19 @@ import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
  */
 public class CoveredByCameraIterator {
 
+	private int centerChunkX;
+	private int centerChunkY;
+	private final int startingZ;
+	private final RenderStorage renderStorage;
+	
 	/**
 	 * Always points to a block. Iterates over a chunk.
 	 */
 	private DataIterator<RenderCell> blockIterator;
-	private final int centerChunkX;
-	private final int centerChunkY;
 	private RenderChunk currentChunk;
 
 	private int topLevel;
-	private final int startingZ;
 	private int chunkNum = -1;
-	private final RenderStorage renderStorage;
 
 	/**
 	 * Starts at z = -1.
@@ -64,20 +64,31 @@ public class CoveredByCameraIterator {
 	 * @param centerCoordX the center chunk coordinate
 	 * @param centerCoordY the center chunk coordinate
 	 * @param startingZ to loop over ground level pass -1
-	 * @param topLevel the top limit of the z axis, last level is included
+	 * @param topLevel the top limit of the z axis
 	 */
 	public CoveredByCameraIterator(RenderStorage renderStorage, int centerCoordX, int centerCoordY, int startingZ, int topLevel) {
+		this.centerChunkX = centerCoordX;
+		this.centerChunkY = centerCoordY;
+		if (startingZ < 0) {
+			startingZ = 0;
+		}
+		this.startingZ = startingZ;
+		
 		this.renderStorage = renderStorage;
 		this.topLevel = topLevel;
-		if (startingZ<0)
-			startingZ=0;
-		this.startingZ = startingZ;
-		centerChunkX = centerCoordX;
-		centerChunkY = centerCoordY;
+	}
+	
+		
+	public void reset(int centerCoordX, int centerCoordY){
+		this.centerChunkX = centerCoordX;
+		this.centerChunkY = centerCoordY;
+		chunkNum = -1;
+		currentChunk = null;
+		blockIterator = null;
 	}
 
 	/**
-	 * set the top/last limit of the iteration (including).
+	 * set the top/last limit of the iteration.
 	 *
 	 * @param zLimit
 	 */
@@ -157,4 +168,5 @@ public class CoveredByCameraIterator {
 	public boolean hasNext() {
 		return chunkNum < 9 && ((blockIterator != null && blockIterator.hasNext()) || getNextChunk(chunkNum) != null);
 	}
+
 }

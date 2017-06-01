@@ -30,11 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core.map.rendering;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
@@ -45,8 +40,12 @@ import com.bombinggames.wurfelengine.core.Events;
 import com.bombinggames.wurfelengine.core.lightengine.AmbientOcclusionCalculator;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
-import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator;
+import com.bombinggames.wurfelengine.core.map.Point;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
 
 /**
  * A RenderStorage is container which saves {@link RenderChunk}s used for chunks storing rendering-data. It manages which {@link Chunk}s must be transformed to {@link RenderChunk}s.
@@ -59,10 +58,7 @@ public class RenderStorage implements Telegraph  {
 	 */
 	private final LinkedList<RenderChunk> data = new LinkedList<>();
 	private final List<Camera> cameraContainer;
-	/**
-	 * index means camera
-	 */
-	private final ArrayList<Integer> lastCenterX, lastCenterY;
+
 	/**
 	 * a list of cells marked as dirty. Dirty cells are reshaded.
 	 */
@@ -74,8 +70,6 @@ public class RenderStorage implements Telegraph  {
 	 */
 	public RenderStorage() {
 		this.cameraContainer = new ArrayList<>(1);
-		lastCenterX = new ArrayList<>(1);
-		lastCenterY = new ArrayList<>(1);
 	}
 	
 	/**
@@ -122,18 +116,6 @@ public class RenderStorage implements Telegraph  {
 					for (int y = -1; y <= 1; y++) {
 						checkChunk(camera.getCenterChunkX() + x, camera.getCenterChunkY() + y);
 					}
-				}
-				//check if center changed
-				if (lastCenterX.get(i) == null
-					|| lastCenterX.get(i) != camera.getCenterChunkX()
-					|| lastCenterY.get(i) != camera.getCenterChunkY()
-				) {
-					//update the last center
-					lastCenterX.set(i, camera.getCenterChunkX());
-					lastCenterY.set(i, camera.getCenterChunkY());
-					//rebuild
-					RenderCell.rebuildCoverList();
-					camera.rebuildTopLevelCache();
 				}
 			}
 		}
@@ -496,8 +478,6 @@ public class RenderStorage implements Telegraph  {
 	public void addCamera(Camera camera) {
 		if (!cameraContainer.contains(camera)) {//avoid duplicates
 			this.cameraContainer.add(camera);
-			lastCenterX.add(null);
-			lastCenterY.add(null);
 		}
 	}
 	

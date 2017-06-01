@@ -1,18 +1,18 @@
 /*
- * Copyright 2015 Benedikt Vogler.
+ * If this software is used for a game the official „Wurfel Engine“ logo or its name must be visible in an intro screen or main menu.
+ *
+ * Copyright 2017 Benedikt Vogler.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * * If this software is used for dist game the official „Wurfel Engine“ logo or its name must be
- *   visible in an intro screen or main menu.
- * * Redistributions of source code must retain the above copyright notice,
+ * * Redistributions of source code must retain the above copyright notice, 
  *   this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
+ * * Redistributions in binary form must reproduce the above copyright notice, 
+ *   this list of conditions and the following disclaimer in the documentation 
  *   and/or other materials provided with the distribution.
- * * Neither the name of Benedikt Vogler nor the names of its contributors
+ * * Neither the name of Benedikt Vogler nor the names of its contributors 
  *   may be used to endorse or promote products derived from this software without specific
  *   prior written permission.
  *
@@ -31,11 +31,7 @@
 package com.bombinggames.wurfelengine.core;
 
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.ai.msg.MessageManager;
-import com.badlogic.gdx.ai.msg.Telegram;
-import com.badlogic.gdx.ai.msg.Telegraph;
 import com.badlogic.gdx.graphics.Color;
-import static com.badlogic.gdx.graphics.GL20.GL_BLEND;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.FrameBuffer;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
@@ -49,14 +45,11 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.gameobjects.Renderable;
 import com.bombinggames.wurfelengine.core.map.Chunk;
-import com.bombinggames.wurfelengine.core.map.Iterators.CoveredByCameraIterator;
 import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
-import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -66,7 +59,7 @@ import java.util.logging.Logger;
  *
  * @author Benedikt Vogler
  */
-public class Camera implements Telegraph {
+public class Camera{
 
 	/**
 	 * the position of the camera in view space. Y-up. Read only field.
@@ -113,7 +106,7 @@ public class Camera implements Telegraph {
 	private float shakeAmplitude;
 	private float shakeTime;
 
-	private final GameView gameView;
+	private GameView gameView;
 	/**
 	 * game pixels after projection into view space
 	 */
@@ -126,19 +119,13 @@ public class Camera implements Telegraph {
 	 * true if camera is currently rendering
 	 */
 	private boolean active = false;
-	private final LinkedList<Renderable> depthlist = new LinkedList<>();
+	private LinkedList<Renderable> depthlist = new LinkedList<>();
 	/**
 	 * amount of objects to be rendered, used as an index during filling
 	 */
 	private int objectsToBeRendered = 0;
-	private int maxsprites;
 	private final Point center = new Point(0, 0, 0);
-	private final ArrayList<RenderCell> modifiedCells = new ArrayList<>(30);
-	private final ArrayList<AbstractEntity> entsInCells = new ArrayList<>(30);
-	/**
-	 * is rendered at the end
-	 */
-	private final LinkedList<AbstractEntity> renderAppendix = new LinkedList<>();
+
 	/**
 	 * The radius which is used for loading the chunks around the center. May be reduced after the first time to a smaller value.
 	 */
@@ -147,11 +134,13 @@ public class Camera implements Telegraph {
 	 * identifies the camera
 	 */
 	private int id;
-	private LinkedList<RenderCell> cacheTopLevel = new LinkedList<>();
 	private int sampleNum;
 	private FrameBuffer fbo;
 	private TextureRegion fboRegion;
 	private ShaderProgram postprocessshader;
+	private AbstractSorter sorter;
+	
+	private int lastCenterX, lastCenterY;
 
 	/**
 	 * Updates the needed chunks after recaclucating the center chunk of the
@@ -164,6 +153,18 @@ public class Camera implements Telegraph {
 			checkNeededChunks();
 		}
 	}
+	
+	private void init(final GameView view, final int x, final int y, final int width, final int height){
+		gameView = view;
+		screenPosX = x;
+		screenPosY = y;
+		screenWidth = width;
+		screenHeight = height;
+		widthView = WE.getCVars().getValueI("renderResolutionWidth");
+		sorter= new NoSort(this);
+		setZoom(1);
+		loadShader();
+	}
 
 	/**
 	 * Creates a fullscale camera pointing at the middle of the map.
@@ -171,18 +172,13 @@ public class Camera implements Telegraph {
 	 * @param view
 	 */
 	public Camera(final GameView view) {
-		gameView = view;
-		screenWidth = Gdx.graphics.getBackBufferWidth();
-		screenHeight = Gdx.graphics.getBackBufferHeight();
-		widthAfterProj = (int) (widthView / zoom);//update cache
+		init(view, 0, 0, Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
 
 		Point center = Controller.getMap().getCenter();
 		position.x = center.getViewSpcX();
 		position.y = center.getViewSpcY();
 		fullWindow = true;
 		initFocus();
-		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
-		loadShader();
 	}
 	
 	/**
@@ -199,19 +195,12 @@ public class Camera implements Telegraph {
 	 * @param view
 	 */
 	public Camera(final GameView view, final int x, final int y, final int width, final int height) {
-		gameView = view;
-		screenWidth = width;
-		screenHeight = height;
-		screenPosX = x;
-		screenPosY = y;
-		widthView = WE.getCVars().getValueI("renderResolutionWidth");
-		setZoom(1);
+		init(view, x, y, width, height);
 
 		Point center = Controller.getMap().getCenter();
 		position.x = center.getViewSpcX();
 		position.y = center.getViewSpcY();
 		initFocus();
-		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
 		loadShader();
 	}
 
@@ -232,18 +221,10 @@ public class Camera implements Telegraph {
 	 * @param view
 	 */
 	public Camera(final GameView view, final int x, final int y, final int width, final int height, final Point center) {
-		gameView = view;
-		screenPosX = x;
-		screenPosY = y;
-		screenWidth = width;
-		screenHeight = height;
-		widthView = WE.getCVars().getValueI("renderResolutionWidth");
-		setZoom(1);
+		init(view, x, y, width, height);
 		position.x = center.getViewSpcX();
 		position.y = center.getViewSpcY();
 		initFocus();
-		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
-		loadShader();
 	}
 
 	/**
@@ -262,14 +243,7 @@ public class Camera implements Telegraph {
 	 * @param view
 	 */
 	public Camera(final GameView view, final int x, final int y, final int width, final int height, final AbstractEntity focusentity) {
-		loadShader();
-		gameView = view;
-		screenWidth = width;
-		screenHeight = height;
-		screenPosX = x;
-		screenPosY = y;
-		widthView = WE.getCVars().getValueI("renderResolutionWidth");;
-		setZoom(1);
+		init(view, x, y, width, height);
 		if (focusentity == null) {
 			throw new NullPointerException("Parameter 'focusentity' is null");
 		}
@@ -282,9 +256,8 @@ public class Camera implements Telegraph {
 		position.y = (int) (focusEntity.getPosition().getViewSpcY()
 						+ focusEntity.getDimensionZ() * RenderCell.PROJECTIONFACTORZ/2);//have middle of object in center
 		initFocus();
-		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
 	}
-
+	
 	/**
 	 * 
 	 */
@@ -334,12 +307,6 @@ public class Camera implements Telegraph {
 				position.y += (float) (Math.random() * shakeAmplitude*dt % shakeAmplitude)-shakeAmplitude*0.5;
 			}
 
-			//move camera to the position
-			viewMat.setToLookAt(
-				new Vector3(position, 0),
-				new Vector3(position, -1),
-				up
-			);
 
 			//orthographic camera, libgdx stuff
 			projection.setToOrtho(
@@ -441,6 +408,20 @@ public class Camera implements Telegraph {
 		//this line is needed because the above does not work, calcualtes absolute position
 		centerChunkY = (int) Math.floor(-position.y / Chunk.getViewDepth());
 
+		//check if center changed
+		if (lastCenterX != centerChunkX
+			|| lastCenterY != centerChunkY) {
+			//update the last center
+			lastCenterX = centerChunkX;
+			lastCenterY = centerChunkY;
+			//rebuild
+			RenderCell.rebuildCoverList();
+		}
+
+		if (sorter instanceof TopologicalSort) {
+			((TopologicalSort) sorter).rebuildTopLevelCache();
+		}
+
 		checkNeededChunks();
 	}
 
@@ -488,10 +469,9 @@ public class Camera implements Telegraph {
 	public void render(final GameView view, final Camera camera) {
 		if (active && Controller.getMap() != null) { //render only if map exists
 			
-			//render offscreen
+//			//render offscreen
 //			screenWidth=1024;
 //			screenHeight=1024;
-//			updateViewSpaceSize();
 //			if (fbo == null) {
 //				fbo = new FrameBuffer(Format.RGBA8888, screenWidth, screenHeight, false);
 //			}
@@ -517,13 +497,18 @@ public class Camera implements Telegraph {
 				getHeightScreenSpc()
 			);
 			//render map
-			createDepthList();
+			sorter.createDepthList(depthlist);
 			
-			Gdx.gl20.glEnable(GL_BLEND); // Enable the OpenGL Blending functionality
+			//Gdx.gl20.glEnable(GL_BLEND); // Enable the OpenGL Blending functionality
 			//Gdx.gl20.glBlendFunc(GL_SRC_ALPHA, GL20.GL_CONSTANT_COLOR);
 
+			//settings for this frame
 			view.setDebugRendering(false);
+			RenderCell.setStaticShade(WE.getCVars().getValueB("enableAutoShade"));
+			GameSpaceSprite.setAO(WE.getCVars().getValueF("ambientOcclusion"));
+			
 			view.getGameSpaceSpriteBatch().begin();
+			//upload uniforms
 			view.getShader().setUniformf("cameraPos",getCenter());
 			view.getShader().setUniformf("fogColor",
 				WE.getCVars().getValueF("fogR"),
@@ -569,10 +554,6 @@ public class Camera implements Telegraph {
 			//important that we specify 0 otherwise we'll still be bound to glActiveTexture(GL_TEXTURE1)
 			AbstractGameObject.getTextureDiffuse().bind(0);
 
-			//settings for this frame
-			RenderCell.setStaticShade(WE.getCVars().getValueB("enableAutoShade"));
-			GameSpaceSprite.setAO(WE.getCVars().getValueF("ambientOcclusion"));
-			
 			//render vom bottom to top
 			for (Renderable obj : depthlist) {
 				obj.render(view, camera);
@@ -601,183 +582,6 @@ public class Camera implements Telegraph {
 		}
 	}
 
-	/**
-	 * Fills the cameracontent plus entities into a list and sorts it in the order of the rendering,
-	 * called the "depthlist". This is done every frame.
-	 *
-	 * @return the depthlist
-	 */
-	private void createDepthList() {
-		depthlist.clear();
-		maxsprites = WE.getCVars().getValueI("MaxSprites");
-
-		//inverse dirty flag
-		AbstractGameObject.inverseMarkedFlag(id);
-		
-		//add entitys which should be rendered
-		ArrayList<AbstractEntity> ents = Controller.getMap().getEntities();
-				
-		//add entities by inserting them into the render store
-		ArrayList<RenderCell> modifiedCells = this.modifiedCells;
-		ArrayList<AbstractEntity> entsInCells = this.entsInCells;
-		entsInCells.clear();
-		entsInCells.ensureCapacity(ents.size());
-		modifiedCells.clear();
-		modifiedCells.ensureCapacity(ents.size());
-		LinkedList<AbstractEntity> renderAppendix = this.renderAppendix;
-		renderAppendix.clear();
-		
-		//this should be made parallel via streams //ents.stream().parallel().forEach(action);?
-		for (AbstractEntity ent : ents) {
-			if (ent.hasPosition()
-				&& !ent.isHidden()
-				&& inViewFrustum(ent.getPosition())
-				&& ent.getPosition().getZ() < gameView.getRenderStorage().getZRenderingLimit()
-			) {
-				RenderCell cellAbove = gameView.getRenderStorage().getCell(ent.getPosition());
-				//in the renderstorage no nullpointer should exists, escept object is outside the array
-				if (cellAbove == RenderChunk.CELLOUTSIDE) {
-					renderAppendix.add(ent);//render at the end
-				} else {
-					cellAbove.addCoveredEnts(ent);//cell covers entities inside
-					modifiedCells.add(cellAbove);
-					entsInCells.add(ent);
-				}
-			}
-		}
-	
-		//iterate over every block in renderstorage
-		objectsToBeRendered = 0;
-			
-		for (RenderCell cell : cacheTopLevel) {
-			if (cell != RenderChunk.CELLOUTSIDE && inViewFrustum(cell.getPosition())) {
-				visit(cell);
-			}
-		}
-		//remove ents from modified blocks
-		for (RenderCell modifiedCell : modifiedCells) {
-			modifiedCell.clearCoveredEnts();
-		}
-		
-		//sort by depth
-		renderAppendix.sort((AbstractGameObject o1, AbstractGameObject o2) -> {
-			float d1 = o1.getDepth();
-			float d2 = o2.getDepth();
-			if (d1 > d2) {
-				return 1;
-			} else {
-				if (d1 == d2) {
-					return 0;
-				}
-				return -1;
-			}
-		});
-		depthlist.addAll(renderAppendix);//render every entity which has no parent block at the end of the list
-	}
-	
-	/**
-	 * rebuilds the reference list for fields whihc will be called for the depthsorting.
-	 */
-	public void rebuildTopLevelCache() {
-		int topLevel;
-		if (gameView.getRenderStorage().getZRenderingLimit() == Float.POSITIVE_INFINITY) {
-			topLevel = Chunk.getBlocksZ();
-		} else {
-			topLevel = (int) (gameView.getRenderStorage().getZRenderingLimit() / RenderCell.GAME_EDGELENGTH);
-		}
-		CoveredByCameraIterator iterator = new CoveredByCameraIterator(
-			gameView.getRenderStorage(),
-			centerChunkX,
-			centerChunkY,
-			topLevel-2,
-			topLevel-1//last layer 
-		);
-		cacheTopLevel.clear();
-		//check/visit every visible cell
-		while (iterator.hasNext()) {
-			RenderCell cell = iterator.next();
-			cacheTopLevel.add(cell);
-		}
-	}
-	
-	/**
-	 * topological sort
-	 * @param o root node
-	 */
-	private void visit(AbstractEntity o) {
-		if (!o.isMarkedDS(id)) {
-			o.markAsVisitedDS(id);
-			LinkedList<RenderCell> covered = o.getCoveredBlocks(gameView.getRenderStorage());
-			if (!covered.isEmpty()) {
-				for (RenderCell m : covered) {
-					if (inViewFrustum(m.getPosition())) {
-						visit(m);
-					}
-				}
-			}
-
-			if (
-				o.shouldBeRendered(this)
-				&& o.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
-				&& objectsToBeRendered < maxsprites
-			) {
-				//fill only up to available size
-				depthlist.add(o);
-				objectsToBeRendered++;
-			}
-		}
-	}
-	
-	/**
-	 * 
-	 * @param cell 
-	 */
-	public void visit(RenderCell cell){
-		if (!cell.isMarkedDS(id)) {
-			
-			//is a block
-			LinkedList<AbstractEntity> covered = cell.getCoveredEnts();
-
-			boolean injectEnt = false;
-			for (AbstractEntity m : covered) {//entities share graph in a cell, could be otimized here
-				if (!m.isMarkedDS(id)) {
-					injectEnt = true;
-				}
-				if (inViewFrustum(m.getPosition())) {
-					visit(m);
-				}
-			}
-
-			if (injectEnt) {
-				return;
-			}
-
-			//continue regularly
-			cell.markAsVisitedDS(id);
-
-			LinkedList<RenderCell> coveredBlocks = cell.getCoveredBlocks(gameView.getRenderStorage());
-			if (!coveredBlocks.isEmpty()) {
-				for (RenderCell m : coveredBlocks) {
-					if (inViewFrustum(m.getPosition())) {
-						visit(m);
-					}
-				}
-			}
-			
-			
-			if (
-				cell.shouldBeRendered(this)
-				&& cell.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
-				&& objectsToBeRendered < maxsprites
-			) {
-				//fill only up to available size
-				depthlist.add(cell);
-				objectsToBeRendered++;
-			}
-		}
-	}
-	
-	
 	
 
 	/**
@@ -1219,6 +1023,11 @@ public class Camera implements Telegraph {
 		
 	}
 
+	public GameView getGameView() {
+		return gameView;
+	}
+	
+
 	/**
 	 *
 	 * @return
@@ -1251,16 +1060,13 @@ public class Camera implements Telegraph {
 		this.id = id;
 	}
 	
-	@Override
-	public boolean handleMessage(Telegram msg) {
-		if (msg.message == Events.mapChanged.getId()) {
-			rebuildTopLevelCache();
-			return true;
-		}
-		
-		return false;
+	public int getId() {
+		return id;
 	}
-	
+
+	/**
+	 * may be overwritten
+	 */
 	void dispose() {
 	}
 
