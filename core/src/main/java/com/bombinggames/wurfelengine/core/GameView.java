@@ -337,6 +337,8 @@ public class GameView implements GameManager {
 			Gdx.gl20.glClearColor(0, 0, 0, 1);//black
 			if (WE.getCVars().getValueB(("zbuffer"))) {
 				Gdx.gl20.glEnable(GL20.GL_DEPTH_TEST);
+			//	Gdx.gl.glClearDepthf(1f);
+			//	Gdx.gl.glDepthFunc(GL20.GL_LESS);
 				Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
 			} else {
 				Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
