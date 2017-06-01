@@ -347,30 +347,36 @@ public class Camera implements Telegraph {
 				getWidthAfterProjSpc() / 2,
 				-getHeightAfterProjSpc() / 2,
 				getHeightAfterProjSpc() / 2,
-				0,
-				1
+				1,
+				200
 			);
 
+			//Gdx.gl20.glDepthRangef(-10, 200);
 			//set up projection matrices
 			combined.set(projection);
+			
+			//move camera to the position
+			viewMat.setToLookAt(
+				new Vector3(position, 0),
+				new Vector3(position, -1),
+				up
+			);
+			
 			Matrix4.mul(combined.val, viewMat.val);
+			 
 			
 			//wurfel engine projection matrix
 			//there is some scaling in M11, keep it
 			combined.val[Matrix4.M12] = combined.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
 			combined.val[Matrix4.M11] *= -0.5f;
-			combined.val[Matrix4.M22] = 0; // at z=0
+			
+			//by default z is negative?
+			combined.val[Matrix4.M22] = 0; // project to z to 0
+			combined.val[Matrix4.M23] = 1f; // translate to z=1,
 			
 			//recalculate the center position
 			updateCenter();
 
-			//don't know what this does
-			//Gdx.gl20.glMatrixMode(GL20.GL_PROJECTION);
-			//Gdx.gl20.glLoadMatrixf(projection.val, 0);
-			//Gdx.gl20.glMatrixMode(GL20.GL_MODELVIEW);
-			//Gdx.gl20.glLoadMatrixf(viewMat.val, 0);
-			//invProjectionView.set(combined);
-			//Matrix4.inv(invProjectionView.val);
 		}
 	}
 
