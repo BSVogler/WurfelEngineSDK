@@ -333,10 +333,16 @@ public class GameView implements GameManager {
         //Gdx.gl10.glViewport(0, 0,Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         
         //clear screen if wished
-        if ((boolean) WE.getCVars().get("clearBeforeRendering").getValue()){
-            Gdx.gl20.glClearColor(0, 0, 0, 1);
-            Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT);
-        }
+       if (WE.getCVars().getValueB(("clearBeforeRendering"))) {
+			Gdx.gl20.glClearColor(0, 0, 0, 1);//black
+			if (WE.getCVars().getValueB(("zbuffer"))) {
+				Gdx.gl20.glEnable(GL20.GL_DEPTH_TEST);
+				Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+			} else {
+				Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
+				Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT);
+			}
+		}
 
         //render every camera
         if (cameras.isEmpty()){
