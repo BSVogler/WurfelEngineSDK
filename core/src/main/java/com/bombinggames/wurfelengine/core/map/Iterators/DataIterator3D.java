@@ -40,7 +40,7 @@ import com.bombinggames.wurfelengine.core.map.Chunk;
  * @author Benedikt Vogler
  * @param <T>
  */
-public class DataIterator<T> implements Iterator<T> {
+public class DataIterator3D<T> implements Iterator<T> {
 
 	/**
 	 * current position
@@ -60,7 +60,7 @@ public class DataIterator<T> implements Iterator<T> {
 	 * @param startingZ the starting layer
 	 * @param limitZ the last layer (including).
 	 */
-	public DataIterator(
+	public DataIterator3D(
 		T[][][] data,
 		final int startingZ,
 		final int limitZ

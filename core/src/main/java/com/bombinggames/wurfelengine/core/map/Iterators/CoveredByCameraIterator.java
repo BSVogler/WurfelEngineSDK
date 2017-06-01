@@ -53,7 +53,7 @@ public class CoveredByCameraIterator implements Iterator<RenderCell> {
 	/**
 	 * Always points to a block. Iterates over a chunk.
 	 */
-	private DataIterator<RenderCell> blockIterator;
+	private DataIterator3D<RenderCell> blockIterator;
 	private RenderChunk currentChunk;
 
 	private int topLevel;

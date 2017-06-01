@@ -40,7 +40,7 @@ import com.bombinggames.wurfelengine.core.Events;
 import com.bombinggames.wurfelengine.core.lightengine.AmbientOcclusionCalculator;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
-import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator;
+import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator3D;
 import com.bombinggames.wurfelengine.core.map.Point;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -388,7 +388,7 @@ public class RenderStorage implements Telegraph  {
 
 		RenderCell[][][] chunkData = chunk.getData();
 		//iterate over chunk
-		DataIterator<RenderCell> dataIter = new DataIterator<>(
+		DataIterator3D<RenderCell> dataIter = new DataIterator3D<>(
 			chunkData,
 			0,
 			(int) (zRenderingLimit/RenderCell.GAME_EDGELENGTH)

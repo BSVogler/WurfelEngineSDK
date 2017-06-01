@@ -34,7 +34,7 @@ import com.badlogic.gdx.utils.Pool;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
-import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator;
+import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator3D;
 
 /**
  * Stores display data for a {@link Chunk}. If no block/air is stored by using the shared {@link #CELLOUTSIDE}.
@@ -241,8 +241,8 @@ public class RenderChunk {
 	 * @param limitZ the last layer (including).
 	 * @return
 	 */
-	public DataIterator<RenderCell> getIterator(final int startingZ, final int limitZ) {
-		return new DataIterator<>(
+	public DataIterator3D<RenderCell> getIterator(final int startingZ, final int limitZ) {
+		return new DataIterator3D<>(
 			data,
 			startingZ,
 			limitZ
