@@ -48,6 +48,7 @@ public class CVarSystemRoot extends AbstractCVarSystem {
 	public CVarSystemRoot(File path) {
 		super(path);
 		System.out.println("Init Engine CVars…");
+		register(new BooleanCVar(true), "zbuffer");
 		register(new FloatCVar(9.81f), "gravity");
 		register(new IntCVar(-40), "worldSpinAngle");
 		register(new BooleanCVar(false), "loadPixmap");
