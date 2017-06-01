@@ -360,7 +360,8 @@ public class RenderStorage implements Telegraph  {
 	
 	
 	/**
-	 * performs a simple clipping check by looking at the direct neighbours. O(n) where n is blocks in chunk
+	 * performs a simple clipping check by looking at the direct neighbours.
+	 * O(n) where n is blocks in chunk
 	 *
 	 * @param chunk
 	 */
@@ -369,29 +370,13 @@ public class RenderStorage implements Telegraph  {
 			throw new IllegalArgumentException();
 		}
 
-
 		chunk.resetClipping();
-
-		//loop over floor for ground level
-		//DataIterator floorIterator = chunk.getIterator(0, 0);
-//		while (floorIterator.hasNext()) {
-//			if (((Block) floorIterator.next()).hidingPastBlock())
-//				chunk.getCell(
-//					floorIterator.getCurrentIndex()[0],
-//					floorIterator.getCurrentIndex()[1],
-//					chunkY)setClippedTop(
-//					floorIterator.getCurrentIndex()[0],
-//					floorIterator.getCurrentIndex()[1],
-//					-1
-//				);
-//		}
-
 		RenderCell[][][] chunkData = chunk.getData();
 		//iterate over chunk
 		DataIterator3D<RenderCell> dataIter = new DataIterator3D<>(
 			chunkData,
 			0,
-			(int) (zRenderingLimit/RenderCell.GAME_EDGELENGTH)
+			(int) (zRenderingLimit / RenderCell.GAME_EDGELENGTH)
 		);
 
 		while (dataIter.hasNext()) {
