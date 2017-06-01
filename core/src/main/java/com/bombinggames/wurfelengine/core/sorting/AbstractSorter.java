@@ -28,8 +28,9 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-package com.bombinggames.wurfelengine.core;
+package com.bombinggames.wurfelengine.core.sorting;
 
+import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.gameobjects.Renderable;
 import java.util.LinkedList;
 
@@ -37,13 +38,12 @@ import java.util.LinkedList;
  * Fills the cameracontent plus entities into a list and sorts it in the order
  * of the rendering, called the "depthlist". This is done every frame.
  *
- * @return the depthlist
  */
-abstract class AbstractSorter {
+public abstract class AbstractSorter {
 
 	protected final Camera camera;
 
-	abstract void createDepthList(LinkedList<Renderable> depthlist);
+	public abstract void createDepthList(LinkedList<Renderable> depthlist);
 
 	AbstractSorter(Camera camera) {
 		this.camera = camera;

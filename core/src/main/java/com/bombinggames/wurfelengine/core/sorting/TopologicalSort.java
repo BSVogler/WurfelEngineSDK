@@ -28,12 +28,16 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-package com.bombinggames.wurfelengine.core;
+package com.bombinggames.wurfelengine.core.sorting;
 
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
 import com.bombinggames.wurfelengine.WE;
+import com.bombinggames.wurfelengine.core.Camera;
+import com.bombinggames.wurfelengine.core.Controller;
+import com.bombinggames.wurfelengine.core.Events;
+import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.gameobjects.Renderable;
@@ -80,7 +84,7 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 	
 	
 	@Override
-	void  createDepthList(LinkedList<Renderable> depthlist) {
+	public void createDepthList(LinkedList<Renderable> depthlist) {
 		this.depthlist = depthlist;
 		depthlist.clear();
 		maxsprites = WE.getCVars().getValueI("MaxSprites");
