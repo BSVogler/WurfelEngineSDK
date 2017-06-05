@@ -198,36 +198,54 @@ public class GameView implements GameManager {
 	/**
 	 * reloads the shaders
 	 */
-	public void loadShaders(){
+	public void loadShaders() {
 		Gdx.app.debug("Shader", "loading");
-		String fragmentShader = "/Users/Benedikt/Library/Application Support/Caveland/fragment"
+		
+		//try loading external shader
+		String fragmentShader = WE.getWorkingDirectory().getAbsolutePath() + "/fragment"
 			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
 			+ ".fs";
-		String vertexShader = "/Users/Benedikt/Library/Application Support/Caveland/vertex"
+		String vertexShader = WE.getWorkingDirectory().getAbsolutePath() + "/vertex"
 			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
 			+ ".vs";
-		
+
+		ShaderProgram newshader = null;
 		try {
-			ShaderProgram newshader = WE.loadShader(false, fragmentShader, vertexShader);
-			if (newshader!=null){
-				shader = newshader;
-				//setup default uniforms
-				shader.begin();
-				//our normal map
-				shader.setUniformi("u_normals", 1); //GL_TEXTURE1
-				shader.end();
-			}
+			newshader = WE.loadShader(false, fragmentShader, vertexShader);
 			for (Camera camera : cameras) {
 				camera.loadShader();
 			}
-		}catch (Exception ex){
+		} catch (Exception ex) {
 			WE.getConsole().add(ex.getLocalizedMessage());
-			//could not load initial shader
-			if (shader == null){
-				Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
-		
+			Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
+		}
+
+		//could not load initial external shader, so try laoding internal
+		if (newshader == null) {
+			fragmentShader = "com/bombinggames/wurfelengine/core/fragment"
+				+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
+				+ ".fs";
+			vertexShader = "com/bombinggames/wurfelengine/core/vertex"
+				+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
+				+ ".vs";
+			try {
+				newshader = WE.loadShader(true, fragmentShader, vertexShader);
+			} catch (Exception ex) {
+				WE.getConsole().add(ex.getLocalizedMessage());
+				if (newshader == null) {
+					Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
+				}
 			}
-		} 
+		}
+
+		if (newshader != null) {
+			shader = newshader;
+			//setup default uniforms
+			shader.begin();
+			//our normal map
+			shader.setUniformi("u_normals", 1); //GL_TEXTURE1
+			shader.end();
+		}
 	}
 
 	@Override

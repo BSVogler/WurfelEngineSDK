@@ -593,7 +593,20 @@ public class WE {
 		return CVARS;
 	}
 	
+	/**
+	 * may return null, if three is an error throws exception
+	 * @param internal
+	 * @param fragmentPath
+	 * @param vertexPath
+	 * @return
+	 * @throws Exception 
+	 */
 	public static ShaderProgram loadShader(boolean internal, String fragmentPath, String vertexPath) throws Exception {
+		if (!Gdx.files.internal(fragmentPath).exists()){
+			Gdx.app.debug("Shader", "shader file not found at: "+fragmentPath);
+			return null;
+		}
+		
 		Gdx.app.debug("Shader", "loading");
 		//shaders are very fast to load and the asset loader does not support text files out of the box
 		String fragmentShader = internal ? Gdx.files.internal(fragmentPath).readString() : Gdx.files.absolute(fragmentPath).readString();
