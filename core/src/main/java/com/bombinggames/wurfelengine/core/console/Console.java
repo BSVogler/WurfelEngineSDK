@@ -254,11 +254,6 @@ public class Console {
      * @param active If deactivating the input will be saved.
      */
    private void setActive(final boolean active) {
-		if (!active && !textinput.getText().isEmpty()) {//message entered and closing?
-			enter();
-		} else if (active && !textinput.isVisible()) {//window should be opened?
-			clearCommandLine();//clear if openend
-		}
         
 		if (active && !textinput.isVisible()) {//window should be opened?
 			inputprocessor = new StageInputProcessor(this);
@@ -287,9 +282,11 @@ public class Console {
 		add(lineBreak + textinput.getText() + "\n", "Console");//add message to message list
 		if (!textinput.getText().isEmpty()) {
 			String command = textinput.getText().substring(textinput.getText().indexOf("$ ") + 2);
-			WE.getCVars().get("lastConsoleCommand").setValue(command);
-			if (!executeCommand(command)) {
-				add("Failed executing command.\n", "System");
+			if (!command.isEmpty()) {
+				WE.getCVars().get("lastConsoleCommand").setValue(command);
+				if (!executeCommand(command)) {
+					add("Failed executing command.\n", "System");
+				}
 			}
 			clearCommandLine();
 		}
