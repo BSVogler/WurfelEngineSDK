@@ -30,9 +30,8 @@
  */
 package com.bombinggames.wurfelengine.core.cvar;
 
-import java.io.File;
-
 import com.badlogic.gdx.Input;
+import java.io.File;
 
 /**
  *
@@ -136,5 +135,6 @@ public class CVarSystemRoot extends AbstractCVarSystem {
 		register(new IntCVar(500), "mapIndexSpaceSize");
 		register(new IntCVar(536870912), "mapMaxMemoryUseBytes");//bytes, 512MB->17,9km^2
 		register(new BooleanCVar(false), "showMiniMapChunk");
+		register(new IntCVar(1), "depthSorter");
 	}
 }
