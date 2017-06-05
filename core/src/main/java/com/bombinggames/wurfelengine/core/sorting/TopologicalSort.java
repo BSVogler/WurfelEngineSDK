@@ -40,7 +40,6 @@ import com.bombinggames.wurfelengine.core.Events;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
-import com.bombinggames.wurfelengine.core.gameobjects.Renderable;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Iterators.CoveredByCameraIterator;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
@@ -62,7 +61,7 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 	private final LinkedList<AbstractEntity> renderAppendix = new LinkedList<>();
 	private final LinkedList<RenderCell> cacheTopLevel = new LinkedList<>();
 	private final GameView gameView;
-	private LinkedList<Renderable> depthlist;
+	private LinkedList<AbstractGameObject> depthlist;
 	private int objectsToBeRendered;
 	private int maxsprites;
 	
@@ -84,7 +83,7 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 	
 	
 	@Override
-	public void createDepthList(LinkedList<Renderable> depthlist) {
+	public void createDepthList(LinkedList<AbstractGameObject> depthlist) {
 		this.depthlist = depthlist;
 		depthlist.clear();
 		maxsprites = WE.getCVars().getValueI("MaxSprites");

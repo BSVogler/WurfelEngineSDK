@@ -35,7 +35,7 @@ import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
-import com.bombinggames.wurfelengine.core.gameobjects.Renderable;
+import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Iterators.CoveredByCameraIterator;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
@@ -64,7 +64,7 @@ public class NoSort extends AbstractSorter {
 	}
 
 	@Override
-	public void createDepthList(LinkedList<Renderable> depthlist) {
+	public void createDepthList(LinkedList<AbstractGameObject> depthlist) {
 		depthlist.clear();
 		int maxsprites = WE.getCVars().getValueI("MaxSprites");
 		float renderlimit = gameView.getRenderStorage().getZRenderingLimit();

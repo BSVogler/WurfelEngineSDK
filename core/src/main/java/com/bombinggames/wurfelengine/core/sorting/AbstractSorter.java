@@ -31,7 +31,7 @@
 package com.bombinggames.wurfelengine.core.sorting;
 
 import com.bombinggames.wurfelengine.core.Camera;
-import com.bombinggames.wurfelengine.core.gameobjects.Renderable;
+import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import java.util.LinkedList;
 
 /**
@@ -43,7 +43,7 @@ public abstract class AbstractSorter {
 
 	protected final Camera camera;
 
-	public abstract void createDepthList(LinkedList<Renderable> depthlist);
+	public abstract void createDepthList(LinkedList<AbstractGameObject> depthlist);
 
 	AbstractSorter(Camera camera) {
 		this.camera = camera;
