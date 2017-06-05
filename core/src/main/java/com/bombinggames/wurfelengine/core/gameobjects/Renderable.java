@@ -45,7 +45,7 @@ import java.util.LinkedList;
  * @author Benedikt Vogler
  */
 public interface Renderable {
-
+//maybe should be merged with abstract game object
 	/**
 	 * How bright is the object? The lightlevel is a scale applied to the color.
 	 * 1 is default value.
