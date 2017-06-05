@@ -491,6 +491,10 @@ public class Camera{
 			view.getGameSpaceSpriteBatch().setProjectionMatrix(combined);//game space
 			
 			ShaderProgram shader = view.getShader();
+			if (shader==null) {
+				Gdx.app.error("Camera", "no shader found");
+				return;
+			}
 			
 			view.getGameSpaceSpriteBatch().setShader(shader);
 			//set up the viewport, yIndex-up
