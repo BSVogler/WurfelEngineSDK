@@ -335,7 +335,7 @@ public class Camera{
 			Matrix4.mul(combined.val, viewMat.val);
 			 
 			
-			//wurfel engine projection matrix
+			//wurfel engine viewport matrix
 			//there is some scaling in M11, keep it
 			combined.val[Matrix4.M12] = combined.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
 			combined.val[Matrix4.M11] *= -0.5f;
