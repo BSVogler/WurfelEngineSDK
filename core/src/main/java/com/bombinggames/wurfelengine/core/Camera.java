@@ -51,11 +51,10 @@ import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.sorting.AbstractSorter;
+import com.bombinggames.wurfelengine.core.sorting.DepthValueSort;
 import com.bombinggames.wurfelengine.core.sorting.NoSort;
 import com.bombinggames.wurfelengine.core.sorting.TopologicalSort;
 import java.util.LinkedList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * Creates a virtual camera wich displays the game world on the viewport. A camer acan be locked to an entity.
@@ -122,7 +121,7 @@ public class Camera{
 	 * true if camera is currently rendering
 	 */
 	private boolean active = false;
-	private LinkedList<Renderable> depthlist = new LinkedList<>();
+	private LinkedList<AbstractGameObject> depthlist = new LinkedList<>();
 	/**
 	 * amount of objects to be rendered, used as an index during filling
 	 */
@@ -164,7 +163,6 @@ public class Camera{
 		screenWidth = width;
 		screenHeight = height;
 		widthView = WE.getCVars().getValueI("renderResolutionWidth");
-		sorter= new NoSort(this);
 		setZoom(1);
 		loadShader();
 	}
@@ -346,6 +344,20 @@ public class Camera{
 			//recalculate the center position
 			updateCenter();
 
+			if (sorter == null) {
+				//should react to an onchange event of cvar
+				switch (WE.getCVars().getValueI("depthSorter")) {
+					case 0:
+						sorter = new NoSort(this);
+						break;
+					case 1:
+						sorter = new TopologicalSort(this);
+						break;
+					case 2:
+						sorter = new DepthValueSort(this);
+						break;
+				}
+			}
 		}
 	}
 
