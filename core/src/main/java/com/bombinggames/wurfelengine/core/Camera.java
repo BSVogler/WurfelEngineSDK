@@ -265,17 +265,17 @@ public class Camera{
 	 * 
 	 */
 	public void loadShader(){
-		try {
-			ShaderProgram newshader = WE.loadShader(true, WE.getWorkingDirectory().getAbsolutePath()+"/postprocess.fs", null);
-			postprocessshader = newshader;
-	} catch (Exception ex){
-			WE.getConsole().add(ex.getLocalizedMessage());
-			//could not load initial shader
-			if (postprocessshader == null){
-				Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
-		
-			}
-		}
+//		try {
+//			ShaderProgram newshader = WE.loadShader(true, WE.getWorkingDirectory().getAbsolutePath()+"/postprocess.fs", null);
+//			postprocessshader = newshader;
+//	} catch (Exception ex){
+//			WE.getConsole().add(ex.getLocalizedMessage());
+//			//could not load initial shader
+//			if (postprocessshader == null){
+//				Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
+//		
+//			}
+//		}
 	}
 	
 	/**
