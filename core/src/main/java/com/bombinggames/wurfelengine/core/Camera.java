@@ -321,7 +321,6 @@ public class Camera{
 				200
 			);
 
-			//Gdx.gl20.glDepthRangef(-10, 200);
 			//set up projection matrices
 			combined.set(projection);
 			
