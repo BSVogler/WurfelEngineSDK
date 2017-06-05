@@ -531,7 +531,6 @@ public class Console {
     
     private class StageInputProcessor extends InputListener {
         private final Console parentRef;
-		private boolean lastKeyWasTab;
 		private int posInLastCommands = -1;
 
         private StageInputProcessor(Console parent) {
