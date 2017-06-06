@@ -88,9 +88,7 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 		depthlist.clear();
 		maxsprites = WE.getCVars().getValueI("MaxSprites");
 
-		//inverse dirty flag
-		AbstractGameObject.inverseMarkedFlag(camera.getId());
-		
+
 		//add entitys which should be rendered
 		ArrayList<AbstractEntity> ents = Controller.getMap().getEntities();
 				
@@ -108,25 +106,28 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 				&& camera.inViewFrustum(ent.getPosition())
 				&& ent.getPosition().getZ() < gameView.getRenderStorage().getZRenderingLimit()
 			) {
-				RenderCell cellAbove = gameView.getRenderStorage().getCell(ent.getPosition());
+				RenderCell cell = gameView.getRenderStorage().getCell(ent.getPosition());
+				ent.markAsVisitedDS(camera.getId());//so after mark inversion non is visited
 				//in the renderstorage no nullpointer should exists, escept object is outside the array
-				if (cellAbove == RenderChunk.CELLOUTSIDE) {
+				if (cell == RenderChunk.CELLOUTSIDE) {
 					renderAppendix.add(ent);//render at the end
 				} else {
-					cellAbove.addCoveredEnts(ent);//cell covers entities inside
-					modifiedCells.add(cellAbove);
+					cell.addCoveredEnts(ent);//cell covers entities inside
+					modifiedCells.add(cell);
 				}
 			}
 		}
 	
+		AbstractGameObject.inverseMarkedFlag(camera.getId());
+		
 		//iterate over every block in renderstorage
 		objectsToBeRendered = 0;
 			
 		for (RenderCell cell : cacheTopLevel) {
 			if (cell != RenderChunk.CELLOUTSIDE && camera.inViewFrustum(cell.getPosition())) {
 				visit(cell);
-		}
 			}
+		}
 		//remove ents from modified blocks
 		for (RenderCell modifiedCell : modifiedCells) {
 			modifiedCell.clearCoveredEnts();
@@ -149,7 +150,8 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 	}
 	
 	/**
-	 * rebuilds the reference list for fields whihc will be called for the depthsorting.
+	 * rebuilds the reference list for fields whihc will be called for the
+	 * depthsorting.
 	 */
 	public void rebuildTopLevelCache() {
 		int topLevel;
@@ -186,16 +188,6 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 				}
 			}
 		}
-
-		if (
-			o.shouldBeRendered(camera)
-			&& o.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
-			&& objectsToBeRendered < maxsprites
-		) {
-			//fill only up to available size
-			depthlist.add(o);
-			objectsToBeRendered++;
-		}
 	}
 	
 	/**
@@ -208,19 +200,19 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 			//is a block, so can contain entities
 			LinkedList<AbstractEntity> covered = cell.getCoveredEnts();
 			
-			boolean injectEnt = !covered.isEmpty() && !covered.getFirst().isMarkedDS(camera.getId());
-			if (injectEnt) {
-				for (AbstractEntity e : covered) {
-					e.markAsVisitedDS(camera.getId());
-				}
+			if (!covered.isEmpty() && !covered.getFirst().isMarkedDS(camera.getId())) {
+				covered.getFirst().markAsVisitedDS(camera.getId());
+				visit(covered.getFirst());//inside a cell entities share the dependencies
+					
 				for (AbstractEntity e : covered) {//entities share graph in a cell, could be otimized here
-					if (camera.inViewFrustum(e.getPosition())) {
-						visit(e);
+					if (camera.inViewFrustum(e.getPosition())
+						&& e.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
+						&& objectsToBeRendered < maxsprites//fill only up to available size
+					) {
+						depthlist.add(e);
+						objectsToBeRendered++;
 					}
 				}
-			}
-
-			if (injectEnt) {
 				return;
 			}
 
@@ -248,6 +240,5 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 			}
 		}
 	}
-
 	
 }
