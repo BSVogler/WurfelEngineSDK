@@ -96,9 +96,6 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 				
 		//add entities by inserting them into the render store
 		ArrayList<RenderCell> modifiedCells = this.modifiedCells;
-		ArrayList<AbstractEntity> entsInCells = this.entsInCells;
-		entsInCells.clear();
-		entsInCells.ensureCapacity(ents.size());
 		modifiedCells.clear();
 		modifiedCells.ensureCapacity(ents.size());
 		LinkedList<AbstractEntity> renderAppendix = this.renderAppendix;
@@ -118,7 +115,6 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 				} else {
 					cellAbove.addCoveredEnts(ent);//cell covers entities inside
 					modifiedCells.add(cellAbove);
-					entsInCells.add(ent);
 				}
 			}
 		}
