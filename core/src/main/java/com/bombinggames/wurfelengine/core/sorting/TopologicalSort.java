@@ -178,50 +178,49 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 	}
 	
 	/**
-	 * topological sort
+	 * topological sort for ents
 	 * @param o root node
 	 */
 	private void visit(AbstractEntity o) {
-		if (!o.isMarkedDS(camera.getId())) {
-			o.markAsVisitedDS(camera.getId());
-			LinkedList<RenderCell> covered = o.getCoveredBlocks(gameView.getRenderStorage());
-			if (!covered.isEmpty()) {
-				for (RenderCell m : covered) {
-					if (camera.inViewFrustum(m.getPosition())) {
-						visit(m);
-					}
+		LinkedList<RenderCell> covered = o.getCoveredBlocks(gameView.getRenderStorage());
+		if (!covered.isEmpty()) {
+			for (RenderCell m : covered) {
+				if (camera.inViewFrustum(m.getPosition())) {
+					visit(m);
 				}
 			}
+		}
 
-			if (
-				o.shouldBeRendered(camera)
-				&& o.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
-				&& objectsToBeRendered < maxsprites
-			) {
-				//fill only up to available size
-				depthlist.add(o);
-				objectsToBeRendered++;
-			}
+		if (
+			o.shouldBeRendered(camera)
+			&& o.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
+			&& objectsToBeRendered < maxsprites
+		) {
+			//fill only up to available size
+			depthlist.add(o);
+			objectsToBeRendered++;
 		}
 	}
 	
 	/**
-	 * 
+	 * Topological sort for Cells
 	 * @param cell 
 	 */
 	public void visit(RenderCell cell){
 		if (!cell.isMarkedDS(camera.getId())) {
 			
-			//is a block
+			//is a block, so can contain entities
 			LinkedList<AbstractEntity> covered = cell.getCoveredEnts();
-
-			boolean injectEnt = false;
-			for (AbstractEntity m : covered) {//entities share graph in a cell, could be otimized here
-				if (!m.isMarkedDS(camera.getId())) {
-					injectEnt = true;
+			
+			boolean injectEnt = !covered.isEmpty() && !covered.getFirst().isMarkedDS(camera.getId());
+			if (injectEnt) {
+				for (AbstractEntity e : covered) {
+					e.markAsVisitedDS(camera.getId());
 				}
-				if (camera.inViewFrustum(m.getPosition())) {
-					visit(m);
+				for (AbstractEntity e : covered) {//entities share graph in a cell, could be otimized here
+					if (camera.inViewFrustum(e.getPosition())) {
+						visit(e);
+					}
 				}
 			}
 
