@@ -49,7 +49,7 @@ import java.util.LinkedList;
 public class NoSort extends AbstractSorter {
 
 	private final GameView gameView;
-	private CoveredByCameraIterator iterator;
+	private final CoveredByCameraIterator iterator;
 
 	public NoSort(Camera camera) {
 		super(camera);
@@ -83,7 +83,7 @@ public class NoSort extends AbstractSorter {
 				objectsToBeRendered++;
 			}
 		}
-	
+
 		//iterate over every block in renderstorage
 		int topLevel;
 		if (gameView.getRenderStorage().getZRenderingLimit() == Float.POSITIVE_INFINITY) {
