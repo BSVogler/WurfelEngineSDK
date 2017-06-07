@@ -316,7 +316,7 @@ public class Camera{
 				-getHeightAfterProjSpc() / 2,
 				getHeightAfterProjSpc() / 2,
 				1,
-				200
+				10000
 			);
 
 			//set up projection matrices
@@ -324,22 +324,26 @@ public class Camera{
 			
 			//move camera to the position
 			viewMat.setToLookAt(
-				new Vector3(position, 0),
 				new Vector3(position, -1),
-				up
+				new Vector3(position, 0),
+				new Vector3(0,-1,0)
 			);
+			
+			//viewMat.rotate(0.0f, 1.00f, 0.0f, 20);
+			viewMat.rotate(1.0f, 0.00f, 0.0f, 60);
+			//viewMat.rotate(0.0f, 0.00f, 1.0f, 90);
 			
 			Matrix4.mul(combined.val, viewMat.val);
 			 
 			
 			//wurfel engine viewport matrix
 			//there is some scaling in M11, keep it
-			combined.val[Matrix4.M12] = combined.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
-			combined.val[Matrix4.M11] *= -0.5f;
-			
-			//by default z is negative?
-			combined.val[Matrix4.M22] = 0; // project to z to 0
-			combined.val[Matrix4.M23] = 1f; // translate to z=1,
+//			combined.val[Matrix4.M12] = combined.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
+//			combined.val[Matrix4.M11] *= -0.5f;
+//			
+//			//by default z is negative?
+			//combined.val[Matrix4.M22] = 0.0001f; // project to z to 0
+			//combined.val[Matrix4.M23] = 1f; // translate to z=1,
 			
 			//recalculate the center position
 			updateCenter();
@@ -517,7 +521,6 @@ public class Camera{
 			//render map
 			sorter.createDepthList(depthlist);
 			
-			//Gdx.gl20.glEnable(GL_BLEND); // Enable the OpenGL Blending functionality
 			//Gdx.gl20.glBlendFunc(GL_SRC_ALPHA, GL20.GL_CONSTANT_COLOR);
 
 			//settings for this frame
