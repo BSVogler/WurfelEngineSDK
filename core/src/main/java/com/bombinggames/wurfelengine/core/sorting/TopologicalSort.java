@@ -54,7 +54,6 @@ import java.util.LinkedList;
 public class TopologicalSort extends AbstractSorter implements Telegraph  {
 
 	private final ArrayList<RenderCell> modifiedCells = new ArrayList<>(30);
-	private final ArrayList<AbstractEntity> entsInCells = new ArrayList<>(30);
 	/**
 	 * is rendered at the end
 	 */
