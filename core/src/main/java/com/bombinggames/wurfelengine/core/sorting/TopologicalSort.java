@@ -201,9 +201,10 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 			
 			if (!covered.isEmpty() && !covered.getFirst().isMarkedDS(camera.getId())) {
 				covered.getFirst().markAsVisitedDS(camera.getId());
-				visit(covered.getFirst());//inside a cell entities share the dependencies
+				//inside a cell entities share the dependencies, so only visti first then add all
+				visit(covered.getFirst());
 					
-				for (AbstractEntity e : covered) {//entities share graph in a cell, could be otimized here
+				for (AbstractEntity e : covered) {
 					if (camera.inViewFrustum(e.getPosition())
 						&& e.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
 						&& objectsToBeRendered < maxsprites//fill only up to available size
