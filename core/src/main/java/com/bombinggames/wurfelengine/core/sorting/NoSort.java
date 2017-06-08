@@ -110,4 +110,51 @@ public class NoSort extends AbstractSorter {
 			}
 		}
 	}
+	
+	@Override
+	public void renderSorted() {
+		int maxsprites = WE.getCVars().getValueI("MaxSprites");
+		float renderlimit = gameView.getRenderStorage().getZRenderingLimit();
+		//add entitys which should be rendered
+		ArrayList<AbstractEntity> ents = Controller.getMap().getEntities();
+				
+		//this should be made parallel via streams //ents.stream().parallel().forEach(action);?
+		int objectsToBeRendered = 0;
+		for (AbstractEntity ent : ents) {
+			if (ent.hasPosition()
+				&& !ent.isHidden()
+				&& camera.inViewFrustum(ent.getPosition())
+				&& ent.getPosition().getZ() < renderlimit
+			) {
+				ent.render(camera);
+				objectsToBeRendered++;
+			}
+		}
+
+		//iterate over every block in renderstorage
+		int topLevel;
+		if (gameView.getRenderStorage().getZRenderingLimit() == Float.POSITIVE_INFINITY) {
+			topLevel = Chunk.getBlocksZ();
+		} else {
+			topLevel = (int) (gameView.getRenderStorage().getZRenderingLimit() / RenderCell.GAME_EDGELENGTH);
+		}
+		iterator.reset(camera.getCenterChunkX(), camera.getCenterChunkY());
+		iterator.setTopLimitZ(topLevel-1);
+		
+
+		//check/visit every visible cell
+		while (iterator.hasNext()) {
+			RenderCell cell = iterator.next();
+		
+			if (
+				(filter || cell.shouldBeRendered(camera)
+				&& cell.getPosition().getZPoint() < renderlimit)
+				&& objectsToBeRendered < maxsprites
+			) {//fill only up to available size
+				cell.render(camera);
+				objectsToBeRendered++;
+			}
+		}
+	}
+	
 }

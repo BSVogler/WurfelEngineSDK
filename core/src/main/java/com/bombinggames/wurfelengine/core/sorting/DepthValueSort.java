@@ -41,10 +41,12 @@ import java.util.LinkedList;
 public class DepthValueSort extends AbstractSorter {
 
 	private final NoSort nosorter;
+	private LinkedList<AbstractGameObject> depthlist = new LinkedList<>();
 
 	public DepthValueSort(Camera camera) {
 		super(camera);
 		nosorter = new NoSort(camera);
+		
 	}
 
 	@Override
@@ -62,6 +64,14 @@ public class DepthValueSort extends AbstractSorter {
 				return -1;
 			}
 		});
+	}
+
+	@Override
+	public void renderSorted() {
+		createDepthList(depthlist);
+		for (AbstractGameObject abstractGameObject : depthlist) {
+			abstractGameObject.render(camera);
+		}
 	}
 	
 }

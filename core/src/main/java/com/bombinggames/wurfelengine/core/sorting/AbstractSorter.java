@@ -44,6 +44,7 @@ public abstract class AbstractSorter {
 	protected final Camera camera;
 
 	public abstract void createDepthList(LinkedList<AbstractGameObject> depthlist);
+	public abstract void renderSorted();
 
 	AbstractSorter(Camera camera) {
 		this.camera = camera;
