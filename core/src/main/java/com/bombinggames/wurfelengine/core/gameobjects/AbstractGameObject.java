@@ -490,7 +490,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	}
 
 	/**
-	 * Should i.g. not be used for rendering.
+	 * Should in general not be used for rendering.
 	 *
 	 * @return the sprite used for rendering
 	 */
