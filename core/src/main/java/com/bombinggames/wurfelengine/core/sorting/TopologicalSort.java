@@ -40,12 +40,17 @@ import com.bombinggames.wurfelengine.core.Events;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
+import static com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject.getSprite;
 import com.bombinggames.wurfelengine.core.map.Chunk;
+import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Iterators.CoveredByCameraIterator;
+import com.bombinggames.wurfelengine.core.map.Point;
+import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.Random;
 
 /**
  *
@@ -53,6 +58,29 @@ import java.util.LinkedList;
  */
 public class TopologicalSort extends AbstractSorter implements Telegraph  {
 
+	
+	
+	private static final long serialVersionUID = 1L;
+	public static final float WINDAMPLITUDE = 20f;
+	private final static Random RANDOMGENERATOR = new java.util.Random();
+	private static GameSpaceSprite grasSprite;
+	private static float wind;
+	private static float windWholeCircle;
+	private final GameSpaceSprite gras;
+	private static float posXForce;
+	private static float posYForce;
+	private static float posZForce;
+	private static float force = 4000;
+	private static float noisenum = 0.1f;
+	
+	
+	public static void updateWind(float dt) {
+		windWholeCircle = (windWholeCircle + dt * 0.01f) % WINDAMPLITUDE;
+		wind = Math.abs(windWholeCircle - WINDAMPLITUDE / 2)//value between 0 and amp/2
+			- WINDAMPLITUDE / 2;//value between -amp/2 and + amp/2
+	}
+	
+	private final float seed;
 	private final ArrayList<RenderCell> modifiedCells = new ArrayList<>(30);
 	/**
 	 * is rendered at the end
@@ -60,7 +88,6 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 	private final LinkedList<AbstractEntity> renderAppendix = new LinkedList<>();
 	private final LinkedList<RenderCell> cacheTopLevel = new LinkedList<>();
 	private final GameView gameView;
-	private LinkedList<AbstractGameObject> depthlist;
 	private int objectsToBeRendered;
 	private int maxsprites;
 	
@@ -68,6 +95,9 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 		super(camera);
 		gameView = camera.getGameView();
 		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
+		gras = new GameSpaceSprite(getSprite('e', (byte) 7, (byte) 0));
+		gras.setOrigin(gras.getWidth() / 2f, 0);
+		seed = RANDOMGENERATOR.nextFloat();
 	}
 	
 	@Override
@@ -82,9 +112,7 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 	
 	
 	@Override
-	public void createDepthList(LinkedList<AbstractGameObject> depthlist) {
-		this.depthlist = depthlist;
-		depthlist.clear();
+	public void renderSorted() {
 		maxsprites = WE.getCVars().getValueI("MaxSprites");
 
 
@@ -145,7 +173,10 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 				return -1;
 			}
 		});
-		depthlist.addAll(renderAppendix);//render every entity which has no parent block at the end of the list
+		//render every entity which has no parent block at the end of the list
+		for (AbstractEntity abstractEntity : renderAppendix) {
+			abstractEntity.render(camera);
+		}
 	}
 	
 	/**
@@ -209,10 +240,11 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 						&& e.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
 						&& objectsToBeRendered < maxsprites//fill only up to available size
 					) {
-						depthlist.add(e);
+						e.render(camera);
 						objectsToBeRendered++;
 					}
 				}
+				drawGrass(4, cell.getPoint());
 				return;
 			}
 
@@ -235,10 +267,75 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 				&& objectsToBeRendered < maxsprites
 			) {
 				//fill only up to available size
-				depthlist.add(cell);
+				cell.render(camera);
 				objectsToBeRendered++;
+			}
+			
+			//draw grass
+			if (cell.getId()==0
+				&& cell.getCoord().getZ() > 1
+				&& Coordinate.getShared().set(cell.getCoord()).add(0, 0, -1).getBlockId() == 1
+				&& objectsToBeRendered < maxsprites
+			){
+				Point pos = cell.getPoint();
+				drawGrass(30,pos);
 			}
 		}
 	}
+	
+	/**
+	 * 
+	 * @param n
+	 * @param pos 
+	 */
+	public void drawGrass(int n, Point pos){
+		for (int i = 0; i < n; i++) {
+				//game space
+			float xPos = pos.getX();
+			float yPos = pos.getY();
+			int xOffset = (int) (Math.abs((xPos - seed * 17) * i * (yPos)) % RenderCell.GAME_EDGELENGTH - RenderCell.GAME_EDGELENGTH2);
+			int yOffset = (int) (Math.abs(((xPos - i) * 3 * (yPos * seed * 11 - i))) % RenderCell.GAME_EDGELENGTH - RenderCell.GAME_EDGELENGTH2);
+			if (Math.abs(xOffset) + Math.abs(yOffset) < RenderCell.GAME_DIAGLENGTH2) {
+				gras.setColor(
+					1 / 2f,
+					1 / 2f - (xOffset + i) % 7 * 0.005f,
+					1 / 2f,
+					1
+				);
+				gras.setPosition(
+					xPos + xOffset,
+					yPos + RenderCell.GAME_DIAGLENGTH2 + yOffset,//there is something wrong with the rendering, so set center to the front
+					pos.getZ()
+				);
+
+				//wind
+				float distanceToForceCenter = (xPos + xOffset - posXForce + 100) * (xPos + xOffset - posXForce + 100)
+					+ (-yPos * 2 + yOffset - posYForce + 900) * (-yPos * 2 + yOffset - posYForce + 900);
+				float forceRot;
+				if (distanceToForceCenter > 200000) {
+					forceRot = 0;
+				} else {
+					forceRot = 600000 / (distanceToForceCenter);
+					if (posXForce < xPos) {
+						forceRot *= -1;
+					}
+					if (forceRot > 90) {
+						forceRot = 90;
+					}
+					if (forceRot < -90) {
+						forceRot = -90;
+					}
+				}
+				gras.setRotation(i * 0.4f - 10.2f + wind + RANDOMGENERATOR.nextFloat() * noisenum * WINDAMPLITUDE / 2 + forceRot * 0.3f);
+				objectsToBeRendered++;
+				gras.draw(gameView.getGameSpaceSpriteBatch());
+			}
+		}
+	}
+
+	@Override
+	public void createDepthList(LinkedList<AbstractGameObject> depthlist) {
+	}
+
 	
 }
