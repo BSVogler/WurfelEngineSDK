@@ -518,9 +518,7 @@ public class Camera{
 				getWidthScreenSpc(),
 				getHeightScreenSpc()
 			);
-			//render map
-			sorter.createDepthList(depthlist);
-			
+
 			//Gdx.gl20.glBlendFunc(GL_SRC_ALPHA, GL20.GL_CONSTANT_COLOR);
 
 			//settings for this frame
@@ -576,9 +574,6 @@ public class Camera{
 			AbstractGameObject.getTextureDiffuse().bind(0);
 
 			//render vom bottom to top
-			for (Renderable obj : depthlist) {
-				obj.render(view, camera);
-			}
 			view.getGameSpaceSpriteBatch().end();
 
 			//debug rendering
