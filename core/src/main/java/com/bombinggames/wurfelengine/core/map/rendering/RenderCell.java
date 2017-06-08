@@ -627,21 +627,21 @@ public class RenderCell extends AbstractGameObject {
 	}
     
     @Override
-	public void render(final GameView view, final Camera camera) {
+	public void render(final Camera camera) {
 		if (!isHidden()) {
 			if (hasSides()) {
 				byte clipping = getClipping();
 				if ((clipping & (1 << 1)) == 0) {
-					renderSide(view, camera, Side.TOP, staticShade);
+					renderSide(camera, Side.TOP, staticShade);
 				}
 				if ((clipping & 1) == 0) {
-					renderSide(view, camera, Side.LEFT, staticShade);
+					renderSide(camera, Side.LEFT, staticShade);
 				}
 				if ((clipping & (1 << 2)) == 0) {
-					renderSide(view, camera, Side.RIGHT, staticShade);
+					renderSide(camera, Side.RIGHT, staticShade);
 				}
 			} else {
-				super.render(view, camera);
+				super.render(camera);
 			}
 		}
 	}
@@ -718,7 +718,6 @@ public class RenderCell extends AbstractGameObject {
 	 * @param staticShade
      */
     public void renderSide(
-		final GameView view,
 		final Camera camera,
 		final Side side,
 		final boolean staticShade
@@ -935,7 +934,7 @@ public class RenderCell extends AbstractGameObject {
 		destruct.setSpriteValue(value);
 		destruct.setPosition(pos);
 		destruct.getColor().set(0.5f, 0.5f, 0.5f, 0.7f);
-		destruct.render(view, camera);
+		destruct.render(camera);
 	}
 	/**
 	 * Update the block. Should only be used for cosmetic logic because this is only called for blocks which are covered by a camera.

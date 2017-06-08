@@ -31,7 +31,6 @@
 package com.bombinggames.wurfelengine.core.gameobjects;
 
 import com.bombinggames.wurfelengine.core.Camera;
-import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
@@ -81,10 +80,9 @@ public interface Renderable {
 	/**
 	 * Draws an object if it is not hidden and not clipped.
 	 *
-	 * @param view the view using this render method
 	 * @param camera The camera rendering the scene
 	 */
-	public void render(GameView view, Camera camera);
+	public void render(Camera camera);
 
 	/**
 	 * Return the coordinates of the object in the game world. Not copy safe as it points to the interaly used object.

@@ -67,7 +67,6 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * indexed acces to the spritesheet
 	 */
 	private static final transient AtlasRegion[][][] sprites = new AtlasRegion['z'][RenderCell.OBJECTTYPESNUM][RenderCell.VALUESNUM];//{category}{id}{value}
-	private transient static int drawCalls = 0;
 	private static Texture textureDiff;
 	private static Texture textureNormal;
 	/**
@@ -139,23 +138,6 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 */
 	public static String getSpritesheetPath() {
 		return spritesheetPath;
-	}
-
-	/**
-	 * Reset couner for this frame
-	 */
-	public static void resetDrawCalls() {
-		AbstractGameObject.drawCalls = 0;
-	}
-
-	/**
-	 * Maybe not quite correct. A single block has only one drawcall even it
-	 * should consist of three.
-	 *
-	 * @return
-	 */
-	public static int getDrawCalls() {
-		return drawCalls;
 	}
 
 	/**
@@ -291,16 +273,46 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	}
 
 	/**
-	 * When calling sprite.draw this hsould also be called for statistics.
+	 * Renders in game space.
+	 *
+	 * @param view
 	 */
-	protected void increaseDrawCalls() {
-		drawCalls++;
-	}
+	public void render(GameView view) {
+		byte id = getSpriteId();
+		byte value = getSpriteValue();
+		if (id > 0 && value >= 0) {
+			if (sprite==null) {
+				updateSpriteCache();
+			}
+			if (rotation != sprite.getRotation()) {
+				sprite.setRotation(rotation);
+			}
+			//sprite.setOrigin(0, 0);
+			if (scaling != sprite.getScaleX()) {
+				sprite.setScale(scaling);
+			}
 
+			Point pos = getPoint();
+			sprite.setPosition(
+				pos.getX(),
+				pos.getY()+RenderCell.GAME_DIAGLENGTH2,//center, move a bit to draw front
+				pos.getZ()
+			);
+
+			//hack for transient field tint
+			if (tint == null) {
+				tint = new Color(0.5f, 0.5f, 0.5f, 1f);
+			}
+			sprite.setColor(tint);
+
+			sprite.draw(view.getGameSpaceSpriteBatch());
+		}
+	}
+	
 	@Override
-	public void render(GameView view, Camera camera) {
+	public void render(Camera camera) {
 		if (!hidden && getPosition() != null) {
-			render(view);
+			render(camera.getGameView());
 		}
 	}
 
@@ -343,47 +355,9 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 			sprite.setColor(tint);
 
 			sprite.draw(view.getProjectionSpaceSpriteBatch());
-			drawCalls++;
 		}
 	}
 
-	/**
-	 * Renders in game space.
-	 *
-	 * @param view
-	 */
-	public void render(GameView view) {
-		byte id = getSpriteId();
-		byte value = getSpriteValue();
-		if (id > 0 && value >= 0) {
-			if (sprite==null) {
-				updateSpriteCache();
-			}
-			if (rotation != sprite.getRotation()) {
-				sprite.setRotation(rotation);
-			}
-			//sprite.setOrigin(0, 0);
-			if (scaling != sprite.getScaleX()) {
-				sprite.setScale(scaling);
-			}
-
-			Point pos = getPoint();
-			sprite.setPosition(
-				pos.getX(),
-				pos.getY()+RenderCell.GAME_DIAGLENGTH2,//center, move a bit to draw front
-				pos.getZ()
-			);
-
-			//hack for transient field tint
-			if (tint == null) {
-				tint = new Color(0.5f, 0.5f, 0.5f, 1f);
-			}
-			sprite.setColor(tint);
-
-			sprite.draw(view.getGameSpaceSpriteBatch());
-			drawCalls++;
-		}
-	}
 	
 	public void updateSpriteCache(){
 		AtlasRegion texture = AbstractGameObject.getSprite(getSpriteCategory(), getSpriteId(), getSpriteValue());
