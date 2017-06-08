@@ -57,6 +57,11 @@ import java.util.LinkedList;
 public class Coordinate implements Position {
 
 	private static final long serialVersionUID = 3L;
+	private static Coordinate shared = new Coordinate();
+
+	public static Coordinate getShared() {
+		return shared;
+	}
 	/**
 	 * The x coordinate. Position from left to right.
 	 */
