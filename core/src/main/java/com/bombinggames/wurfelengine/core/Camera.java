@@ -322,28 +322,38 @@ public class Camera{
 			//set up projection matrices
 			combined.set(projection);
 			
-			//move camera to the position
-			viewMat.setToLookAt(
-				new Vector3(position, -1),
-				new Vector3(position, 0),
-				new Vector3(0,-1,0)
-			);
-			
-			//viewMat.rotate(0.0f, 1.00f, 0.0f, 20);
-			viewMat.rotate(1.0f, 0.00f, 0.0f, 60);
-			//viewMat.rotate(0.0f, 0.00f, 1.0f, 90);
-			
-			Matrix4.mul(combined.val, viewMat.val);
-			 
-			
-			//wurfel engine viewport matrix
-			//there is some scaling in M11, keep it
-//			combined.val[Matrix4.M12] = combined.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
-//			combined.val[Matrix4.M11] *= -0.5f;
-//			
-//			//by default z is negative?
-			//combined.val[Matrix4.M22] = 0.0001f; // project to z to 0
-			//combined.val[Matrix4.M23] = 1f; // translate to z=1,
+			if (true){
+				//move camera to the position
+				viewMat.setToLookAt(
+					new Vector3(position, 1),
+					new Vector3(position, -1),
+					new Vector3(0,1,0)
+				);
+
+
+				Matrix4.mul(combined.val, viewMat.val);
+
+
+				//wurfel engine viewport matrix
+				//there is some scaling in M11, keep it
+				combined.val[Matrix4.M12] = combined.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
+				combined.val[Matrix4.M11] *= -0.5f;
+
+				//by default z is negative?
+				combined.val[Matrix4.M22] = 0.0f; // project to z to 0
+				combined.val[Matrix4.M23] = 1f; // translate to z=1,
+			} else {
+				//move camera to the position
+				viewMat.setToLookAt(
+					new Vector3(position.x,-position.y, -1),
+					new Vector3(position.x,-position.y, 0),
+					new Vector3(0,-1,0)
+				);
+
+				viewMat.rotate(1.0f, 0.00f, 0.0f, 60);
+
+				Matrix4.mul(combined.val, viewMat.val);	
+			}
 			
 			//recalculate the center position
 			updateCenter();
