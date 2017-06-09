@@ -568,12 +568,17 @@ public class WE {
 	 * @param dt time in ms
 	 */
 	public static void updateAndRender(float dt) {
-		console.update(dt);
-		engineView.update(dt);
-		SOUND.update(dt);
-
-		engineView.getStage().act(dt);
-		engineView.getStage().draw();
+		if (console != null) {
+			console.update(dt);
+		}
+		if (engineView != null) {
+			engineView.update(dt);
+			engineView.getStage().act(dt);
+			engineView.getStage().draw();
+		}
+		if (SOUND != null) {
+			SOUND.update(dt);
+		}
 	}
 
 	/**
