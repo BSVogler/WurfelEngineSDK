@@ -70,7 +70,7 @@ public class DepthValueSort extends AbstractSorter {
 	public void renderSorted() {
 		createDepthList(depthlist);
 		for (AbstractGameObject abstractGameObject : depthlist) {
-			abstractGameObject.render(camera);
+			abstractGameObject.render(camera.getGameView());
 		}
 	}
 	

@@ -392,7 +392,7 @@ public class RenderCell extends AbstractGameObject {
 	 */
 	public static AtlasRegion getBlockSprite(final byte id, final byte value, final Side side) {
 		if (getSpritesheet() == null) {
-			throw new NullPointerException("No spritesheet found.");
+			throw new NullPointerException("No spritesheet found. Load with #loadSheet()");
 		}
 
 		if (blocksprites[id][value][side.getCode()] != null) { //load if not already loaded
@@ -627,21 +627,21 @@ public class RenderCell extends AbstractGameObject {
 	}
     
     @Override
-	public void render(final Camera camera) {
+	public void render(final GameView view) {
 		if (!isHidden()) {
 			if (hasSides()) {
 				byte clipping = getClipping();
 				if ((clipping & (1 << 1)) == 0) {
-					renderSide(camera, Side.TOP, staticShade);
+					renderSide(view, Side.TOP, staticShade);
 				}
 				if ((clipping & 1) == 0) {
-					renderSide(camera, Side.LEFT, staticShade);
+					renderSide(view, Side.LEFT, staticShade);
 				}
 				if ((clipping & (1 << 2)) == 0) {
-					renderSide(camera, Side.RIGHT, staticShade);
+					renderSide(view, Side.RIGHT, staticShade);
 				}
 			} else {
-				super.render(camera);
+				super.render(view);
 			}
 		}
 	}
@@ -712,13 +712,12 @@ public class RenderCell extends AbstractGameObject {
        
 	/**
      * Render a side of a block at the position of the coordinates.
-     * @param view the view using this render method
 	 * @param camera
      * @param side The number identifying the side. 0=left, 1=top, 2=right
 	 * @param staticShade
      */
     public void renderSide(
-		final Camera camera,
+		final GameView view,
 		final Side side,
 		final boolean staticShade
 	){
@@ -729,7 +728,6 @@ public class RenderCell extends AbstractGameObject {
 			color = Controller.getLightEngine().getColor(side, getPosition()).mul(color.r + 0.5f, color.g + 0.5f, color.b + 0.5f, color.a + 0.5f);
 		}
 		
-		GameView view = camera.getGameView();
 		Point tmpPoint = getPoint();
         renderSide(
 			view,
@@ -762,7 +760,6 @@ public class RenderCell extends AbstractGameObject {
 					case LEFT:
 						renderDamageOverlay(
 							view,
-							camera,
 							tmpPoint.add(-RenderCell.GAME_DIAGLENGTH2 / 2, 0, 0),
 							(byte) (3 * damageOverlayStep)
 						);
@@ -770,7 +767,6 @@ public class RenderCell extends AbstractGameObject {
 					case TOP:
 						renderDamageOverlay(
 							view,
-							camera,
 							getPoint().add(0, 0, RenderCell.GAME_EDGELENGTH),
 							(byte) (3 * damageOverlayStep + 1)
 						);
@@ -778,7 +774,6 @@ public class RenderCell extends AbstractGameObject {
 					case RIGHT:
 						renderDamageOverlay(
 							view,
-							camera,
 							getPoint().add(RenderCell.GAME_DIAGLENGTH2 / 2, 0, 0),
 							(byte) (3 * damageOverlayStep + 2)
 						);
@@ -929,11 +924,11 @@ public class RenderCell extends AbstractGameObject {
 	 * @param pos
 	 * @param value damage sprite value
 	 */
-	private void renderDamageOverlay(final GameView view, final Camera camera, final Position pos, final byte value) {
+	private void renderDamageOverlay(final GameView view, final Position pos, final byte value) {
 		destruct.setSpriteValue(value);
 		destruct.setPosition(pos);
 		destruct.getColor().set(0.5f, 0.5f, 0.5f, 0.7f);
-		destruct.render(camera);
+		destruct.render(view);
 	}
 	/**
 	 * Update the block. Should only be used for cosmetic logic because this is only called for blocks which are covered by a camera.

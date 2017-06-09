@@ -172,7 +172,7 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 		});
 		//render every entity which has no parent block at the end of the list
 		for (AbstractEntity abstractEntity : renderAppendix) {
-			abstractEntity.render(camera);
+			abstractEntity.render(gameView);
 		}
 	}
 	
@@ -237,7 +237,7 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 						&& e.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
 						&& objectsToBeRendered < maxsprites//fill only up to available size
 					) {
-						e.render(camera);
+						e.render(gameView);
 						objectsToBeRendered++;
 					}
 				}
@@ -263,7 +263,7 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 				&& objectsToBeRendered < maxsprites
 			) {
 				//fill only up to available size
-				cell.render(camera);
+				cell.render(gameView);
 				objectsToBeRendered++;
 			}
 			

@@ -277,10 +277,11 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 *
 	 * @param view
 	 */
+	@Override
 	public void render(GameView view) {
 		byte id = getSpriteId();
 		byte value = getSpriteValue();
-		if (id > 0 && value >= 0) {
+		if (id > 0 && value >= 0 && !hidden && getPosition() != null) {
 			if (sprite==null) {
 				updateSpriteCache();
 			}
@@ -309,13 +310,6 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 		}
 	}
 	
-	@Override
-	public void render(Camera camera) {
-		if (!hidden && getPosition() != null) {
-			render(camera.getGameView());
-		}
-	}
-
 	/**
 	 * Renders at a custom position in projection space. uses heap
 	 *

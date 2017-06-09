@@ -126,7 +126,7 @@ public class NoSort extends AbstractSorter {
 				&& camera.inViewFrustum(ent.getPosition())
 				&& ent.getPosition().getZ() < renderlimit
 			) {
-				ent.render(camera);
+				ent.render(gameView);
 				objectsToBeRendered++;
 			}
 		}
@@ -151,7 +151,7 @@ public class NoSort extends AbstractSorter {
 				&& cell.getPosition().getZPoint() < renderlimit)
 				&& objectsToBeRendered < maxsprites
 			) {//fill only up to available size
-				cell.render(camera);
+				cell.render(gameView);
 				objectsToBeRendered++;
 			}
 		}
