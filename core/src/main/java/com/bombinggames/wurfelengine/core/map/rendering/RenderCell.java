@@ -712,7 +712,7 @@ public class RenderCell extends AbstractGameObject {
        
 	/**
      * Render a side of a block at the position of the coordinates.
-	 * @param camera
+	 * @param view
      * @param side The number identifying the side. 0=left, 1=top, 2=right
 	 * @param staticShade
      */
