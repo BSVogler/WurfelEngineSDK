@@ -145,10 +145,14 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * @throws java.io.FileNotFoundException
 	 */
 	public static void loadSheet() throws FileNotFoundException {
-		//spritesheet = new TextureAtlas(Gdx.files.internal("com/bombinggames/Game/Blockimages/Spritesheet.txt"), true);
 		Gdx.app.log("AGameObject", "getting spritesheet");
 		if (spritesheet == null) {
-			spritesheet = WE.getAsset(spritesheetPath + ".txt");
+			//if not in asset manager, then load into it
+			if (!WE.getAssetManager().isLoaded(spritesheetPath)) {
+				WE.getAssetManager().load(spritesheetPath + ".txt", TextureAtlas.class);
+				WE.getAssetManager().finishLoadingAsset(spritesheetPath + ".txt");
+			}
+				spritesheet = WE.getAsset(spritesheetPath + ".txt");
 		}
 		textureDiff = spritesheet.getTextures().first();
 		if (WE.getCVars().getValueB("LEnormalMapRendering")) {
