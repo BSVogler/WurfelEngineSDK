@@ -58,12 +58,9 @@ import java.util.Random;
  */
 public class TopologicalSort extends AbstractSorter implements Telegraph  {
 
-	
-	
 	private static final long serialVersionUID = 1L;
 	public static final float WINDAMPLITUDE = 20f;
 	private final static Random RANDOMGENERATOR = new java.util.Random();
-	private static GameSpaceSprite grasSprite;
 	private static float wind;
 	private static float windWholeCircle;
 	private final GameSpaceSprite gras;
@@ -244,7 +241,6 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 						objectsToBeRendered++;
 					}
 				}
-				drawGrass(4, cell.getPoint());
 				return;
 			}
 
