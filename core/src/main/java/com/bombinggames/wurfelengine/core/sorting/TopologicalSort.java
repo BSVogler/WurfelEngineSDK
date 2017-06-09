@@ -274,7 +274,7 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 				&& objectsToBeRendered < maxsprites
 			){
 				Point pos = cell.getPoint();
-				drawGrass(30,pos);
+				drawGrass(10,pos);
 			}
 		}
 	}
