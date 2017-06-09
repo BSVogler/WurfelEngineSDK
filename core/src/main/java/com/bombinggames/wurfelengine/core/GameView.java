@@ -112,7 +112,7 @@ public class GameView implements GameManager {
      * game related stage. e.g. holds hud and gui
      */
     private Stage stage;
-    private final SpriteBatchWithZAxis gameSpaceSpriteBatch = new SpriteBatchWithZAxis(2000);
+    private final SpriteBatchWithZAxis gameSpaceSpriteBatch = new SpriteBatchWithZAxis(WE.getCVars().getValueI("MaxSprites"));
 	private final SpriteBatch projectionSpaceSpriteBatch = new SpriteBatch(1000);
     
     private LoadMenu loadMenu;
