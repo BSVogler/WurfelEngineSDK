@@ -44,7 +44,6 @@ import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.utils.viewport.StretchViewport;
 import com.bombinggames.wurfelengine.WE;
-import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Intersection;
 import com.bombinggames.wurfelengine.core.map.LoadMenu;
@@ -58,7 +57,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * The GameView manages everything what should be drawn in an active game in game space.
+ * The GameView manages everything what should be drawn in an active game in game space. It includes two batches. One for gamespace and one for projection space.
  * @author Benedikt
  */
 public class GameView implements GameManager {
