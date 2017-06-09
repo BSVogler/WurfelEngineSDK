@@ -839,7 +839,6 @@ public class RenderCell extends AbstractGameObject {
 		//	}
 		sprite.setColor(color);
 		sprite.draw(view.getProjectionSpaceSpriteBatch());
-		increaseDrawCalls();
 	}
   /**
 	 * Draws a side of a cell at a custom position. Applies color before
@@ -920,7 +919,6 @@ public class RenderCell extends AbstractGameObject {
 			((vertexcolor[sidecode+3] >> (20 - 10 * Channel.Blue.id)) & 0x3FF) / 1023f
 		);
 		sprite.draw(view.getGameSpaceSpriteBatch());
-		increaseDrawCalls();
     }
 
 	/**

@@ -102,6 +102,7 @@ public class SpriteBatchWithZAxis implements Batch {
 	 * The maximum number of sprites rendered in one batch so far. *
 	 */
 	public int maxSpritesInBatch = 0;
+	private int spritesRendered;
 
 	/**
 	 * Constructs a new SpriteBatch with a size of 1000, one buffer, and the
@@ -1067,6 +1068,7 @@ public class SpriteBatchWithZAxis implements Batch {
 		renderCalls++;
 		totalRenderCalls++;
 		int spritesInBatch = idx / GameSpaceSprite.SPRITE_SIZE;//the number of sprites
+		spritesRendered += spritesInBatch;
 		if (spritesInBatch > maxSpritesInBatch) {
 			maxSpritesInBatch = spritesInBatch;
 		}
@@ -1223,7 +1225,16 @@ public class SpriteBatchWithZAxis implements Batch {
 		return !blendingDisabled;
 	}
 
+	@Override
 	public boolean isDrawing() {
 		return drawing;
+	}
+	
+	/**
+	 * continually increasing
+	 * @return the amount of sprites rendered so far
+	 */
+	public int getRenderedSprites() {
+		return spritesRendered;
 	}
 }

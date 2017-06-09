@@ -128,6 +128,10 @@ public class GameView implements GameManager {
 	private boolean useDefaultShader;
 	
 	private RenderStorage renderstorage;
+	/**
+	 * the sprites rendered so fat
+	 */
+	private int numSpritesThisFrame;
     
 	/**
 	 * Loades some files and set up everything. After this has been inactive use {@link #onEnter() }
@@ -366,6 +370,8 @@ public class GameView implements GameManager {
 				Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT);
 			}
 		}
+	   
+	   int spritesStart = gameSpaceSpriteBatch.getRenderedSprites();
 
         //render every camera
         if (cameras.isEmpty()){
@@ -401,6 +407,7 @@ public class GameView implements GameManager {
 
 		//render buttons
 		stage.draw();
+		numSpritesThisFrame = gameSpaceSpriteBatch.getRenderedSprites()-spritesStart;
 	}
 	
 	/**
@@ -702,6 +709,10 @@ public class GameView implements GameManager {
 		stage.dispose();
 		
 		cameraIdCounter=0;
+	}
+
+	int getRenderedSprites() {
+		return numSpritesThisFrame;
 	}
 	
 }

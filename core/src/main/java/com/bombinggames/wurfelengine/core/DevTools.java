@@ -35,7 +35,6 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.bombinggames.wurfelengine.WE;
-import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.mapeditor.EditorView;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
@@ -108,7 +107,7 @@ public class DevTools {
         if (visible){
             //draw FPS-String
             view.drawString("FPS: "+ Gdx.graphics.getFramesPerSecond(), 15, 15,true);
-            view.drawString("Drawcalls: "+ AbstractGameObject.getDrawCalls(), 15, 30,true);
+            view.drawString("Sprites: "+ view.getRenderedSprites(), 15, 30,true);
             
             //draw diagramm
             ShapeRenderer shr = view.getShapeRenderer();
