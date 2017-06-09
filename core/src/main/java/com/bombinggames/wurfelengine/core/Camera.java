@@ -584,6 +584,7 @@ public class Camera{
 			AbstractGameObject.getTextureDiffuse().bind(0);
 
 			//render vom bottom to top
+			sorter.renderSorted();
 			view.getGameSpaceSpriteBatch().end();
 
 			//debug rendering
@@ -1035,6 +1036,8 @@ public class Camera{
 		Color linecolor =new Color(0, 1, 1, 1); 
 		sh.setColor(linecolor);
 		Renderable last = null;
+		sorter.createDepthList(depthlist);
+		
 		for (Renderable current : depthlist) {
 			if (last==null){
 				last = current;
