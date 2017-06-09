@@ -729,6 +729,7 @@ public class RenderCell extends AbstractGameObject {
 			color = Controller.getLightEngine().getColor(side, getPosition()).mul(color.r + 0.5f, color.g + 0.5f, color.b + 0.5f, color.a + 0.5f);
 		}
 		
+		GameView view = camera.getGameView();
 		Point tmpPoint = getPoint();
         renderSide(
 			view,
