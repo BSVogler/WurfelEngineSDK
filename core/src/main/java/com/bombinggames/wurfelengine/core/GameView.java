@@ -301,8 +301,6 @@ public class GameView implements GameManager {
     public void update(final float dt){
 		gameSpeed = WE.getCVars().getValueF("timespeed");
 		
-        AbstractGameObject.resetDrawCalls();
-        
         stage.act(dt);
 		        
         //update cameras
