@@ -311,49 +311,59 @@ public class Camera{
 
 			//orthographic camera, libgdx stuff
 			projection.setToOrtho(
-				-getWidthAfterProjSpc() / 2,
 				getWidthAfterProjSpc() / 2,
+				-getWidthAfterProjSpc() / 2,
 				-getHeightAfterProjSpc() / 2,
 				getHeightAfterProjSpc() / 2,
-				1,
-				10000
+				-1000,
+				10200
 			);
+			
+//			projection.setToProjection(
+//				100,
+//				1010,
+//				70,
+//				-16/9f
+//			);
+
 
 			//set up projection matrices
 			combined.set(projection);
 			
-			if (true){
+//			if (false){
+//				//move camera to the position
+//				viewMat.setToLookAt(
+//					new Vector3(position, 1),
+//					new Vector3(position, -1),
+//					new Vector3(-1,1,0)
+//				);
+//
+//				Matrix4.mul(combined.val, viewMat.val);
+//
+//
+//				//wurfel engine viewport matrix
+//				//there is some scaling in M11, keep it
+//				combined.val[Matrix4.M12] = combined.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
+//				combined.val[Matrix4.M11] *= -0.5f;
+//
+//				//by default z is negative?
+//				combined.val[Matrix4.M22] = 0.0f; // project to z to 0
+//				combined.val[Matrix4.M23] = 1f; // translate to z=1,
+//			} else {
 				//move camera to the position
 				viewMat.setToLookAt(
-					new Vector3(position, 1),
-					new Vector3(position, -1),
-					new Vector3(0,1,0)
-				);
-
-
-				Matrix4.mul(combined.val, viewMat.val);
-
-
-				//wurfel engine viewport matrix
-				//there is some scaling in M11, keep it
-				combined.val[Matrix4.M12] = combined.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
-				combined.val[Matrix4.M11] *= -0.5f;
-
-				//by default z is negative?
-				combined.val[Matrix4.M22] = 0.0f; // project to z to 0
-				combined.val[Matrix4.M23] = 1f; // translate to z=1,
-			} else {
-				//move camera to the position
-				viewMat.setToLookAt(
+					new Vector3(position.x,-position.y, 1),
 					new Vector3(position.x,-position.y, -1),
-					new Vector3(position.x,-position.y, 0),
 					new Vector3(0,-1,0)
 				);
 
 				viewMat.rotate(1.0f, 0.00f, 0.0f, 60);
 
 				Matrix4.mul(combined.val, viewMat.val);	
-			}
+			//}
+			
+			//gameView.getGameSpaceSpriteBatch().setTransformMatrix(new Matrix4().idt());
+			gameView.getGameSpaceSpriteBatch().setProjectionMatrix(combined);
 			
 			//recalculate the center position
 			updateCenter();
@@ -501,19 +511,20 @@ public class Camera{
 //			screenWidth=1024;
 //			screenHeight=1024;
 //			if (fbo == null) {
-//				fbo = new FrameBuffer(Format.RGBA8888, screenWidth, screenHeight, false);
+//				fbo = new FrameBuffer(Format.RGBA8888, screenWidth, screenHeight, true);
 //			}
 //			if (fboRegion == null) {
 //				fboRegion = new TextureRegion(fbo.getColorBufferTexture(), 0, 0,
 //					screenWidth, screenHeight);
 //				fboRegion.flip(false, true);
 //			}
-//			fbo.begin();
-//			
 //			Gdx.gl.glClearColor(0f, 1f, 0f, 0f);
-//			Gdx.gl.glClear(GL_COLOR_BUFFER_BIT);
-				
-			view.getGameSpaceSpriteBatch().setProjectionMatrix(combined);//game space
+//			Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+//			Gdx.gl20.glViewport(0, 0, fbo.getWidth(), fbo.getHeight());
+//			fbo.begin();
+			
+		//view.getGameSpaceSpriteBatch().setTransformMatrix(new Matrix4().idt());
+		//	view.getGameSpaceSpriteBatch().setProjectionMatrix(combined);//game space
 			
 			ShaderProgram shader = view.getShader();
 			if (shader==null) {
@@ -598,14 +609,14 @@ public class Camera{
 //			OrthographicCamera cam = new OrthographicCamera(Gdx.graphics.getWidth(),
 //				Gdx.graphics.getHeight());
 //			cam.setToOrtho(false, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-//			viewSpaceBatch.setProjectionMatrix(cam.combined);
-//			viewSpaceBatch.setShader(postprocessshader);
+//			view.getProjectionSpaceSpriteBatch().setProjectionMatrix(cam.combined);
+//			view.getProjectionSpaceSpriteBatch().setShader(postprocessshader);
 //			//fboRegion.getTexture().bind();
-//			viewSpaceBatch.begin();
-//			Gdx.gl.glClearColor(1f, 0f, 0f, 0f);
-//			Gdx.gl.glClear(GL_COLOR_BUFFER_BIT);
-//			viewSpaceBatch.draw(fboRegion, 0, 0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());
-//			viewSpaceBatch.end();
+//			Gdx.gl.glClearColor(0f, 0f, 0f, 0f);
+//			Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+//			view.getProjectionSpaceSpriteBatch().begin();
+//			view.getProjectionSpaceSpriteBatch().draw(fboRegion, 0, 0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());
+//			view.getProjectionSpaceSpriteBatch().end();
 		}
 	}
 

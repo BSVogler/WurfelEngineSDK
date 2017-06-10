@@ -359,8 +359,8 @@ public class GameView implements GameManager {
 				Gdx.gl.glClearDepthf(1f);
 				//Gdx.gl20.glDepthMask(true); // enable depth buffer writes
 				//Gdx.gl20.glColorMask(false,false,false,false); // disable color buffer writes
-				Gdx.gl.glDepthFunc(GL20.GL_LEQUAL);
 				Gdx.gl.glDepthRangef(0, 1);
+				Gdx.gl.glDepthFunc(GL20.GL_EQUAL);//gl_equal confirms that the depth is qual for every one
 				Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
 			} else {
 				Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
