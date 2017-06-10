@@ -148,11 +148,11 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 		Gdx.app.log("AGameObject", "getting spritesheet");
 		if (spritesheet == null) {
 			//if not in asset manager, then load into it
-			if (!WE.getAssetManager().isLoaded(spritesheetPath)) {
+			if (!WE.getAssetManager().isLoaded(spritesheetPath + ".txt")) {
 				WE.getAssetManager().load(spritesheetPath + ".txt", TextureAtlas.class);
 				WE.getAssetManager().finishLoadingAsset(spritesheetPath + ".txt");
 			}
-				spritesheet = WE.getAsset(spritesheetPath + ".txt");
+			spritesheet = WE.getAsset(spritesheetPath + ".txt");
 		}
 		textureDiff = spritesheet.getTextures().first();
 		if (WE.getCVars().getValueB("LEnormalMapRendering")) {
