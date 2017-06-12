@@ -106,6 +106,7 @@ public class GameplayScreen extends WEScreen {
 
 	@Override
 	public void renderImpl(final float delta) {
+		//game crashes if not in devmode
 		float avgDt = controller.getDevTools().getAverageDelta(WE.getCVars().getValueI("numFramesAverageDelta"));
 		
 		//aply game world speed
