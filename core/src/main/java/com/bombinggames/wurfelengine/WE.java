@@ -70,15 +70,11 @@ public class WE {
 	 * The version of the Engine
 	 */
 	public static final String VERSION = "1.7.6";
-	/**
-	 * the working directory where the config and files are saved
-	 */
-	private static final File WORKDIR = WorkingDirectory.getWorkingDirectory();
 
 	/**
-	 * The CVar system used by the engine.
+	 * The CVar system used by the engine. Uses the working dir as a root. WOrkdir must be set before intializing WE.
 	 */
-	private final static CVarSystemRoot CVARS = new CVarSystemRoot(new File(WORKDIR + "/engine.wecvars"));
+	private final static CVarSystemRoot CVARS = new CVarSystemRoot(new File( WorkingDirectory.getWorkingDirectory() + "/engine.wecvars"));
 	/**
 	 * The sound engine managing the sfx.
 	 */
@@ -492,7 +488,7 @@ public class WE {
 	 * @return a folder
 	 */
 	public static File getWorkingDirectory() {
-		return WORKDIR;
+		return  WorkingDirectory.getWorkingDirectory();
 	}
 
 	/**
