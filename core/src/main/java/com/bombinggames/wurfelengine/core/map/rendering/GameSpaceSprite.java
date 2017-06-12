@@ -100,7 +100,20 @@ public class GameSpaceSprite extends WETextureRegion {
 	private boolean dirty = true;
 	private Rectangle bounds;
 	private final Side side;
-	private int aoFlags;
+	/**
+	 * byte 0: left side, byte 1: top side, byte 2: right side.<br>In each byte the
+	 * bit order: <br>
+	 * &nbsp;&nbsp;\&nbsp;0/<br>
+	 * 7&nbsp;&nbsp;\/1<br>
+	 * \&nbsp;&nbsp;/\&nbsp;&nbsp;/<br>
+	 * 6\/8&nbsp;\/2<br>
+	 * &nbsp;/\&nbsp;&nbsp;/\<br>
+	 * /&nbsp;&nbsp;\/&nbsp;3\<br>
+	 * &nbsp;&nbsp;5/\<br>
+	 * &nbsp;&nbsp;/&nbsp;4\<br>
+	 * <br>
+	 **/
+	private byte aoFlags;
 	private float top;
 	private float left;
 	
@@ -108,9 +121,9 @@ public class GameSpaceSprite extends WETextureRegion {
 	 * An object helping with rendering a blokc made out of sides
 	 * @param region the texture used for rendering this side
 	 * @param side which side does this represent?, if null is no block side
-	 * @param aoFlags 
+	 * @param aoFlags uses one byte for a side
 	 */
-	public GameSpaceSprite(TextureRegion region, Side side, int aoFlags) {
+	public GameSpaceSprite(TextureRegion region, Side side, byte aoFlags) {
 		this.side = side;
 		setRegion(region);
 		this.aoFlags = aoFlags;
@@ -747,7 +760,7 @@ public class GameSpaceSprite extends WETextureRegion {
 		float shadowColor3 = NumberUtils.intToFloatColor((((intBits3 >>> 24) & 0xff) << 24) | ((int) (((intBits3 >>> 16) & 0xff) * ambientOcclusion) << 16) | ((int) (((intBits3 >>> 8) & 0xff) * ambientOcclusion) << 8) | ((int) ((intBits3 & 0xff) * ambientOcclusion)));
 		float shadowColor4 = NumberUtils.intToFloatColor((((intBits4 >>> 24) & 0xff) << 24) | ((int) (((intBits4 >>> 16) & 0xff) * ambientOcclusion) << 16) | ((int) (((intBits4 >>> 8) & 0xff) * ambientOcclusion) << 8) | ((int) ((intBits2 & 0xff) * ambientOcclusion)));
 			
-		if (side == Side.LEFT && ((byte) (aoFlags)) != 0) {//only if left side and there is ambient occlusion
+		if (side == Side.LEFT && aoFlags != 0) {//only if left side and there is ambient occlusion
 			if ((aoFlags & (1 << 2)) != 0) {//if right
 				vertices[C3] = shadowColor3;
 				vertices[C4] = shadowColor4;
@@ -769,53 +782,53 @@ public class GameSpaceSprite extends WETextureRegion {
 			}
 		}
 
-		if (side == Side.TOP && ((byte) (aoFlags >> 8)) != 0) {//only if top side and there is ambient occlusion
-			if ((aoFlags & (1 << 9)) != 0) {//if back right
+		if (side == Side.TOP && aoFlags != 0) {//only if top side and there is ambient occlusion
+			if ((aoFlags & (1 << 1)) != 0) {//if back right
 				vertices[C2] = shadowColor2;
 				vertices[C3] = shadowColor3;
 			}
 
-			if ((aoFlags & (1 << 11)) != 0) {//if front right
+			if ((aoFlags & (1 << 3)) != 0) {//if front right
 				vertices[C3] = shadowColor3;
 				vertices[C4] = shadowColor4;
-			} else if ((aoFlags & (1 << 10)) != 0) {//if right
+			} else if ((aoFlags & (1 << 2)) != 0) {//if right
 				vertices[C3] = shadowColor3;
 			}
 
 			//12 is never visible
-			if ((aoFlags & (1 << 13)) != 0) {//if front left
+			if ((aoFlags & (1 << 5)) != 0) {//if front left
 				vertices[C1] = shadowColor1;
 				vertices[C4] = shadowColor4;
-			} else if ((aoFlags & (1 << 14)) != 0) {//if left
+			} else if ((aoFlags & (1 << 6)) != 0) {//if left
 				vertices[C1] = shadowColor1;
 			}
 			if ((aoFlags & (1 << 15)) != 0) {//if back left
 				vertices[C1] = shadowColor1;
 				vertices[C2] = shadowColor2;
-			} else if ((aoFlags & 1 << 8) != 0) {//if back
+			} else if ((aoFlags & 1 << 0) != 0) {//if back
 				vertices[C2] = shadowColor2;
 			}
 		}
 
-		if (side == Side.RIGHT && ((byte) (aoFlags >> 16)) != 0) {//only if right side and there is ambient occlusion
-			if ((aoFlags & (1 << 18)) != 0) {//if right
+		if (side == Side.RIGHT && aoFlags != 0) {//only if right side and there is ambient occlusion
+			if ((aoFlags & (1 << 2)) != 0) {//if right
 				vertices[C3] = shadowColor3;
 				vertices[C4] = shadowColor4;
 			}
 
-			if ((aoFlags & (1 << 20)) != 0) {//if bottom
+			if ((aoFlags & (1 << 4)) != 0) {//if bottom
 				vertices[C1] = shadowColor1;
 				vertices[C4] = shadowColor4;
 			} else {
-				if ((aoFlags & (1 << 19)) != 0) {//if bottom right
+				if ((aoFlags & (1 << 3)) != 0) {//if bottom right
 					vertices[C4] = shadowColor4;
 				}
-				if ((aoFlags & (1 << 21)) != 0) {//if bottom left
+				if ((aoFlags & (1 << 5)) != 0) {//if bottom left
 					vertices[C1] = shadowColor1;
 				}
 			}
 
-			if ((aoFlags & (1 << 22)) != 0) {//if left
+			if ((aoFlags & (1 << 6)) != 0) {//if left
 				vertices[C1] = shadowColor1;
 				vertices[C2] = shadowColor2;
 			}
@@ -1107,7 +1120,7 @@ public class GameSpaceSprite extends WETextureRegion {
 	 *
 	 * @param aoFlags
 	 */
-	public void setAoFlags(int aoFlags) {
+	public void setAoFlags(byte aoFlags) {
 		this.aoFlags = aoFlags;
 	}
 }

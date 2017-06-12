@@ -524,9 +524,9 @@ public class RenderCell extends AbstractGameObject {
 	 * for topological sort. At the end contains both entities and blocks
 	 */
 	private final LinkedList<AbstractEntity> coveredEnts = new LinkedList<>();
-	private GameSpaceSprite site1;
-	private GameSpaceSprite site3;
-	private GameSpaceSprite site2;
+	private GameSpaceSprite side1;
+	private GameSpaceSprite side3;
+	private GameSpaceSprite side2;
 	/**
 	 * frame number to avoid multiple calculations in one frame
 	 */
@@ -835,7 +835,8 @@ public class RenderCell extends AbstractGameObject {
 		sprite.setColor(color);
 		sprite.draw(view.getProjectionSpaceSpriteBatch());
 	}
-  /**
+	
+	/**
 	 * Draws a side of a cell at a custom position. Applies color before
 	 * rendering and takes the lightlevel into account.
 	 *
@@ -859,22 +860,22 @@ public class RenderCell extends AbstractGameObject {
 		GameSpaceSprite sprite;
 		switch (side) {
 			case LEFT:
-				if (site1 == null) {
-					site1 = new GameSpaceSprite(getBlockSprite(id, value, side), side, aoFlags);
+				if (side1 == null) {
+					side1 = new GameSpaceSprite(getBlockSprite(id, value, side), side, (byte) (aoFlags&255));
 				}
-				sprite = site1;
+				sprite = side1;
 				break;
 			case TOP:
-				if (site2 == null) {
-					site2 = new GameSpaceSprite(getBlockSprite(id, value, side), side, aoFlags);
+				if (side2 == null) {
+					side2 = new GameSpaceSprite(getBlockSprite(id, value, side), side, (byte) ((aoFlags >> 8) & 255));
 				}
-				sprite = site2;
+				sprite = side2;
 				break;
 			default:
-				if (site3 == null) {
-					site3 = new GameSpaceSprite(getBlockSprite(id, value, side), side, aoFlags);
+				if (side3 == null) {
+					side3 = new GameSpaceSprite(getBlockSprite(id, value, side), side, (byte) ((aoFlags >> 16) & 255));
 				}
-				sprite = site3;
+				sprite = side3;
 				break;
 		}
 		//sprite.setRegion(getBlockSprite(id, value, side).getTexture());
@@ -1197,14 +1198,14 @@ public class RenderCell extends AbstractGameObject {
 	 */
 	public void setAoFlags(int aoFlags) {
 		if (aoFlags!=this.aoFlags){
-			if (site1 != null) {
-				site1.setAoFlags(aoFlags);
+			if (side1 != null) {
+				side1.setAoFlags((byte) (aoFlags & 255));
 			}
-			if (site2 != null) {
-				site2.setAoFlags(aoFlags);
+			if (side2 != null) {
+				side2.setAoFlags((byte) ((aoFlags >> 8) & 255));
 			}
-			if (site3 != null) {
-				site3.setAoFlags(aoFlags);
+			if (side3 != null) {
+				side3.setAoFlags((byte) ((aoFlags >> 16) & 255));
 			}
 		}
 			
