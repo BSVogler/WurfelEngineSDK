@@ -354,7 +354,7 @@ public class Camera{
 				viewMat.setToLookAt(
 					new Vector3(position.x,-position.y, 1),
 					new Vector3(position.x,-position.y, -1),
-					new Vector3(0,-1,0)
+					new Vector3(0,1,0)
 				);
 
 				viewMat.rotate(1.0f, 0.00f, 0.0f, 60);
