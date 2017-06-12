@@ -186,9 +186,7 @@ public class GameView implements GameManager {
 		String fragmentShader = WE.getWorkingDirectory().getAbsolutePath() + "/fragment"
 			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
 			+ ".fs";
-		String vertexShader = WE.getWorkingDirectory().getAbsolutePath() + "/vertex"
-			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
-			+ ".vs";
+		String vertexShader = WE.getWorkingDirectory().getAbsolutePath() + "/vertex.vs";
 
 		ShaderProgram newshader = null;
 		try {
