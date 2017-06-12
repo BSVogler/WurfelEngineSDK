@@ -95,7 +95,7 @@ public interface Renderable {
 	public Position getPosition();
 
 	/**
-	 * not copy save
+	 * Can be internal reference or shared object.
 	 *
 	 * @return
 	 * @see #getPosition()
