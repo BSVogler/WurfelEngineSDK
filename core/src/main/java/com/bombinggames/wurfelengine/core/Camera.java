@@ -543,7 +543,6 @@ public class Camera{
 			//Gdx.gl20.glBlendFunc(GL_SRC_ALPHA, GL20.GL_CONSTANT_COLOR);
 
 			//settings for this frame
-			view.setDebugRendering(false);
 			RenderCell.setStaticShade(WE.getCVars().getValueB("enableAutoShade"));
 			GameSpaceSprite.setAO(WE.getCVars().getValueF("ambientOcclusion"));
 			
@@ -599,8 +598,7 @@ public class Camera{
 			view.getGameSpaceSpriteBatch().end();
 
 			//debug rendering
-			view.setDebugRendering(WE.getCVars().getValueB("DevDebugRendering"));
-			if (view.debugRendering()) {
+			if (WE.getCVars().getValueB("DevDebugRendering")) {
 				drawDebug(view, camera);
 			}
 			//to render offscreen onscreen

@@ -91,11 +91,6 @@ public class GameView implements GameManager {
 	 */
     private final ArrayList<Camera> cameras = new ArrayList<>(6);//max 6 cameras
     
-	/**
-	 * true if current rendering is debug only
-	 */
-	private boolean inDebug;
-	
     private ShaderProgram shader;
     private ShapeRenderer shRenderer;
     
@@ -181,23 +176,6 @@ public class GameView implements GameManager {
 		return shader;
 	}
 	
-	/**
-	 * enable debug rendering only
-	 *
-	 * @param debug
-	 */
-	void setDebugRendering(boolean debug) {
-		this.inDebug = debug;
-	}
-
-	/**
-	 *
-	 * @return true if current rendering is debug only
-	 */
-	public boolean debugRendering() {
-		return inDebug;
-	}
-
 	/**
 	 * reloads the shaders
 	 */
