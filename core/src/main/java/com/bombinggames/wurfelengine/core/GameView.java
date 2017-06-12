@@ -413,7 +413,7 @@ public class GameView implements GameManager {
         return screenX / camera.getProjScaling()
 			- camera.getScreenPosX()
 			+ camera.getViewSpaceX()
-			- camera.getWidthAfterProjSpc()/2;//use left side
+			- camera.getWorldWidthViewport()/2;//use left side
     }
     
    /**
@@ -424,7 +424,7 @@ public class GameView implements GameManager {
      */
     public float screenYtoView(final int screenY, final Camera camera){
         return camera.getViewSpaceY() //to view space
-			+ camera.getHeightAfterProjSpc()/2//use top side, therefore /2
+			+ camera.getWorldHeightViewport()/2//use top side, therefore /2
 			- screenY / camera.getProjScaling() //to view space and then revert scaling
 			- camera.getScreenPosY(); //to projection space
     }

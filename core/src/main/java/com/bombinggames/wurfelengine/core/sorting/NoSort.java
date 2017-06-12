@@ -50,6 +50,9 @@ public class NoSort extends AbstractSorter {
 
 	private final GameView gameView;
 	private final CoveredByCameraIterator iterator;
+	/**
+	 * when set to true will render only block which should be rendered
+	 */
 	private final boolean filter = true;
 
 	public NoSort(Camera camera) {
@@ -101,7 +104,7 @@ public class NoSort extends AbstractSorter {
 			RenderCell cell = iterator.next();
 		
 			if (
-				(filter || cell.shouldBeRendered(camera)
+				(!filter || cell.shouldBeRendered(camera)
 				&& cell.getPosition().getZPoint() < renderlimit)
 				&& objectsToBeRendered < maxsprites
 			) {//fill only up to available size
@@ -147,7 +150,7 @@ public class NoSort extends AbstractSorter {
 			RenderCell cell = iterator.next();
 		
 			if (
-				(filter || cell.shouldBeRendered(camera)
+				(!filter || cell.shouldBeRendered(camera)
 				&& cell.getPosition().getZPoint() < renderlimit)
 				&& objectsToBeRendered < maxsprites
 			) {//fill only up to available size
