@@ -711,7 +711,7 @@ public class RenderCell extends AbstractGameObject {
 	}
        
 	/**
-     * Render a side of a block at the position of the coordinates.
+     * Render a side of a block at the position of the internal coordinates.
 	 * @param view
      * @param side The number identifying the side. 0=left, 1=top, 2=right
 	 * @param staticShade
@@ -744,6 +744,7 @@ public class RenderCell extends AbstractGameObject {
 				: color//pass color if not shading static
         );
 		
+		//should be copied to this rendercell and updated only on change.
 		byte health = getHealth();
 		if (health < 100) {
 			int damageOverlayStep = 0;
@@ -767,14 +768,14 @@ public class RenderCell extends AbstractGameObject {
 					case TOP:
 						renderDamageOverlay(
 							view,
-							getPoint().add(0, 0, RenderCell.GAME_EDGELENGTH),
+							tmpPoint.add(0, 0, RenderCell.GAME_EDGELENGTH),
 							(byte) (3 * damageOverlayStep + 1)
 						);
 						break;
 					case RIGHT:
 						renderDamageOverlay(
 							view,
-							getPoint().add(RenderCell.GAME_DIAGLENGTH2 / 2, 0, 0),
+							tmpPoint.add(RenderCell.GAME_DIAGLENGTH2 / 2, 0, 0),
 							(byte) (3 * damageOverlayStep + 2)
 						);
 						break;
