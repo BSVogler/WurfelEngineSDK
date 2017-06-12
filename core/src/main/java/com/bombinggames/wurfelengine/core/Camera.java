@@ -309,7 +309,7 @@ public class Camera{
 			}
 
 
-			//orthographic camera
+			//orthographic camera, libgdx stuff
 			projection.setToOrtho(
 				-getWorldWidthViewport()/ 2,
 				getWorldWidthViewport() / 2,
@@ -584,14 +584,14 @@ public class Camera{
 				shader.setUniformf("ambientColor", ambientColor);
 			}
 
-			//bind diffuse color to texture unit 0
-			//important that we specify 0 otherwise we'll still be bound to glActiveTexture(GL_TEXTURE1)
-			AbstractGameObject.getTextureDiffuse().bind(0);
-			
 			//bind normal map to texture unit 1
 			if (WE.getCVars().getValueB("LEnormalMapRendering")) {
 				AbstractGameObject.getTextureNormal().bind(1);
 			}
+
+			//bind diffuse color to texture unit 0
+			//important that we specify 0 otherwise we'll still be bound to glActiveTexture(GL_TEXTURE1)
+			AbstractGameObject.getTextureDiffuse().bind(0);
 
 			//render vom bottom to top
 			sorter.renderSorted();
