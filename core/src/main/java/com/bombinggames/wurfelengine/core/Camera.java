@@ -311,10 +311,10 @@ public class Camera{
 
 			//orthographic camera
 			projection.setToOrtho(
-				getWidthAfterProjSpc() / 2,
-				-getWidthAfterProjSpc() / 2,
-				-getHeightAfterProjSpc() / 2,
-				getHeightAfterProjSpc() / 2,
+				-getWorldWidthViewport()/ 2,
+				getWorldWidthViewport() / 2,
+				getWorldHeightViewport() / 2,
+				-getWorldHeightViewport() / 2,
 				-1000,
 				10200
 			);
@@ -548,8 +548,8 @@ public class Camera{
 			
 			view.getGameSpaceSpriteBatch().begin();
 			//upload uniforms
-			view.getShader().setUniformf("cameraPos",getCenter());
-			view.getShader().setUniformf("fogColor",
+			shader.setUniformf("cameraPos",getCenter());
+			shader.setUniformf("fogColor",
 				WE.getCVars().getValueF("fogR"),
 				WE.getCVars().getValueF("fogG"),
 				WE.getCVars().getValueF("fogB")
@@ -579,9 +579,9 @@ public class Camera{
 					moonColor = Controller.getLightEngine().getMoon(getCenter()).getLight();
 					ambientColor = Controller.getLightEngine().getAmbient(getCenter());
 				}
-				view.getShader().setUniformf("moonNormal", moonNormal);
-				view.getShader().setUniformf("moonColor", moonColor);
-				view.getShader().setUniformf("ambientColor", ambientColor);
+				shader.setUniformf("moonNormal", moonNormal);
+				shader.setUniformf("moonColor", moonColor);
+				shader.setUniformf("ambientColor", ambientColor);
 			}
 
 			//bind diffuse color to texture unit 0
@@ -747,7 +747,7 @@ public class Camera{
 	public void setZoom(float zoom) {
 		this.zoom = zoom;
 		widthAfterProj = (int) (widthView / zoom);//update cache
-		heightAfterProj = (int) (getHeightAfterViewSpc() / zoom);
+		heightAfterProj = (int) (screenHeight / (getProjScaling()*zoom));
 	}
 
 	/**
@@ -779,33 +779,13 @@ public class Camera{
 	}
 	
 	/**
-	 * The amount of pixel which are visible in X direction without zoom.
-	 * For screen pixels use {@link #getWidthScreenSpc()}.
-	 *
-	 * @return in view space
-	 */
-	public final int getWidthViewSpc() {
-		return widthView;
-	}
-
-	/**
-	 * The amount of game pixel which are visible in Y direction without zoom.
-	 * For screen pixels use {@link #getHeightScreenSpc() }.
-	 *
-	 * @return in view space
-	 */
-	public final int getHeightAfterViewSpc() {
-		return (int) (screenHeight / getProjScaling());
-	}
-
-	/**
 	 * The amount of game pixels which are visible in X direction after
 	 * the zoom has been applied. For screen pixels use
 	 * {@link #getWidthScreenSpc()}.
 	 *
 	 * @return in projection space
 	 */
-	public final int getWidthAfterProjSpc() {
+	public final int getWorldWidthViewport() {
 		return widthAfterProj;
 	}
 
@@ -815,7 +795,7 @@ public class Camera{
 	 *
 	 * @return in projection space
 	 */
-	public final int getHeightAfterProjSpc() {
+	public final int getWorldHeightViewport() {
 		return heightAfterProj;
 	}
 	

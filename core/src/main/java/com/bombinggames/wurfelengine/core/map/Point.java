@@ -291,12 +291,12 @@ public class Point extends Vector3 implements Position {
 
 	@Override
 	public int getProjectionSpaceX(GameView view, Camera camera) {
-		return (int) (getViewSpcX() - camera.getViewSpaceX() + camera.getWidthAfterProjSpc() / 2);// i think zoom and scaling is missing here
+		return (int) (getViewSpcX() - camera.getViewSpaceX() + camera.getWorldWidthViewport() / 2);// i think zoom and scaling is missing here
 	}
 	
 	@Override
 	public int getProjectionSpaceY(GameView view, Camera camera) {
-		return (int) (getViewSpcY()-camera.getViewSpaceY() + camera.getHeightAfterProjSpc() / 2);// i think zoom and scaling is missing here
+		return (int) (getViewSpcY()-camera.getViewSpaceY() + camera.getWorldHeightViewport() / 2);// i think zoom and scaling is missing here
 	}
 	
     
