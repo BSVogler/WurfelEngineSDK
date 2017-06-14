@@ -37,23 +37,27 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
+import com.badlogic.gdx.graphics.g3d.Renderable;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.GameView;
+import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
 import java.io.FileNotFoundException;
 import java.io.Serializable;
+import java.util.LinkedList;
 
 /**
  * An AbstractGameObject is something wich can be found in the game world.
  *
  * @author Benedikt
  */
-public abstract class AbstractGameObject implements Serializable, Renderable {
+public abstract class AbstractGameObject extends Renderable implements Serializable {
 
 	private transient static final long serialVersionUID = 2L;
 
@@ -265,6 +269,72 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	public abstract void setPosition(Position pos);
 
 	/**
+	 * How bright is the object? The lightlevel is a scale applied to the color.
+	 * 1 is default value.
+	 *
+	 * @return 1 is default bright. 0 is black.
+	 */
+	abstract public float getLightlevelR();
+
+	/**
+	 * How bright is the object? The lightlevel is a scale applied to the color.
+	 * 1 is default value.
+	 *
+	 * @return 1 is default bright. 0 is black.
+	 */
+	abstract public float getLightlevelG();
+
+	/**
+	 * How bright is the object? The lightlevel is a scale applied to the color.
+	 * 1 is default value.
+	 *
+	 * @return 1 is default bright. 0 is black.
+	 */
+	abstract public float getLightlevelB();
+
+	/**
+	 * Set the brightness of the object. The lightlevel is a scaling factor. 1
+	 * is default value.
+	 *
+	 * @param lightlevel 1 is default bright. 0 is black.
+	 */
+	abstract public void setLightlevel(float lightlevel);
+
+	/**
+	 * Return the coordinates of the object in the game world. Not copy safe as
+	 * it points to the interaly used object.
+	 *
+	 * @return Reference to the position object which points to the location in
+	 * the game world.
+	 * @see #getPoint()
+	 */
+	abstract public Position getPosition();
+
+	/**
+	 * Can be internal reference or shared object.
+	 *
+	 * @return
+	 * @see #getPosition()
+	 */
+	abstract public Point getPoint();
+
+	/**
+	 * not copy save
+	 *
+	 * @return
+	 * @see #getPosition()
+	 */
+	abstract public Coordinate getCoord();
+
+	/**
+	 * get the blocks which must be rendered before
+	 *
+	 * @param rs
+	 * @return
+	 */
+	abstract public LinkedList<RenderCell> getCoveredBlocks(RenderStorage rs);
+	
+	/**
 	 * Returns the depth of the object. The depth is the game world space
 	 * projected on one axis orthogonal to the camera's angle.
 	 * Objects nearer to camera have a bigger value.
@@ -277,11 +347,10 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	}
 
 	/**
-	 * Renders in game space.
-	 *
+	 * Draws an object if it is not hidden and not clipped.
+	 * in game space
 	 * @param view
 	 */
-	@Override
 	public void render(GameView view) {
 		byte id = getSpriteId();
 		byte value = getSpriteValue();
@@ -488,9 +557,15 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 		marked ^= (-((AbstractGameObject.currentMarkedFlag >> id) & 1) ^ marked) & (1 << id);
 	}
 
-	@Override
+	/**
+	 * Gives information if object should be rendered.
+	 *
+	 * @param camera
+	 * @return
+	 */
 	public boolean shouldBeRendered(Camera camera) {
 		return true;
 	}
+
 
 }

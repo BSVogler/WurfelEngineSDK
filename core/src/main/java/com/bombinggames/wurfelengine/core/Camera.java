@@ -43,7 +43,6 @@ import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
-import com.bombinggames.wurfelengine.core.gameobjects.Renderable;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
@@ -1024,10 +1023,10 @@ public class Camera{
 
 		Color linecolor =new Color(0, 1, 1, 1); 
 		sh.setColor(linecolor);
-		Renderable last = null;
+		AbstractGameObject last = null;
 		sorter.createDepthList(depthlist);
 		
-		for (Renderable current : depthlist) {
+		for (AbstractGameObject current : depthlist) {
 			if (last==null){
 				last = current;
 				continue;
