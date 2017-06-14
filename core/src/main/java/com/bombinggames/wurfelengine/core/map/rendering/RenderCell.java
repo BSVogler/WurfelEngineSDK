@@ -429,7 +429,7 @@ public class RenderCell extends AbstractGameObject {
 	}
 	
 	/**
-	 * set the timestamp when the content changed. This causes every field wich contains the covered neighbors to be rebuild. uses to prent dublicate rebuilds in one frame.
+	 * set the timestamp when the content changed. This causes every field wich contains the covered neighbors to be rebuild. uses to prenvent duplicate graph rebuilds in one frame.
 	 */
 	public static void rebuildCoverList() {
 		RenderCell.rebuildCoverList = Gdx.graphics.getFrameId();
