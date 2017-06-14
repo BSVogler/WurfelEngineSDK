@@ -30,8 +30,16 @@
  */
 package com.bombinggames.wurfelengine.core.sorting;
 
+import com.badlogic.gdx.ai.msg.MessageManager;
+import com.badlogic.gdx.ai.msg.Telegram;
+import com.badlogic.gdx.ai.msg.Telegraph;
 import com.bombinggames.wurfelengine.core.Camera;
+import com.bombinggames.wurfelengine.core.Events;
+import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
+import com.bombinggames.wurfelengine.core.map.Chunk;
+import com.bombinggames.wurfelengine.core.map.Iterators.CoveredByCameraIterator;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import java.util.LinkedList;
 
 /**
@@ -39,15 +47,59 @@ import java.util.LinkedList;
  * of the rendering, called the "depthlist". This is done every frame.
  *
  */
-public abstract class AbstractSorter {
+public abstract class AbstractSorter implements Telegraph  {
 
 	protected final Camera camera;
+	protected final LinkedList<RenderCell> cacheTopLevel = new LinkedList<>();
+	protected final GameView gameView;
 
 	public abstract void createDepthList(LinkedList<AbstractGameObject> depthlist);
 	public abstract void renderSorted();
 
 	AbstractSorter(Camera camera) {
 		this.camera = camera;
+		gameView = camera.getGameView();
+		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
+	}
+	
+	@Override
+	public boolean handleMessage(Telegram msg) {
+		if (msg.message == Events.mapChanged.getId()) {
+			rebuildTopLevelCache();
+			return false;
+		}
+		
+		return false;
+	}
+	/**
+	 * rebuilds the reference list for fields which will be called for the
+	 * depthsorting.
+	 * @param startingLayer
+	 */
+	public void rebuildTopLevelCache(int startingLayer) {
+		CoveredByCameraIterator iterator = new CoveredByCameraIterator(
+			gameView.getRenderStorage(),
+			camera.getCenterChunkX(),
+			camera.getCenterChunkY(),
+			startingLayer,
+			getTopLevel() - 1 //last layer
+		);
+		cacheTopLevel.clear();
+		//check/visit every visible cell
+		while (iterator.hasNext()) {
+			RenderCell cell = iterator.next();
+			cacheTopLevel.add(cell);
+		}
+	}
+	
+	public abstract void rebuildTopLevelCache();
+	
+	public int getTopLevel(){
+	if (gameView.getRenderStorage().getZRenderingLimit() == Float.POSITIVE_INFINITY) {
+			return Chunk.getBlocksZ();
+		} else {
+			return (int) (gameView.getRenderStorage().getZRenderingLimit() / RenderCell.GAME_EDGELENGTH);
+		}
 	}
 
 }

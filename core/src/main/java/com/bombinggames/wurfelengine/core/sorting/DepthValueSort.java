@@ -73,5 +73,10 @@ public class DepthValueSort extends AbstractSorter {
 			abstractGameObject.render(camera.getGameView());
 		}
 	}
+
+	@Override
+	public void rebuildTopLevelCache() {
+		nosorter.rebuildTopLevelCache();
+	}
 	
 }

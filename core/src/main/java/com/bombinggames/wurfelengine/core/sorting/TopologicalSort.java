@@ -30,20 +30,13 @@
  */
 package com.bombinggames.wurfelengine.core.sorting;
 
-import com.badlogic.gdx.ai.msg.MessageManager;
-import com.badlogic.gdx.ai.msg.Telegram;
-import com.badlogic.gdx.ai.msg.Telegraph;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.Controller;
-import com.bombinggames.wurfelengine.core.Events;
-import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import static com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject.getSprite;
-import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
-import com.bombinggames.wurfelengine.core.map.Iterators.CoveredByCameraIterator;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
@@ -56,7 +49,7 @@ import java.util.Random;
  *
  * @author Benedikt Vogler
  */
-public class TopologicalSort extends AbstractSorter implements Telegraph  {
+public class TopologicalSort extends AbstractSorter {
 
 	private static final long serialVersionUID = 1L;
 	public static final float WINDAMPLITUDE = 20f;
@@ -83,30 +76,15 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 	 * is rendered at the end
 	 */
 	private final LinkedList<AbstractEntity> renderAppendix = new LinkedList<>();
-	private final LinkedList<RenderCell> cacheTopLevel = new LinkedList<>();
-	private final GameView gameView;
 	private int objectsToBeRendered;
 	private int maxsprites;
 	
 	public TopologicalSort(Camera camera) {
 		super(camera);
-		gameView = camera.getGameView();
-		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
 		gras = new GameSpaceSprite(getSprite('e', (byte) 7, (byte) 0));
 		gras.setOrigin(gras.getWidth() / 2f, 0);
 		seed = RANDOMGENERATOR.nextFloat();
 	}
-	
-	@Override
-	public boolean handleMessage(Telegram msg) {
-		if (msg.message == Events.mapChanged.getId()) {
-			rebuildTopLevelCache();
-			return true;
-		}
-		
-		return false;
-	}
-	
 	
 	@Override
 	public void renderSorted() {
@@ -173,32 +151,6 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 		//render every entity which has no parent block at the end of the list
 		for (AbstractEntity abstractEntity : renderAppendix) {
 			abstractEntity.render(gameView);
-		}
-	}
-	
-	/**
-	 * rebuilds the reference list for fields whihc will be called for the
-	 * depthsorting.
-	 */
-	public void rebuildTopLevelCache() {
-		int topLevel;
-		if (gameView.getRenderStorage().getZRenderingLimit() == Float.POSITIVE_INFINITY) {
-			topLevel = Chunk.getBlocksZ();
-		} else {
-			topLevel = (int) (gameView.getRenderStorage().getZRenderingLimit() / RenderCell.GAME_EDGELENGTH);
-		}
-		CoveredByCameraIterator iterator = new CoveredByCameraIterator(
-			gameView.getRenderStorage(),
-			camera.getCenterChunkX(),
-			camera.getCenterChunkY(),
-			topLevel-2,
-			topLevel-1//last layer 
-		);
-		cacheTopLevel.clear();
-		//check/visit every visible cell
-		while (iterator.hasNext()) {
-			RenderCell cell = iterator.next();
-			cacheTopLevel.add(cell);
 		}
 	}
 	
@@ -333,5 +285,9 @@ public class TopologicalSort extends AbstractSorter implements Telegraph  {
 	public void createDepthList(LinkedList<AbstractGameObject> depthlist) {
 	}
 
+	@Override
+	public void rebuildTopLevelCache() {
+		super.rebuildTopLevelCache(getTopLevel() - 2);
+	}
 	
 }

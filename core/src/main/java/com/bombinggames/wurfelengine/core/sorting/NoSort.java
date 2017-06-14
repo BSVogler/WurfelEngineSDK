@@ -124,7 +124,6 @@ public class NoSort extends AbstractSorter {
 		//this should be made parallel via streams //ents.stream().parallel().forEach(action);?
 		int objectsToBeRendered = 0;
 		
-
 		//iterate over every block in renderstorage
 		int topLevel;
 		if (gameView.getRenderStorage().getZRenderingLimit() == Float.POSITIVE_INFINITY) {
@@ -137,14 +136,11 @@ public class NoSort extends AbstractSorter {
 		
 
 		//check/visit every visible cell
-		while (iterator.hasNext()) {
-			RenderCell cell = iterator.next();
-		
+		for (RenderCell cell : cacheTopLevel) {
 			if (
-				(!filter || cell.shouldBeRendered(camera)
-				&& cell.getPosition().getZPoint() < renderlimit)
-				&& objectsToBeRendered < maxsprites
-			) {//fill only up to available size
+				(!filter || cell.shouldBeRendered(camera))
+				&& objectsToBeRendered < maxsprites//fill only up to available size
+			) {
 				cell.render(gameView);
 				objectsToBeRendered++;
 			}
@@ -160,6 +156,11 @@ public class NoSort extends AbstractSorter {
 				objectsToBeRendered++;
 			}
 		}
+	}
+
+	@Override
+	public void rebuildTopLevelCache() {
+		super.rebuildTopLevelCache(0);
 	}
 	
 }
