@@ -123,16 +123,7 @@ public class NoSort extends AbstractSorter {
 				
 		//this should be made parallel via streams //ents.stream().parallel().forEach(action);?
 		int objectsToBeRendered = 0;
-		for (AbstractEntity ent : ents) {
-			if (ent.hasPosition()
-				&& !ent.isHidden()
-				&& camera.inViewFrustum(ent.getPosition())
-				&& ent.getPosition().getZ() < renderlimit
-			) {
-				ent.render(gameView);
-				objectsToBeRendered++;
-			}
-		}
+		
 
 		//iterate over every block in renderstorage
 		int topLevel;
@@ -155,6 +146,17 @@ public class NoSort extends AbstractSorter {
 				&& objectsToBeRendered < maxsprites
 			) {//fill only up to available size
 				cell.render(gameView);
+				objectsToBeRendered++;
+			}
+		}
+		
+		for (AbstractEntity ent : ents) {
+			if (ent.hasPosition()
+				&& !ent.isHidden()
+				&& camera.inViewFrustum(ent.getPosition())
+				&& ent.getPosition().getZ() < renderlimit
+			) {
+				ent.render(gameView);
 				objectsToBeRendered++;
 			}
 		}
