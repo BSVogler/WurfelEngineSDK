@@ -230,7 +230,6 @@ public class SpriteBatchWithZAxis implements Batch {
 		}
 		renderCalls = 0;
 
-		Gdx.gl.glDepthMask(false);
 		if (customShader != null) {
 			customShader.begin();
 		} else {
