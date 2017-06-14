@@ -68,7 +68,7 @@ import static com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZA
  *
  * @author Benedikt Vogler
  */
-public class GameSpaceSprite extends WETextureRegion {
+public class GameSpaceSprite extends TextureRegion {
 
 	static final int VERTEX_SIZE = 3 + 1 + 2;//x,y,z + color + u,v
 	static final int SPRITE_SIZE = 4 * VERTEX_SIZE;//four edges
