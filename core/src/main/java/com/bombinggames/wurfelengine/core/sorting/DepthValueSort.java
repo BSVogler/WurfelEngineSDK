@@ -41,7 +41,7 @@ import java.util.LinkedList;
 public class DepthValueSort extends AbstractSorter {
 
 	private final NoSort nosorter;
-	private LinkedList<AbstractGameObject> depthlist = new LinkedList<>();
+	private final LinkedList<AbstractGameObject> depthlist = new LinkedList<>();
 
 	public DepthValueSort(Camera camera) {
 		super(camera);
@@ -75,8 +75,8 @@ public class DepthValueSort extends AbstractSorter {
 	}
 
 	@Override
-	public void rebuildTopLevelCache() {
-		nosorter.rebuildTopLevelCache();
+	public void bakeIteratorCache() {
+		nosorter.bakeIteratorCache();
 	}
 	
 }

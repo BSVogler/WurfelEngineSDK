@@ -460,12 +460,12 @@ public class Camera{
 			//update the last center
 			lastCenterX = centerChunkX;
 			lastCenterY = centerChunkY;
+			checkNeededChunks();
 			//rebuild
 			RenderCell.rebuildCoverList();
-			sorter.rebuildTopLevelCache();
 		}
 
-		checkNeededChunks();
+		
 	}
 
 	/**

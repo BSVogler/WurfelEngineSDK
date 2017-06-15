@@ -43,59 +43,81 @@ import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import java.util.LinkedList;
 
 /**
- * Fills the cameracontent plus entities into a list and sorts it in the order
- * of the rendering, called the "depthlist". This is done every frame.
- *
+ * Fills the camera content with blocks and entities into a list and sorts it in
+ * the order of the rendering, called the "depthlist". This is done every frame.
  */
-public abstract class AbstractSorter implements Telegraph  {
+public abstract class AbstractSorter implements Telegraph {
 
 	protected final Camera camera;
-	protected final LinkedList<RenderCell> cacheTopLevel = new LinkedList<>();
+	protected final LinkedList<RenderCell> iteratorCache = new LinkedList<>();
 	protected final GameView gameView;
-
+	private final CoveredByCameraIterator iterator;
+	private int lastCenterX;
+	private int lastCenterY;
+	
 	public abstract void createDepthList(LinkedList<AbstractGameObject> depthlist);
+
 	public abstract void renderSorted();
 
 	AbstractSorter(Camera camera) {
 		this.camera = camera;
 		gameView = camera.getGameView();
 		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
+		iterator = new CoveredByCameraIterator(
+			gameView.getRenderStorage(),
+			camera,
+			0,
+			getTopLevel() - 1 //last layer
+		);
 	}
-	
+
 	@Override
 	public boolean handleMessage(Telegram msg) {
 		if (msg.message == Events.mapChanged.getId()) {
-			rebuildTopLevelCache();
-			return false;
+			AbstractSorter.this.bakeIteratorCache();
 		}
-		
+
 		return false;
 	}
+	
+	public void updateCacheIfOutdated(){
+		int centerChunkX = camera.getCenterChunkX();
+		int centerChunkY = camera.getCenterChunkY();
+		if (lastCenterX != centerChunkX
+			|| lastCenterY != centerChunkY
+		) {
+			//update the last center
+			lastCenterX = centerChunkX;
+			lastCenterY = centerChunkY;
+			AbstractSorter.this.bakeIteratorCache();
+		}
+	}
+
 	/**
 	 * rebuilds the reference list for fields which will be called for the
 	 * depthsorting.
+	 *
 	 * @param startingLayer
 	 */
-	public void rebuildTopLevelCache(int startingLayer) {
-		CoveredByCameraIterator iterator = new CoveredByCameraIterator(
-			gameView.getRenderStorage(),
-			camera.getCenterChunkX(),
-			camera.getCenterChunkY(),
-			startingLayer,
-			getTopLevel() - 1 //last layer
-		);
-		cacheTopLevel.clear();
-		//check/visit every visible cell
-		while (iterator.hasNext()) {
-			RenderCell cell = iterator.next();
-			cacheTopLevel.add(cell);
+	public void bakeIteratorCache(int startingLayer) {
+		//iterate over every block in renderstorage
+		int topLevel;
+		if (gameView.getRenderStorage().getZRenderingLimit() == Float.POSITIVE_INFINITY) {
+			topLevel = Chunk.getBlocksZ();
+		} else {
+			topLevel = (int) (gameView.getRenderStorage().getZRenderingLimit() / RenderCell.GAME_EDGELENGTH);
 		}
+		iterator.reset(camera.getCenterChunkX(), camera.getCenterChunkY());
+		iterator.setTopLimitZ(topLevel-1);
+		iteratorCache.clear();
+		//check/visit every visible cell
+		iterator.forEachRemaining(iteratorCache::add);
 	}
-	
-	public abstract void rebuildTopLevelCache();
-	
-	public int getTopLevel(){
-	if (gameView.getRenderStorage().getZRenderingLimit() == Float.POSITIVE_INFINITY) {
+
+	public abstract void bakeIteratorCache();
+
+	public int getTopLevel() {
+		if (gameView.getRenderStorage().getZRenderingLimit() == Float.POSITIVE_INFINITY) {
 			return Chunk.getBlocksZ();
 		} else {
 			return (int) (gameView.getRenderStorage().getZRenderingLimit() / RenderCell.GAME_EDGELENGTH);

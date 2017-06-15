@@ -79,6 +79,7 @@ public class TopologicalSort extends AbstractSorter {
 	private int objectsToBeRendered;
 	private int maxsprites;
 	
+	
 	public TopologicalSort(Camera camera) {
 		super(camera);
 		gras = new GameSpaceSprite(getSprite('e', (byte) 7, (byte) 0));
@@ -88,6 +89,7 @@ public class TopologicalSort extends AbstractSorter {
 	
 	@Override
 	public void renderSorted() {
+		updateCacheIfOutdated();
 		maxsprites = WE.getCVars().getValueI("MaxSprites");
 
 
@@ -125,7 +127,7 @@ public class TopologicalSort extends AbstractSorter {
 		//iterate over every block in renderstorage
 		objectsToBeRendered = 0;
 			
-		for (RenderCell cell : cacheTopLevel) {
+		for (RenderCell cell : iteratorCache) {
 			if (cell != RenderChunk.CELLOUTSIDE && camera.inViewFrustum(cell.getPosition())) {
 				visit(cell);
 			}
@@ -283,11 +285,12 @@ public class TopologicalSort extends AbstractSorter {
 
 	@Override
 	public void createDepthList(LinkedList<AbstractGameObject> depthlist) {
+		updateCacheIfOutdated();
 	}
 
 	@Override
-	public void rebuildTopLevelCache() {
-		super.rebuildTopLevelCache(getTopLevel() - 2);
+	public void bakeIteratorCache() {
+		super.bakeIteratorCache(getTopLevel() - 2);
 	}
 	
 }
