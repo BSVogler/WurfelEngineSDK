@@ -30,6 +30,7 @@
  */
 package com.bombinggames.wurfelengine.core.map.Iterators;
 
+import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
@@ -63,14 +64,13 @@ public class CoveredByCameraIterator implements Iterator<RenderCell> {
 	 * Starts at z = -1.
 	 *
 	 * @param renderStorage
-	 * @param centerCoordX the center chunk coordinate
-	 * @param centerCoordY the center chunk coordinate
+	 * @param camera camera which center is used
 	 * @param startingZ to loop over ground level pass -1
 	 * @param topLevel the top limit of the z axis
 	 */
-	public CoveredByCameraIterator(RenderStorage renderStorage, int centerCoordX, int centerCoordY, int startingZ, int topLevel) {
-		this.centerChunkX = centerCoordX;
-		this.centerChunkY = centerCoordY;
+	public CoveredByCameraIterator(RenderStorage renderStorage, Camera camera, int startingZ, int topLevel) {
+		this.centerChunkX = camera.getCenterChunkX();
+		this.centerChunkY = camera.getCenterChunkY();
 		if (startingZ < 0) {
 			startingZ = 0;
 		}
