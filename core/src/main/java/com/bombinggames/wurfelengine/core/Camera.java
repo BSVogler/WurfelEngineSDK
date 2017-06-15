@@ -307,16 +307,6 @@ public class Camera{
 				position.y += (float) (Math.random() * shakeAmplitude*dt % shakeAmplitude)-shakeAmplitude*0.5;
 			}
 
-
-			//orthographic camera, libgdx stuff
-			projection.setToOrtho(
-				-getWorldWidthViewport()/ 2,
-				getWorldWidthViewport() / 2,
-				getWorldHeightViewport() / 2,
-				-getWorldHeightViewport() / 2,
-				-1000,
-				10200
-			);
 			
 //			projection.setToProjection(
 //				100,
@@ -329,39 +319,57 @@ public class Camera{
 			//set up projection matrices
 			combined.set(projection);
 			
-//			if (false){
-//				//move camera to the position
-//				viewMat.setToLookAt(
-//					new Vector3(position, 1),
-//					new Vector3(position, -1),
-//					new Vector3(-1,1,0)
-//				);
-//
-//				Matrix4.mul(combined.val, viewMat.val);
-//
-//
-//				//wurfel engine viewport matrix
-//				//there is some scaling in M11, keep it
-//				combined.val[Matrix4.M12] = combined.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
-//				combined.val[Matrix4.M11] *= -0.5f;
-//
-//				//by default z is negative?
-//				combined.val[Matrix4.M22] = 0.0f; // project to z to 0
-//				combined.val[Matrix4.M23] = 1f; // translate to z=1,
-//			} else {
-				//move camera to the position
-				viewMat.setToLookAt(
-					new Vector3(position.x,-position.y, 1),
-					new Vector3(position.x,-position.y, -1),
-					new Vector3(0,1,0)
+			if (true){
+				projection.setToOrtho(
+					getWorldWidthViewport()/ 2,
+					-getWorldWidthViewport() / 2,
+					getWorldHeightViewport() / 2,
+					-getWorldHeightViewport() / 2,
+					1,
+					2200
 				);
 
-				viewMat.rotate(1.0f, 0.00f, 0.0f, 60);
-
-				Matrix4.mul(combined.val, viewMat.val);	
-			//}
+				//set up projection matrices
+				combined.set(projection);
 			
-			//gameView.getGameSpaceSpriteBatch().setTransformMatrix(new Matrix4().idt());
+				//move camera to the position
+				viewMat.setToLookAt(
+					new Vector3(position, 1),
+					new Vector3(position, -1),
+					new Vector3(0,-1,0)
+				);
+
+				Matrix4.mul(combined.val, viewMat.val);
+
+				//wurfel engine viewport matrix
+				//there is some scaling in M11, keep it
+				combined.val[Matrix4.M12] = combined.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
+				combined.val[Matrix4.M11] *= -0.5f;
+
+				//combined.val[Matrix4.M22] *= -1.0f; // keep z for clip space
+				combined.val[Matrix4.M23] *= -1f; // reverse z for better fit with near and far plance
+			} else {
+				//orthographic camera
+				projection.setToOrtho(
+					-getWorldWidthViewport() / 2,
+					getWorldWidthViewport() / 2,
+					getWorldHeightViewport() / 2,
+					-getWorldHeightViewport() / 2,
+					-100,
+					1020
+				);
+				//move camera to the position
+				viewMat.setToLookAt(
+					new Vector3(position.x, -position.y, 1),
+					new Vector3(position.x, -position.y, -1),
+					new Vector3(0, 1, 0)
+				);
+
+				viewMat.rotate(1, 0.00f, 0.0f, 60);
+
+				Matrix4.mul(combined.val, viewMat.val);
+			}
+			
 			gameView.getGameSpaceSpriteBatch().setProjectionMatrix(combined);
 			
 			//recalculate the center position
