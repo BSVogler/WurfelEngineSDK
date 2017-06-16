@@ -78,11 +78,13 @@ public class TopologicalSort extends AbstractSorter {
 	private final LinkedList<AbstractEntity> renderAppendix = new LinkedList<>();
 	private int objectsToBeRendered;
 	private int maxsprites;
+	private final GameSpaceSprite stone;
 	
 	
 	public TopologicalSort(Camera camera) {
 		super(camera);
 		gras = new GameSpaceSprite(getSprite('e', (byte) 7, (byte) 0));
+		stone = new GameSpaceSprite(getSprite('e', (byte) 7, (byte) 1));
 		gras.setOrigin(gras.getWidth() / 2f, 0);
 		seed = RANDOMGENERATOR.nextFloat();
 	}
@@ -243,42 +245,57 @@ public class TopologicalSort extends AbstractSorter {
 				//game space
 			float xPos = pos.getX();
 			float yPos = pos.getY();
+			//is the same each call
 			int xOffset = (int) (Math.abs((xPos - seed * 17) * i * (yPos)) % RenderCell.GAME_EDGELENGTH - RenderCell.GAME_EDGELENGTH2);
 			int yOffset = (int) (Math.abs(((xPos - i) * 3 * (yPos * seed * 11 - i))) % RenderCell.GAME_EDGELENGTH - RenderCell.GAME_EDGELENGTH2);
 			if (Math.abs(xOffset) + Math.abs(yOffset) < RenderCell.GAME_DIAGLENGTH2) {
-				gras.setColor(
-					1 / 2f,
-					1 / 2f - (xOffset + i) % 7 * 0.005f,
-					1 / 2f,
-					1
-				);
-				gras.setPosition(
+				GameSpaceSprite sprite;
+				if ((xPos+i * yPos * 17) % 7 == 0) {
+					sprite = stone;
+					sprite.setColor(
+						1 / 2f,
+						1 / 2f-Math.abs(xOffset*0.2f/RenderCell.GAME_DIAGLENGTH2),
+						1 / 2f-Math.abs(xOffset*0.2f/RenderCell.GAME_DIAGLENGTH2),
+						1
+					);
+				} else {
+					sprite = gras;
+					sprite.setScale(1-xOffset*0.3f/RenderCell.GAME_DIAGLENGTH2);
+					sprite.setColor(
+						1 / 2f,
+						1 / 2f - (xOffset + i) % 7 * 0.005f,
+						1 / 2f,
+						1
+					);
+					//wind
+					float distanceToForceCenter = (xPos + xOffset - posXForce + 100) * (xPos + xOffset - posXForce + 100)
+						+ (-yPos * 2 + yOffset - posYForce + 900) * (-yPos * 2 + yOffset - posYForce + 900);
+					float forceRot;
+					if (distanceToForceCenter > 200000) {
+						forceRot = 0;
+					} else {
+						forceRot = 600000 / (distanceToForceCenter);
+						if (posXForce < xPos) {
+							forceRot *= -1;
+						}
+						if (forceRot > 90) {
+							forceRot = 90;
+						}
+						if (forceRot < -90) {
+							forceRot = -90;
+						}
+					}
+					sprite.setRotation(i * 0.4f - 10.2f + wind + RANDOMGENERATOR.nextFloat() * noisenum * WINDAMPLITUDE / 2 + forceRot * 0.3f);
+				}
+				
+				sprite.setPosition(
 					xPos + xOffset,
 					yPos + RenderCell.GAME_DIAGLENGTH2 + yOffset,//there is something wrong with the rendering, so set center to the front
 					pos.getZ()
 				);
 
-				//wind
-				float distanceToForceCenter = (xPos + xOffset - posXForce + 100) * (xPos + xOffset - posXForce + 100)
-					+ (-yPos * 2 + yOffset - posYForce + 900) * (-yPos * 2 + yOffset - posYForce + 900);
-				float forceRot;
-				if (distanceToForceCenter > 200000) {
-					forceRot = 0;
-				} else {
-					forceRot = 600000 / (distanceToForceCenter);
-					if (posXForce < xPos) {
-						forceRot *= -1;
-					}
-					if (forceRot > 90) {
-						forceRot = 90;
-					}
-					if (forceRot < -90) {
-						forceRot = -90;
-					}
-				}
-				gras.setRotation(i * 0.4f - 10.2f + wind + RANDOMGENERATOR.nextFloat() * noisenum * WINDAMPLITUDE / 2 + forceRot * 0.3f);
 				objectsToBeRendered++;
-				gras.draw(gameView.getGameSpaceSpriteBatch());
+				sprite.draw(gameView.getGameSpaceSpriteBatch());
 			}
 		}
 	}
