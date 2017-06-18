@@ -99,12 +99,21 @@ public class NoSort extends AbstractSorter {
 		int objectsToBeRendered = 0;
 
 		//check/visit every visible cell
-		for (RenderCell cell : iteratorCache) {
-			if ((!filter || cell.shouldBeRendered(camera))
-				&& objectsToBeRendered < maxsprites//fill only up to available size
-				) {
-				cell.render(gameView);
-				objectsToBeRendered++;
+		if (filter) {
+			for (RenderCell cell : iteratorCache) {
+				if (cell.shouldBeRendered(camera)
+					&& objectsToBeRendered < maxsprites) {
+					cell.render(gameView);
+					objectsToBeRendered++;
+				}
+			}
+		} else {
+			//iteratorCache.stream().limit(maxsprites).parallel().forEach(c -> c.render(gameView));
+			for (RenderCell cell : iteratorCache) {
+				if (objectsToBeRendered < maxsprites) {
+					cell.render(gameView);
+					objectsToBeRendered++;
+				}
 			}
 		}
 
