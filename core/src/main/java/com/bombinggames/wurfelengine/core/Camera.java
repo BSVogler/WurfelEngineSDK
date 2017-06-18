@@ -318,8 +318,6 @@ public class Camera{
 
 
 			//set up projection matrices
-			combined.set(projection);
-			
 			if (true){
 				projection.setToOrtho(
 					getWorldWidthViewport()/ 2,
@@ -359,6 +357,8 @@ public class Camera{
 					-100,
 					1020
 				);
+				combined.set(projection);
+				
 				//move camera to the position
 				viewMat.setToLookAt(
 					new Vector3(position.x, -position.y, 1),
@@ -370,8 +370,6 @@ public class Camera{
 
 				Matrix4.mul(combined.val, viewMat.val);
 			}
-			
-			gameView.getGameSpaceSpriteBatch().setProjectionMatrix(combined);
 			
 			//recalculate the center position
 			updateCenter();
@@ -538,6 +536,7 @@ public class Camera{
 				return;
 			}
 			
+			view.getGameSpaceSpriteBatch().setProjectionMatrix(combined);
 			view.getGameSpaceSpriteBatch().setShader(shader);
 			//set up the viewport, yIndex-up
 			HdpiUtils.glViewport(screenPosX,
