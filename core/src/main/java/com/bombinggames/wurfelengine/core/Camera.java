@@ -142,6 +142,7 @@ public class Camera{
 	private AbstractSorter sorter;
 	
 	private int lastCenterX, lastCenterY;
+	private int sorterId;
 
 	/**
 	 * Updates the needed chunks after recaclucating the center chunk of the
@@ -439,9 +440,10 @@ public class Camera{
 		//this line is needed because the above does not work, calcualtes absolute position
 		centerChunkY = (int) Math.floor(-position.y / Chunk.getViewDepth());
 
-		if (sorter == null) {
+		int currentSorterId = WE.getCVars().getValueI("depthSorter");
+		if (sorter == null || currentSorterId != sorterId) {
 			//should react to an onchange event of cvar
-			switch (WE.getCVars().getValueI("depthSorter")) {
+			switch (currentSorterId) {
 				case 0:
 					sorter = new NoSort(this);
 					break;
@@ -452,6 +454,7 @@ public class Camera{
 					sorter = new DepthValueSort(this);
 					break;
 			}
+			sorterId = currentSorterId;
 		}
 		//check if center changed
 		if (lastCenterX != centerChunkX
