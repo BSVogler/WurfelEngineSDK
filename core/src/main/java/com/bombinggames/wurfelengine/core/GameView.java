@@ -353,8 +353,8 @@ public class GameView implements GameManager {
             drawString("No camera set up", Gdx.graphics.getWidth()/2, Gdx.graphics.getHeight()/2, Color.BLACK.cpy());
         } else {
 			setShader(getShader());
-            for (Camera camera : cameras) {
-                camera.render(this, camera);
+			for (Camera camera : cameras) {
+                camera.render(this);
             }
         }
                

@@ -468,7 +468,6 @@ public class Camera{
 			RenderCell.rebuildCoverList();
 		}
 
-		
 	}
 
 	/**
@@ -510,9 +509,8 @@ public class Camera{
 	 * Renders the viewport
 	 *
 	 * @param view
-	 * @param camera
 	 */
-	public void render(final GameView view, final Camera camera) {
+	public void render(final GameView view) {
 		if (active && Controller.getMap() != null) { //render only if map exists
 			
 //			//render offscreen
@@ -607,7 +605,7 @@ public class Camera{
 
 			//debug rendering
 			if (WE.getCVars().getValueB("DevDebugRendering")) {
-				drawDebug(view, camera);
+				drawDebug(view, this);
 			}
 			//to render offscreen onscreen
 //			fbo.end();
