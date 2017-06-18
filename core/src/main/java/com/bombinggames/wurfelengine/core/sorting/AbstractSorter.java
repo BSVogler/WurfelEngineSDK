@@ -89,7 +89,7 @@ public abstract class AbstractSorter implements Telegraph {
 			//update the last center
 			lastCenterX = centerChunkX;
 			lastCenterY = centerChunkY;
-			AbstractSorter.this.bakeIteratorCache();
+			bakeIteratorCache();
 		}
 	}
 
