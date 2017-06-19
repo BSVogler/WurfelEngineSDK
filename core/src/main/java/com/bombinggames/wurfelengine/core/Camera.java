@@ -43,6 +43,7 @@ import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
+import com.bombinggames.wurfelengine.core.lightengine.LightEngine;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
@@ -545,48 +546,43 @@ public class Camera{
 				getHeightScreenSpc()
 			);
 
-			//Gdx.gl20.glBlendFunc(GL_SRC_ALPHA, GL20.GL_CONSTANT_COLOR);
-
 			//settings for this frame
 			RenderCell.setStaticShade(WE.getCVars().getValueB("enableAutoShade"));
 			GameSpaceSprite.setAO(WE.getCVars().getValueF("ambientOcclusion"));
 			
 			view.getGameSpaceSpriteBatch().begin();
 			//upload uniforms
-			shader.setUniformf("cameraPos",getCenter());
-			shader.setUniformf("fogColor",
+			shader.setUniformf("u_cameraPos",getCenter());
+			shader.setUniformf("u_fogColor",
 				WE.getCVars().getValueF("fogR"),
 				WE.getCVars().getValueF("fogG"),
 				WE.getCVars().getValueF("fogB")
 			);
-			if (focusEntity!=null)
-				shader.setUniformf("playerpos",focusEntity.getPoint());
+			if (focusEntity != null) {
+				shader.setUniformf("u_playerpos", focusEntity.getPoint());
+				shader.setUniformf("u_localLightPos", focusEntity.getPoint());
+			}
 			//send a Vector4f to GLSL
 			if (WE.getCVars().getValueB("enablelightengine")) {
+				LightEngine le = Controller.getLightEngine();
 				shader.setUniformf(
-					"sunNormal",
-					Controller.getLightEngine().getSun(getCenter()).getNormal()
+					"u_sunNormal",
+					le.getSun(getCenter()).getNormal()
 				);
 				shader.setUniformf(
-					"sunColor",
-					Controller.getLightEngine().getSun(getCenter()).getLight()
+					"u_sunColor",
+					le.getSun(getCenter()).getLight()
 				);
 				
-				Vector3 moonNormal;
-				Color moonColor;
-				Color ambientColor;
-				if (Controller.getLightEngine().getMoon(getCenter()) == null) {
-					moonNormal = new Vector3();
-					moonColor = new Color();
-					ambientColor = new Color();
+				if (le.getMoon(getCenter()) == null) {
+					shader.setUniformf("u_moonNormal", new Vector3());
+					shader.setUniformf("u_moonColor", new Color());
+					shader.setUniformf("u_ambientColor", new Color());
 				} else {
-					moonNormal = Controller.getLightEngine().getMoon(getCenter()).getNormal();
-					moonColor = Controller.getLightEngine().getMoon(getCenter()).getLight();
-					ambientColor = Controller.getLightEngine().getAmbient(getCenter());
+					shader.setUniformf("u_moonNormal", le.getMoon(getCenter()).getNormal());
+					shader.setUniformf("u_moonColor",le.getMoon(getCenter()).getLight());
+					shader.setUniformf("u_ambientColor", le.getAmbient(getCenter()));
 				}
-				shader.setUniformf("moonNormal", moonNormal);
-				shader.setUniformf("moonColor", moonColor);
-				shader.setUniformf("ambientColor", ambientColor);
 			}
 
 			//bind normal map to texture unit 1

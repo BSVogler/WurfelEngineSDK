@@ -83,8 +83,8 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 		return entityMap;
 	}
 	
-	private float lightlevelG;
 	private float lightlevelR;
+	private float lightlevelG;
 	private float lightlevelB;
 	private float health = 100f;
     private Point position;//the position in the map-grid
