@@ -533,7 +533,8 @@ public class Camera{
 			
 			ShaderProgram shader = view.getShader();
 			if (shader==null) {
-				Gdx.app.error("Camera", "no shader found");
+				Gdx.app.error("Camera", "no shader found. Camera deactivated.");
+				setActive(false);
 				return;
 			}
 			
