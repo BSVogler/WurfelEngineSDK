@@ -641,7 +641,7 @@ public class WE {
 			}
 			return shader;
 		} else {
-			throw new Exception("Could not compile shader: " + shader.getLog());
+			throw new Exception("Could not compile shader "+fragmentPath+"\n"+vertexPath+"\n" + shader.getLog());
 		}
 	}
 
