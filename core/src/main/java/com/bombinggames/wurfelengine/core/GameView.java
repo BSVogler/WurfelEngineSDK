@@ -330,13 +330,12 @@ public class GameView implements GameManager {
         //clear screen if wished
        if (WE.getCVars().getValueB(("clearBeforeRendering"))) {
 			Gdx.gl20.glClearColor(0, 0, 0, 1);//black
-			if (WE.getCVars().getValueB(("zbuffer"))) {
+			if (WE.getCVars().getValueI(("depthbuffer"))==1) {
 				Gdx.gl20.glEnable(GL20.GL_DEPTH_TEST);
 				Gdx.gl.glClearDepthf(1f);
 				Gdx.gl20.glDepthMask(true); // enable depth buffer writes
-				//Gdx.gl20.glColorMask(false,false,false,false); // disable color buffer writes
 				Gdx.gl.glDepthRangef(0, 1);
-				Gdx.gl.glDepthFunc(GL20.GL_LEQUAL);//gl_equal confirms that the depth is qual for every one
+				Gdx.gl.glDepthFunc(GL20.GL_LEQUAL);
 				Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
 			} else {
 				Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);

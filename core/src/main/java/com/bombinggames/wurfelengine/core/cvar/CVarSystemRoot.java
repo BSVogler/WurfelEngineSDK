@@ -47,7 +47,6 @@ public class CVarSystemRoot extends AbstractCVarSystem {
 	public CVarSystemRoot(File path) {
 		super(path);
 		System.out.println("Init Engine CVars…");
-		register(new BooleanCVar(true), "zbuffer");
 		register(new FloatCVar(9.81f), "gravity");
 		register(new IntCVar(-40), "worldSpinAngle");
 		register(new BooleanCVar(false), "loadPixmap");
@@ -135,6 +134,7 @@ public class CVarSystemRoot extends AbstractCVarSystem {
 		register(new IntCVar(500), "mapIndexSpaceSize");
 		register(new IntCVar(536870912), "mapMaxMemoryUseBytes");//bytes, 512MB->17,9km^2
 		register(new BooleanCVar(false), "showMiniMapChunk");
+		register(new IntCVar(0), "depthbuffer");//0 disabled, 1 zbuffer 2 depth peeling
 		register(new IntCVar(1), "depthSorter");
 	}
 }
