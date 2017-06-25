@@ -36,7 +36,9 @@ import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.glutils.FrameBuffer;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
@@ -44,6 +46,7 @@ import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.utils.viewport.StretchViewport;
 import com.bombinggames.wurfelengine.WE;
+import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Intersection;
 import com.bombinggames.wurfelengine.core.map.LoadMenu;
@@ -126,6 +129,10 @@ public class GameView implements GameManager {
 	 * the sprites rendered so fat
 	 */
 	private int numSpritesThisFrame;
+	private int depthTexture;
+	private int depthBuffer;
+	private FrameBuffer fbo;
+	private ShaderProgram depthShader;
     
 	/**
 	 * Loades some files and set up everything. After this has been inactive use {@link #onEnter() }
@@ -183,14 +190,14 @@ public class GameView implements GameManager {
 		Gdx.app.debug("Shader", "loading");
 		
 		//try loading external shader
-		String fragmentShader = WE.getWorkingDirectory().getAbsolutePath() + "/fragment"
-			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
+		String fragment = WE.getWorkingDirectory().getAbsolutePath() + "/fragment"
+			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "_NM": "")
 			+ ".fs";
-		String vertexShader = WE.getWorkingDirectory().getAbsolutePath() + "/vertex.vs";
+		String vertex = WE.getWorkingDirectory().getAbsolutePath() + "/vertex.vs";
 
 		ShaderProgram newshader = null;
 		try {
-			newshader = WE.loadShader(false, fragmentShader, vertexShader);
+			newshader = WE.loadShader(false, fragment, vertex);
 			for (Camera camera : cameras) {
 				camera.loadShader();
 			}
@@ -199,16 +206,14 @@ public class GameView implements GameManager {
 			Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
 		}
 
-		//could not load initial external shader, so try laoding internal
+		//could not load initial external shader, so try loading internal
 		if (newshader == null) {
-			fragmentShader = "com/bombinggames/wurfelengine/core/fragment"
-				+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
+			fragment = "com/bombinggames/wurfelengine/core/fragment"
+				+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "_NM" : "")
 				+ ".fs";
-			vertexShader = "com/bombinggames/wurfelengine/core/vertex"
-				+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
-				+ ".vs";
+			vertex = "com/bombinggames/wurfelengine/core/vertex.vs";
 			try {
-				newshader = WE.loadShader(true, fragmentShader, vertexShader);
+				newshader = WE.loadShader(true, fragment, vertex);
 			} catch (Exception ex) {
 				WE.getConsole().add(ex.getLocalizedMessage());
 				if (newshader == null) {
@@ -223,7 +228,27 @@ public class GameView implements GameManager {
 			shader.begin();
 			//our normal map
 			shader.setUniformi("u_normals", 1); //GL_TEXTURE1
-			shader.end();
+			if (WE.getCVars().getValueI("depthbuffer") == 2) {
+				shader.setUniformi("u_depth", 2); //GL_TEXTURE2
+			}
+			shader.end();	
+		}
+		
+		if (WE.getCVars().getValueI("depthbuffer") == 2){
+			try {
+				String frag = WE.getWorkingDirectory().getAbsolutePath() + "/fragment_DP.fs";
+				String vert = WE.getWorkingDirectory().getAbsolutePath() + "/vertex.vs";
+				depthShader = WE.loadShader(false, frag, vert);
+				depthShader.begin();
+				//our normal map
+				depthShader.setUniformi("u_normals", 1); //GL_TEXTURE1
+				if (WE.getCVars().getValueI("depthbuffer") == 2) {
+					depthShader.setUniformi("u_depth", 2); //GL_TEXTURE2
+				}
+				depthShader.end();
+			} catch (Exception ex) {
+				Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
+			}
 		}
 	}
 
@@ -329,11 +354,11 @@ public class GameView implements GameManager {
         
         //clear screen if wished
        if (WE.getCVars().getValueB(("clearBeforeRendering"))) {
-			Gdx.gl20.glClearColor(0, 0, 0, 1);//black
-			if (WE.getCVars().getValueI(("depthbuffer"))==1) {
+			Gdx.gl20.glClearColor(1, 0, 0, 1);//black
+			if (WE.getCVars().getValueI(("depthbuffer"))>0) {
 				Gdx.gl20.glEnable(GL20.GL_DEPTH_TEST);
 				Gdx.gl.glClearDepthf(1f);
-				Gdx.gl20.glDepthMask(true); // enable depth buffer writes
+				Gdx.gl20.glDepthMask(true); // enable depth depthTexture writes
 				Gdx.gl.glDepthRangef(0, 1);
 				Gdx.gl.glDepthFunc(GL20.GL_LEQUAL);
 				Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
@@ -351,11 +376,87 @@ public class GameView implements GameManager {
             Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT);
             drawString("No camera set up", Gdx.graphics.getWidth()/2, Gdx.graphics.getHeight()/2, Color.BLACK.cpy());
         } else {
-			setShader(getShader());
-			for (Camera camera : cameras) {
-                camera.render(this);
-            }
-        }
+								
+			//depth peeling enabled, dual pass
+			if (WE.getCVars().getValueI("depthbuffer") == 2) {
+				//is this needed every frame?
+				if (depthTexture==0)
+					depthTexture = Gdx.gl.glGenTexture();
+				
+				//upload depth texture
+				Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
+				//Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
+				
+				int xres = Gdx.graphics.getBackBufferWidth();
+				int yres = Gdx.graphics.getBackBufferHeight();
+				//specifiy last bound texture
+				Gdx.gl.glTexImage2D(GL20.GL_TEXTURE_2D, 0, GL20.GL_DEPTH_COMPONENT16, xres, yres, 0, GL20.GL_DEPTH_COMPONENT, GL20.GL_FLOAT, null);
+				Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MAG_FILTER, GL20.GL_NEAREST);
+				Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MIN_FILTER, GL20.GL_NEAREST); 
+				Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_S, GL20.GL_CLAMP_TO_EDGE);
+				Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_T, GL20.GL_CLAMP_TO_EDGE);
+				
+//				int renderbuffer = Gdx.gl.glGenRenderbuffer();
+//				Gdx.gl.glBindRenderbuffer(GL20.GL_RENDERBUFFER, renderbuffer);
+//				Gdx.gl.glRenderbufferStorage(GL20.GL_RENDERBUFFER, GL20.GL_DEPTH_COMPONENT, 1024, 768);
+//				Gdx.gl.glFramebufferRenderbuffer(GL20.GL_FRAMEBUFFER, GL20.GL_DEPTH_ATTACHMENT, GL20.GL_RENDERBUFFER, renderbuffer);
+				
+				// Set "renderedTexture" as our colour attachement #0
+				//Gdx.gl.glFramebufferTexture(GL20.GL_FRAMEBUFFER, GL20.GL_COLOR_ATTACHMENT0, renderedTexture, 0);
+				//Gdx.gl.glTexImage2D(GL20.GL_TEXTURE_2D, 0,GL20.GL_RGB, 1024, 768, 0,GL20.GL_RGB, GL20.GL_UNSIGNED_BYTE, null);
+				
+				//create new framebuffer
+				if (fbo==null) {
+					fbo = new FrameBuffer(Pixmap.Format.RGBA8888, xres, yres, true);
+				}
+				fbo.begin();
+				//active framebuffer, use this texture as your depth buffer from now on
+				Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, GL20.GL_DEPTH_ATTACHMENT, GL20.GL_TEXTURE_2D, depthTexture, 0);
+				
+				if(Gdx.gl.glCheckFramebufferStatus(GL20.GL_FRAMEBUFFER) != GL20.GL_FRAMEBUFFER_COMPLETE)
+					throw new AbstractMethodError();
+				
+				Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
+				Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
+				AbstractGameObject.getTextureDiffuse().bind(0);
+				
+	//			Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
+				//Gdx.gl.glDisable(GL20.GL_BLEND);
+				Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+			
+				//first pass
+				for (Camera camera : cameras) {
+					camera.render(this);
+				}
+				fbo.end();
+				
+//				Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
+//				Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
+				//AbstractGameObject.getTextureNormal().bind(1);
+//				AbstractGameObject.getTextureDiffuse().bind(0);
+				
+				//Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
+//				
+//				//blend, from nvidia dual depth depthTexture paper
+				Gdx.gl.glEnable(GL20.GL_BLEND);
+				Gdx.gl.glBlendEquation(GL20.GL_FUNC_ADD);
+				Gdx.gl.glBlendFuncSeparate(GL20.GL_DST_ALPHA, GL20.GL_ONE, GL20.GL_ZERO, GL20.GL_ONE_MINUS_SRC_ALPHA);
+//				//second pass
+				ShaderProgram regularShader = shader;
+				shader = depthShader;
+				for (Camera camera : cameras) {
+					camera.render(this);
+				}
+				shader = regularShader;
+			} else {
+				
+				AbstractGameObject.getTextureDiffuse().bind(0);
+				setShader(getShader());
+				for (Camera camera : cameras) {
+					camera.render(this);
+				}
+			}
+		}
                
         //render HUD and GUI
 		useDefaultShader();

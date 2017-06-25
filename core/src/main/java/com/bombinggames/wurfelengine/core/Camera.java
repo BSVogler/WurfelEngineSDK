@@ -586,15 +586,6 @@ public class Camera{
 				}
 			}
 
-			//bind normal map to texture unit 1
-			if (WE.getCVars().getValueB("LEnormalMapRendering")) {
-				AbstractGameObject.getTextureNormal().bind(1);
-			}
-
-			//bind diffuse color to texture unit 0
-			//important that we specify 0 otherwise we'll still be bound to glActiveTexture(GL_TEXTURE1)
-			AbstractGameObject.getTextureDiffuse().bind(0);
-
 			//render vom bottom to top
 			sorter.renderSorted();
 			view.getGameSpaceSpriteBatch().end();
@@ -615,7 +606,7 @@ public class Camera{
 //			Gdx.gl.glClearColor(0f, 0f, 0f, 0f);
 //			Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
 //			view.getProjectionSpaceSpriteBatch().begin();
-//			view.getProjectionSpaceSpriteBatch().draw(fboRegion, 0, 0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());
+			//view.getProjectionSpaceSpriteBatch().draw(fboRegion, 0, 0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());
 //			view.getProjectionSpaceSpriteBatch().end();
 		}
 	}

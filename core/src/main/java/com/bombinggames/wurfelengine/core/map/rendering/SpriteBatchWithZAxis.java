@@ -1074,7 +1074,7 @@ public class SpriteBatchWithZAxis implements Batch {
 		
 		int count = spritesInBatch * 6;//why 6??? two triangels with 3 vertices
 
-		lastTexture.bind();
+		//lastTexture.bind();
 		Mesh mesh = this.mesh;
 		mesh.setVertices(vertices, 0, idx);
 		mesh.getIndicesBuffer().position(0);
