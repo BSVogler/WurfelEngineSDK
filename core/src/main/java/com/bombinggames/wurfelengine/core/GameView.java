@@ -171,6 +171,10 @@ public class GameView implements GameManager {
 		renderstorage = new RenderStorage();
 		MessageManager.getInstance().addListener(renderstorage, Events.mapChanged.getId());
 		initalized = true;
+		
+		int xres = Gdx.graphics.getBackBufferWidth();
+		int yres = Gdx.graphics.getBackBufferHeight();
+		fbo = new FrameBuffer(Pixmap.Format.RGBA8888, xres, yres, true);
 	}
 	
 	
@@ -406,11 +410,8 @@ public class GameView implements GameManager {
 				//Gdx.gl.glTexImage2D(GL20.GL_TEXTURE_2D, 0,GL20.GL_RGB, 1024, 768, 0,GL20.GL_RGB, GL20.GL_UNSIGNED_BYTE, null);
 				
 				//create new framebuffer
-				if (fbo==null) {
-					fbo = new FrameBuffer(Pixmap.Format.RGBA8888, xres, yres, true);
-				}
-				fbo.begin();
-				//active framebuffer, use this texture as your depth buffer from now on
+//				fbo.begin();
+				//active framebuffer, attach this texture as your depth buffer from now on
 				Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, GL20.GL_DEPTH_ATTACHMENT, GL20.GL_TEXTURE_2D, depthTexture, 0);
 				
 				if(Gdx.gl.glCheckFramebufferStatus(GL20.GL_FRAMEBUFFER) != GL20.GL_FRAMEBUFFER_COMPLETE)
