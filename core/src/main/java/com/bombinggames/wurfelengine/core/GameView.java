@@ -358,7 +358,7 @@ public class GameView implements GameManager {
         
         //clear screen if wished
        if (WE.getCVars().getValueB(("clearBeforeRendering"))) {
-			Gdx.gl20.glClearColor(1, 0, 0, 1);//black
+			Gdx.gl20.glClearColor(0, 0, 0, 1);//black
 			if (WE.getCVars().getValueI(("depthbuffer"))>0) {
 				Gdx.gl20.glEnable(GL20.GL_DEPTH_TEST);
 				Gdx.gl.glClearDepthf(1f);
@@ -383,6 +383,7 @@ public class GameView implements GameManager {
 								
 			//depth peeling enabled, dual pass
 			if (WE.getCVars().getValueI("depthbuffer") == 2) {
+				Gdx.gl20.glClearColor(1, 0, 0, 1);
 				//is this needed every frame?
 				if (depthTexture==0)
 					depthTexture = Gdx.gl.glGenTexture();
@@ -417,19 +418,20 @@ public class GameView implements GameManager {
 				if(Gdx.gl.glCheckFramebufferStatus(GL20.GL_FRAMEBUFFER) != GL20.GL_FRAMEBUFFER_COMPLETE)
 					throw new AbstractMethodError();
 				
+				Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+			
 				Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
 				Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
 				AbstractGameObject.getTextureDiffuse().bind(0);
-				
-	//			Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
-				//Gdx.gl.glDisable(GL20.GL_BLEND);
-				Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
-			
 				//first pass
 				for (Camera camera : cameras) {
 					camera.render(this);
 				}
-				fbo.end();
+//				fbo.end();
+				
+//				Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
+//				Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
+//				AbstractGameObject.getTextureDiffuse().bind(0);
 				
 //				Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
 //				Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
