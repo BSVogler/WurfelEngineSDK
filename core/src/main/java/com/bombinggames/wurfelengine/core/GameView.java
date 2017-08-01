@@ -133,6 +133,7 @@ public class GameView implements GameManager {
 	private int depthBuffer;
 	private FrameBuffer fbo;
 	private ShaderProgram depthShader;
+	private int depthTexture1;
     
 	/**
 	 * Loades some files and set up everything. After this has been inactive use {@link #onEnter() }
@@ -378,27 +379,45 @@ public class GameView implements GameManager {
             Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT);
             drawString("No camera set up", Gdx.graphics.getWidth()/2, Gdx.graphics.getHeight()/2, Color.BLACK.cpy());
         } else {
-								
+					
+			int xres = Gdx.graphics.getBackBufferWidth();
+			int yres = Gdx.graphics.getBackBufferHeight();		
+			
 			//if depth peeling enabled, dual pass rendering
 			if (WE.getCVars().getValueI("depthbuffer") == 2) {
-				Gdx.gl20.glClearColor(1, 0, 0, 1);
+				Gdx.gl20.glClearColor(0, 0, 0, 1);
 
+				ShaderProgram regularShader = shader;
+				shader = depthShader;
 				//create new depthtexture if needed
-				if (depthTexture == 0)
+				if (depthTexture == 0) {
 					depthTexture = Gdx.gl.glGenTexture();
+					//bind/upload? depth texture
+					Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
+					//Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
+
+					//specifiy last bound texture to be a depth texture
+					Gdx.gl.glTexImage2D(GL20.GL_TEXTURE_2D, 0, GL20.GL_DEPTH_COMPONENT16, xres, yres, 0, GL20.GL_DEPTH_COMPONENT, GL20.GL_FLOAT, null);
+					Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MAG_FILTER, GL20.GL_NEAREST);
+					Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MIN_FILTER, GL20.GL_NEAREST); 
+					Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_S, GL20.GL_CLAMP_TO_EDGE);
+					Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_T, GL20.GL_CLAMP_TO_EDGE);
+				}
 				
-				//bind/upload? depth texture
-				Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
-				//Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
-				
-				int xres = Gdx.graphics.getBackBufferWidth();
-				int yres = Gdx.graphics.getBackBufferHeight();
-				//specifiy last bound texture to be a depth texture
-				Gdx.gl.glTexImage2D(GL20.GL_TEXTURE_2D, 0, GL20.GL_DEPTH_COMPONENT16, xres, yres, 0, GL20.GL_DEPTH_COMPONENT, GL20.GL_FLOAT, null);
-				Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MAG_FILTER, GL20.GL_NEAREST);
-				Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MIN_FILTER, GL20.GL_NEAREST); 
-				Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_S, GL20.GL_CLAMP_TO_EDGE);
-				Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_T, GL20.GL_CLAMP_TO_EDGE);
+				if (depthTexture1 == 0) {
+					depthTexture1 = Gdx.gl.glGenTexture();
+					//bind/upload? depth texture
+					Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture1);
+					//Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
+
+					
+					//specifiy last bound texture to be a depth texture
+					Gdx.gl.glTexImage2D(GL20.GL_TEXTURE_2D, 0, GL20.GL_DEPTH_COMPONENT16, xres, yres, 0, GL20.GL_DEPTH_COMPONENT, GL20.GL_FLOAT, null);
+					Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MAG_FILTER, GL20.GL_NEAREST);
+					Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MIN_FILTER, GL20.GL_NEAREST); 
+					Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_S, GL20.GL_CLAMP_TO_EDGE);
+					Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_T, GL20.GL_CLAMP_TO_EDGE);
+				}
 				
 //				int renderbuffer = Gdx.gl.glGenRenderbuffer();
 //				Gdx.gl.glBindRenderbuffer(GL20.GL_RENDERBUFFER, renderbuffer);
@@ -409,49 +428,53 @@ public class GameView implements GameManager {
 				//Gdx.gl.glFramebufferTexture(GL20.GL_FRAMEBUFFER, GL20.GL_COLOR_ATTACHMENT0, renderedTexture, 0);
 				//Gdx.gl.glTexImage2D(GL20.GL_TEXTURE_2D, 0,GL20.GL_RGB, 1024, 768, 0,GL20.GL_RGB, GL20.GL_UNSIGNED_BYTE, null);
 				
-				//render offsceen
-				fbo.begin();
-				//active framebuffer, attach this texture as your depth buffer from now on
-				Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, GL20.GL_DEPTH_ATTACHMENT, GL20.GL_TEXTURE_2D, depthTexture, 0);
-				
-				if(Gdx.gl.glCheckFramebufferStatus(GL20.GL_FRAMEBUFFER) != GL20.GL_FRAMEBUFFER_COMPLETE)
-					throw new AbstractMethodError();
-				
-				//clear color of frame buffer
-				Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
-			
-				Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
-				Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
-				AbstractGameObject.getTextureDiffuse().bind(0);
-				
-				
 				gameSpaceSpriteBatch.disableBlending();
-				//render first pass=frontmost pixel
-				for (Camera camera : cameras) {
-					camera.render(this);
-				}
-				fbo.end();
-				
-//				Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
-//				Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
-//				AbstractGameObject.getTextureDiffuse().bind(0);
-				
-//				Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
-//				Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
-				//AbstractGameObject.getTextureNormal().bind(1);
-//				AbstractGameObject.getTextureDiffuse().bind(0);
-				
-				//Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
+				//render offsceen
+				for (int i = 0; i < 2; i++) {
+					
+					if (i==0) fbo.begin();
+					//active framebuffer, attach this texture as your depth buffer from now on
+					if (i % 2 == 0) {
+						Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, GL20.GL_DEPTH_ATTACHMENT, GL20.GL_TEXTURE_2D, depthTexture1, 0);
+					} else {
+						Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, GL20.GL_DEPTH_ATTACHMENT, GL20.GL_TEXTURE_2D, depthTexture, 0);
+					}
 
-				//second pass
-				ShaderProgram regularShader = shader;
-				shader = depthShader;
-				for (Camera camera : cameras) {
-					camera.render(this);
+
+					if (Gdx.gl.glCheckFramebufferStatus(GL20.GL_FRAMEBUFFER) != GL20.GL_FRAMEBUFFER_COMPLETE) {
+						throw new AbstractMethodError();
+					}
+
+					Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
+					if (i % 2 == 0) {
+						Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
+					} else {
+						Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture1);
+					}
+					AbstractGameObject.getTextureDiffuse().bind(0);
+
+					//clear color of frame buffer
+					Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+
+
+					//render first pass=frontmost pixel
+					for (Camera camera : cameras) {
+						camera.render(this);
+					}
+					if (i == 0) {
+						fbo.end();
+					}
 				}
+				
+				Gdx.gl.glBlendEquation(GL20.GL_FUNC_ADD);
+                Gdx.gl.glBlendFuncSeparate(GL20.GL_DST_COLOR, GL20.GL_ONE, GL20.GL_ZERO, GL20.GL_ONE_MINUS_SRC_ALPHA);
+				projectionSpaceSpriteBatch.begin();
+				//draw flipped
+				projectionSpaceSpriteBatch.draw(fbo.getColorBufferTexture(), 0, yres, xres, -yres);
+				projectionSpaceSpriteBatch.end();
+				
 				shader = regularShader;
 			} else {
-				
 				AbstractGameObject.getTextureDiffuse().bind(0);
 				setShader(getShader());
 				for (Camera camera : cameras) {
