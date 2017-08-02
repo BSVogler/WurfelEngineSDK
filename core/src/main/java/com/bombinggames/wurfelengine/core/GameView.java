@@ -130,10 +130,9 @@ public class GameView implements GameManager {
 	 */
 	private int numSpritesThisFrame;
 	private int depthTexture;
-	private int depthBuffer;
-	private FrameBuffer fbo;
-	private ShaderProgram depthShader;
 	private int depthTexture1;
+	private FrameBuffer[] fbo;
+	private ShaderProgram depthShader;
     
 	/**
 	 * Loades some files and set up everything. After this has been inactive use {@link #onEnter() }
@@ -172,10 +171,6 @@ public class GameView implements GameManager {
 		renderstorage = new RenderStorage();
 		MessageManager.getInstance().addListener(renderstorage, Events.mapChanged.getId());
 		initalized = true;
-		
-		int xres = Gdx.graphics.getBackBufferWidth();
-		int yres = Gdx.graphics.getBackBufferHeight();
-		fbo = new FrameBuffer(Pixmap.Format.RGBA8888, xres, yres, true);
 	}
 	
 	
@@ -385,9 +380,10 @@ public class GameView implements GameManager {
 			
 			//if depth peeling enabled, dual pass rendering
 			if (WE.getCVars().getValueI("depthbuffer") == 2) {
-				Gdx.gl20.glClearColor(0, 0, 0, 1);
-
 				ShaderProgram regularShader = shader;
+				if (depthShader == null) {
+					loadShaders();
+				}
 				shader = depthShader;
 				//create new depthtexture if needed
 				if (depthTexture == 0) {
@@ -430,47 +426,52 @@ public class GameView implements GameManager {
 				
 				gameSpaceSpriteBatch.disableBlending();
 				//render offsceen
-				for (int i = 0; i < 2; i++) {
-					
-					if (i==0) fbo.begin();
-					//active framebuffer, attach this texture as your depth buffer from now on
-					if (i % 2 == 0) {
-						Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, GL20.GL_DEPTH_ATTACHMENT, GL20.GL_TEXTURE_2D, depthTexture1, 0);
-					} else {
-						Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, GL20.GL_DEPTH_ATTACHMENT, GL20.GL_TEXTURE_2D, depthTexture, 0);
+				int numLayers = 2;
+				if (fbo == null) {
+					fbo = new FrameBuffer[numLayers];
+				}
+				for (int i = 0; i < numLayers; i++) {
+					if (fbo[0] == null) {
+						fbo[0] = new FrameBuffer(Pixmap.Format.RGBA8888, xres, yres, true);
 					}
-
+					//render to fbo
+					if (i == 0) {
+						fbo[i].begin();//same as Gdx.gl.glBindFramebuffer(GL20.GL_FRAMEBUFFER, fbo[0].getFramebufferHandle());
+					}
+					//active framebuffer, attach this texture as your depth buffer from now on
+					Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, GL20.GL_DEPTH_ATTACHMENT, GL20.GL_TEXTURE_2D, i % 2 == 0 ? depthTexture1 : depthTexture, 0);
 
 					if (Gdx.gl.glCheckFramebufferStatus(GL20.GL_FRAMEBUFFER) != GL20.GL_FRAMEBUFFER_COMPLETE) {
 						throw new AbstractMethodError();
 					}
 
+					//use last texture for read-only
 					Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
-					if (i % 2 == 0) {
-						Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
-					} else {
-						Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture1);
-					}
+					Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, i % 2 == 0 ? depthTexture : depthTexture1);
 					AbstractGameObject.getTextureDiffuse().bind(0);
 
 					//clear color of frame buffer
-					Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+					if (WE.getCVars().getValueB(("clearBeforeRendering"))) {
+						Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+					}else{
+						Gdx.gl20.glClear(GL20.GL_DEPTH_BUFFER_BIT);
+					}
 
-
-					//render first pass=frontmost pixel
+					//render to obtain i-th frontmost pixel
 					for (Camera camera : cameras) {
 						camera.render(this);
 					}
 					if (i == 0) {
-						fbo.end();
+						fbo[i].end();
 					}
 				}
 				
+				//blend
 				Gdx.gl.glBlendEquation(GL20.GL_FUNC_ADD);
                 Gdx.gl.glBlendFuncSeparate(GL20.GL_DST_COLOR, GL20.GL_ONE, GL20.GL_ZERO, GL20.GL_ONE_MINUS_SRC_ALPHA);
 				projectionSpaceSpriteBatch.begin();
 				//draw flipped
-				projectionSpaceSpriteBatch.draw(fbo.getColorBufferTexture(), 0, yres, xres, -yres);
+				projectionSpaceSpriteBatch.draw(fbo[0].getColorBufferTexture(), 0, yres, xres, -yres);
 				projectionSpaceSpriteBatch.end();
 				
 				shader = regularShader;
