@@ -475,6 +475,10 @@ public class GameView implements GameManager {
 				
 				shader = regularShader;
 			} else {
+				
+				if (WE.getCVars().getValueI("depthbuffer") == 0) {
+					gameSpaceSpriteBatch.enableBlending();
+				}
 				AbstractGameObject.getTextureDiffuse().bind(0);
 				setShader(getShader());
 				for (Camera camera : cameras) {
