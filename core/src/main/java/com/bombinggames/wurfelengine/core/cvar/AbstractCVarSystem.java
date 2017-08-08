@@ -30,6 +30,8 @@
  */
 package com.bombinggames.wurfelengine.core.cvar;
 
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.files.FileHandle;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -41,9 +43,6 @@ import java.util.Iterator;
 import java.util.StringTokenizer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.files.FileHandle;
 
 /**
  * Each cvar system manages one file. Cvars get registered first and then
@@ -197,6 +196,9 @@ public abstract class AbstractCVarSystem {
 	 */
 	public void save() {
 		if (!reading) {
+			if (Gdx.files==null){
+				throw new IllegalStateException("Gdx must be launched before values can be saved");
+			}
 			Writer writer = Gdx.files.absolute(fileSystemPath.getAbsolutePath()).writer(false);
 
 			Iterator<java.util.Map.Entry<String, CVar>> it = cvars.entrySet().iterator();
