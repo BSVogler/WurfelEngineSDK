@@ -31,7 +31,7 @@
 package com.bombinggames.wurfelengine.core.cvar;
 
 /**
- *CVars start with a small letter and are CamelCase.
+ * CVars start with a small letter and are CamelCase.
  * @author Benedikt Vogler
  * @since v1.4.2
  */
@@ -61,6 +61,7 @@ public abstract class CVar {
 	/**
 	 *
 	 * @param value
+	 * @see #setDefaultValue(java.lang.Object) 
 	 */
 	public abstract void setValue(Object value);
 
@@ -71,7 +72,7 @@ public abstract class CVar {
 	public abstract Object getDefaultValue();
 
 	/**
-	 *
+	 * The value which is used for initializiation.
 	 * @param value
 	 */
 	protected abstract void setDefaultValue(Object value);
@@ -92,11 +93,10 @@ public abstract class CVar {
 	public abstract String toString();
 	
 	/**
-	 * Registering should only be done by the game or the engine in init phase. Also saves as defaultValue.
-	 * if already registered updates the default and current value.
+	 * Registering should only be done by the game or the engine in init phase.
 	 * @param name name of the cvar
 	 * @param flag
-	 * @param parent
+	 * @param parent the system where this cvar is registered
 	 * @since v1.4.2
 	 */
 	protected void register(String name, CVarFlags flag, AbstractCVarSystem parent){

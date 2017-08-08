@@ -198,7 +198,7 @@ public class Map implements IndexedGraph<PfNode> {
 		chunkDim = WE.getCVars().getValueI("mapIndexSpaceSize");
 		data = new HashMap<>(chunkDim*chunkDim, 0.5f);
 		
-		maxChunks = WE.getCVars().getValueI("mapMaxMemoryUseBytes") / (Chunk.getBlocksX()*Chunk.getBlocksY()*Chunk.getBlocksZ()*3); //
+		maxChunks = WE.getCVars().getValueI("mapMaxMemoryUseBytes") / (Chunk.getBlocksX()*Chunk.getBlocksY()*Chunk.getBlocksZ()*3); //each block uses three bytes: id, sub id, health
 		loadedChunks = new LinkedList<>();
 		WE.getCVars().get("loadedMap").setValue(name.getName());
 		

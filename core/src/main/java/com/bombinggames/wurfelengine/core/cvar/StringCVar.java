@@ -93,6 +93,7 @@ public class StringCVar extends CVar{
 	 *
 	 * @param defaultValue
 	 */
+	@Override
 	public void setDefaultValue(Object defaultValue) {
 		this.defaultValue = (String) defaultValue;
 	}

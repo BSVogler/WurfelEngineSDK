@@ -30,10 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.bombinggames.wurfelengine.Command;
@@ -47,9 +43,14 @@ import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
 
 /**
  * A controller manages the map and the game data.
+ * 
+ * Before using this call {@link #init() } or {@link #init(int, java.lang.String) }.
  *
  * @author Benedikt Vogler
  */
@@ -149,6 +150,9 @@ public class Controller implements GameManager {
 	private DevTools devtools;
 	private boolean initalized = false;
 	private int saveSlot;
+	/**
+	 * the filename of the map which is loaded. Default is "default".
+	 */
 	private String mapName = "default";
 	private final Cursor cursor = new Cursor();
 	private ArrayList<AbstractEntity> selectedEntities = new ArrayList<>(4);
@@ -199,8 +203,8 @@ public class Controller implements GameManager {
 	}
 	
 	/**
-	 * uses a specific save slot for loading and saving the map. Can be called
-	 * before calling init().
+	 * Uses a specific save slot for loading and saving the map. Can be called
+	 * before calling {@link #init()}.
 	 *
 	 * @param slot
 	 */
@@ -215,16 +219,16 @@ public class Controller implements GameManager {
 	 * Set the map name which is loaded then. Should be called before the
 	 * {@link #init()}
 	 *
-	 * @param mapName
+	 * @param mapName the name of the map on the file system
 	 */
 	public void setMapName(String mapName) {
 		this.mapName = mapName;
 	}
 
 	/**
-	 * get the savee slot used for loading and saving the map.
+	 * Get the save slot used for loading and saving the map.
 	 *
-	 * @return
+	 * @return save slot number
 	 */
 	public int getSaveSlot() {
 		if (map != null) {
@@ -251,6 +255,9 @@ public class Controller implements GameManager {
 	 * This method works like a constructor. Everything is loaded here. You must
 	 * set your custom map generator, if you want one, before calling this
 	 * method, because chunk loading is started by calling this method.
+	 * Uses last set saveslot and mapName. Set before calling this.
+	 * 
+	 * @see #init(int, java.lang.String) 
 	 */
 	public void init() {
 		init(saveSlot, mapName);
@@ -258,11 +265,14 @@ public class Controller implements GameManager {
 
 	/**
 	 * This method works like a constructor. Everything is loaded here. You must
-	 * set your custom map generator, if you want one, before calling this
+	 * Set your custom map generator optionally, before calling this
 	 * method.
 	 *
 	 * @param saveslot
-	 * @param mapName the value of mapName
+	 * @param mapName name on disk
+	 * 
+	 * @see #init() 
+	 * @see Map#setDefaultGenerator(com.bombinggames.wurfelengine.core.map.Generator) 
 	 */
 	public void init(int saveslot, String mapName) {
 		Gdx.app.log("Controller", "Initializing");
