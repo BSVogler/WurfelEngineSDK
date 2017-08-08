@@ -259,6 +259,7 @@ public abstract class AbstractCVarSystem {
 		//if already registered new value is set
 		if (cvars.containsKey(cvar.name)) {
 			get(cvar.name).setDefaultValue(cvar.getValue());
+			get(cvar.name).setValue(cvar.getValue());
 		} else {
 			cvars.put(cvar.name.toLowerCase(), cvar);
 		}
