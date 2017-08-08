@@ -448,6 +448,10 @@ public class GameView implements GameManager {
 					//use last texture for read-only
 					Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
 					Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, i % 2 == 0 ? depthTexture : depthTexture1);
+					//bind normal map to texture unit 1
+					if (WE.getCVars().getValueB("LEnormalMapRendering")) {
+						AbstractGameObject.getTextureNormal().bind(1);
+					}
 					AbstractGameObject.getTextureDiffuse().bind(0);
 
 					//clear color of frame buffer
