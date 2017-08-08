@@ -75,7 +75,7 @@ public abstract class CVar {
 	 * The value which is used for initializiation.
 	 * @param value
 	 */
-	protected abstract void setDefaultValue(Object value);
+	public abstract void setDefaultValue(Object value);
 	
 	/**
 	 *
