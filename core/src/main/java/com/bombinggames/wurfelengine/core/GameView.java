@@ -60,7 +60,9 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * The GameView manages everything what should be drawn in an active game in game space. It includes two batches. One for gamespace and one for projection space.
+ * The GameView manages everything what should be drawn in an active game in game space. It includes two batches. One for gamespace and one for projection space.<br>
+ * 
+ * Code which needs a running instance should be put into the {@link #init(com.bombinggames.wurfelengine.core.Controller, com.bombinggames.wurfelengine.core.GameView) } method.
  * @author Benedikt
  */
 public class GameView implements GameManager {
@@ -135,7 +137,7 @@ public class GameView implements GameManager {
 	private ShaderProgram depthShader;
     
 	/**
-	 * Loades some files and set up everything. After this has been inactive use {@link #onEnter() }<br>
+	 * Loades some files and set up everything when the engine is running. After this has been inactive use {@link #onEnter() }<br>
 	 * This method is a an implementation of the <a href="https://de.wikipedia.org/wiki/Dependency_Injection">Setter Injection</a> pattern.
 	 *
 	 * @param controller The dependent data controller used for the view. Can be null but

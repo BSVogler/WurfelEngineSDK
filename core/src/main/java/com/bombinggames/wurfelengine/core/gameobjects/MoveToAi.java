@@ -40,7 +40,7 @@ import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.core.map.Point;
 
 /**
- *
+ * A component that will move the connected {@link MovableEntity} to a position.
  * @author Benedikt Vogler
  */
 public class MoveToAi implements Telegraph, Serializable, Component {

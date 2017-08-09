@@ -932,8 +932,8 @@ public class Camera{
 	}
 
 	/**
-	 *
-	 * @param focusEntity
+	 * Sets the center of the camera to this entity and follows ist.
+	 * @param focusEntity must be spawned.
 	 */
 	public void setFocusEntity(AbstractEntity focusEntity) {
 		if (this.focusEntity != focusEntity) {

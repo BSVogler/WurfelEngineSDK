@@ -104,12 +104,15 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	private boolean savePersistent = true;
 	private transient String[] damageSounds;
 	private char spriteCategory = 'e';
+	/**
+	 * if true is not affected by physics time
+	 */
 	private boolean useRawDelta = false;
 	private float mass = 0.4f;
 	private final LinkedList<RenderCell> covered = new LinkedList<>();
 	private final LinkedList<Component> components = new LinkedList<>();
-	private byte value;
 	private byte spriteId;
+	private byte value;
 	
 	/**
 	 * can be used to save a heap call to obtain the coordiante.
@@ -129,12 +132,12 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	/**
 	 * Create an abstractEntity.
 	 *
-	 * @param id objects with id -1 are to deleted. 0 are invisible objects
+	 * @param spriteId objects with id -1 are to be deleted. 0 are invisible objects
 	 * @param value
 	 */
-	public AbstractEntity(byte id, byte value) {
+	public AbstractEntity(byte spriteId, byte value) {
 		super();
-		this.spriteId = id;
+		this.spriteId = spriteId;
 		this.value = value;
 	}
 

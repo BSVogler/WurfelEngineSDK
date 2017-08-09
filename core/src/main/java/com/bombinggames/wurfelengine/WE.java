@@ -137,11 +137,12 @@ public class WE {
 	/**
 	 * Start the engine. You should have passed a main menu first.<br> Until the
 	 * engine is launched it can take a while. Code that can only be run after
-	 * the engine has openend should be run in the screen class.
+	 * the engine has openend should be run in the screen class or as postlaunchCommand.
 	 *
 	 * @param title The title, which is displayed in the window.
 	 * @param args Wurfel Engine launch parameters. For a list look in the wiki.
 	 * @see #setMainMenu(com.bombinggames.wurfelengine.core.AbstractMainMenu)
+	 * @see #addPostLaunchCommands(com.bombinggames.wurfelengine.LaunchCommand) 
 	 */
 	public static void launch(final String title, final String[] args) {
 		CONFIG.setResizable(false);
@@ -281,12 +282,12 @@ public class WE {
 	 * Initialize the main game with you custom controller and view. This call
 	 * shows the loadingScreen and disposes the menu.
 	 *
+	 * @param customLoadingScreen
 	 * @param controller
 	 * @param view
-	 * @param customLoadingScreen
 	 * @see com.bombinggames.wurfelengine.WE#startGame()
 	 */
-	public static void initAndStartGame(final Controller controller, final GameView view, LoadingScreen customLoadingScreen) {
+	public static void initAndStartGame(LoadingScreen customLoadingScreen, final Controller controller, final GameView view) {
 		if (GAME != null) {
 			Gdx.app.log("Wurfel Engine", "Initializing game using Controller:" + controller.toString());
 			Gdx.app.log("Wurfel Engine", "and View:" + view.toString());
