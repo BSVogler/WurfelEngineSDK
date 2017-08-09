@@ -50,7 +50,7 @@ import java.util.ArrayList;
 /**
  * A controller manages the map and the game data.
  * 
- * Before using this call {@link #init() } or {@link #init(int, java.lang.String) }.
+ * Before this is used {@link #init() } or {@link #init(int, java.lang.String) } must be called.
  *
  * @author Benedikt Vogler
  */
@@ -259,8 +259,8 @@ public class Controller implements GameManager {
 	 * 
 	 * @see #init(int, java.lang.String) 
 	 */
-	public void init() {
-		init(saveSlot, mapName);
+	public final void init() {
+		init(mapName, saveSlot);
 	}
 
 	/**
@@ -268,13 +268,13 @@ public class Controller implements GameManager {
 	 * Set your custom map generator optionally, before calling this
 	 * method.
 	 *
-	 * @param saveslot
 	 * @param mapName name on disk
+	 * @param saveslot
 	 * 
 	 * @see #init() 
 	 * @see Map#setDefaultGenerator(com.bombinggames.wurfelengine.core.map.Generator) 
 	 */
-	public void init(int saveslot, String mapName) {
+	public void init(String mapName, int saveslot) {
 		Gdx.app.log("Controller", "Initializing");
 
 		if (devtools == null && WE.getCVars().getValueB("DevMode")) {
