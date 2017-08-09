@@ -106,8 +106,8 @@ public class DevTools {
     public void render(final GameView view){
         if (visible){
             //draw FPS-String
-            view.drawString("FPS: "+ Gdx.graphics.getFramesPerSecond(), 15, 15,true);
-            view.drawString("Sprites: "+ view.getRenderedSprites(), 15, 30,true);
+            view.drawString("FPS: "+ Gdx.graphics.getFramesPerSecond(), 15, 15,Color.WHITE.cpy(), true);
+            view.drawString("Sprites: "+ view.getRenderedSprites(), 15, 30,Color.WHITE.cpy(), true);
             
             //draw diagramm
             ShapeRenderer shr = view.getShapeRenderer();
@@ -192,7 +192,7 @@ public class DevTools {
            
             shr.end(); 
             
-            view.drawString(memoryText.toString(), xPos, yPos, true);
+            view.drawString(memoryText.toString(), xPos, yPos,Color.WHITE.cpy(), true);
             Gdx.gl.glDisable(GL20.GL_BLEND);
         }
     }

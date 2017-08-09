@@ -469,6 +469,7 @@ public class LightEngine {
 				"SUN",
 				posX + (int) (size * sun.getNormal().x),
 				posY + (int) (size * (-sun.getNormal().y / 2 + sun.getNormal().z)),
+				Color.WHITE.cpy(), 
 				true
 			);
 
@@ -494,6 +495,7 @@ public class LightEngine {
 					"MOON",
 					posX + (int) (size * moon.getNormal().x),
 					posY + (int) (size * (-moon.getNormal().y / 2 + moon.getNormal().z)),
+					Color.WHITE.cpy(), 
 					true
 				);
 			}
@@ -508,6 +510,7 @@ public class LightEngine {
 				+ "Normal:" + sun.getNormal(),
 				900,
 				100,
+				Color.WHITE.cpy(), 
 				false
 			);
 			if (moon != null) {
@@ -515,16 +518,18 @@ public class LightEngine {
 					"Power Moon: " + moon.getPower() * 100 + "%",
 					420,
 					y + 45,
+					Color.WHITE.cpy(), 
 					false);
 			}
 			view.drawString(
 					"Power Sun: " + sun.getPower() * 100 + "%",
 					420,
 					y + 70,
+					Color.WHITE.cpy(), 
 					false);
-			view.drawString("Ambient: ", 600, y + 110, false);
-			view.drawString("Diffuse: ", 680, y + 110, false);
-			view.drawString(getAmbient(pos).toString(), 620, y += 10, false);
+			view.drawString("Ambient: ", 600, y + 110, Color.WHITE.cpy(), false);
+			view.drawString("Diffuse: ", 680, y + 110, Color.WHITE.cpy(), false);
+			view.drawString(getAmbient(pos).toString(), 620, y += 10, Color.WHITE.cpy(), false);
 			view.getProjectionSpaceSpriteBatch().end();
 			// view.drawString("avg. color: "+sun.getColor().toString(), 600, y+=10, Color.WHITE);
 
@@ -542,7 +547,7 @@ public class LightEngine {
 			shR.setColor(getAmbient(pos));//draw combined color
 			shR.rect(620, y, 50, 50);
 
-			view.drawString("+", 670, y + 25, true);
+			view.drawString("+", 670, y + 25, Color.WHITE.cpy(), true);
 
 			//draw sun
 			shR.setColor(Color.WHITE);
@@ -580,13 +585,13 @@ public class LightEngine {
 			//info bars
 			//left side
 			y = Gdx.graphics.getHeight() - 100;
-			view.drawString(Float.toString(I_diff0), (int) (I_0 * size), y, true);
+			view.drawString(Float.toString(I_diff0), (int) (I_0 * size), y, Color.WHITE.cpy(), true);
 			shR.setColor(Color.RED);
 			shR.rect(0, y, I_diff0 * size, 8);
 
 			//top side
 			y = Gdx.graphics.getHeight() - 180;
-			view.drawString(I_diff1 + "\n+" + I_spec1 + "\n=" + I_1, (int) (I_1 * size), y, true);
+			view.drawString(I_diff1 + "\n+" + I_spec1 + "\n=" + I_1, (int) (I_1 * size), y, Color.WHITE.cpy(), true);
 			shR.setColor(Color.RED);
 			shR.rect(0, y, I_diff1 * size, 8);
 			shR.setColor(Color.BLUE);
@@ -594,7 +599,7 @@ public class LightEngine {
 
 			//right side
 			y = Gdx.graphics.getHeight() - 260;
-			view.drawString(Float.toString(I_diff2), (int) (I_2 * size), y, true);
+			view.drawString(Float.toString(I_diff2), (int) (I_2 * size), y, Color.WHITE.cpy(), true);
 			shR.setColor(Color.RED);
 			shR.rect(0, y, I_diff2 * size, 8);
 

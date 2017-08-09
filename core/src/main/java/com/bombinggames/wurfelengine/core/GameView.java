@@ -374,7 +374,7 @@ public class GameView implements GameManager {
         if (cameras.isEmpty()){
             Gdx.gl20.glClearColor(0.5f, 1, 0.5f, 1);
             Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT);
-            drawString("No camera set up", Gdx.graphics.getWidth()/2, Gdx.graphics.getHeight()/2, Color.BLACK.cpy());
+            drawString("No camera set up", Gdx.graphics.getWidth()/2, Gdx.graphics.getHeight()/2, Color.BLACK.cpy(), true);
         } else {
 					
 			int xres = Gdx.graphics.getBackBufferWidth();
@@ -672,19 +672,20 @@ public class GameView implements GameManager {
 	}
 
 	/**
-	 * Draw a string using the color white.
+	 * Draw a string in a color. 
 	 *
 	 * @param msg
 	 * @param xPos screen space
 	 * @param yPos screen space
+	 * @param color
 	 * @param openbatch true if begin/end shoould be called
 	 */
-	public void drawString(final String msg, final int xPos, final int yPos, boolean openbatch) {
+	public void drawString(final String msg, final int xPos, final int yPos,final Color color, boolean openbatch) {
 		if (openbatch) {
 			projectionSpaceSpriteBatch.setProjectionMatrix(libGDXcamera.combined);
 			projectionSpaceSpriteBatch.begin();
 		}
-		WE.getEngineView().getFont().setColor(Color.WHITE.cpy());
+		WE.getEngineView().getFont().setColor(color);
 		WE.getEngineView().getFont().draw(projectionSpaceSpriteBatch, msg, xPos, yPos);
 		if (openbatch) {
 			projectionSpaceSpriteBatch.end();
@@ -692,7 +693,7 @@ public class GameView implements GameManager {
 	}
     
     /**
-     *Draw a string in a color. Using open batch.
+     * Draw a string in a color. Using open batch.
      * @param msg
      * @param xPos screen space
      * @param yPos screen space
