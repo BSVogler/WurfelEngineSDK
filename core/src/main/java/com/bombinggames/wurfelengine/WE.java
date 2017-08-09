@@ -294,16 +294,19 @@ public class WE {
 
 			getEngineView().getEditorToggler().setGameView(view);
 
+			//start the gameplay with the loading
 			WE.customLoadingScreen = customLoadingScreen;
-				
+			
+			//remove gameplayscreen if it already exists
 			if (gameplayScreen != null) {
-				gameplayScreen.dispose();//remove gameplayscreen if it already exists
+				gameplayScreen.dispose();
 			}
 			gameplayScreen = new GameplayScreen(
 				controller,
-				view,
-				customLoadingScreen
+				view
 			);
+			Gdx.input.setInputProcessor(null);//why is this line needed? removes old input processors
+			WE.setScreen(customLoadingScreen);
 			getConsole().setGameplayRef(gameplayScreen);
 			mainMenu.dispose();
 		} else {

@@ -35,7 +35,6 @@ import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.bombinggames.wurfelengine.WE;
 import static com.bombinggames.wurfelengine.core.Controller.getMap;
-import com.bombinggames.wurfelengine.core.loading.LoadingScreen;
 import com.bombinggames.wurfelengine.mapeditor.EditorView;
 
 /**
@@ -58,14 +57,8 @@ public class GameplayScreen extends WEScreen {
 	 *
 	 * @param controller The controller of this screen.
 	 * @param view The user view of this screen.
-	 * @param loadingScreen
 	 */
-	public GameplayScreen(final Controller controller, final GameView view, LoadingScreen loadingScreen) {
-		Gdx.app.log("GameplayScreen", "Initializing");
-
-		Gdx.input.setInputProcessor(null);//why is this line needed?
-		WE.setScreen(loadingScreen);
-
+	public GameplayScreen(final Controller controller, final GameView view) {
 		this.controller = controller;
 		this.view = view;
 	}
