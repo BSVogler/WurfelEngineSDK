@@ -120,7 +120,7 @@ public class Camera{
 	/**
 	 * true if camera is currently rendering
 	 */
-	private boolean active = false;
+	private boolean active = true;
 	private LinkedList<AbstractGameObject> depthlist = new LinkedList<>();
 	/**
 	 * amount of objects to be rendered, used as an index during filling
