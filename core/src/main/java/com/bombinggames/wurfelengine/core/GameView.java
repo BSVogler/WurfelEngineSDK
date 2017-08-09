@@ -742,11 +742,13 @@ public class GameView implements GameManager {
      * Add a camera to the game. Adds this camera to the used {@link RenderStorage}.
      * @param camera
      */
-    protected void addCamera(final Camera camera) {
-        this.cameras.add(camera);
-		GameView.cameraIdCounter++;
-		camera.setId(GameView.cameraIdCounter);
-		getRenderStorage().addCamera(camera);
+    public void addCamera(final Camera camera) {
+		if (!cameras.contains(camera)) {
+			this.cameras.add(camera);
+			GameView.cameraIdCounter++;
+			camera.setId(GameView.cameraIdCounter);
+			getRenderStorage().addCamera(camera);
+		}
     }
     
      /**
