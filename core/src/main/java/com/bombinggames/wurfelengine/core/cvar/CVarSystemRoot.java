@@ -131,7 +131,7 @@ public class CVarSystemRoot extends AbstractCVarSystem {
 		register(new StringCVar(""),"loadedMap", CVarFlags.VOlATILE); 
 		register(new StringCVar(""), "lastConsoleCommand");
 		register(new IntCVar(20), "undohistorySize");
-		register(new IntCVar(500), "mapIndexSpaceSize");
+		register(new IntCVar(500), "mapIndexSpaceSize");//size of hash map
 		register(new IntCVar(536870912), "mapMaxMemoryUseBytes");//bytes, 512MB->17,9km^2
 		register(new BooleanCVar(false), "showMiniMapChunk");
 		register(new IntCVar(0), "depthbuffer");//0 disabled, 1 zbuffer 2 depth peeling
