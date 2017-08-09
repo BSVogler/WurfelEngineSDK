@@ -938,6 +938,9 @@ public class Camera{
 	public void setFocusEntity(AbstractEntity focusEntity) {
 		if (this.focusEntity != focusEntity) {
 			this.focusEntity = focusEntity;
+			if (!focusEntity.hasPosition()) {
+				throw new IllegalStateException("Entity must be spawned first.");
+			}
 			position.set(focusEntity.getPosition().getViewSpcX(),
 				(int) (focusEntity.getPosition().getViewSpcY()
 					+ focusEntity.getDimensionZ() * RenderCell.PROJECTIONFACTORZ/2)//have middle of object in center
