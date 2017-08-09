@@ -55,11 +55,18 @@ public abstract class AbstractSorter implements Telegraph {
 	private int lastCenterX;
 	private int lastCenterY;
 	
+	/**
+	 * Sorts the list of game objects.
+	 * @param depthlist 
+	 */
 	public abstract void createDepthList(LinkedList<AbstractGameObject> depthlist);
 
+	/**
+	 * Renders in sorted order
+	 */
 	public abstract void renderSorted();
 
-	AbstractSorter(Camera camera) {
+	public AbstractSorter(Camera camera) {
 		this.camera = camera;
 		gameView = camera.getGameView();
 		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
@@ -123,5 +130,4 @@ public abstract class AbstractSorter implements Telegraph {
 			return (int) (gameView.getRenderStorage().getZRenderingLimit() / RenderCell.GAME_EDGELENGTH);
 		}
 	}
-
 }
