@@ -144,6 +144,8 @@ public class Camera{
 	
 	private int lastCenterX, lastCenterY;
 	private int sorterId;
+	private boolean multiRendering;
+	private int multiRenderPass;
 
 	/**
 	 * Updates the needed chunks after recaclucating the center chunk of the
@@ -587,9 +589,19 @@ public class Camera{
 			}
 
 			//render vom bottom to top
-			sorter.renderSorted();
+			if (multiRendering) {
+				if (multiRenderPass == 0) {
+					sorter.createDepthList(depthlist);
+				}
+				for (AbstractGameObject abstractGameObject : depthlist) {
+					abstractGameObject.render(view);
+				}
+				multiRenderPass++;
+			} else {
+				sorter.renderSorted();
+			}
 			view.getGameSpaceSpriteBatch().end();
-
+		
 			//debug rendering
 			if (WE.getCVars().getValueB("DevDebugRendering")) {
 				drawDebug(view, this);
@@ -610,8 +622,19 @@ public class Camera{
 //			view.getProjectionSpaceSpriteBatch().end();
 		}
 	}
-
 	
+	/**
+	 * allows the rendering of mutiple
+	 */
+	public void startMultiRendering() {
+		multiRendering = true;
+		multiRenderPass = 0;
+	}
+	
+	public void endMultiRendering(){
+		multiRendering = false;
+	}
+
 
 	/**
 	 * checks if the projected position is inside the viewMat Frustum

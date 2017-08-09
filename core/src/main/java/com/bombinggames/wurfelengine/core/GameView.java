@@ -432,83 +432,87 @@ public class GameView implements GameManager {
 				if (fbo == null) {
 					fbo = new FrameBuffer[3];
 				}
-				for (int i = 0; i < numLayers; i++) {
-					if (fbo[0] == null) {
-						fbo[0] = new FrameBuffer(Pixmap.Format.RGBA8888, xres, yres, true);
-					}
-					if (numLayers>1 &&fbo[1] == null) {
-						fbo[1] = new FrameBuffer(Pixmap.Format.RGBA8888, xres, yres, false);
-					}
-					//render to fbo
-					if (i == 0) {
-						gameSpaceSpriteBatch.disableBlending();
-						fbo[i].begin();//same as Gdx.gl.glBindFramebuffer(GL20.GL_FRAMEBUFFER, fbo[0].getFramebufferHandle());
-					} else if (i == numLayers-1) {
-						gameSpaceSpriteBatch.enableBlending();
-					}
-					//active framebuffer, attach this texture as your depth buffer from now on
-					//Owrites to both frame buffers after second run
-					Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, GL20.GL_DEPTH_ATTACHMENT, GL20.GL_TEXTURE_2D, i % 2 == 0 ? depthTexture1 : depthTexture, 0);
+				for (Camera camera : cameras) {
+					camera.startMultiRendering();
+					for (int i = 0; i < numLayers; i++) {
+						if (fbo[0] == null) {
+							fbo[0] = new FrameBuffer(Pixmap.Format.RGBA8888, xres, yres, true);
+						}
+						if (numLayers>1 &&fbo[1] == null) {
+							fbo[1] = new FrameBuffer(Pixmap.Format.RGBA8888, xres, yres, false);
+						}
+						//render to fbo
+						if (i == 0) {
+							gameSpaceSpriteBatch.disableBlending();
+							fbo[i].begin();//same as Gdx.gl.glBindFramebuffer(GL20.GL_FRAMEBUFFER, fbo[0].getFramebufferHandle());
+						} else if (i == numLayers-1) {
+							gameSpaceSpriteBatch.enableBlending();
+						}
+						//active framebuffer, attach this texture as your depth buffer from now on
+						//Owrites to both frame buffers after second run
+						Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, GL20.GL_DEPTH_ATTACHMENT, GL20.GL_TEXTURE_2D, i % 2 == 0 ? depthTexture1 : depthTexture, 0);
 
-					if (Gdx.gl.glCheckFramebufferStatus(GL20.GL_FRAMEBUFFER) != GL20.GL_FRAMEBUFFER_COMPLETE) {
-						throw new AbstractMethodError();
-					}
+						if (Gdx.gl.glCheckFramebufferStatus(GL20.GL_FRAMEBUFFER) != GL20.GL_FRAMEBUFFER_COMPLETE) {
+							throw new AbstractMethodError();
+						}
 
-					//use last texture for read-only
-					Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
-					Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, i % 2 == 0 ? depthTexture : depthTexture1);
-					//bind normal map to texture unit 1
-					if (WE.getCVars().getValueB("LEnormalMapRendering")) {
-						AbstractGameObject.getTextureNormal().bind(1);
-					}
-					AbstractGameObject.getTextureDiffuse().bind(0);
+						//use last texture for read-only
+						Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
+						Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, i % 2 == 0 ? depthTexture : depthTexture1);
+						//bind normal map to texture unit 1
+						if (WE.getCVars().getValueB("LEnormalMapRendering")) {
+							AbstractGameObject.getTextureNormal().bind(1);
+						}
+						AbstractGameObject.getTextureDiffuse().bind(0);
 
-					//clear color of frame buffer
-					if (WE.getCVars().getValueB(("clearBeforeRendering"))) {
-						Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
-					}else{
-						Gdx.gl20.glClear(GL20.GL_DEPTH_BUFFER_BIT);
-					}
+						//clear color of frame buffer
+						if (WE.getCVars().getValueB(("clearBeforeRendering"))) {
+							Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+						}else{
+							Gdx.gl20.glClear(GL20.GL_DEPTH_BUFFER_BIT);
+						}
 
-					//render to obtain i-th frontmost pixel
-					for (Camera camera : cameras) {
+						//render to obtain i-th frontmost pixel
+
 						camera.render(this);
-					}
-					Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, 0, GL20.GL_TEXTURE_2D, 0, 0);
-					if (i == 0) {
-						fbo[i].end();
-					}
 
-					//clear the read only
-					if (i==1){
-						fbo[0].begin();
-						Gdx.gl20.glClear(GL20.GL_DEPTH_BUFFER_BIT);
-						fbo[0].end();
+						Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, 0, GL20.GL_TEXTURE_2D, 0, 0);
+						if (i == 0) {
+							fbo[i].end();
+						}
+
+						//clear the read only
+						if (i==1){
+							fbo[0].begin();
+							Gdx.gl20.glClear(GL20.GL_DEPTH_BUFFER_BIT);
+							fbo[0].end();
+						}
+	//					else {
+						//blend
+	//				Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
+	//				Gdx.gl.glBlendEquation(GL20.GL_FUNC_ADD);
+	//                Gdx.gl.glBlendFuncSeparate(GL20.GL_DST_COLOR, GL20.GL_ONE, GL20.GL_ZERO, GL20.GL_ONE_MINUS_SRC_ALPHA);
+	//				projectionSpaceSpriteBatch.begin();
+	//				//draw flipped
+	////				projectionSpaceSpriteBatch.draw(fbo[1].getColorBufferTexture(), 0, yres, xres, -yres);
+	//				projectionSpaceSpriteBatch.draw(fbo[0].getColorBufferTexture(), 0, yres, xres, -yres);
+	// 				projectionSpaceSpriteBatch.end();
+	//					}
 					}
-//					else {
-					//blend
-//				Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
-//				Gdx.gl.glBlendEquation(GL20.GL_FUNC_ADD);
-//                Gdx.gl.glBlendFuncSeparate(GL20.GL_DST_COLOR, GL20.GL_ONE, GL20.GL_ZERO, GL20.GL_ONE_MINUS_SRC_ALPHA);
-//				projectionSpaceSpriteBatch.begin();
-//				//draw flipped
-////				projectionSpaceSpriteBatch.draw(fbo[1].getColorBufferTexture(), 0, yres, xres, -yres);
-//				projectionSpaceSpriteBatch.draw(fbo[0].getColorBufferTexture(), 0, yres, xres, -yres);
-// 				projectionSpaceSpriteBatch.end();
-//					}
+					camera.endMultiRendering();
+					
+					//depth peeling blend
+					Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
+					Gdx.gl.glBlendEquation(GL20.GL_FUNC_ADD);
+					Gdx.gl.glBlendFuncSeparate(GL20.GL_DST_COLOR, GL20.GL_ONE, GL20.GL_ZERO, GL20.GL_ONE_MINUS_SRC_ALPHA);
+					projectionSpaceSpriteBatch.begin();
+					//draw flipped
+	//				projectionSpaceSpriteBatch.draw(fbo[1].getColorBufferTexture(), 0, yres, xres, -yres);
+					projectionSpaceSpriteBatch.draw(fbo[0].getColorBufferTexture(), 0, yres, xres, -yres);
+					projectionSpaceSpriteBatch.end();
+
+					shader = regularShader;
 				}
-				
-				//blend
-				Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
-				Gdx.gl.glBlendEquation(GL20.GL_FUNC_ADD);
-                Gdx.gl.glBlendFuncSeparate(GL20.GL_DST_COLOR, GL20.GL_ONE, GL20.GL_ZERO, GL20.GL_ONE_MINUS_SRC_ALPHA);
-				projectionSpaceSpriteBatch.begin();
-				//draw flipped
-//				projectionSpaceSpriteBatch.draw(fbo[1].getColorBufferTexture(), 0, yres, xres, -yres);
-				projectionSpaceSpriteBatch.draw(fbo[0].getColorBufferTexture(), 0, yres, xres, -yres);
- 				projectionSpaceSpriteBatch.end();
-				
-				shader = regularShader;
 			} else {
 				//simple depth buffer or no depth buffer
 				if (WE.getCVars().getValueI("depthbuffer") == 0) {
