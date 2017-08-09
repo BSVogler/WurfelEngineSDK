@@ -624,13 +624,16 @@ public class Camera{
 	}
 	
 	/**
-	 * allows the rendering of mutiple
+	 * Allows the rendering of mutiple images without resorting.
 	 */
 	public void startMultiRendering() {
 		multiRendering = true;
 		multiRenderPass = 0;
 	}
 	
+	/**
+	 * Stop the multi rendering. After this method each new call to {@link #render(GameView) } is sorting again.
+	 */
 	public void endMultiRendering(){
 		multiRendering = false;
 	}
