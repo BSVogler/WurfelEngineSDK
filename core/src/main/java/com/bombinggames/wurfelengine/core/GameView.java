@@ -355,7 +355,7 @@ public class GameView implements GameManager {
         //clear screen if wished
        if (WE.getCVars().getValueB(("clearBeforeRendering"))) {
 			Gdx.gl20.glClearColor(0, 0, 0, 1);//black
-			if (WE.getCVars().getValueI(("depthbuffer"))>0) {
+			if (WE.getCVars().getValueI("depthbuffer") > 0) {
 				Gdx.gl20.glEnable(GL20.GL_DEPTH_TEST);
 				Gdx.gl.glClearDepthf(1f);
 				Gdx.gl20.glDepthMask(true); // enable depth depthTexture writes
@@ -510,12 +510,16 @@ public class GameView implements GameManager {
 				
 				shader = regularShader;
 			} else {
-				
+				//simple depth buffer or no depth buffer
 				if (WE.getCVars().getValueI("depthbuffer") == 0) {
 					gameSpaceSpriteBatch.enableBlending();
 				}
-				AbstractGameObject.getTextureDiffuse().bind(0);
 				setShader(getShader());
+				if (WE.getCVars().getValueB("LEnormalMapRendering")) {
+					AbstractGameObject.getTextureNormal().bind(1);
+				}
+				
+				AbstractGameObject.getTextureDiffuse().bind(0);
 				
 				for (Camera camera : cameras) {
 					camera.render(this);
