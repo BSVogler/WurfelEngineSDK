@@ -57,7 +57,7 @@ import com.bombinggames.wurfelengine.core.sorting.TopologicalSort;
 import java.util.LinkedList;
 
 /**
- * Creates a virtual camera wich displays the game world on the viewport. A camer acan be locked to an entity.
+ * Creates a virtual camera wich displays the game world on the viewport. A camera can be locked to an entity with {@link #setFocusEntity(AbstractEntity) }.
  *
  * @author Benedikt Vogler
  */
@@ -943,7 +943,7 @@ public class Camera{
 			}
 			position.set(focusEntity.getPosition().getViewSpcX(),
 				(int) (focusEntity.getPosition().getViewSpcY()
-					+ focusEntity.getDimensionZ() * RenderCell.PROJECTIONFACTORZ/2)//have middle of object in center
+				+ focusEntity.getDimensionZ() * RenderCell.PROJECTIONFACTORZ / 2)//have middle of object in center
 			);
 		}
 	}
