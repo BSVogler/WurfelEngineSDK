@@ -135,8 +135,8 @@ public class GameView implements GameManager {
 	private ShaderProgram depthShader;
     
 	/**
-	 * Loades some files and set up everything. After this has been inactive use {@link #onEnter() }
-	 * This method is a an implementation of the <a href="https://de.wikipedia.org/wiki/Dependency_Injection">Setter Inejction</a> pattern.
+	 * Loades some files and set up everything. After this has been inactive use {@link #onEnter() }<br>
+	 * This method is a an implementation of the <a href="https://de.wikipedia.org/wiki/Dependency_Injection">Setter Injection</a> pattern.
 	 *
 	 * @param controller The dependent data controller used for the view. Can be null but
 	 * should not.
