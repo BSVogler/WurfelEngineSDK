@@ -30,14 +30,12 @@
  */
 package com.bombinggames.wurfelengine.core.gameobjects;
 
-import java.io.Serializable;
-
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.core.map.Point;
+import java.io.Serializable;
 
 /**
  * A component that will move the connected {@link MovableEntity} to a position.
@@ -156,7 +154,7 @@ public class MoveToAi implements Telegraph, Serializable, Component {
 	@Override
 	public void setParent(AbstractEntity body) {
 		if (!(body instanceof MovableEntity)){
-			Gdx.app.error("MoveToAi", "parent must be movable Entity");
+			throw new IllegalArgumentException("Body must be instanceof "+ MovableEntity.class.getSimpleName());
 		} else {
 			this.body = (MovableEntity) body;
 		}
