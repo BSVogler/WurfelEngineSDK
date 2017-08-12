@@ -237,7 +237,10 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 	 * flag 
 	 */
 	private int marked;
-	private GameSpaceSprite sprite;
+	/**
+	 * caching the sprite for rendering
+	 */
+	private transient GameSpaceSprite sprite;
 
 	/**
 	 * Creates an object.
