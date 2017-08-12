@@ -548,6 +548,7 @@ public class Camera{
 				getWidthScreenSpc(),
 				getHeightScreenSpc()
 			);
+			
 
 			//settings for this frame
 			RenderCell.setStaticShade(WE.getCVars().getValueB("enableAutoShade"));
@@ -561,6 +562,7 @@ public class Camera{
 				WE.getCVars().getValueF("fogG"),
 				WE.getCVars().getValueF("fogB")
 			);
+			shader.setUniformf("u_resBuffer", (float) getWidthScreenSpc(), (float) getHeightScreenSpc());
 			if (focusEntity != null) {
 				shader.setUniformf("u_playerpos", focusEntity.getPoint());
 				shader.setUniformf("u_localLightPos", focusEntity.getPoint());
