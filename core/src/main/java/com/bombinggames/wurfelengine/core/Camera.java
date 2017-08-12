@@ -176,7 +176,7 @@ public class Camera{
 	 * @param view
 	 */
 	public Camera(final GameView view) {
-		init(view, 0, 0, Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
+		init(view, 0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 
 		Point center = Controller.getMap().getCenter();
 		position.x = center.getViewSpcX();
@@ -562,7 +562,7 @@ public class Camera{
 				WE.getCVars().getValueF("fogG"),
 				WE.getCVars().getValueF("fogB")
 			);
-			shader.setUniformf("u_resBuffer", (float) getWidthScreenSpc(), (float) getHeightScreenSpc());
+			shader.setUniformf("u_resBuffer", (float) Gdx.graphics.getBackBufferWidth(), (float) Gdx.graphics.getBackBufferHeight());
 			if (focusEntity != null) {
 				shader.setUniformf("u_playerpos", focusEntity.getPoint());
 				shader.setUniformf("u_localLightPos", focusEntity.getPoint());

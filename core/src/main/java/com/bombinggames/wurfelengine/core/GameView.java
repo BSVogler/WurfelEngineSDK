@@ -380,7 +380,7 @@ public class GameView implements GameManager {
 			//if depth peeling enabled
 			if (WE.getCVars().getValueI("depthbuffer") == 2) {
 				depthPeelingRendering();
-			} else {//simple depth buffer or no depth buffer
+			} else {//simple depth buffer or no depth buffers
 				setShader(getShader());
 				if (WE.getCVars().getValueB("LEnormalMapRendering")) {
 					AbstractGameObject.getTextureNormal().bind(1);
@@ -731,41 +731,44 @@ public class GameView implements GameManager {
 	 * dual pass rendering
 	 */
 	private void depthPeelingRendering() {
-		int xres = Gdx.graphics.getBackBufferWidth();
-		int yres = Gdx.graphics.getBackBufferHeight();		
+		int bufResX = Gdx.graphics.getBackBufferWidth();
+		int bufRefY = Gdx.graphics.getBackBufferHeight();		
 		ShaderProgram regularShader = shader;
 		if (depthShader == null) {
 			loadShaders();
 		}
 		shader = depthShader;
+		
+		int numDPLayers = 2;
+		boolean madenewTexture = false;//if depth texture must be rebound because back buffer size changed
+		if (fbo == null) {
+			fbo = new FrameBuffer[3];
+		}
+		if (fbo[0] == null || fbo[0].getWidth() != bufResX || fbo[0].getHeight() != bufRefY) {
+			fbo[0] = new FrameBuffer(Pixmap.Format.RGBA8888, bufResX, bufRefY, true);
+			madenewTexture=true;
+		}
+		if (numDPLayers>1 &&(fbo[1] == null  || fbo[0].getWidth() != bufResX || fbo[0].getHeight() != bufRefY)) {
+			fbo[1] = new FrameBuffer(Pixmap.Format.RGBA8888, bufResX, bufRefY, false);
+			madenewTexture=true;
+		}
+		
 		//create new depthtexture if needed
-		if (depthTexture == 0) {
+		if (depthTexture == 0 || madenewTexture) {
 			depthTexture = Gdx.gl.glGenTexture();
 			//bind/upload? depth texture
 			Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
 			//Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
 
-			//specifiy last bound texture to be a depth texture
-			Gdx.gl.glTexImage2D(GL20.GL_TEXTURE_2D, 0, GL20.GL_DEPTH_COMPONENT16, xres, yres, 0, GL20.GL_DEPTH_COMPONENT, GL20.GL_FLOAT, null);
-			Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MAG_FILTER, GL20.GL_NEAREST);
-			Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MIN_FILTER, GL20.GL_NEAREST); 
-			Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_S, GL20.GL_CLAMP_TO_EDGE);
-			Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_T, GL20.GL_CLAMP_TO_EDGE);
+			specifyZBuffer(bufResX,bufRefY);
 		}
 
-		if (depthTexture1 == 0) {
+		if (depthTexture1 == 0 || madenewTexture) {
 			depthTexture1 = Gdx.gl.glGenTexture();
 			//bind/upload? depth texture
 			Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture1);
 			//Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
-
-
-			//specifiy last bound texture to be a depth texture
-			Gdx.gl.glTexImage2D(GL20.GL_TEXTURE_2D, 0, GL20.GL_DEPTH_COMPONENT16, xres, yres, 0, GL20.GL_DEPTH_COMPONENT, GL20.GL_FLOAT, null);
-			Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MAG_FILTER, GL20.GL_NEAREST);
-			Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MIN_FILTER, GL20.GL_NEAREST); 
-			Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_S, GL20.GL_CLAMP_TO_EDGE);
-			Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_T, GL20.GL_CLAMP_TO_EDGE);
+			specifyZBuffer(bufResX,bufRefY);
 		}
 
 //				int renderbuffer = Gdx.gl.glGenRenderbuffer();
@@ -778,24 +781,14 @@ public class GameView implements GameManager {
 		//Gdx.gl.glTexImage2D(GL20.GL_TEXTURE_2D, 0,GL20.GL_RGB, 1024, 768, 0,GL20.GL_RGB, GL20.GL_UNSIGNED_BYTE, null);
 
 		//render offsceen
-		int numLayers = 2;
-		if (fbo == null) {
-			fbo = new FrameBuffer[3];
-		}
 		for (Camera camera : cameras) {
 			camera.startMultiRendering();
-			for (int i = 0; i < numLayers; i++) {
-				if (fbo[0] == null) {
-					fbo[0] = new FrameBuffer(Pixmap.Format.RGBA8888, xres, yres, true);
-				}
-				if (numLayers>1 &&fbo[1] == null) {
-					fbo[1] = new FrameBuffer(Pixmap.Format.RGBA8888, xres, yres, false);
-				}
+			for (int i = 0; i < numDPLayers; i++) {
 				//render to fbo
 				if (i == 0) {
 					gameSpaceSpriteBatch.disableBlending();
 					fbo[i].begin();//same as Gdx.gl.glBindFramebuffer(GL20.GL_FRAMEBUFFER, fbo[0].getFramebufferHandle());
-				} else if (i == numLayers-1) {
+				} else if (i == numDPLayers-1) {
 					gameSpaceSpriteBatch.enableBlending();
 				}
 				//active framebuffer, attach this texture as your depth buffer from now on
@@ -844,8 +837,8 @@ public class GameView implements GameManager {
 //                Gdx.gl.glBlendFuncSeparate(GL20.GL_DST_COLOR, GL20.GL_ONE, GL20.GL_ZERO, GL20.GL_ONE_MINUS_SRC_ALPHA);
 //				projectionSpaceSpriteBatch.begin();
 //				//draw flipped
-////				projectionSpaceSpriteBatch.draw(fbo[1].getColorBufferTexture(), 0, yres, xres, -yres);
-//				projectionSpaceSpriteBatch.draw(fbo[0].getColorBufferTexture(), 0, yres, xres, -yres);
+////				projectionSpaceSpriteBatch.draw(fbo[1].getColorBufferTexture(), 0, bufRefY, bufResX, -bufRefY);
+//				projectionSpaceSpriteBatch.draw(fbo[0].getColorBufferTexture(), 0, bufRefY, bufResX, -bufRefY);
 // 				projectionSpaceSpriteBatch.end();
 //					}
 			}
@@ -857,12 +850,21 @@ public class GameView implements GameManager {
 			Gdx.gl.glBlendFuncSeparate(GL20.GL_DST_COLOR, GL20.GL_ONE, GL20.GL_ZERO, GL20.GL_ONE_MINUS_SRC_ALPHA);
 			projectionSpaceSpriteBatch.begin();
 			//draw flipped
-//				projectionSpaceSpriteBatch.draw(fbo[1].getColorBufferTexture(), 0, yres, xres, -yres);
-			projectionSpaceSpriteBatch.draw(fbo[0].getColorBufferTexture(), 0, yres, xres, -yres);
+//				projectionSpaceSpriteBatch.draw(fbo[1].getColorBufferTexture(), 0, bufRefY, bufResX, -bufRefY);
+			projectionSpaceSpriteBatch.draw(fbo[0].getColorBufferTexture(), 0, Gdx.graphics.getHeight(), Gdx.graphics.getWidth(), -Gdx.graphics.getHeight());
 			projectionSpaceSpriteBatch.end();
 
 			shader = regularShader;
 		}
+	}
+
+	private void specifyZBuffer(int bufResX, int bufRefY) {
+		//specifiy last bound texture to be a depth texture
+		Gdx.gl.glTexImage2D(GL20.GL_TEXTURE_2D, 0, GL20.GL_DEPTH_COMPONENT16, bufResX, bufRefY, 0, GL20.GL_DEPTH_COMPONENT, GL20.GL_FLOAT, null);
+		Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MAG_FILTER, GL20.GL_NEAREST);
+		Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MIN_FILTER, GL20.GL_NEAREST); 
+		Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_S, GL20.GL_CLAMP_TO_EDGE);
+		Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_T, GL20.GL_CLAMP_TO_EDGE);
 	}
 	
 }
