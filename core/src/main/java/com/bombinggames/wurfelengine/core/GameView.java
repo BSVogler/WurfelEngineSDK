@@ -759,7 +759,6 @@ public class GameView implements GameManager {
 			//bind/upload? depth texture
 			Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
 			//Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
-
 			specifyZBuffer(bufResX,bufRefY);
 		}
 
