@@ -616,11 +616,11 @@ public class MovableEntity extends AbstractEntity  {
 	}
 	
 	/**
-	 * Get the movement vector as the product of direction and speed.
-	 * @return in m/s. copy safe
+	 * Get the movement vector as the product of direction and speed. Don't use this method to change values. Use {@link #setMovement(Vector3) }.
+	 * @return in m/s. returns reference
 	 */
 	public final Vector3 getMovement(){
-		return movement.cpy();
+		return movement;
 	}
 	
 	/**
