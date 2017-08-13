@@ -1393,6 +1393,13 @@ public class RenderCell extends AbstractGameObject {
 	 * @param value game data value.
 	 */
 	public void setValue(byte value) {
+		if (this.value!=value) {
+			//reset sides
+			side1=null;
+			side2=null;
+			side3=null;
+		}
+			
 		this.value = value;
 	}
 

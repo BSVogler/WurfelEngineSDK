@@ -41,7 +41,6 @@ public class AnimatedBlock extends RenderCell implements Animatable{
     private boolean running;
     private final boolean loop;
 	private boolean bob;
-	byte currentSpriteValue;
 	/**
 	 * true if running forth, false if back
 	 */
@@ -70,15 +69,7 @@ public class AnimatedBlock extends RenderCell implements Animatable{
 		this.bob = bob;
 	}
 	
-	/**
-	 *
-	 * @param value
-	 */
-	public void setStartSpriteValue(byte value){
-		this.currentSpriteValue = value;
-	}
 	
-    
    /**
      * updates the block and the animation.
      * @param dt the time wich has passed since last update
@@ -87,12 +78,18 @@ public class AnimatedBlock extends RenderCell implements Animatable{
     public void update(float dt) {
         if (running) {
             counter += dt;
+			byte currentSpriteValue = getSpriteValue();
+			if (currentSpriteValue > animationsduration.length) {
+				currentSpriteValue = (byte) (animationsduration.length - 1);
+			}
+			
             if (counter >= animationsduration[currentSpriteValue]){
                 counter %= animationsduration[currentSpriteValue];//stay in circle
-				if (runningForth)
-					currentSpriteValue = ((byte) (currentSpriteValue+1));
-				else
-					currentSpriteValue = ((byte) (currentSpriteValue-1));
+				if (runningForth) {
+					currentSpriteValue = ((byte) (currentSpriteValue + 1));
+				} else {
+					currentSpriteValue = ((byte) (currentSpriteValue - 1));
+				}
 				
                 if (currentSpriteValue >= animationsduration.length) {//if over animation array
                     if (loop) {
@@ -120,13 +117,9 @@ public class AnimatedBlock extends RenderCell implements Animatable{
 					}
 				}
             }
+			setValue(currentSpriteValue);
         }
     }
-
-	@Override
-	public byte getSpriteValue() {
-		return currentSpriteValue;
-	}
 
     /**
      * Starts the animation.
