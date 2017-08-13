@@ -81,6 +81,19 @@ public class ParticleEmitter extends AbstractEntity {
 		setIndestructible(true);
 		setName("Particle Emitter");
 		setActive(true);
+		setHidden(true);
+		
+		setParticleStartMovement(new Vector3(
+			(float) (Math.random() - 0.5f) * 2,
+			(float) (Math.random() - 0.5f) * 2,
+			(float) (Math.random() - 0.5f) * 2
+		));
+		setParticleSpread(new Vector3(
+			(float) (Math.random() - 0.5f) * 2*0.4f,
+			(float) (Math.random() - 0.5f) * 2*0.4f,
+			(float) (Math.random() - 0.5f) * 2*0.4f
+		));
+		
 		pool = new Pool<Particle>(size) {
 			@Override
 			protected Particle newObject() {
@@ -90,12 +103,12 @@ public class ParticleEmitter extends AbstractEntity {
 
 			@Override
 			public Particle obtain() {
-				boolean init = false;
+				boolean mustInitialize = false;
 				if (getFree() > 0) {
-					init = true;//will obtain from pool
+					mustInitialize = true;//will obtain from pool
 				}
 				Particle particle = super.obtain();
-				if (init) {
+				if (mustInitialize) {
 					particle.init(2000f);
 				}
 				return particle;
@@ -127,18 +140,20 @@ public class ParticleEmitter extends AbstractEntity {
 			//loop to allow more then one spawn each frame
 			while (timer >= timeEachSpawn) {
 				timer -= timeEachSpawn;
+				//create new particle
 				Particle particle = pool.obtain();
 				particle.setPool(pool);
 				particle.setType(prototype.getType());
 				particle.setColor(prototype.getColor());
 				particle.setRotation((float) (Math.random() * 360f));
+				particle.addMovement(startingVector);
+				//add a little noise
 				particle.addMovement(
-					startingVector.add(
-						(float) (Math.random() - 0.5f) * 2 * spread.x,
-						(float) (Math.random() - 0.5f) * 2 * spread.y,
-						(float) (Math.random() - 0.5f) * 2 * spread.z
-					)
+					(float) (Math.random() - 0.5f) * 2 * spread.x,
+					(float) (Math.random() - 0.5f) * 2 * spread.y,
+					(float) (Math.random() - 0.5f) * 2 * spread.z
 				);
+					
 				if (particle.hasPosition()) {
 					particle.getPosition().set(getPosition());
 				} else {
