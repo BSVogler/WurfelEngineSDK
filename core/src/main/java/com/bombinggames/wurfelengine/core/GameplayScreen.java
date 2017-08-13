@@ -102,9 +102,12 @@ public class GameplayScreen extends WEScreen {
 		//game crashes if not in devmode
 		float avgDt = controller.getDevTools().getAverageDelta(WE.getCVars().getValueI("numFramesAverageDelta"));
 		
+		if (avgDt >= WE.getCVars().getValueF("MaxDelta")) {
+			avgDt = 1000f / 60f;//if <1 FPS assume it was stopped and set delta to 16,66ms ^= 60FPS
+		}
 		//aply game world speed
 		float dt = avgDt * WE.getCVars().getValueF("timespeed");
-		
+
 		//update data
 		MessageManager.getInstance().update(delta);
 		view.preUpdate(dt);
