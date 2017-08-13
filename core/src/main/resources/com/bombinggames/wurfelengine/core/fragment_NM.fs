@@ -6,11 +6,8 @@ varying vec3 v_pos;//world position
 //our texture samplers
 uniform sampler2D u_texture;   //diffuse map
 uniform sampler2D u_normals;   //normal map
-uniform sampler2D u_depth; 
 
-
-//values used for shading algorithm...
-uniform vec2 u_resBuffer;
+//values used for shading algorithm
 uniform vec4 u_ambientColor;
 uniform vec3 u_sunNormal;        //light position, normalized
 uniform vec4 u_sunColor;   
@@ -19,20 +16,16 @@ uniform vec4 u_moonColor;
 uniform vec3 u_cameraPos;
 uniform vec3 u_playerpos;
 uniform vec3 u_localLightPos;
-uniform vec3 u_fogColor;  
+uniform vec3 u_fogColor;   
 
 void main() {
-	 
-	
+	//gl_FragDepth = gl_FragCoord.z;
     //RGBA of our diffuse color
-    vec4 DiffuseColor = texture2D(u_texture, v_texCoords);
-//discard if nearer pr equal then previous layer, little delta to prevent rounding erros
-	if (DiffuseColor.a <= 0.1 || gl_FragCoord.z-0.00008 <= texture2D(u_depth , gl_FragCoord.xy/u_resBuffer).r){
-	//if (DiffuseColor.a <= 0.1){
+        vec4 DiffuseColor = texture2D(u_texture, v_texCoords);
+	 if (DiffuseColor.a <= 0.1){
 	 	discard;
 	 }
-	gl_FragDepth = gl_FragCoord.z;
-	
+
 	vec3 ambient = u_ambientColor.rgb*DiffuseColor.rgb;
 
 	vec3 normalColor = texture2D(u_normals, v_texCoords).rgb;
