@@ -469,7 +469,8 @@ public class Chunk implements Telegraph {
 					}
 					ois.close();
 				} catch (IOException ex) {
-					Gdx.app.error("Chunk", "Loading of entities in chunk" + path + "/" + chunkX + "," + chunkY + " failed: " + ex);
+					Gdx.app.error("Chunk", "Loading of entities in chunk" + path + "/" + chunkX + "," + chunkY + " failed");
+					ex.printStackTrace();
 				} catch (java.lang.NoClassDefFoundError ex) {
 					Gdx.app.error("Chunk", "Loading of entities in chunk " + path + "/" + chunkX + "," + chunkY + " failed. Map file corrupt: " + ex);
 				}
@@ -587,7 +588,7 @@ public class Chunk implements Telegraph {
 						try {
 							fileOut.writeObject(ent);
 						} catch(java.io.NotSerializableException ex){
-							Gdx.app.error("Chunk", "Something is not NotSerializable: "+ex.getMessage()+":"+ex.toString());
+							Gdx.app.error("Chunk", "A class used in "+ent.getClass().getName()+" is not NotSerializable: "+ ex.toString());
 						}
 					}
 				}

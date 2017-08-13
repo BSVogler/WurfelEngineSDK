@@ -60,7 +60,7 @@ public class ParticleEmitter extends AbstractEntity {
 	private Vector3 spread = new Vector3(0, 0, 0);
 	private PointLightSource lightsource;
 	private Particle prototype = new Particle((byte) 22);
-	private Pool<Particle> pool;
+	private transient Pool<Particle> pool;
 
 	/**
 	 * Initializes with defautl size
