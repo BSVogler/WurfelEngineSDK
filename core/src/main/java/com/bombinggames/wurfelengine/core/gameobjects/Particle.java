@@ -71,6 +71,7 @@ public class Particle extends MovableEntity {
 		startingAlpha =1;
 		setMass(0.0005f);
 		rotateRight = Math.random() > 0.5f;
+		getMovement().setZero();
 	}
 
 	/**
