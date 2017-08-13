@@ -2,6 +2,7 @@ package com.bombinggames.wurfelengine.core.gameobjects;
 
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Interpolation;
+import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Pool;
 
 /**
@@ -71,7 +72,7 @@ public class Particle extends MovableEntity {
 		startingAlpha =1;
 		setMass(0.0005f);
 		rotateRight = Math.random() > 0.5f;
-		getMovement().setZero();
+		setMovement(Vector3.Zero);
 	}
 
 	/**
