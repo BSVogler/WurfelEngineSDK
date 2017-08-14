@@ -39,12 +39,14 @@ import java.io.Serializable;
 
 /**
  * A component that will move the connected {@link MovableEntity} to a position.
+ * Will keep the speed but if it falsl udner a threshold will use this.
+ *
  * @author Benedikt Vogler
  */
 public class MoveToAi implements Telegraph, Serializable, Component {
 
 	private static final long serialVersionUID = 1L;
-	
+
 	private MovableEntity body;
 	/**
 	 * where does it move to?
@@ -62,6 +64,26 @@ public class MoveToAi implements Telegraph, Serializable, Component {
 	 */
 	public MoveToAi(Point goal) {
 		this.movementGoal = goal;
+	}
+
+	private float minspeed = 2;
+
+	/**
+	 * Get the value of minspeed
+	 *
+	 * @return the value of minspeed
+	 */
+	public float getMinspeed() {
+		return minspeed;
+	}
+
+	/**
+	 * Set the value of minspeed
+	 *
+	 * @param minspeed new value of minspeed
+	 */
+	public void setMinspeed(float minspeed) {
+		this.minspeed = minspeed;
 	}
 
 	/**
@@ -82,10 +104,8 @@ public class MoveToAi implements Telegraph, Serializable, Component {
 					movementSpeed = body.getSpeedHor();
 				}
 
-				if (movementSpeed < 2) {
-					movementSpeed = 2;
-				}
-				d.nor().scl(movementSpeed);//direction only
+				movementSpeed = Math.max(movementSpeed,minspeed);
+				d.nor().scl(movementSpeed);//move in horizontal direction
 				//if walking keep momentum
 				if (!body.isFloating()) {
 					d.z = body.getMovement().z;
@@ -94,9 +114,9 @@ public class MoveToAi implements Telegraph, Serializable, Component {
 				body.setMovement(d);// update the movement vector
 			} else {
 				body.setSpeedHorizontal(0);// update the movement vector
-				dispose();
+				dispose();//dispose at goal
 			}
-			
+
 			//Movement AI: if standing on same position as in last update
 			if (!body.isFloating()) {
 				if (body.getPosition().equals(lastPos) && body.getSpeed() > 0) {//not standing still
@@ -114,7 +134,7 @@ public class MoveToAi implements Telegraph, Serializable, Component {
 			}
 		}
 	}
-	
+
 	/**
 	 *
 	 * @return
@@ -131,7 +151,7 @@ public class MoveToAi implements Telegraph, Serializable, Component {
 		} else {
 			return new Vector2(body.getPosition().x, body.getPosition().y).dst2(new Vector2(movementGoal.x, movementGoal.y)) < 20; //sqrt(20)~=4,4
 		}
-			
+
 	}
 
 	@Override
@@ -153,8 +173,8 @@ public class MoveToAi implements Telegraph, Serializable, Component {
 	 */
 	@Override
 	public void setParent(AbstractEntity body) {
-		if (!(body instanceof MovableEntity)){
-			throw new IllegalArgumentException("Body must be instanceof "+ MovableEntity.class.getSimpleName());
+		if (!(body instanceof MovableEntity)) {
+			throw new IllegalArgumentException("Body must be instanceof " + MovableEntity.class.getSimpleName());
 		} else {
 			this.body = (MovableEntity) body;
 		}
