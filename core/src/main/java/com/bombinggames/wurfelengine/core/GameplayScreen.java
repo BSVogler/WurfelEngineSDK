@@ -100,7 +100,7 @@ public class GameplayScreen extends WEScreen {
 	@Override
 	public void renderImpl(final float delta) {
 		//game crashes if not in devmode
-		float avgDt = controller.getDevTools().getAverageDelta(WE.getCVars().getValueI("numFramesAverageDelta"));
+		float avgDt = controller.getDevTools().getAverageDelta(WE.getCVars().getValueI("numFramesAverageDelta"))*1000;
 		
 		if (avgDt >= WE.getCVars().getValueF("MaxDelta")) {
 			avgDt = 1000f / 60f;//if <1 FPS assume it was stopped and set delta to 16,66ms ^= 60FPS
