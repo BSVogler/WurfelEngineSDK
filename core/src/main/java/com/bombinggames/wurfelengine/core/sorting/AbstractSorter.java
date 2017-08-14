@@ -87,6 +87,9 @@ public abstract class AbstractSorter implements Telegraph {
 		return false;
 	}
 	
+	/**
+	 * updates the iterator cache
+	 */
 	public void updateCacheIfOutdated(){
 		int centerChunkX = camera.getCenterChunkX();
 		int centerChunkY = camera.getCenterChunkY();
