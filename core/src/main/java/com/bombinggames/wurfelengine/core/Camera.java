@@ -563,7 +563,7 @@ public class Camera{
 				WE.getCVars().getValueF("fogB")
 			);
 			shader.setUniformf("u_resBuffer", (float) Gdx.graphics.getBackBufferWidth(), (float) Gdx.graphics.getBackBufferHeight());
-			if (focusEntity != null) {
+			if (focusEntity != null && focusEntity.hasPosition()) {
 				shader.setUniformf("u_playerpos", focusEntity.getPoint());
 				shader.setUniformf("u_localLightPos", focusEntity.getPoint());
 			}
@@ -916,7 +916,7 @@ public class Camera{
 	 * @param y in game space
 	 */
 	public void move(int x, int y) {
-		if (focusEntity != null) {
+		if (focusEntity != null && focusEntity.hasPosition()) {
 			focusEntity.getPosition().add(x, y, 0);
 		} else {
 			position.x += x;
@@ -966,13 +966,12 @@ public class Camera{
 	public void setFocusEntity(AbstractEntity focusEntity) {
 		if (this.focusEntity != focusEntity) {
 			this.focusEntity = focusEntity;
-			if (!focusEntity.hasPosition()) {
-				throw new IllegalStateException("Entity must be spawned first.");
+			if (focusEntity.hasPosition()) {
+				position.set(focusEntity.getPosition().getViewSpcX(),
+					(int) (focusEntity.getPosition().getViewSpcY()
+					+ focusEntity.getDimensionZ() * RenderCell.PROJECTIONFACTORZ / 2)//have middle of object in center
+				);
 			}
-			position.set(focusEntity.getPosition().getViewSpcX(),
-				(int) (focusEntity.getPosition().getViewSpcY()
-				+ focusEntity.getDimensionZ() * RenderCell.PROJECTIONFACTORZ / 2)//have middle of object in center
-			);
 		}
 	}
 	
