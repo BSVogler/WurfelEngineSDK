@@ -198,7 +198,7 @@ public class RenderStorage implements Telegraph  {
 	
 	
 	/**
-	 * Clears the used {@link RenderChunk}s then rebuilds them (shadows, AO,  occlusion culling).
+	 * Clears the the content of the used {@link RenderChunk}s then rebuilds them (shadows, AO,  occlusion culling).
 	 */
 	public void bakeChunks() {
 		//loop over clone because may add new chunks in different thread to data while looping
