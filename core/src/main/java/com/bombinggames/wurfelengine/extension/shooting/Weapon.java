@@ -344,7 +344,7 @@ public class Weapon extends AbstractEntity implements Telegraph {
 			laserdot = (Laserdot) new Laserdot().spawn(getPosition().cpy());
 		}
 		laserdot.ignoreBlock(ignoreId);
-		laserdot.update(aimDir, getPosition());
+		laserdot.update(getPosition(), aimDir);
 	}
 	
 	/**
@@ -353,7 +353,7 @@ public class Weapon extends AbstractEntity implements Telegraph {
 	 */
 	public void setAimDir(Vector3 dir){
 		this.aimDir = dir.nor();
-		laserdot.update(aimDir, getPosition());
+		laserdot.update(getPosition(), aimDir);
 	}
     
     /**
