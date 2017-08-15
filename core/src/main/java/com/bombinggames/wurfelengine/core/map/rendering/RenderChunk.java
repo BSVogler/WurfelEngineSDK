@@ -37,13 +37,18 @@ import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator3D;
 
 /**
- * Stores display data for a {@link Chunk}. If no block/air is stored by using the shared {@link #CELLOUTSIDE}.
+ * Stores display data for a {@link Chunk}. <br> <br>
+ * This may is outdated: <br>
+ * If a cell contains no block/air then the shared {@link #CELLOUTSIDE} is used.
  * @author Benedikt Vogler
  */
 public class RenderChunk {
 	
 	/**
-	 * if in a cell is no data available use this block. Uses air internally. block-by-block differences must not be used because this is a shared object.
+	 * In theory if in a cell is no data available use this block. Uses air internally.<br>
+	 * block-by-block differences must not be used because this is a shared
+	 * object. Topological Depth Sort needs individual containers. If the topolgogical
+	 * sort would be removed from the engine this could be again be used.
 	 */
 	public static final RenderCell CELLOUTSIDE = RenderCell.newRenderCell((byte) 0, (byte) 0);
 	/**

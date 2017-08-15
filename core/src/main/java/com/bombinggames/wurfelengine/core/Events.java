@@ -99,7 +99,7 @@ public enum Events {
 	chunkChanged(22),
 	
 	/**
-	 *
+	 * event fired when a block in the map changed
 	 */
 	mapChanged(23),
 	

@@ -197,7 +197,7 @@ public class RenderStorage implements Telegraph  {
 	
 	
 	/**
-	 * Clears the used RenderChunks then rebuilds them (shadows, AO,  occlusion culling).
+	 * Clears the used {@link RenderChunk}s then rebuilds them (shadows, AO,  occlusion culling).
 	 */
 	public void bakeChunks() {
 		//loop over clone because may add new chunks in different thread to data while looping
@@ -513,7 +513,7 @@ public class RenderStorage implements Telegraph  {
 	@Override
 	public boolean handleMessage(Telegram msg) {
 		if (msg.message == Events.mapChanged.getId()) {
-			bakeChunks();//coould be optimized by only updating blocks that changed
+			bakeChunks();//could be optimized by only updating blocks that changed
 			RenderCell.rebuildCoverList();
 			return true;
 		}

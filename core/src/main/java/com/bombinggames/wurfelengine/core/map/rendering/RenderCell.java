@@ -43,6 +43,7 @@ import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.CustomBlocks;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
+import com.bombinggames.wurfelengine.core.sorting.TopologicalSort;
 import java.util.LinkedList;
 
 /**
@@ -429,7 +430,7 @@ public class RenderCell extends AbstractGameObject {
 	}
 	
 	/**
-	 * set the timestamp when the content changed. This causes every field wich contains the covered neighbors to be rebuild. uses to prenvent duplicate graph rebuilds in one frame.
+	 * Only relevant to topological depth sort {@link TopologicalSort}. Sets a flag which causes the baking of the coverlist. This causes every field wich contains the covered neighbors to be rebuild. Used to prenvent duplicate graph rebuilds in one frame.
 	 */
 	public static void rebuildCoverList() {
 		RenderCell.rebuildCoverList = Gdx.graphics.getFrameId();
