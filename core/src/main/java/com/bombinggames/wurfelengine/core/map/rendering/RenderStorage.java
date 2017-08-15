@@ -130,7 +130,8 @@ public class RenderStorage implements Telegraph  {
 	}
 	
 	/**
-	 * Checks if chunk must be loaded or deleted.
+	 * Checks if specific chunk must be loaded or deleted.
+	 * If chunk is there camera access flag is set to true.
 	 *
 	 * @param x
 	 * @param y
@@ -139,10 +140,10 @@ public class RenderStorage implements Telegraph  {
 		//check if in render storage
 		RenderChunk rChunk = getChunk(x, y);
 		if (rChunk == null) {
+			
+			//is chunk data isin RAM then create new renderchunk and put in renderStorage
 			Chunk mapChunk = Controller.getMap().getChunk(x, y);
-			//is chunk data in RAM?
 			if (mapChunk != null) {
-				//create new renderchunk and put in renderStorage
 				rChunk = new RenderChunk(mapChunk);
 				data.add(rChunk);
 				rChunk.setCameraAccess(true);
