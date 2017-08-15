@@ -126,6 +126,9 @@ public class Camera{
 	 * amount of objects to be rendered, used as an index during filling
 	 */
 	private int objectsToBeRendered = 0;
+	/**
+	 * object holding the center position
+	 */
 	private final Point center = new Point(0, 0, 0);
 
 	/**
@@ -940,7 +943,7 @@ public class Camera{
 	/**
 	 * Returns the focuspoint. Approximated because is stored in view space and backtransformation is a line.
 	 *
-	 * @return in game space, copy safe
+	 * @return in game space
 	 */
 	public Point getCenter() {
 		return (Point) center.set(

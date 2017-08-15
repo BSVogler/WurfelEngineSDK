@@ -55,6 +55,7 @@ import com.bombinggames.wurfelengine.core.gameobjects.Cursor;
 import com.bombinggames.wurfelengine.core.gameobjects.EntityShadow;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
+import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
@@ -116,13 +117,19 @@ public class EditorView extends GameView implements Telegraph {
 		}
 
 		if (oldView != null) {
+			Point center;
+			if (oldView.getCameras().isEmpty()) {
+				center = new Point();
+			} else {
+				center = oldView.getCameras().get(0).getCenter();
+			}
 			camera = new Camera(
 				this,
 				0,
 				0,
 				Gdx.graphics.getWidth(),
 				Gdx.graphics.getHeight(),
-				oldView.getCameras().get(0).getCenter()//keep position
+				center//keep position
 			);
 		} else {
 			camera = new Camera(
@@ -181,7 +188,8 @@ public class EditorView extends GameView implements Telegraph {
 	public void onEnter() {
 		controller.showCursor();
 		gameplayView.ifPresent(t -> {
-			camera.setCenter(t.getCameras().get(0).getCenter().cpy());
+			if (!t.getCameras().isEmpty())
+				camera.setCenter(t.getCameras().get(0).getCenter().cpy());
 		});//always keep the camera position
 		WE.getEngineView().addInputProcessor(new EditorInputListener(this.controller, this));
 		Gdx.input.setCursorCatched(false);

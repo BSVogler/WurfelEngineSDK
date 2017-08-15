@@ -50,7 +50,7 @@ public class Cursor extends AbstractEntity {
 	private static final long serialVersionUID = 1L;
     private final SimpleEntity normal;
     private Side normalSide;
-	private CursorInfo selDet;
+	private CursorInfo cursorInfo;
 	private Tool tool = Tool.DRAW;
     
     /**
@@ -81,7 +81,7 @@ public class Cursor extends AbstractEntity {
 	 * @param selDet
 	 */
 	public void setInfo(CursorInfo selDet){
-		this.selDet = selDet;
+		this.cursorInfo = selDet;
 	}
 
 	@Override
@@ -111,7 +111,8 @@ public class Cursor extends AbstractEntity {
 		}
 		if (normal.hasPosition())
 			normal.getPosition().set(isectP);
-		selDet.updateFrom(pos.getBlock(), coord);
+		if (cursorInfo != null)
+			cursorInfo.updateFrom(pos.getBlock(), coord);
     }
         
     /**
