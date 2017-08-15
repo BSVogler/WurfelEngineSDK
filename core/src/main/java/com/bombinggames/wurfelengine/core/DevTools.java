@@ -36,16 +36,8 @@ import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.mapeditor.EditorView;
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * Shows data for developers. Also has some tools like buttons to edito the map.
@@ -323,15 +315,12 @@ public class DevTools {
 
 	/**
 	 * 
-	 * @param path 
+	 * @return  
 	 */
-	public void saveToFile(Path path) {
-		try (
-			final BufferedWriter writer = Files.newBufferedWriter(path,
-				StandardCharsets.UTF_8, StandardOpenOption.CREATE);) {
+	public String getDataAsString() {
 			StringBuilder content = new StringBuilder(data.length);
 			char separator = ',';
-			int c = 0;
+			int c=0;
 			for (float f : data) {
 				if (f!=0) {
 					c++;
@@ -339,11 +328,7 @@ public class DevTools {
 					content.append(separator);
 				}
 			}
-			writer.write(content.toString());
-			writer.flush();
-			System.out.println("Wrote "+c+" frame times to "+path);
-		} catch (IOException ex) {
-			Logger.getLogger(DevTools.class.getName()).log(Level.SEVERE, null, ex);
-		}
+			System.out.println("Got "+c+" frame times");
+			return content.toString();
 	}
 }
