@@ -376,7 +376,23 @@ public class Camera{
 			
 			//recalculate the center position
 			updateCenter();
-
+			
+			int currentSorterId = WE.getCVars().getValueI("depthSorter");
+			if (sorter == null || currentSorterId != sorterId) {
+				//should react to an onchange event of cvar
+				switch (currentSorterId) {
+					case 0:
+						sorter = new NoSort(this);
+						break;
+					case 1:
+						sorter = new TopologicalSort(this);
+						break;
+					case 2:
+						sorter = new DepthValueSort(this);
+						break;
+				}
+				sorterId = currentSorterId;
+			}
 		}
 	}
 
@@ -441,22 +457,7 @@ public class Camera{
 		//this line is needed because the above does not work, calcualtes absolute position
 		centerChunkY = (int) Math.floor(-position.y / Chunk.getViewDepth());
 
-		int currentSorterId = WE.getCVars().getValueI("depthSorter");
-		if (sorter == null || currentSorterId != sorterId) {
-			//should react to an onchange event of cvar
-			switch (currentSorterId) {
-				case 0:
-					sorter = new NoSort(this);
-					break;
-				case 1:
-					sorter = new TopologicalSort(this);
-					break;
-				case 2:
-					sorter = new DepthValueSort(this);
-					break;
-			}
-			sorterId = currentSorterId;
-		}
+		
 		//check if center changed
 		if (lastCenterX != centerChunkX
 			|| lastCenterY != centerChunkY
