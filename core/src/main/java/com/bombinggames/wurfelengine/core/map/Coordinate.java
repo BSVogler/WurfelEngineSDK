@@ -88,7 +88,6 @@ public class Coordinate implements Position {
 	 * @param z The z value as coordinate.
 	 */
 	public Coordinate(int x, int y, int z) {
-		super();
 		this.x = x;
 		this.y = y;
 		this.z = z;
