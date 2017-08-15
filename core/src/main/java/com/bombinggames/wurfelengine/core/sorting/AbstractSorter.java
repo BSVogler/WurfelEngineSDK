@@ -54,6 +54,7 @@ public abstract class AbstractSorter implements Telegraph {
 	private final CoveredByCameraIterator iterator;
 	private int lastCenterX;
 	private int lastCenterY;
+	private boolean initialized;
 	
 	/**
 	 * Sorts the list of game objects.
@@ -93,9 +94,11 @@ public abstract class AbstractSorter implements Telegraph {
 	public void updateCacheIfOutdated(){
 		int centerChunkX = camera.getCenterChunkX();
 		int centerChunkY = camera.getCenterChunkY();
-		if (lastCenterX != centerChunkX
+		if (!initialized ||
+			lastCenterX != centerChunkX
 			|| lastCenterY != centerChunkY
 		) {
+			initialized=true;
 			//update the last center
 			lastCenterX = centerChunkX;
 			lastCenterY = centerChunkY;
