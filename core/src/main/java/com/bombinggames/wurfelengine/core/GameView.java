@@ -54,6 +54,7 @@ import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
 import com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis;
+import com.bombinggames.wurfelengine.extension.MiniMapChunkDebug;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.logging.Level;
@@ -135,6 +136,7 @@ public class GameView implements GameManager {
 	private int depthTexture1;
 	private FrameBuffer[] fbo;
 	private ShaderProgram depthShader;
+	private MiniMapChunkDebug minimap;
     
 	/**
 	 * Loades some files and set up everything when the engine is running. After this has been inactive use {@link #onEnter() }<br>
@@ -414,6 +416,13 @@ public class GameView implements GameManager {
 			Controller.getLightEngine().render(this, getCameras().get(0).getCenter());
 		}
 
+		if (WE.getCVars().getValueB("showMiniMapChunk")) {
+			if (minimap == null) {
+				minimap = new MiniMapChunkDebug(Gdx.graphics.getWidth() / 2, Gdx.graphics.getHeight() / 2);
+			}
+			minimap.render(this);
+		}
+			
 		//render buttons
 		stage.draw();
 		numSpritesThisFrame = gameSpaceSpriteBatch.getRenderedSprites()-spritesStart;
