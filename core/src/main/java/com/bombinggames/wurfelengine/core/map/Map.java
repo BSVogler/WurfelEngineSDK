@@ -428,7 +428,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 * {@link AbstractBlockLogicExtension} instance if the block has logic.
 	 *
 	 * @param coord
-	 * @param block id, value and health
+	 * @param block id (bit 0-7), value (bit 8-15) and health (bit 16-23)
 	 */
 	public void setBlock(Coordinate coord, int block) {
 		Chunk chunk = getChunkContaining(coord);
