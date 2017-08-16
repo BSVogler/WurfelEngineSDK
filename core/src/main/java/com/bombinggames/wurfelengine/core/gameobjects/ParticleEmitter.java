@@ -37,6 +37,7 @@ import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Pool;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.map.Point;
+import java.util.Random;
 
 /**
  * Light is per default disabled.
@@ -46,6 +47,8 @@ import com.bombinggames.wurfelengine.core.map.Point;
 public class ParticleEmitter extends AbstractEntity {
 
 	private static final long serialVersionUID = 2L;
+	
+	private final static Random RANDOMGENERATOR = new java.util.Random(1);
 	private boolean active = false;
 	/**
 	 * counts the time
@@ -84,14 +87,14 @@ public class ParticleEmitter extends AbstractEntity {
 		setHidden(true);
 		
 		setParticleStartMovement(new Vector3(
-			(float) (Math.random() - 0.5f) * 2,
-			(float) (Math.random() - 0.5f) * 2,
-			(float) (Math.random() - 0.5f) * 2
+			(RANDOMGENERATOR.nextFloat() - 0.5f) * 2,
+			(RANDOMGENERATOR.nextFloat() - 0.5f) * 2,
+			(RANDOMGENERATOR.nextFloat() - 0.5f) * 2
 		));
 		setParticleSpread(new Vector3(
-			(float) (Math.random() - 0.5f) * 2*0.4f,
-			(float) (Math.random() - 0.5f) * 2*0.4f,
-			(float) (Math.random() - 0.5f) * 2*0.4f
+			(RANDOMGENERATOR.nextFloat() - 0.5f) * 2*0.4f,
+			(RANDOMGENERATOR.nextFloat() - 0.5f) * 2*0.4f,
+			(RANDOMGENERATOR.nextFloat() - 0.5f) * 2*0.4f
 		));
 		
 		pool = new Pool<Particle>(size) {
@@ -149,9 +152,9 @@ public class ParticleEmitter extends AbstractEntity {
 				particle.addMovement(startingVector);
 				//add a little noise
 				particle.addMovement(
-					(float) (Math.random() - 0.5f) * 2 * spread.x,
-					(float) (Math.random() - 0.5f) * 2 * spread.y,
-					(float) (Math.random() - 0.5f) * 2 * spread.z
+					(RANDOMGENERATOR.nextFloat() - 0.5f) * 2 * spread.x,
+					(RANDOMGENERATOR.nextFloat() - 0.5f) * 2 * spread.y,
+					(RANDOMGENERATOR.nextFloat() - 0.5f) * 2 * spread.z
 				);
 					
 				if (particle.hasPosition()) {
