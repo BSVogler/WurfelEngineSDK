@@ -53,7 +53,7 @@ public class TopologicalSort extends AbstractSorter {
 
 	private static final long serialVersionUID = 1L;
 	public static final float WINDAMPLITUDE = 20f;
-	private final static Random RANDOMGENERATOR = new java.util.Random();
+	private final static Random RANDOMGENERATOR = new java.util.Random(1);//use the same seed every time
 	private static float wind;
 	private static float windWholeCircle;
 	private final GameSpaceSprite gras;
