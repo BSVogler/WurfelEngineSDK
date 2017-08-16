@@ -253,7 +253,7 @@ public class MovableEntity extends AbstractEntity  {
 			
 			if (moveToAi != null) {
 				moveToAi.update(dt);
-				if (moveToAi.atGoal()){
+				if (moveToAi.atGoal(dt)){
 					moveToAi = null;
 				}
 			}

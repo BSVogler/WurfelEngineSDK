@@ -35,6 +35,7 @@ import com.badlogic.gdx.ai.msg.Telegraph;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.core.map.Point;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import java.io.Serializable;
 
 /**
@@ -93,7 +94,7 @@ public class MoveToAi implements Telegraph, Serializable, Component {
 	@Override
 	public void update(float dt) {
 		if (movementGoal != null && body.getPosition() != null) {
-			if (!atGoal()) {
+			if (!atGoal(dt)) {
 				//movement logic
 				Vector3 d = movementGoal.cpy().sub(body.getPosition());
 				float movementSpeed;
@@ -136,21 +137,25 @@ public class MoveToAi implements Telegraph, Serializable, Component {
 	}
 
 	/**
-	 *
-	 * @return
+	 * Can the goal be reached by the next frame?
+	 * @param dt delta time in ms for this this frame
+	 * @return if position is near the goal
 	 */
-	public boolean atGoal() {
+	public boolean atGoal(float dt) {
 		if (movementGoal == null) {
 			return true;
 		}
 		if (body.getPosition() == null) {
 			return false;
 		}
+		
+		float distance2;
 		if (body.isFloating()) {
-			return body.getPosition().dst2(movementGoal) < 20; //sqrt(20)~=4,4
+			distance2 = body.getPosition().dst2(movementGoal);
 		} else {
-			return new Vector2(body.getPosition().x, body.getPosition().y).dst2(new Vector2(movementGoal.x, movementGoal.y)) < 20; //sqrt(20)~=4,4
+			distance2 = new Vector2(body.getPosition().x, body.getPosition().y).dst2(new Vector2(movementGoal.x, movementGoal.y));
 		}
+		return distance2<20 || distance2 < RenderCell.GAME_EDGELENGTH*body.getSpeed()*dt/(float)1000*RenderCell.GAME_EDGELENGTH*body.getSpeed()*dt/(float)1000; //sqrt(20)~=4,4
 
 	}
 
