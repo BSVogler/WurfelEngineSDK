@@ -700,7 +700,7 @@ public class Chunk implements Telegraph {
 
 	/**
 	 * Almost lowest level method to set a block in the map. If the block has
-	 * logic a new logicinstance will be created.
+	 * logic a new {@link AbstractBlockLogicExtension} instance will be created.
 	 * Health set to 100 and value set to 0
 	 * @param x
 	 * @param y
@@ -727,7 +727,7 @@ public class Chunk implements Telegraph {
 	
 	/**
 	 * Almost lowest level method to set a block in the map. If the block has
-	 * logic a new logicinstance will be created.
+	 * logic a new {@link AbstractBlockLogicExtension} instance will be created.
 	 * Health set to 100 and value set to 0
 	 * @param coord
 	 * @param id 
@@ -752,7 +752,7 @@ public class Chunk implements Telegraph {
 		
 	/**
 	 * Almost lowest level method to set a block in the map. If the block has
-	 * logic a new logicinstance will be created.
+	 * logic a new {@link AbstractBlockLogicExtension} instance will be created.
 	 * Sets health to 100.
 	 * @param coord
 	 * @param id

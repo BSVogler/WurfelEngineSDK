@@ -409,13 +409,12 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 
 	/**
-	 * Set a block at this coordinate. This creates a logic instance if the
-	 * block if it has a logic.
+	 * Set a block at this coordinate. This creates a
+	 * {@link AbstractBlockLogicExtension} instance if the block has logic.
 	 *
 	 * @param coord
 	 * @param id
-	 * @see
-	 * #setBlock(com.bombinggames.wurfelengine.core.map.rendering.RenderCell)
+	 * @see #setBlock(Coordinate, int)
 	 */
 	public void setBlock(Coordinate coord, byte id) {
 		Chunk chunk = getChunkContaining(coord);
@@ -425,7 +424,9 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 	
 	/**
-	 * Set id, value and health at a coordinate in the map.
+	 * Set id, value and health at a coordinate in the map. This creates a
+	 * {@link AbstractBlockLogicExtension} instance if the block has logic.
+	 *
 	 * @param coord
 	 * @param block id, value and health
 	 */
@@ -437,7 +438,9 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 
 	/**
-	 * Set id and value at a coordinate in the map.
+	 * Set id and value at a coordinate in the map. This creates a
+	 * {@link AbstractBlockLogicExtension} instance if the block has logic.
+	 *
 	 * @param coord
 	 * @param id
 	 * @param value
