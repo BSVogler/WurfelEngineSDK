@@ -314,8 +314,8 @@ public class DevTools {
     }
 
 	/**
-	 * 
-	 * @return  
+	 * CSV (<a href="https://tools.ietf.org/html/rfc4180.html">RFC 4180</a>) compliant.
+	 * @return in ms
 	 */
 	public String getDataAsString() {
 			StringBuilder content = new StringBuilder(data.length);
@@ -324,7 +324,7 @@ public class DevTools {
 			for (float f : data) {
 				if (f!=0) {
 					c++;
-					content.append(f);
+					content.append(f*1000);
 					content.append(separator);
 				}
 			}
