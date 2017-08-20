@@ -286,7 +286,7 @@ public class Coordinate implements Position {
 	}
 
 	/**
-	 *
+	 * To optain value use <i>(byte) (255&(block>>8)</i>
 	 * @return first byte id, second value, third is health.
 	 */
 	public int getBlock() {
