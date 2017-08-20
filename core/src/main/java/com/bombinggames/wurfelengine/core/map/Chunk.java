@@ -163,6 +163,9 @@ public class Chunk implements Telegraph {
 	 * A list containing the logic blocks to be updated. Each logic block object points to some block inside this chunk.
 	 */
 	private final ArrayList<AbstractBlockLogicExtension> logicBlocks = new ArrayList<>(4);
+	/**
+	 * keeps track of a change in this frame
+	 */
 	private boolean modified;
 
 	/**

@@ -733,7 +733,7 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 
 	/**
-	 * should be executed after the update method
+	 * should be executed after the update method. Dispatches a message if a change occured.	
 	 */
 	public void modificationCheck() {
 		if (modified) {

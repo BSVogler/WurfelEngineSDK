@@ -1117,7 +1117,7 @@ public class GameSpaceSprite extends TextureRegion {
 	}
 
 	/**
-	 *
+	 * Flags can be used with every sprites but are expected only with block sprites
 	 * @param aoFlags
 	 */
 	public void setAoFlags(byte aoFlags) {
