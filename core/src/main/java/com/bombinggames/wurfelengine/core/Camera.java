@@ -470,7 +470,7 @@ public class Camera{
 			lastCenterY = centerChunkY;
 			checkNeededChunks();
 			//rebuild
-			RenderCell.rebuildCoverList();
+			RenderCell.flagRebuildCoverList();
 		}
 
 	}

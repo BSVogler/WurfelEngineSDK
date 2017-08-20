@@ -432,7 +432,7 @@ public class RenderCell extends AbstractGameObject {
 	/**
 	 * Only relevant to topological depth sort {@link TopologicalSort}. Sets a flag which causes the baking of the coverlist. This causes every field wich contains the covered neighbors to be rebuild. Used to prenvent duplicate graph rebuilds in one frame.
 	 */
-	public static void rebuildCoverList() {
+	public static void flagRebuildCoverList() {
 		RenderCell.rebuildCoverList = Gdx.graphics.getFrameId();
 	}
 
