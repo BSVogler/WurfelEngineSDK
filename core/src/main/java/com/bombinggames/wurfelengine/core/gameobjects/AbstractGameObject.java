@@ -433,8 +433,14 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 	 * Updates the saved vertex data with the engine default configuration (category, sprite id and sprite value).
 	 */
 	public void updateSpriteCache(){
-		AtlasRegion texture = AbstractGameObject.getSprite(getSpriteCategory(), getSpriteId(), getSpriteValue());
-		sprite = new GameSpaceSprite(texture);
+		if (getSpriteId() != 0) {
+			AtlasRegion texture = AbstractGameObject.getSprite(getSpriteCategory(), getSpriteId(), getSpriteValue());
+			if (texture == null) {
+				Gdx.app.error("ago", "could not init sprite:" + getSpriteCategory() + "," + getSpriteId() + "," + getSpriteValue());
+			} else {
+				sprite = new GameSpaceSprite(texture);
+			}
+		}
 	}
 
 	

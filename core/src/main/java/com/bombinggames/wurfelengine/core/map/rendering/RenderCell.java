@@ -938,6 +938,15 @@ public class RenderCell extends AbstractGameObject {
 	 */
     public void update(float dt) {
     }
+
+	@Override
+	public void updateSpriteCache() {
+		int block = coord.getBlock();
+		this.id = (byte) (255&(block));
+		setValue((byte) (255&(block>>8)));
+		if (!hasSides())
+			super.updateSpriteCache();
+	}
     
     @Override
     public char getSpriteCategory() {
