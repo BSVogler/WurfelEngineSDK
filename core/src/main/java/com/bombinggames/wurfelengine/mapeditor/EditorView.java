@@ -57,6 +57,7 @@ import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
+import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -220,7 +221,7 @@ public class EditorView extends GameView implements Telegraph {
 		ArrayList<AbstractEntity> newSel = new ArrayList<>(4);
 		for (AbstractEntity ent : getMap().getEntities()) {
 			if (ent.hasPosition()) {
-				TextureAtlas.AtlasRegion aR = ent.getSprite();
+				GameSpaceSprite aR = ent.getSprite();
 				if (aR != null
 					&& ent.getPosition().getViewSpcX() + ent.getSprite().getRegionWidth() / 2 >= x1 //right sprite borde
 					&& ent.getPosition().getViewSpcX() - ent.getSprite().getRegionWidth() / 2 <= x2 //left spr. border
@@ -287,7 +288,7 @@ public class EditorView extends GameView implements Telegraph {
 
 			//outlines for selected entities
 			for (AbstractEntity selectedEntity : controller.getSelectedEntities()) {
-				TextureAtlas.AtlasRegion aR = selectedEntity.getSprite();
+				GameSpaceSprite aR = selectedEntity.getSprite();
 				shr.rect(
 					selectedEntity.getPosition().getProjectionSpaceX(this, camera) - aR.getRegionWidth() / 2,
 					selectedEntity.getPosition().getProjectionSpaceY(this, camera) - aR.getRegionHeight() / 2,

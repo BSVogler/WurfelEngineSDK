@@ -486,7 +486,7 @@ public class RenderCell extends AbstractGameObject {
     }
 
 	/**
-	 * game logic value. Sprite Id may differ.
+	 * sprite value
 	 */
 	private final byte id;
 	private byte value;
@@ -525,9 +525,8 @@ public class RenderCell extends AbstractGameObject {
 	 * for topological sort. At the end contains both entities and blocks
 	 */
 	private final LinkedList<AbstractEntity> coveredEnts = new LinkedList<>();
-	private GameSpaceSprite side1;
-	private GameSpaceSprite side3;
-	private GameSpaceSprite side2;
+	private transient GameSpaceSprite side3;
+	private transient GameSpaceSprite side2;
 	/**
 	 * frame number to avoid multiple calculations in one frame
 	 */
@@ -862,10 +861,10 @@ public class RenderCell extends AbstractGameObject {
 		GameSpaceSprite sprite;
 		switch (side) {
 			case LEFT:
-				if (side1 == null) {
-					side1 = new GameSpaceSprite(getBlockSprite(id, value, side), side, (byte) (aoFlags&255));
+				if (this.sprite == null) {
+					this.sprite = new GameSpaceSprite(getBlockSprite(id, value, side), side, (byte) (aoFlags&255));
 				}
-				sprite = side1;
+				sprite = this.sprite;
 				break;
 			case TOP:
 				if (side2 == null) {
@@ -1200,8 +1199,8 @@ public class RenderCell extends AbstractGameObject {
 	 */
 	public void setAoFlags(int aoFlags) {
 		if (aoFlags!=this.aoFlags){
-			if (side1 != null) {
-				side1.setAoFlags((byte) (aoFlags & 255));
+			if (sprite != null) {
+				sprite.setAoFlags((byte) (aoFlags & 255));
 			}
 			if (side2 != null) {
 				side2.setAoFlags((byte) ((aoFlags >> 8) & 255));
@@ -1394,11 +1393,11 @@ public class RenderCell extends AbstractGameObject {
 	 * @param value game data value.
 	 */
 	public void setValue(byte value) {
-		if (this.value!=value) {
+		if (this.value != value) {
 			//reset sides
-			side1=null;
-			side2=null;
-			side3=null;
+			sprite = null;
+			side2 = null;
+			side3 = null;
 		}
 			
 		this.value = value;

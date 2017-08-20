@@ -234,13 +234,13 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 	 */
 	private transient Color tint = new Color(0.5f, 0.5f, 0.5f, 1f);
 	/**
-	 * flag 
+	 * flag used for depth sorting
 	 */
 	private int marked;
 	/**
 	 * caching the sprite for rendering
 	 */
-	private transient GameSpaceSprite sprite;
+	protected transient GameSpaceSprite sprite;
 
 	/**
 	 * Creates an object.
@@ -429,10 +429,15 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 	}
 
 	
+	/**
+	 * Updates the saved vertex data with the engine default configuration (category, sprite id and sprite value).
+	 */
 	public void updateSpriteCache(){
 		AtlasRegion texture = AbstractGameObject.getSprite(getSpriteCategory(), getSpriteId(), getSpriteValue());
 		sprite = new GameSpaceSprite(texture);
 	}
+
+	
 
 	//getter & setter
 	/**
@@ -534,18 +539,18 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 	}
 
 	/**
-	 * Should in general not be used for rendering.
 	 *
 	 * @return the sprite used for rendering
 	 */
-	public AtlasRegion getSprite() {
-		return AbstractGameObject.getSprite(getSpriteCategory(), getSpriteId(), getSpriteValue());
+	public GameSpaceSprite getSprite() {
+		return sprite;
 	}
 
 	/**
 	 * Check if it is marked in this frame. Used for depth sorting.
 	 * @param id camera id
 	 * @return 
+	 * @see com.bombinggames.wurfelengine.core.sorting.TopologicalSort#visit(RenderCell) 
 	 */
 	public final boolean isMarkedDS(final int id) {
 		return ((marked>>id)&1) == ((AbstractGameObject.currentMarkedFlag >> id) & 1);
@@ -554,7 +559,7 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 	/**
 	 * Marks as visited in the depth sorting algorithm.
 	 * @param id camera id
-	 * @see com.bombinggames.wurfelengine.core.Camera#visit(com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject) 
+	 * @see com.bombinggames.wurfelengine.core.sorting.TopologicalSort#visit(RenderCell) 
 	 */
 	public void markAsVisitedDS(final int id) {
 		marked ^= (-((AbstractGameObject.currentMarkedFlag >> id) & 1) ^ marked) & (1 << id);
