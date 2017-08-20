@@ -764,7 +764,7 @@ public class Chunk implements Telegraph {
 	public void setBlock(Coordinate coord, byte id, byte value) {
 		int xIndex = coord.getX() - topleftX;
 		int yIndex = coord.getY() - topleftY;
-		int z = coord.getZ()*3;
+		int z = coord.getZ()*3;//a block is three bytes
 		if (z >= 0){
 			data[xIndex][yIndex][z] = id;
 			data[xIndex][yIndex][z+1] = value;
