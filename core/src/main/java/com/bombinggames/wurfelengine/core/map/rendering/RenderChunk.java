@@ -120,17 +120,20 @@ public class RenderChunk {
 				for (int z = 0; z < blocksZ; z++) {
 					//update only if cell changed
 					int blockAtPos = chunk.getBlockByIndex(xInd, yInd, z);//get block from map
-					if ((blockAtPos & 255) != data[xInd][yInd][z].getId()) {
-						data[xInd][yInd][z] = RenderCell.newRenderCell((byte) (blockAtPos & 255), (byte) ((blockAtPos >> 8) & 255));
+					RenderCell cell = data[xInd][yInd][z];
+					if ((blockAtPos & 255) != cell.getId()) {
+						cell = RenderCell.newRenderCell((byte) (blockAtPos & 255), (byte) ((blockAtPos >> 8) & 255));
+						data[xInd][yInd][z] = cell;
 					}
 					
 					//set the coordinate
-					data[xInd][yInd][z].getPosition().set(
+					cell.getPosition().set(
 						tlX + xInd,
 						tlY + yInd,
 						z
 					);
-					data[xInd][yInd][z].setUnclipped();
+					cell.setUnclipped();
+					cell.setRebuildCoverListFlag();
 					resetShadingFor(xInd, yInd, z);
 				}
 			}
