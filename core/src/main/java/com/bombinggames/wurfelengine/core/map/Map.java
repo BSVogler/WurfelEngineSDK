@@ -366,7 +366,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 * id, value and health
 	 *
 	 * @param coord
-	 * @return
+	 * @return first byte id, second value, third is health.
 	 */
 	public int getBlock(Coordinate coord) {
 		if (coord.getZ() < 0) {

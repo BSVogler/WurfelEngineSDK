@@ -287,7 +287,7 @@ public class Coordinate implements Position {
 
 	/**
 	 *
-	 * @return
+	 * @return first byte id, second value, third is health.
 	 */
 	public int getBlock() {
 		if (z < 0) {
