@@ -310,4 +310,16 @@ public class RenderChunk {
 		DATAPOOL.free(data);
 	}
 
+	/**
+	 * 
+	 * @param x world coordinate
+	 * @param y world coordinate
+	 * @param z world coordinate
+	 * @param cell new cell
+	 * @since 1.8
+	 */
+	void setCell(int x, int y, int z, RenderCell cell) {
+		data[x - chunk.getTopLeftCoordinateX()][y - chunk.getTopLeftCoordinateY()][z] = cell;
+	}
+
 }
