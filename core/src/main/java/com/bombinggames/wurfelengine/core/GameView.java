@@ -173,7 +173,6 @@ public class GameView implements GameManager {
 		useDefaultShader();//set default shader
 
 		renderstorage = new RenderStorage();
-		MessageManager.getInstance().addListener(renderstorage, Events.mapChanged.getId());
 		initalized = true;
 	}
 	

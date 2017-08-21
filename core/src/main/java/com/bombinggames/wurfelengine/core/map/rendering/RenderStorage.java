@@ -70,6 +70,24 @@ public class RenderStorage implements Telegraph  {
 	 */
 	public RenderStorage() {
 		this.cameraContainer = new ArrayList<>(1);
+		MessageManager.getInstance().addListener(this, Events.cellChanged.getId());
+	}
+	
+	/**
+	 * creates a new rendercell instance at the coordinate
+	 * 
+	 * @param coord
+	 * @param id
+	 * @param value 
+	 */
+	public void refreshCell(Coordinate coord, byte id, byte value){
+		if (coord.getZ() > 0) {
+			RenderChunk chunk = getChunk(coord);
+			if (chunk != null) {
+				chunk.setCell(coord.getX(), coord.getY(), coord.getZ(), RenderCell.newRenderCell(id, value));
+			}
+		}
+		
 	}
 	
 	/**
@@ -513,10 +531,17 @@ public class RenderStorage implements Telegraph  {
 	
 	@Override
 	public boolean handleMessage(Telegram msg) {
-		if (msg.message == Events.mapChanged.getId()) {
-			bakeChunks();//could be optimized by only updating blocks that changed
-			RenderCell.rebuildCoverList();
-			return true;
+		if (msg.message == Events.cellChanged.getId()) {
+			//get coordinate from message and get cell
+			Coordinate coord = (Coordinate)msg.extraInfo;
+			int blockdata = coord.getBlock();
+			refreshCell(coord, (byte) (blockdata&255), (byte) (blockdata>>8&255));
+			//recaluculate AO for neighbors
+			//oclusion culling for neighbors
+			//shadows??? fehlt auch in bakeChunk
+			
+			//test with topoligical search
+			return false;
 		}
 		
 		return false;
