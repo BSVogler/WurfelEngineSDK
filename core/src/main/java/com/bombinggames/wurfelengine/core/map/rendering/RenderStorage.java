@@ -84,7 +84,7 @@ public class RenderStorage implements Telegraph  {
 		if (coord.getZ() > 0) {
 			RenderChunk chunk = getChunk(coord);
 			if (chunk != null) {
-				chunk.setCell(coord.getX(), coord.getY(), coord.getZ(), RenderCell.newRenderCell(id, value));
+				chunk.setCell(coord.getX(), coord.getY(), coord.getZ(), RenderCell.newInstance(id, value));
 			}
 		}
 		
@@ -464,7 +464,7 @@ public class RenderStorage implements Telegraph  {
 	}
 
 	private RenderCell getNewGroundCellInstance() {
-		return RenderCell.newRenderCell((byte) WE.getCVars().getValueI("groundBlockID"), (byte) 0); //the representative of the bottom layer (ground) block
+		return RenderCell.newInstance((byte) WE.getCVars().getValueI("groundBlockID"), (byte) 0); //the representative of the bottom layer (ground) block
 	}
 
 	/**

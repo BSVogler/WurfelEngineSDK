@@ -215,7 +215,7 @@ public class RenderCell extends AbstractGameObject {
 	 * @param value
 	 * @return
 	 */
-	public static RenderCell newRenderCell(byte id, byte value) {
+	public static RenderCell newInstance(byte id, byte value) {
 		if (id == 0 || id == 4) {//air and invisible wall
 			RenderCell a = new RenderCell(id, value);
 			a.setHidden(true);
@@ -261,6 +261,7 @@ public class RenderCell extends AbstractGameObject {
 	
 	/**
 	 * 
+	 * When it is possible to see though the sides.
 	 * @param spriteId
 	 * @param spriteValue
 	 * @return 
@@ -486,7 +487,7 @@ public class RenderCell extends AbstractGameObject {
     }
 
 	/**
-	 * final because an id change must go though {@link #newRenderCell(byte, byte) }
+	 * final because an id change must go though {@link #newInstance(byte, byte) }
 	 */
 	private final byte id;
 	/**
@@ -538,7 +539,7 @@ public class RenderCell extends AbstractGameObject {
 	/**
 	 * For direct creation. You should use the factory method instead.
 	 * @param id 
-	 * @see #newRenderCell(byte, byte) 
+	 * @see #newInstance(byte, byte) 
 	 */
     public RenderCell(byte id){
         super();
@@ -549,7 +550,7 @@ public class RenderCell extends AbstractGameObject {
 	 * For direct creation. You should use the factory method instead.
 	 * @param id
 	 * @param value 
-	 * @see #newRenderCell(byte, byte) 
+	 * @see #newInstance(byte, byte) 
 	 */
 	public RenderCell(byte id, byte value){
 		super();

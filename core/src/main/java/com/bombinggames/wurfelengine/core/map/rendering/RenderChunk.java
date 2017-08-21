@@ -50,7 +50,7 @@ public class RenderChunk {
 	 * object. Topological Depth Sort needs individual containers. If the topolgogical
 	 * sort would be removed from the engine this could be again be used.
 	 */
-	public static final RenderCell CELLOUTSIDE = RenderCell.newRenderCell((byte) 0, (byte) 0);
+	public static final RenderCell CELLOUTSIDE = RenderCell.newInstance((byte) 0, (byte) 0);
 	/**
 	 * a pool containing chunkdata
 	 */
@@ -65,7 +65,7 @@ public class RenderChunk {
 				for (RenderCell[][] x : arr) {
 					for (RenderCell[] y : x) {
 						for (int z = 0; z < y.length; z++) {
-							y[z] = RenderCell.newRenderCell((byte) 0, (byte) 0);//nullpointerobject or just a null pointer can be used, as the rendering process expects an individiual container at each cell
+							y[z] = RenderCell.newInstance((byte) 0, (byte) 0);//nullpointerobject or just a null pointer can be used, as the rendering process expects an individiual container at each cell
 						}
 					}
 				}
@@ -122,7 +122,7 @@ public class RenderChunk {
 					int blockAtPos = chunk.getBlockByIndex(xInd, yInd, z);//get block from map
 					RenderCell cell = data[xInd][yInd][z];
 					if ((blockAtPos & 255) != cell.getId()) {
-						cell = RenderCell.newRenderCell((byte) (blockAtPos & 255), (byte) ((blockAtPos >> 8) & 255));
+						cell = RenderCell.newInstance((byte) (blockAtPos & 255), (byte) ((blockAtPos >> 8) & 255));
 						data[xInd][yInd][z] = cell;
 					}
 					
