@@ -62,14 +62,14 @@ import java.util.ArrayList;
  * and the API libGDX v1.8.0 (may work with older versions).
  *
  * @author Benedikt S. Vogler
- * @version 1.7.6
+ * @version 1.8.0
  */
 public class WE {
 
 	/**
 	 * The version of the Engine
 	 */
-	public static final String VERSION = "1.7.6";
+	public static final String VERSION = "1.8.0";
 
 	/**
 	 * The CVar system used by the engine. Uses the working dir as a root. WOrkdir must be set before intializing WE.
