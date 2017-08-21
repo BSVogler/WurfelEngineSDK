@@ -65,20 +65,17 @@ public class Explosion extends AbstractEntity implements Telegraph {
 	public AbstractEntity spawn(Point point) {
 		super.spawn(point);
 		//replace blocks by air
+		Coordinate coord = new Coordinate();
 		for (int x = -radius; x < radius; x++) {
 			for (int y = -radius * 2; y < radius * 2; y++) {
 				for (int z = -radius; z < radius; z++) {
-					Coordinate coord = point.toCoord().add(x, y, z);
+					coord.setFromPoint(point).add(x, y, z);
    					int intdamage = (int) (damage
 						* (1 - getPosition().distanceToSquared(coord)
 						/ (radius * radius * RenderCell.GAME_EDGELENGTH * RenderCell.GAME_EDGELENGTH)));
 					if (intdamage > 0) {
-						if (intdamage > 100) {
-							intdamage = 100; //clamp so it's under 127 to avoid byte overflow
-						}
-						coord.damage(
-							(byte) intdamage
-						);
+						intdamage = Math.min(intdamage, 100);
+						coord.damage((byte) intdamage);
 					}
 					
 					//get every entity which is attacked

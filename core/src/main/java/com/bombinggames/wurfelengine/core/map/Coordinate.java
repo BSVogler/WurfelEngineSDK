@@ -611,13 +611,9 @@ public class Coordinate implements Position {
 	public boolean damage(byte amount) {
 		byte block = getBlockId();
 		if (block != 0 && amount > 0) {
-			if (getHealth() - amount < 0) {
-				setHealth((byte) 0);
-			} else {
-				Controller.getMap().setHealth(this, (byte) (getHealth() - amount));
-			}
-			if (getHealth() <= 0 && !RenderCell.isIndestructible(block, (byte)0)) {
-				//broadcast event that this block got blockDestroyed
+			int newhealth = Math.max(getHealth() - amount,0);
+			Controller.getMap().setHealth(this, (byte) (newhealth));
+			if (newhealth <= 0 && !RenderCell.isIndestructible(block, (byte)0)) {
 				MessageManager.getInstance().dispatchMessage(Events.blockDestroyed.getId(), this);
 				setBlock(0);
 			}
