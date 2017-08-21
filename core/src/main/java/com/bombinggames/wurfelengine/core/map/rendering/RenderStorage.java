@@ -74,11 +74,12 @@ public class RenderStorage implements Telegraph  {
 	}
 	
 	/**
-	 * creates a new rendercell instance at the coordinate
+	 * creates a new {@link RenderCell} instance at the coordinate
 	 * 
 	 * @param coord
 	 * @param id
 	 * @param value 
+	 * @return the instance or null if the process failed 
 	 */
 	public void refreshCell(Coordinate coord, byte id, byte value){
 		if (coord.getZ() > 0) {
@@ -306,7 +307,7 @@ public class RenderStorage implements Telegraph  {
 	}
 
 	/**
-	 * If the cell can not be found returns null pointer.
+	 * If the cell can not be found returns {@link RenderChunk#CELLOUTSIDE}.
 	 *
 	 * @param coord transform safe
 	 * @return

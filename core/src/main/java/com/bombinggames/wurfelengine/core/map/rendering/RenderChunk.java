@@ -152,11 +152,11 @@ public class RenderChunk {
 	}
 	
 	/**
-	 *
+	 * Cells above the map return RenderChunk.CELLOUTSIDE.
 	 * @param x coordinate, must be contained in this chunk
 	 * @param y coordinate, must be contained in this chunk
 	 * @param z coordinate, must be contained in this chunk
-	 * @return
+	 * @return should not return null unless something went wrong.
 	 */
 	public RenderCell getCell(int x, int y, int z) {
 		//if is above (outside) container
