@@ -150,7 +150,7 @@ public class RenderStorage implements Telegraph  {
 				AmbientOcclusionCalculator.calcAO(this, rChunk);
 				occlusionCulling(rChunk);
 
-				//update neighbors
+				//update neighbor chunks
 				RenderChunk neighbor = getChunk(x - 1, y);
 				if (neighbor != null) {
 					occlusionCulling(neighbor);
@@ -198,7 +198,7 @@ public class RenderStorage implements Telegraph  {
 	
 	
 	/**
-	 * Clears the the content of the used {@link RenderChunk}s then rebuilds them (shadows, AO,  occlusion culling).
+	 * Clears the the content of the used {@link RenderChunk}s then after refilling them calculates the renderdata (shadows, AO,  occlusion culling).
 	 */
 	public void bakeChunks() {
 		//loop over clone because may add new chunks in different thread to data while looping
