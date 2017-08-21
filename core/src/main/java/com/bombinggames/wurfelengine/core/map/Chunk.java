@@ -323,7 +323,7 @@ public class Chunk implements Telegraph {
 			chunkInRoot.copyTo(Gdx.files.absolute(path+"/save"+saveSlot+"/chunk"+coordX+","+coordY+"."+CHUNKFILESUFFIX));
 			load(path, saveSlot, coordX, coordY);
 		} else {
-			Gdx.app.log("Chunk","Restoring:" + chunkInRoot +" failed.");
+			Gdx.app.log("Chunk","Restoring "+ coordX+","+coordY + " from root failed.");
 			return false;
 		}
 		return true;
@@ -513,10 +513,10 @@ public class Chunk implements Telegraph {
 				return true;
 
 			} catch (IOException ex){
-				Gdx.app.error("Chunk","Loading of chunk " +path+"/"+coordX+","+coordY + " failed. Chunk or meta file corrupt: "+ex);
+				Gdx.app.error("Chunk","Loading of chunk "+coordX+","+coordY + " failed. Chunk or meta file corrupt: "+ex);
 			}
 		} else {
-			Gdx.app.log("Chunk",savepath+" could not be found on disk. Trying to restore chunk.");
+			Gdx.app.log("Chunk", coordX+","+coordY + " could not be found on disk. Trying to load from root next.");
 			if (restoreFromRoot(path, saveSlot, coordX, coordY))
 				load(path, saveSlot, coordX, coordY);
 		}
