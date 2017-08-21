@@ -1,7 +1,5 @@
 package com.bombinggames.wurfelengine.core.gameobjects;
 
-import java.util.LinkedList;
-
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
@@ -12,6 +10,7 @@ import com.bombinggames.wurfelengine.core.Events;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import java.util.LinkedList;
 
 /**
  *
@@ -94,9 +93,9 @@ public class Explosion extends AbstractEntity implements Telegraph {
 						* (1 - getPosition().distanceToSquared(ent)
 						/ (radius * radius * RenderCell.GAME_EDGELENGTH * RenderCell.GAME_EDGELENGTH)));
 						intdamage*=1.2;//entities should break a little easier
-						if (intdamage > 100) {
-							intdamage = 100; //clamp so it's under 127 to avoid byte overflow
-						}
+						 //clamp so it's under 127 to avoid byte overflow
+						intdamage = Math.min(intdamage, 100);
+						intdamage = Math.max(intdamage, 0);
 						MessageManager.getInstance().dispatchMessage(
 							this,
 							(Telegraph) ent,
