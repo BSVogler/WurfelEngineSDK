@@ -778,6 +778,8 @@ public class Chunk implements Telegraph {
 			if (logic != null)
 				logicBlocks.add(logic);
 		}
+		
+		MessageManager.getInstance().dispatchMessage(Events.cellChanged.getId(), coord);
 	}
 	
 	/**
