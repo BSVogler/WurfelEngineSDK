@@ -486,9 +486,12 @@ public class RenderCell extends AbstractGameObject {
     }
 
 	/**
-	 * sprite value
+	 * final because an id change must go though {@link #newRenderCell(byte, byte) }
 	 */
 	private final byte id;
+	/**
+	 * sprite value
+	 */
 	private byte value;
 	private Coordinate coord = new Coordinate(0, 0, 0);
 	
@@ -941,13 +944,12 @@ public class RenderCell extends AbstractGameObject {
 
 	@Override
 	public void updateSpriteCache() {
-		int block = coord.getBlock();
-		this.id = (byte) (255&(block));
-		setValue((byte) (255&(block>>8)));
-		if (!hasSides())
+		setValue(coord.getBlockValue());
+		if (!hasSides()) {
 			super.updateSpriteCache();
+		}
 	}
-    
+
     @Override
     public char getSpriteCategory() {
         return 'b';

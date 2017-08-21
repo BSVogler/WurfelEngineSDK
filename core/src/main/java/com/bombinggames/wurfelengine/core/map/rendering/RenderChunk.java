@@ -133,7 +133,6 @@ public class RenderChunk {
 						z
 					);
 					cell.setUnclipped();
-					cell.setRebuildCoverListFlag();
 					resetShadingFor(xInd, yInd, z);
 				}
 			}
