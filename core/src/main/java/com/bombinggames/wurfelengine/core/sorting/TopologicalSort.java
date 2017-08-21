@@ -36,7 +36,6 @@ import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import static com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject.getSprite;
-import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
@@ -221,16 +220,15 @@ public class TopologicalSort extends AbstractSorter {
 				//fill only up to available size
 				cell.render(gameView);
 				objectsToBeRendered++;
-			}
-			
-			//draw grass
-			if (cell.getId()==0
-				&& cell.getCoord().getZ() > 1
-				&& Coordinate.getShared().set(cell.getCoord()).add(0, 0, -1).getBlockId() == 1
-				&& objectsToBeRendered < maxsprites
-			){
-				Point pos = cell.getPoint();
-				drawGrass(10,pos);
+	//			//draw grass
+	//			if (cell.getId()==0
+	//				&& cell.getCoord().getZ() > 1
+	//				&& Coordinate.getShared().set(cell.getCoord()).add(0, 0, -1).getBlockId() == 1
+	//				&& objectsToBeRendered < maxsprites
+	//			){
+	//				Point pos = cell.getPoint();
+	//				drawGrass(10,pos);
+	//			}
 			}
 		}
 	}
