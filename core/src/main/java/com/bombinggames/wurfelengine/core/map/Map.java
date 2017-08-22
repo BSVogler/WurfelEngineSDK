@@ -263,17 +263,14 @@ public class Map implements IndexedGraph<PfNode> {
 
 		//update every entity
 		//old style for loop because allows modification during loop
-		float rawDelta = Gdx.graphics.getRawDeltaTime() * 1000f;
 		for (int i = 0; i < entityList.size(); i++) {
 			AbstractEntity entity = entityList.get(i);
 			if (!entity.isInMemoryArea()) {
 				entity.requestChunk();
 			}
-			if (entity.useRawDelta()) {
-				entity.update(rawDelta);
-			} else {
-				entity.update(dt);
-			}
+			//entities withouth being spawned are also updated
+			if (!entity.shouldBeDisposed())
+				entity.update(entity.useRawDelta() ? Gdx.graphics.getRawDeltaTime() * 1000f : dt);
 		}
 
 		//remove not spawned objects from list
