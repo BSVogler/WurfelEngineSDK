@@ -50,7 +50,7 @@ public class TopoGraphNode {
 	/**
 	 * frame number to avoid multiple calculations in one frame
 	 */
-	private long lastRebuild;
+	private transient long lastRebuild;
 
 	/**
 	 * Stores references to neighbor blocks which are covered. For topological

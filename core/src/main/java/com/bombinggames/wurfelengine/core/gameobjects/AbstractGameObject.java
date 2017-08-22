@@ -351,11 +351,7 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 				pos.getZ()
 			);
 
-			//hack for transient field tint
-			if (tint == null) {
-				tint = new Color(0.5f, 0.5f, 0.5f, 1f);
-			}
-			sprite.setColor(tint);
+			sprite.setColor(getColor());
 
 			sprite.draw(view.getGameSpaceSpriteBatch());
 		}
@@ -393,11 +389,7 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 				+ texture.offsetY
 			);
 
-			//hack for transient field tint
-			if (tint == null) {
-				tint = new Color(0.5f, 0.5f, 0.5f, 1f);
-			}
-			sprite.setColor(tint);
+			sprite.setColor(getColor());
 
 			sprite.draw(view.getProjectionSpaceSpriteBatch());
 		}
@@ -516,6 +508,9 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 	 * @return not copy safe, not null
 	 */
 	public Color getColor() {
+		if (tint == null) {
+			tint = new Color(0.5f, 0.5f, 0.5f, 1f);
+		};//because field is transient
 		return tint;
 	}
 

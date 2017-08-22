@@ -513,7 +513,7 @@ public class RenderCell extends AbstractGameObject {
 	/**
 	 * lazy init
 	 */
-	private TopoGraphNode topoNode;
+	private transient TopoGraphNode topoNode;
 	
 	/**
 	 * For direct creation. You should use the factory method instead.

@@ -87,14 +87,15 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	private float lightlevelR;
 	private float lightlevelG;
 	private float lightlevelB;
+	private byte spriteId;
+	private byte value;
 	private float health = 100f;
     private Point position;//the position in the map-grid
     private int dimensionZ = GAME_EDGELENGTH;  
     private boolean dispose;
-	private boolean obstacle;
 	private String name = "undefined";
 	private boolean indestructible = false;
-		/**
+	/**
 	 * time in ms to pass before new sound can be played
 	 */
 	private transient float soundTimeLimit;
@@ -110,18 +111,17 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 */
 	private boolean useRawDelta = false;
 	private float mass = 0.4f;
-	private final LinkedList<RenderCell> covered = new LinkedList<>();
+	private transient LinkedList<RenderCell> covered = new LinkedList<>();
 	private final LinkedList<Component> components = new LinkedList<>();
-	private byte spriteId;
-	private byte value;
+
 	
 	/**
 	 * can be used to save a heap call to obtain the coordiante.
 	 * @see Coordinate#setFromPoint(com.bombinggames.wurfelengine.core.map.Point) 
 	 * */
-	private final Coordinate tmpCoordinate = new Coordinate(0, 0, 0);
+	private transient final Coordinate tmpCoordinate = new Coordinate(0, 0, 0);
 	
-	byte marked;
+	transient byte marked;
 	/**
 	 * Create an abstractEntity.
 	 *
@@ -548,7 +548,11 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * @return
 	 */
 	public LinkedList<RenderCell> getCoveredBlocks(RenderStorage rs) {
-		covered.clear();
+		if (covered == null) {//transient field
+			covered = new LinkedList<>();
+		} else {
+			covered.clear();
+		}
 		if (position != null) {
 			Coordinate coord = getCoord();
 			RenderCell block;
