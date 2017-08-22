@@ -291,7 +291,7 @@ public class MovableEntity extends AbstractEntity  {
 			}
 			
 			//check collision with other entities
-			if (getMass() > 0.5f) {
+			if (getMass() > 0.5f && collider) {
 				checkEntColl();
 			}
 			
@@ -384,29 +384,27 @@ public class MovableEntity extends AbstractEntity  {
             /* SOUNDS */
             //should the runningsound be played?
             if (runningSound != null) {
-                if (getSpeed() < 0.5f) {
+                if (getSpeed() < 0.5f && runningSoundPlaying) {
                     WE.SOUND.stop(runningSound);
                     runningSoundPlaying = false;
-                } else {
-                    if (!runningSoundPlaying){
-                        WE.SOUND.play(runningSound, getPosition());
-                        runningSoundPlaying = true;
-                    }
-                }
+                } else if (!runningSoundPlaying){
+					WE.SOUND.play(runningSound, getPosition());
+					runningSoundPlaying = true;
+				}
             }
 
             //should the fallingsound be played?
             if (fallingSound != null) {
-                if (!floating && getMovement().z < 0 && movement.len2() > 0.0f) {
-                    if (fallingSoundInstance == 0) {
-                        fallingSoundInstance = WE.SOUND.loop(fallingSound);
-                    }
-					WE.SOUND.setVolume(fallingSound,fallingSoundInstance, getSpeed()/10f);
-                } else {
-                    WE.SOUND.stop(fallingSound);
-                    fallingSoundInstance = 0;
-                }
-            }
+				if (!floating && getMovement().z < 0 && getMass() > 0.3) {
+					if (fallingSoundInstance == 0) {
+						fallingSoundInstance = WE.SOUND.loop(fallingSound);
+					}
+					WE.SOUND.setVolume(fallingSound, fallingSoundInstance, getSpeed() / 10f);
+				} else if (fallingSoundInstance != 0) {
+					WE.SOUND.stop(fallingSound);
+					fallingSoundInstance = 0;
+				}
+			}
         }
     }
 	
@@ -800,20 +798,18 @@ public class MovableEntity extends AbstractEntity  {
 		Point pos = getPosition();
 		if (pos == null) {
 			return false;
-		} else {
-			if (pos.getZ() > 0) {
-				if (pos.getZ() > Chunk.getGameHeight()) {
-					return false;
-				}
-				pos.setZ(pos.getZ() - 1);//move one down for check
-
-				boolean colission = pos.isObstacle() || collidesWithWorld(pos, colissionRadius);
-				pos.setZ(pos.getZ() + 1);//reverse
-
-				return colission;
-			} else {
-				return true;
+		} else if (pos.getZ() > 0) {
+			if (pos.getZ() > Chunk.getGameHeight()) {
+				return false;
 			}
+			pos.setZ(pos.getZ() - 1);//move one down for check
+
+			boolean colission = pos.isObstacle() || collidesWithWorld(pos, colissionRadius);
+			pos.setZ(pos.getZ() + 1);//reverse
+
+			return colission;
+		} else {
+			return true;
 		}
     }
 	
@@ -913,15 +909,13 @@ public class MovableEntity extends AbstractEntity  {
 	}
 
 	/**
-	 * checks the colissions with entities, O(n)
+	 * checks the outgoing colissions with entities, O(n)
 	 */
 	private void checkEntColl() {
 		Iterable<MovableEntity> nearbyEnts = getCollidingEntities(MovableEntity.class);
 		Vector2 colVec2 = new Vector2();
 		for (MovableEntity ent : nearbyEnts) {
-			//if (this.collidesWith(ent))
-			if (getMass() > 0.5f) {
-
+			if (ent.collider) {
 				Vector3 colVec3 = getPosition().sub(ent.getPosition());
 				colVec2.set(colVec3.x, colVec3.y);
 				float d = colVec2.len();
