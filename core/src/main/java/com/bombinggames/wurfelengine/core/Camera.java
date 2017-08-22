@@ -1091,10 +1091,10 @@ public class Camera{
 	 *
 	 * @param id
 	 */
-	public void setId(int id){
+	public void setId(int id) {
 		this.id = id;
 	}
-	
+
 	public int getId() {
 		return id;
 	}
@@ -1103,6 +1103,9 @@ public class Camera{
 	 * may be overwritten
 	 */
 	void dispose() {
+		if (sorter != null) {
+			sorter.dispose();
+		}
 	}
 
 }

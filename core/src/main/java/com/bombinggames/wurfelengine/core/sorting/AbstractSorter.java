@@ -71,6 +71,7 @@ public abstract class AbstractSorter implements Telegraph {
 		this.camera = camera;
 		gameView = camera.getGameView();
 		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
+		MessageManager.getInstance().addListener(this, Events.renderStorageChanged.getId());
 		iterator = new CoveredByCameraIterator(
 			gameView.getRenderStorage(),
 			camera,
@@ -81,8 +82,9 @@ public abstract class AbstractSorter implements Telegraph {
 
 	@Override
 	public boolean handleMessage(Telegram msg) {
-		if (msg.message == Events.mapChanged.getId()) {
-			AbstractSorter.this.bakeIteratorCache();
+		//todo when camera is not active the sorter will continue to listen
+		if (msg.message == Events.mapChanged.getId() || msg.message == Events.renderStorageChanged.getId()) {
+			bakeIteratorCache();
 		}
 
 		return false;
@@ -135,5 +137,10 @@ public abstract class AbstractSorter implements Telegraph {
 		} else {
 			return (int) (gameView.getRenderStorage().getZRenderingLimit() / RenderCell.GAME_EDGELENGTH);
 		}
+	}
+	
+	public void dispose(){
+		MessageManager.getInstance().removeListener(this, Events.mapChanged.getId());
+		MessageManager.getInstance().removeListener(this, Events.renderStorageChanged.getId());
 	}
 }

@@ -65,7 +65,14 @@ public class RenderStorage implements Telegraph  {
 	 */
 	private final HashSet<Coordinate> dirtyFlags = new HashSet<>(200);
 	private float zRenderingLimit = Float.POSITIVE_INFINITY;
+	/**
+	 * set to true for a frame if block was added or removed
+	 */
 	private boolean modified;
+	/**
+	 * set to true for a frame if a chunk was added or removed
+	 */
+	private boolean chunkChanged;
 
 	/**
 	 * Creates a new renderstorage.
@@ -152,11 +159,16 @@ public class RenderStorage implements Telegraph  {
 		data.forEach(chunk -> {
 			if (!chunk.getCameraAccess()) {
 				chunk.dispose();
-				//request a rebuild of toposortgraph
-				TopoGraphNode.flagRebuildCoverList();
+				chunkChanged=true;
 			}
 		});
 		data.removeIf(chunk -> !chunk.getCameraAccess());
+		if (chunkChanged){
+			chunkChanged=false;
+			MessageManager.getInstance().dispatchMessage(Events.renderStorageChanged.getId());
+			//request a rebuild of toposortgraph
+			TopoGraphNode.flagRebuildCoverList();
+		}
 	}
 	
 	/**
@@ -194,8 +206,7 @@ public class RenderStorage implements Telegraph  {
 					occlusionCulling(neighbor);
 				}
 				
-				//request a rebuild of toposortgraph
-				TopoGraphNode.flagRebuildCoverList();
+				chunkChanged=true;
 			}
 		} else {
 			rChunk.setCameraAccess(true);

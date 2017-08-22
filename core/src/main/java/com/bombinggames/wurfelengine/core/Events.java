@@ -111,7 +111,9 @@ public enum Events {
 	/**
 	 * if a cell is changed. Extra information contains {@link com.bombinggames.wurfelengine.core.map.Coordinate}
 	 */
-	cellChanged(25);
+	cellChanged(25),
+	
+	renderStorageChanged(26);
 	
 	private final int id;
 

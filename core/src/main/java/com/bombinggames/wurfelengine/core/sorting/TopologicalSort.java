@@ -130,7 +130,7 @@ public class TopologicalSort extends AbstractSorter {
 		
 		//iterate over every block in renderstorage
 		objectsToBeRendered = 0;
-			
+		
 		for (RenderCell cell : iteratorCache) {
 			if (cell != RenderChunk.CELLOUTSIDE && camera.inViewFrustum(cell.getPosition())) {
 				visit(cell.getTopoNode());
