@@ -35,7 +35,6 @@ import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.GameView;
-import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
 import com.bombinggames.wurfelengine.core.gameobjects.SimpleEntity;
@@ -43,8 +42,7 @@ import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.CustomBlocks;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
-import com.bombinggames.wurfelengine.core.sorting.TopologicalSort;
-import java.util.LinkedList;
+import com.bombinggames.wurfelengine.core.sorting.TopoGraphNode;
 
 /**
  * Something which can be rendered and therefore saves render information shared
@@ -69,10 +67,6 @@ public class RenderCell extends AbstractGameObject {
      */
     private static final Color[][] COLORLIST = new Color[RenderCell.OBJECTTYPESNUM][RenderCell.VALUESNUM];
 	private static boolean staticShade;
-	/**
-	 * frame number of last rebuild
-	 */
-	private static long rebuildCoverList = 0;
 	private static SimpleEntity destruct = new SimpleEntity((byte) 3,(byte) 0);
 	private static Color tmpColor = new Color();
 	
@@ -260,7 +254,6 @@ public class RenderCell extends AbstractGameObject {
 	}
 	
 	/**
-	 * 
 	 * When it is possible to see though the sides.
 	 * @param spriteId
 	 * @param spriteValue
@@ -430,13 +423,6 @@ public class RenderCell extends AbstractGameObject {
 			&& getSpritesheet().findRegion('b' + Byte.toString(spriteId) + "-" + spriteValue + "-0" + (RenderCell.hasSides(spriteId, spriteValue) ? "-0" : "")) != null;
 	}
 	
-	/**
-	 * Only relevant to topological depth sort {@link TopologicalSort}. Sets a flag which causes the baking of the coverlist. This causes every field wich contains the covered neighbors to be rebuild. Used to prenvent duplicate graph rebuilds in one frame.
-	 */
-	public static void flagRebuildCoverList() {
-		RenderCell.rebuildCoverList = Gdx.graphics.getFrameId();
-	}
-
    /**
      * Returns a color representing the block. Picks from the sprite sprite.
      * @param id id of the RenderCell
@@ -521,20 +507,13 @@ public class RenderCell extends AbstractGameObject {
 	 * Three bits used, for each side one. byte position equals side id. TODO: move to aoFlags byte #3
 	 */
 	private byte clipping;
-	/**
-	 * Stores references to neighbor blocks which are covered. For topological sort.
-	 */
-	private final LinkedList<RenderCell> covered = new LinkedList<>();
-	/**
-	 * for topological sort. At the end contains both entities and blocks
-	 */
-	private final LinkedList<AbstractEntity> coveredEnts = new LinkedList<>();
 	private transient GameSpaceSprite side3;
 	private transient GameSpaceSprite side2;
+	
 	/**
-	 * frame number to avoid multiple calculations in one frame
+	 * lazy init
 	 */
-	private long lastRebuild;
+	private TopoGraphNode topoNode;
 	
 	/**
 	 * For direct creation. You should use the factory method instead.
@@ -1271,104 +1250,12 @@ public class RenderCell extends AbstractGameObject {
 		clipping = 0;
 	}
 
-	/**
-	 * adds the entity into a cell for depth sorting
-	 *
-	 * @param ent
-	 */
-	public void addCoveredEnts(AbstractEntity ent) {
-		coveredEnts.add(ent);
-	}
-
 	@Override
 	public boolean shouldBeRendered(Camera camera) {
 		return id != 0
 				&& !isFullyClipped()
 				&& !isHidden()
 				&& camera.inViewFrustum(coord);
-	}
-
-	@Override
-	public LinkedList<RenderCell> getCoveredBlocks(RenderStorage rs) {
-		if (lastRebuild < rebuildCoverList) {//only rebuild a maximum of one time per frame
-			rebuildCovered(rs);
-		}
-		return covered;
-	}
-	
-	public LinkedList<AbstractEntity> getCoveredEnts() {
-		if (!coveredEnts.isEmpty()) {
-			coveredEnts.sort((AbstractGameObject o1, AbstractGameObject o2) -> {
-				float d1 = o1.getDepth();
-				float d2 = o2.getDepth();
-				if (d1 > d2) {
-					return 1;
-				} else {
-					if (d1 == d2) {
-						return 0;
-					}
-					return -1;
-				}
-			});
-		}
-		return coveredEnts;
-	}
-
-	/**
-	 * Rebuilds the list of covered cells by this cell.
-	 * @param rs 
-	 */
-	private void rebuildCovered(RenderStorage rs) {
-		LinkedList<RenderCell> covered = this.covered;
-		covered.clear();
-		Coordinate nghb = getPosition();
-		RenderCell cell;
-		if (nghb.getZ() > 0) {
-			cell = rs.getCell(nghb.add(0, 0, -1));//go down
-			if (cell != null) {
-				covered.add(cell);
-			}
-			//back right
-			cell = rs.getCell(nghb.goToNeighbour(1));
-			if (cell != null) {
-				covered.add(cell);
-			}
-			//back left
-			cell = rs.getCell(nghb.goToNeighbour(6));
-			if (cell != null) {
-				covered.add(cell);
-			}
-			
-			//bottom front
-			cell = rs.getCell(nghb.goToNeighbour(3).goToNeighbour(4));
-//			if (cell != null) {
-//				covered.add(cell);
-//			}
-			
-			nghb.goToNeighbour(0).add(0, 0, 1);//go back to origin
-		}
-		
-		cell = rs.getCell(nghb.goToNeighbour(1));//back right
-		if (cell != null) {
-			covered.add(cell);
-		}
-
-		cell = rs.getCell(nghb.goToNeighbour(6));//back left
-		if (cell != null) {
-			covered.add(cell);
-		}
-	
-
-		nghb.goToNeighbour(3);//return to origin
-		
-		lastRebuild = Gdx.graphics.getFrameId();
-	}
-
-	/**
-	 *
-	 */
-	public void clearCoveredEnts() {
-		coveredEnts.clear();
 	}
 
 	/**
@@ -1413,6 +1300,22 @@ public class RenderCell extends AbstractGameObject {
 		}
 			
 		this.value = value;
+	}
+
+	/**
+	 * 
+	 * @return null if outside chunk
+	 */
+	public TopoGraphNode getTopoNode() {
+		if (this == RenderChunk.CELLOUTSIDE)
+			return null;
+		if (topoNode == null)
+			topoNode = new TopoGraphNode(this);
+		return topoNode;
+	}
+
+	void setTopoNode(TopoGraphNode toponode) {
+		topoNode=toponode;
 	}
 
 	public static enum Channel {

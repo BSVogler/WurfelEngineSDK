@@ -42,6 +42,7 @@ import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator3D;
 import com.bombinggames.wurfelengine.core.map.Point;
+import com.bombinggames.wurfelengine.core.sorting.TopoGraphNode;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -81,14 +82,17 @@ public class RenderStorage implements Telegraph  {
 	 * @param value 
 	 * @return the instance or null if the process failed 
 	 */
-	public void refreshCell(Coordinate coord, byte id, byte value){
-		if (coord.getZ() > 0) {
+	public RenderCell refreshCell(Coordinate coord, byte id, byte value){
+		if (coord.getZ() >= 0) {
 			RenderChunk chunk = getChunk(coord);
-			if (chunk != null) {
-				chunk.setCell(coord.getX(), coord.getY(), coord.getZ(), RenderCell.newInstance(id, value));
+			if (chunk == null) {
+				throw new IllegalAccessError("chunk with coordinate could not be accessed");
 			}
+			RenderCell instance = RenderCell.newInstance(id, value);
+			chunk.setCell(coord.getX(), coord.getY(), coord.getZ(), instance);
+			return instance;
 		}
-		
+		throw new IllegalArgumentException("coordinate is under the map");
 	}
 	
 	/**
@@ -143,24 +147,26 @@ public class RenderStorage implements Telegraph  {
 		data.forEach(chunk -> {
 			if (!chunk.getCameraAccess()) {
 				chunk.dispose();
+				//request a rebuild of toposortgraph
+				TopoGraphNode.flagRebuildCoverList();
 			}
 		});
 		data.removeIf(chunk -> !chunk.getCameraAccess());
 	}
 	
 	/**
-	 * Checks if specific chunk must be loaded or deleted.
+	 * Checks if specific {@link RenderChunk} must be loaded or deleted.
 	 * If chunk is there camera access flag is set to true.
 	 *
-	 * @param x
-	 * @param y
+	 * @param x chunk coordinate
+	 * @param y chunk coordinate
 	 */
 	private void checkChunk(int x, int y) {
-		//check if in render storage
+		//check if chunk is in render storage
 		RenderChunk rChunk = getChunk(x, y);
 		if (rChunk == null) {
 			
-			//is chunk data isin RAM then create new renderchunk and put in renderStorage
+			//is chunk data is in RAM then create new renderchunk and put in renderStorage
 			Chunk mapChunk = Controller.getMap().getChunk(x, y);
 			if (mapChunk != null) {
 				rChunk = new RenderChunk(mapChunk);
@@ -182,6 +188,9 @@ public class RenderStorage implements Telegraph  {
 				if (neighbor != null) {
 					occlusionCulling(neighbor);
 				}
+				
+				//request a rebuild of toposortgraph
+				TopoGraphNode.flagRebuildCoverList();
 			}
 		} else {
 			rChunk.setCameraAccess(true);
@@ -209,10 +218,10 @@ public class RenderStorage implements Telegraph  {
 	
 	/**
 	 * Marks this block as "dirty".
-	 * @param rB
+	 * @param coord
 	 */
-	public void setLightFlag(RenderCell rB) {
-		dirtyFlags.add(rB.getPosition());//passing coordinates makes using the same coordiante for more then one illegal, therefore read coord from rendercell
+	public void setLightFlag( Coordinate coord) {
+		dirtyFlags.add(coord);
 	}
 	
 	
@@ -320,7 +329,7 @@ public class RenderStorage implements Telegraph  {
 		if (chunk == null) {
 			return RenderChunk.CELLOUTSIDE;
 		} else {
-			return chunk.getCell(coord.getX(), coord.getY(), coord.getZ());//find chunk in x coord
+			return chunk.getCell(coord.getX(), coord.getY(), coord.getZ());//find coord in chunk
 		}
 	}
 	
@@ -374,7 +383,7 @@ public class RenderStorage implements Telegraph  {
 				break;
 		}
 
-		return RenderStorage.this.getCell(xCoord, yCoord, Math.floorDiv((int) point.z, RenderCell.GAME_EDGELENGTH));
+		return getCell(xCoord, yCoord, Math.floorDiv((int) point.z, RenderCell.GAME_EDGELENGTH));
 	}
 	
 	
@@ -535,13 +544,24 @@ public class RenderStorage implements Telegraph  {
 		if (msg.message == Events.cellChanged.getId()) {
 			//get coordinate from message and get cell
 			Coordinate coord = (Coordinate)msg.extraInfo;
-			int blockdata = coord.getBlock();
-			refreshCell(coord, (byte) (blockdata&255), (byte) (blockdata>>8&255));
-			//recaluculate AO for neighbors
-			//oclusion culling for neighbors
-			//shadows??? fehlt auch in bakeChunk
+			TopoGraphNode toponode = getCell(coord).getTopoNode();
+			if (toponode != null) {//if the message is not possible
+				int blockdata = coord.getBlock();
+				RenderCell instance = refreshCell(coord, (byte) (blockdata & 255), (byte) (blockdata >> 8 & 255));
+				toponode.setCell(instance);
+				instance.setTopoNode(toponode);
+				
+				setLightFlag(coord);
+				//todo
+				//this should be only be performed for the neighbors cells and not every renderchunk
+				bakeChunks();
+
+				//recaluculate AO for neighbors
+				//oclusion culling for neighbors
+				//shadows??? fehlt auch in bakeChunk
+			}
 			
-			//test with topoligical search
+			
 			return false;
 		}
 		
@@ -553,7 +573,7 @@ public class RenderStorage implements Telegraph  {
 	 */
 	public void dispose() {
 		RenderChunk.clearPool();
-		MessageManager.getInstance().removeListener(this, Events.mapChanged.getId());
+		MessageManager.getInstance().removeListener(this, Events.cellChanged.getId());
 	}
 
 }

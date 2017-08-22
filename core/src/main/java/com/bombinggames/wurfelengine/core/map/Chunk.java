@@ -719,12 +719,13 @@ public class Chunk implements Telegraph {
 			data[xIndex][yIndex][z+1] = 0;
 			data[xIndex][yIndex][z+2] = 100;
 			modified = true;
-		}
-		//get corresponding logic and update
-		if (id != 0) {
-			AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, (byte) 0, new Coordinate(x, y, z));
-			if (logic != null)
-				logicBlocks.add(logic);
+			//get corresponding logic and update
+			if (id != 0) {
+				AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, (byte) 0, new Coordinate(x, y, z));
+				if (logic != null)
+					logicBlocks.add(logic);
+			}
+			MessageManager.getInstance().dispatchMessage(Events.cellChanged.getId(), new Coordinate(x, y, z));
 		}
 	}
 	
@@ -732,56 +733,27 @@ public class Chunk implements Telegraph {
 	 * Almost lowest level method to set a block in the map. If the block has
 	 * logic a new {@link AbstractBlockLogicExtension} instance will be created.
 	 * Health set to 100 and value set to 0
+	 *
 	 * @param coord
-	 * @param id 
+	 * @param id
 	 */
 	public void setBlock(Coordinate coord, byte id) {
-		int xIndex = coord.getX() - topleftX;
-		int yIndex = coord.getY() - topleftY;
-		int z = coord.getZ()*3;//because each block uses three bytes
-		if (z >= 0){
-			data[xIndex][yIndex][z] = id;
-			data[xIndex][yIndex][z+1] = 0;
-			data[xIndex][yIndex][z+2] = 100;
-			modified = true;
-		}
-		//get corresponding logic and update
-		if (id != 0) {
-			AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, (byte) 0, coord);
-			if (logic != null)
-				logicBlocks.add(logic);
-		}
+		setBlock(coord, id, (byte) 0, (byte) 100);
 	}
-		
+
 	/**
 	 * Almost lowest level method to set a block in the map. If the block has
 	 * logic a new {@link AbstractBlockLogicExtension} instance will be created.
 	 * Sets health to 100.
+	 *
 	 * @param coord
 	 * @param id
-	 * @param value 
+	 * @param value
 	 */
 	public void setBlock(Coordinate coord, byte id, byte value) {
-		int xIndex = coord.getX() - topleftX;
-		int yIndex = coord.getY() - topleftY;
-		int z = coord.getZ()*3;//a block is three bytes
-		if (z >= 0){
-			data[xIndex][yIndex][z] = id;
-			data[xIndex][yIndex][z+1] = value;
-			data[xIndex][yIndex][z+2] = 100;
-			modified = true;
-		}
-		
-		//get corresponding logic and update
-		if (id != 0) {
-			AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, value, coord);
-			if (logic != null)
-				logicBlocks.add(logic);
-		}
-		
-		MessageManager.getInstance().dispatchMessage(Events.cellChanged.getId(), coord);
+		setBlock(coord, id, value, (byte) 100);
 	}
-	
+
 	/**
 	 * Almost lowest level method to set a block in the map. If the block has
 	 * logic a new logicinstance will be created.
@@ -795,20 +767,24 @@ public class Chunk implements Telegraph {
 	public void setBlock(Coordinate coord, byte id, byte value, byte health) {
 		int xIndex = coord.getX() - topleftX;
 		int yIndex = coord.getY() - topleftY;
-		int z = coord.getZ()*3;
-		if (z >= 0){
+		int z = coord.getZ() * 3;
+		if (z >= 0) {
 			data[xIndex][yIndex][z] = id;
-			data[xIndex][yIndex][z+1] = value;
-			data[xIndex][yIndex][z+2] = health;
+			data[xIndex][yIndex][z + 1] = value;
+			data[xIndex][yIndex][z + 2] = health;
 			modified = true;
+
+			//get corresponding logic and update
+			if (id != 0) {
+				AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, value, coord);
+				if (logic != null) {
+					logicBlocks.add(logic);//maybe this leads to duplicates
+				}
+			}
+
+			MessageManager.getInstance().dispatchMessage(Events.cellChanged.getId(), coord);
 		}
-		
-		//get corresponding logic and update
-		if (id != 0) {
-			AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, value, coord);
-			if (logic != null)
-				logicBlocks.add(logic);
-		}
+
 	}
 	
 	/**
@@ -819,12 +795,13 @@ public class Chunk implements Telegraph {
 	public void setValue(Coordinate coord, byte value) {
 		int xIndex = coord.getX() - topleftX;
 		int yIndex = coord.getY() - topleftY;
-		int z = coord.getZ()*3;
+		int z = coord.getZ() * 3;
 		if (z >= 0) {
 			//check if actually changed
-			if (data[xIndex][yIndex][z+1] != value) {
-				data[xIndex][yIndex][z+1] = value;
+			if (data[xIndex][yIndex][z + 1] != value) {
+				data[xIndex][yIndex][z + 1] = value;
 				modified = true;
+				MessageManager.getInstance().dispatchMessage(Events.cellChanged.getId(), coord);
 			}
 		}
 	}

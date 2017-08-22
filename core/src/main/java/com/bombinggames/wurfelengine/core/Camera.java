@@ -439,7 +439,7 @@ public class Camera{
 //		if (
 //		getVisibleBackBorder()
 //		<
-//		chunkMap.getChunkContaining(centerChunkX, centerChunkY-1).getTopLeftCoordinate().getX()
+//		map.getChunkContaining(centerChunkX, centerChunkY-1).getTopLeftCoordinate().getX()
 //		//&& centerChunkX-1==//calculated xIndex -1
 //		) {
 //		centerChunkY--;
@@ -450,7 +450,7 @@ public class Camera{
 //		<
 //		map.getBlocksZ()*RenderCell.VIEW_HEIGHT
 //		-RenderCell.VIEW_DEPTH2*(
-//		chunkMap.getChunkContaining(centerChunkX, centerChunkY+1).getTopLeftCoordinate().getY()+Chunk.getBlocksY()//bottom coordinate
+//		map.getChunkContaining(centerChunkX, centerChunkY+1).getTopLeftCoordinate().getY()+Chunk.getBlocksY()//bottom coordinate
 //		)
 //		//&& centerChunkX-1==//calculated xIndex -1
 //		) {
@@ -469,8 +469,6 @@ public class Camera{
 			lastCenterX = centerChunkX;
 			lastCenterY = centerChunkY;
 			checkNeededChunks();
-			//rebuild
-			RenderCell.flagRebuildCoverList();
 		}
 
 	}
@@ -480,33 +478,25 @@ public class Camera{
 	 */
 	private void checkNeededChunks() {
 		//check every chunk
+		Map map = Controller.getMap();
 		if (centerChunkX == 0 && centerChunkY == 0 || WE.getCVars().getValueB("mapChunkSwitch")) {
 			for (int x = -loadingRadius; x <= loadingRadius; x++) {
 				int lRad = loadingRadius/2;
-				if (lRad <= 2) {
+				//clamp to 2
+				if (lRad < 2) {
 					lRad = 2;
 				}
 				for (int y = -lRad; y <= lRad; y++) {
-					checkChunk(centerChunkX + x, centerChunkY + y);
+					//load missing chunks
+					if (map.getChunk(centerChunkX + x, centerChunkY + y) == null) {
+						map.loadChunk(centerChunkX + x, centerChunkY + y);
+					}
 				}
 			}
 			//after the first time reduce
 			if (loadingRadius > 2) {
 				loadingRadius = 2;
 			}
-		}
-	}
-
-	/**
-	 * Checks if chunk must be loaded or deleted.
-	 *
-	 * @param x
-	 * @param y
-	 */
-	private void checkChunk(int x, int y) {
-		Map chunkMap = Controller.getMap();
-		if (chunkMap.getChunk(x, y) == null) {
-			chunkMap.loadChunk(x, y);//load missing chunks
 		}
 	}
 

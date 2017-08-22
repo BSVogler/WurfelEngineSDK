@@ -40,6 +40,8 @@ import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
+import static com.bombinggames.wurfelengine.core.sorting.TopoGraphNode.inverseMarkedFlag;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.Random;
@@ -70,7 +72,7 @@ public class TopologicalSort extends AbstractSorter {
 	}
 	
 	private final float seed;
-	private final ArrayList<RenderCell> modifiedCells = new ArrayList<>(30);
+	private final ArrayList<TopoGraphNode> modifiedNodes = new ArrayList<>(30);
 	/**
 	 * is rendered at the end
 	 */
@@ -98,9 +100,10 @@ public class TopologicalSort extends AbstractSorter {
 		ArrayList<AbstractEntity> ents = Controller.getMap().getEntities();
 				
 		//add entities by inserting them into the render store
-		ArrayList<RenderCell> modifiedCells = this.modifiedCells;
-		modifiedCells.clear();
-		modifiedCells.ensureCapacity(ents.size());
+		ArrayList<TopoGraphNode> modifiedNodes = this.modifiedNodes;
+		RenderStorage rS = gameView.getRenderStorage();
+		modifiedNodes.clear();
+		modifiedNodes.ensureCapacity(ents.size());
 		LinkedList<AbstractEntity> renderAppendix = this.renderAppendix;
 		renderAppendix.clear();
 		
@@ -109,32 +112,32 @@ public class TopologicalSort extends AbstractSorter {
 			if (ent.hasPosition()
 				&& !ent.isHidden()
 				&& camera.inViewFrustum(ent.getPosition())
-				&& ent.getPosition().getZ() < gameView.getRenderStorage().getZRenderingLimit()
+				&& ent.getPosition().getZ() < rS.getZRenderingLimit()
 			) {
-				RenderCell cell = gameView.getRenderStorage().getCell(ent.getPosition());
+				TopoGraphNode node = rS.getCell(ent.getPosition()).getTopoNode();
 				ent.markAsVisitedDS(camera.getId());//so after mark inversion non is visited
-				//in the renderstorage no nullpointer should exists, escept object is outside the array
-				if (cell == RenderChunk.CELLOUTSIDE) {
+				//in the renderstorage no nullpointer should exists, except object is outside the array
+				if (node == null) {
 					renderAppendix.add(ent);//render at the end
 				} else {
-					cell.addCoveredEnts(ent);//cell covers entities inside
-					modifiedCells.add(cell);
+					node.addCoveredEnts(ent);//cell covers entities inside
+					modifiedNodes.add(node);
 				}
 			}
 		}
 	
-		AbstractGameObject.inverseMarkedFlag(camera.getId());
+		inverseMarkedFlag(camera.getId());
 		
 		//iterate over every block in renderstorage
 		objectsToBeRendered = 0;
 			
 		for (RenderCell cell : iteratorCache) {
 			if (cell != RenderChunk.CELLOUTSIDE && camera.inViewFrustum(cell.getPosition())) {
-				visit(cell);
+				visit(cell.getTopoNode());
 			}
 		}
 		//remove ents from modified blocks
-		for (RenderCell modifiedCell : modifiedCells) {
+		for (TopoGraphNode modifiedCell : modifiedNodes) {
 			modifiedCell.clearCoveredEnts();
 		}
 		
@@ -164,9 +167,9 @@ public class TopologicalSort extends AbstractSorter {
 	private void visit(AbstractEntity o) {
 		LinkedList<RenderCell> covered = o.getCoveredBlocks(gameView.getRenderStorage());
 		if (!covered.isEmpty()) {
-			for (RenderCell m : covered) {
-				if (camera.inViewFrustum(m.getPosition())) {
-					visit(m);
+			for (RenderCell cell : covered) {
+				if (cell.getTopoNode() != null && camera.inViewFrustum(cell.getPosition())) {
+					visit(cell.getTopoNode());
 				}
 			}
 		}
@@ -174,20 +177,20 @@ public class TopologicalSort extends AbstractSorter {
 	
 	/**
 	 * Topological sort for Cells
-	 * @param cell 
+	 * @param node 
 	 */
-	public void visit(RenderCell cell){
-		if (!cell.isMarkedDS(camera.getId())) {
+	public void visit(TopoGraphNode node){
+		if (!node.isMarkedDS(camera.getId())) {
 			
 			//is a block, so can contain entities
-			LinkedList<AbstractEntity> covered = cell.getCoveredEnts();
+			LinkedList<AbstractEntity> coveredEnts = node.getCoveredEnts();
 			
-			if (!covered.isEmpty() && !covered.getFirst().isMarkedDS(camera.getId())) {
-				covered.getFirst().markAsVisitedDS(camera.getId());
-				//inside a cell entities share the dependencies, so only visti first then add all
-				visit(covered.getFirst());
+			if (!coveredEnts.isEmpty() && !coveredEnts.getFirst().isMarkedDS(camera.getId())) {
+				coveredEnts.getFirst().markAsVisitedDS(camera.getId());
+				//inside a node entities share the dependencies, so only visti first then add all
+				visit(coveredEnts.getFirst());
 					
-				for (AbstractEntity e : covered) {
+				for (AbstractEntity e : coveredEnts) {
 					if (camera.inViewFrustum(e.getPosition())
 						&& e.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
 						&& objectsToBeRendered < maxsprites//fill only up to available size
@@ -200,33 +203,33 @@ public class TopologicalSort extends AbstractSorter {
 			}
 
 			//continue regularly
-			cell.markAsVisitedDS(camera.getId());
+			node.markAsVisitedDS(camera.getId());
 
-			LinkedList<RenderCell> coveredBlocks = cell.getCoveredBlocks(gameView.getRenderStorage());
-			if (!coveredBlocks.isEmpty()) {
-				for (RenderCell m : coveredBlocks) {
-					if (camera.inViewFrustum(m.getPosition())) {
-						visit(m);
+			LinkedList<TopoGraphNode> coveredCells = node.getCoveredBlocks(gameView.getRenderStorage());
+			if (!coveredCells.isEmpty()) {
+				for (TopoGraphNode n : coveredCells) {
+					if (camera.inViewFrustum(n.getCell().getPosition())) {
+						visit(n);
 					}
 				}
 			}
 			
 			
 			if (
-				cell.shouldBeRendered(camera)
-				&& cell.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
+				node.getCell().shouldBeRendered(camera)
+				&& node.getCell().getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
 				&& objectsToBeRendered < maxsprites
 			) {
 				//fill only up to available size
-				cell.render(gameView);
+				node.getCell().render(gameView);
 				objectsToBeRendered++;
 	//			//draw grass
-	//			if (cell.getId()==0
-	//				&& cell.getCoord().getZ() > 1
-	//				&& Coordinate.getShared().set(cell.getCoord()).add(0, 0, -1).getBlockId() == 1
+	//			if (node.getId()==0
+	//				&& node.getCoord().getZ() > 1
+	//				&& Coordinate.getShared().set(node.getCoord()).add(0, 0, -1).getBlockId() == 1
 	//				&& objectsToBeRendered < maxsprites
 	//			){
-	//				Point pos = cell.getPoint();
+	//				Point pos = node.getPoint();
 	//				drawGrass(10,pos);
 	//			}
 			}

@@ -47,10 +47,8 @@ import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
 import java.io.FileNotFoundException;
 import java.io.Serializable;
-import java.util.LinkedList;
 
 /**
  * An AbstractGameObject is something wich can be found in the game world.
@@ -73,10 +71,6 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 	private static final transient AtlasRegion[][][] sprites = new AtlasRegion['z'][RenderCell.OBJECTTYPESNUM][RenderCell.VALUESNUM];//{category}{id}{value}
 	private static Texture textureDiff;
 	private static Texture textureNormal;
-	/**
-	 * bit position = camera id
-	 */
-	private static int currentMarkedFlag;
 
 	/**
 	 * disposes static fields
@@ -215,14 +209,6 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 		return spritesheet;
 	}
 
-	/**
-	 * inverses the dirty flag comparison so everything marked is now unmarked.
-	 * used to mark the visited obejcts with depthsort.
-	 * @param id
-	 */
-	public static void inverseMarkedFlag(int id) {
-		currentMarkedFlag ^= 1 << id;
-	}
 
 	//render information
 	private boolean hidden;
@@ -233,10 +219,7 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 	 * default is RGBA 0x808080FF.
 	 */
 	private transient Color tint = new Color(0.5f, 0.5f, 0.5f, 1f);
-	/**
-	 * flag used for depth sorting
-	 */
-	private int marked;
+
 	/**
 	 * caching the sprite for rendering
 	 */
@@ -329,14 +312,6 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 	 */
 	abstract public Coordinate getCoord();
 
-	/**
-	 * get the blocks which must be rendered before
-	 *
-	 * @param rs
-	 * @return
-	 */
-	abstract public LinkedList<RenderCell> getCoveredBlocks(RenderStorage rs);
-	
 	/**
 	 * Returns the depth of the object. The depth is the game world space
 	 * projected on one axis orthogonal to the camera's angle.
@@ -549,26 +524,10 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 	 * @return the sprite used for rendering
 	 */
 	public GameSpaceSprite getSprite() {
+		if (sprite==null) {
+			updateSpriteCache();
+		}
 		return sprite;
-	}
-
-	/**
-	 * Check if it is marked in this frame. Used for depth sorting.
-	 * @param id camera id
-	 * @return 
-	 * @see com.bombinggames.wurfelengine.core.sorting.TopologicalSort#visit(RenderCell) 
-	 */
-	public final boolean isMarkedDS(final int id) {
-		return ((marked>>id)&1) == ((AbstractGameObject.currentMarkedFlag >> id) & 1);
-	}
-
-	/**
-	 * Marks as visited in the depth sorting algorithm.
-	 * @param id camera id
-	 * @see com.bombinggames.wurfelengine.core.sorting.TopologicalSort#visit(RenderCell) 
-	 */
-	public void markAsVisitedDS(final int id) {
-		marked ^= (-((AbstractGameObject.currentMarkedFlag >> id) & 1) ^ marked) & (1 << id);
 	}
 
 	/**

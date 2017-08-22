@@ -765,7 +765,7 @@ public class Coordinate implements Position {
 	public void addLight(final GameView view, Side side, byte vertex, final Color color) {
 		RenderCell rB = getRenderCell(view.getRenderStorage());
 		if (rB != null && !rB.isHidden()) {
-			view.getRenderStorage().setLightFlag(rB);
+			view.getRenderStorage().setLightFlag(rB.getCoord());
 			rB.addLightlevel(color.r, side, Channel.Red, vertex);
 			rB.addLightlevel(color.g, side, Channel.Green, vertex);
 			rB.addLightlevel(color.b, side, Channel.Blue, vertex);
