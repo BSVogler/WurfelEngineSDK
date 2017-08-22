@@ -30,12 +30,11 @@
  */
 package com.bombinggames.wurfelengine.core.gameobjects;
 
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.map.Chunk;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
 
 /**
  *
@@ -51,7 +50,7 @@ public class BenchmarkBall extends MovableEntity {
 	 * Creates a Benchmark ball.
 	 */
 	public BenchmarkBall() {
-		super((byte) 21);
+		super((byte) 5);
 		setName("Benchmark Ball");
 		setMovement(new Vector3((float) Math.random() - 0.5f, (float) Math.random() - 0.5f, -1));
 		setFloating(false);
@@ -81,6 +80,7 @@ public class BenchmarkBall extends MovableEntity {
 		Vector3 tmp = new Vector3();
 		tmp.x = (float) Math.random() - 0.5f;
 		tmp.y = (float) Math.random() - 0.5f;
-		super.jump(-tmp.z, false);
+		setMovement(tmp);
+		super.jump((float) Math.random()*2, false);
 	}
 }
