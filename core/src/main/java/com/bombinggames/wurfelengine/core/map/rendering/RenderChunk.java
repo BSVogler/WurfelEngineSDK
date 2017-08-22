@@ -115,6 +115,9 @@ public class RenderChunk {
 		int blocksX = Chunk.getBlocksX();
 		int blocksY = Chunk.getBlocksY();
 		int blocksZ = Chunk.getBlocksZ();
+		int[] delay1 = new int[]{0,0,0};
+		int[] delay2 = new int[]{0,0,0};
+		int[] delay3 = new int[]{0,0,0};
 		for (int xInd = 0; xInd < blocksX; xInd++) {
 			for (int yInd = 0; yInd < blocksY; yInd++) {
 				for (int z = 0; z < blocksZ; z++) {
@@ -133,7 +136,18 @@ public class RenderChunk {
 						z
 					);
 					cell.setUnclipped();
-					resetShadingFor(xInd, yInd, z);
+					
+					//delayed shading because needs blocks from above
+					resetShadingFor(delay3[0], delay3[1], delay3[2]);
+					delay3[0] = delay2[0];
+					delay3[1] = delay2[1];
+					delay3[2] = delay2[2];
+					delay2[0] = delay1[0];
+					delay2[1] = delay1[1];
+					delay2[2] = delay1[2];
+					delay1[0] = xInd;
+					delay1[1] = yInd;
+					delay1[2] = z;
 				}
 			}
 		}
