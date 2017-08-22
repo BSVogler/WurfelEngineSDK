@@ -504,9 +504,9 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 	 * @param color refence is kept
 	 */
 	public void setColor(Color color) {
-		if (color != null) {
-			this.tint = color;
-		}
+		if (color == null)
+			throw new IllegalArgumentException("color can not be null");
+		this.tint = color;
 	}
 
 	/**
