@@ -65,6 +65,7 @@ public class RenderStorage implements Telegraph  {
 	 */
 	private final HashSet<Coordinate> dirtyFlags = new HashSet<>(200);
 	private float zRenderingLimit = Float.POSITIVE_INFINITY;
+	private boolean modified;
 
 	/**
 	 * Creates a new renderstorage.
@@ -109,6 +110,10 @@ public class RenderStorage implements Telegraph  {
 	 */
 	public void update(float dt){
 		checkNeededChunks();
+		
+		if (modified){
+			bakeChunks();
+		}
 		//update rendderblocks
 		for (RenderChunk renderChunk : data) {
 			for (RenderCell[][] x : renderChunk.getData()) {
@@ -226,7 +231,7 @@ public class RenderStorage implements Telegraph  {
 	
 	
 	/**
-	 * Clears the the content of the used {@link RenderChunk}s then after refilling them calculates the renderdata (shadows, AO,  occlusion culling).
+	 * Clears the the content of the used {@link RenderChunk}s then after refilling them calculates the renderdata (shadows, AO,  occlusion culling). Very heavy operation.
 	 */
 	public void bakeChunks() {
 		//loop over clone because may add new chunks in different thread to data while looping
@@ -238,7 +243,8 @@ public class RenderStorage implements Telegraph  {
 		dataclone.forEach((RenderChunk rChunk) -> {
 			AmbientOcclusionCalculator.calcAO(this, rChunk);
 			occlusionCulling(rChunk);
-		});			
+		});
+		modified=false;
 	}
 	
 	/**
@@ -551,14 +557,14 @@ public class RenderStorage implements Telegraph  {
 				toponode.setCell(instance);
 				instance.setTopoNode(toponode);
 				
-				setLightFlag(coord);
-				//todo
+				//calculates shadow for single coordinate, at the moment redudant because of heavy modified flag below
+				//setLightFlag(coord);
+				
+				
 				//this should be only be performed for the neighbors cells and not every renderchunk
-				bakeChunks();
-
+				modified=true;//todo
 				//recaluculate AO for neighbors
 				//oclusion culling for neighbors
-				//shadows??? fehlt auch in bakeChunk
 			}
 			
 			
