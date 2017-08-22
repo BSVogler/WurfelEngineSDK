@@ -330,23 +330,6 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	}
 
 	/**
-	 * Make the object to an obstacle or passable.
-	 *
-	 * @param obstacle true when obstacle. False when passable.
-	 */
-	public void setObstacle(boolean obstacle) {
-		this.obstacle = obstacle;
-	}
-
-	/**
-	 *
-	 * @return
-	 */
-	public boolean isObstacle() {
-		return obstacle;
-	}
-
-	/**
 	 * Get the mass of the object.
 	 * @return in kg
 	 */

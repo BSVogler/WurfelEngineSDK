@@ -59,7 +59,7 @@ public class UserControlledShooter extends MovableEntity implements Controllable
 	public UserControlledShooter(int spritesPerDir, int height) {
 		super((byte) 30, spritesPerDir);
 
-		setObstacle(true);
+		setMass(70);
 		setFriction((float) WE.getCVars().get("playerfriction").getValue());
 		setDimensionZ(height);
 	}

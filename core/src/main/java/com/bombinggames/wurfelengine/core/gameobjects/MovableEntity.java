@@ -291,7 +291,9 @@ public class MovableEntity extends AbstractEntity  {
 			}
 			
 			//check collision with other entities
-			checkEntColl();
+			if (getMass() > 0.5f) {
+				checkEntColl();
+			}
 			
 			//apply movement
 			getPosition().set(newPos);
@@ -918,7 +920,7 @@ public class MovableEntity extends AbstractEntity  {
 		Vector2 colVec2 = new Vector2();
 		for (MovableEntity ent : nearbyEnts) {
 			//if (this.collidesWith(ent))
-			if (ent.isObstacle() && getMass() > 0.5f) {
+			if (getMass() > 0.5f) {
 
 				Vector3 colVec3 = getPosition().sub(ent.getPosition());
 				colVec2.set(colVec3.x, colVec3.y);
