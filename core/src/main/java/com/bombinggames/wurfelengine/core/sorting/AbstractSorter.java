@@ -30,7 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core.sorting;
 
-import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
 import com.bombinggames.wurfelengine.core.Camera;
@@ -70,8 +69,6 @@ public abstract class AbstractSorter implements Telegraph {
 	public AbstractSorter(Camera camera) {
 		this.camera = camera;
 		gameView = camera.getGameView();
-		MessageManager.getInstance().addListener(this, Events.mapChanged.getId());
-		MessageManager.getInstance().addListener(this, Events.renderStorageChanged.getId());
 		iterator = new CoveredByCameraIterator(
 			gameView.getRenderStorage(),
 			camera,
@@ -137,10 +134,5 @@ public abstract class AbstractSorter implements Telegraph {
 		} else {
 			return (int) (gameView.getRenderStorage().getZRenderingLimit() / RenderCell.GAME_EDGELENGTH);
 		}
-	}
-	
-	public void dispose(){
-		MessageManager.getInstance().removeListener(this, Events.mapChanged.getId());
-		MessageManager.getInstance().removeListener(this, Events.renderStorageChanged.getId());
 	}
 }

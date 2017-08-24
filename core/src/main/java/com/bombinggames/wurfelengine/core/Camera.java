@@ -31,6 +31,7 @@
 package com.bombinggames.wurfelengine.core;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.FrameBuffer;
@@ -382,6 +383,9 @@ public class Camera{
 			
 			int currentSorterId = WE.getCVars().getValueI("depthSorter");
 			if (sorter == null || currentSorterId != sorterId) {
+				if (sorter != null) {
+					MessageManager.getInstance().removeListener(sorter, Events.mapChanged.getId(), Events.renderStorageChanged.getId());
+				}
 				//should react to an onchange event of cvar
 				switch (currentSorterId) {
 					case 0:
@@ -394,6 +398,8 @@ public class Camera{
 						sorter = new DepthValueSort(this);
 						break;
 				}
+				MessageManager.getInstance().addListener(sorter, Events.mapChanged.getId());
+				MessageManager.getInstance().addListener(sorter, Events.renderStorageChanged.getId());
 				sorterId = currentSorterId;
 			}
 		}
@@ -1104,7 +1110,8 @@ public class Camera{
 	 */
 	void dispose() {
 		if (sorter != null) {
-			sorter.dispose();
+			MessageManager.getInstance().removeListener(sorter, Events.mapChanged.getId());
+			MessageManager.getInstance().removeListener(sorter, Events.renderStorageChanged.getId());
 		}
 	}
 
