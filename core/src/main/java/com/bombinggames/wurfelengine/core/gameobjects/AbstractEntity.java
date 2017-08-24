@@ -119,7 +119,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * can be used to save a heap call to obtain the coordiante.
 	 * @see Coordinate#setFromPoint(com.bombinggames.wurfelengine.core.map.Point) 
 	 * */
-	private transient final Coordinate tmpCoordinate = new Coordinate(0, 0, 0);
+	private transient Coordinate tmpCoordinate = new Coordinate(0, 0, 0);
 	
 	transient byte marked;
 	/**
@@ -605,6 +605,8 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 
 	@Override
 	public Coordinate getCoord() {
+		if (tmpCoordinate==null)
+			tmpCoordinate=new Coordinate();//transient field
 		return tmpCoordinate.setFromPoint(position);
 	}
 
