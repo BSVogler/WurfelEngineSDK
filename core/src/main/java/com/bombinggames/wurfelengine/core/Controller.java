@@ -277,7 +277,7 @@ public class Controller implements GameManager {
 	public void init(String mapName, int saveslot) {
 		Gdx.app.log("Controller", "Initializing");
 
-		if (devtools == null && WE.getCVars().getValueB("DevMode")) {
+		if (devtools == null && (true || WE.getCVars().getValueB("DevMode"))) {
 			devtools = new DevTools(10, 50);
 		}
 		if (map == null) {
@@ -309,7 +309,7 @@ public class Controller implements GameManager {
 	 * @param dt time since last call
 	 */
 	public void update(float dt) {
-		if (WE.getCVars().getValueB("DevMode")) {
+		if (true || WE.getCVars().getValueB("DevMode")) { //at the moment engien is dependent on dev tools
 			if (devtools == null) {
 				devtools = new DevTools(10, 50);
 			}
