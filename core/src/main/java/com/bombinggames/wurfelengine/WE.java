@@ -481,7 +481,7 @@ public class WE {
 		return "Wurfel Engine (" + VERSION + ")" + newline + newline
 			+ "Created by:" + newline
 			+ "Benedikt S. Vogler" + newline + newline
-			+ "Quality Assurance:" + newline
+			+ "Thanks to:" + newline
 			+ "Thomas Vogt" + newline + newline
 			+ "Wurfel Engine uses libGDX." + newline;
 	}
