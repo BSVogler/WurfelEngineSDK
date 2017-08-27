@@ -259,7 +259,7 @@ public class Controller implements GameManager {
 	 * 
 	 * @see #init(int, java.lang.String) 
 	 */
-	public final void init() {
+	public void init() {
 		init(mapName, saveSlot);
 	}
 
