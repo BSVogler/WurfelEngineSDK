@@ -122,11 +122,7 @@ public class Camera{
 	 * true if camera is currently rendering
 	 */
 	private boolean active = true;
-	private LinkedList<AbstractGameObject> depthlist = new LinkedList<>();
-	/**
-	 * amount of objects to be rendered, used as an index during filling
-	 */
-	private int objectsToBeRendered = 0;
+	private final LinkedList<AbstractGameObject> depthlist = new LinkedList<>();
 	/**
 	 * object holding the center position
 	 */
@@ -172,6 +168,7 @@ public class Camera{
 		widthView = WE.getCVars().getValueI("renderResolutionWidth");
 		setZoom(1);
 		loadShader();
+		initSorter();
 	}
 
 	/**
@@ -380,28 +377,29 @@ public class Camera{
 			
 			//recalculate the center position
 			updateCenter();
-			
-			int currentSorterId = WE.getCVars().getValueI("depthSorter");
-			if (sorter == null || currentSorterId != sorterId) {
-				if (sorter != null) {
-					MessageManager.getInstance().removeListener(sorter, Events.mapChanged.getId(), Events.renderStorageChanged.getId());
-				}
-				//should react to an onchange event of cvar
-				switch (currentSorterId) {
-					case 0:
-						sorter = new NoSort(this);
-						break;
-					case 1:
-						sorter = new TopologicalSort(this);
-						break;
-					case 2:
-						sorter = new DepthValueSort(this);
-						break;
-				}
-				MessageManager.getInstance().addListener(sorter, Events.mapChanged.getId());
-				MessageManager.getInstance().addListener(sorter, Events.renderStorageChanged.getId());
-				sorterId = currentSorterId;
+			initSorter();
+		}
+	}
+	
+	public void initSorter() {
+		int currentSorterId = WE.getCVars().getValueI("depthSorter");
+		if (currentSorterId != sorterId) {
+			MessageManager.getInstance().removeListener(sorter, Events.mapChanged.getId(), Events.renderStorageChanged.getId());
+			//should react to an onchange event of cvar
+			switch (currentSorterId) {
+				case 0:
+					sorter = new NoSort(this);
+					break;
+				case 1:
+					sorter = new TopologicalSort(this);
+					break;
+				case 2:
+					sorter = new DepthValueSort(this);
+					break;
 			}
+			MessageManager.getInstance().addListener(sorter, Events.mapChanged.getId());
+			MessageManager.getInstance().addListener(sorter, Events.renderStorageChanged.getId());
+			sorterId = currentSorterId;
 		}
 	}
 
@@ -1109,10 +1107,8 @@ public class Camera{
 	 * may be overwritten
 	 */
 	void dispose() {
-		if (sorter != null) {
-			MessageManager.getInstance().removeListener(sorter, Events.mapChanged.getId());
-			MessageManager.getInstance().removeListener(sorter, Events.renderStorageChanged.getId());
-		}
+		MessageManager.getInstance().removeListener(sorter, Events.mapChanged.getId());
+		MessageManager.getInstance().removeListener(sorter, Events.renderStorageChanged.getId());
 	}
 
 }
