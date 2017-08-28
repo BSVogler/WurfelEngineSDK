@@ -279,7 +279,7 @@ public class DevTools {
     }
 
    /**
-    * Set the FPSdiag visible. You must nevertheless call render() to let it appear.
+    * Set the FPSdiag visible. You must nevertheless call {@link #render(GameView) } once a frame to let it appear.
     * @param visible 
     */
     public void setVisible(final boolean visible) {
@@ -315,20 +315,26 @@ public class DevTools {
 
 	/**
 	 * CSV (<a href="https://tools.ietf.org/html/rfc4180.html">RFC 4180</a>) compliant.
+	 * @param everyNthn take every n-th data
 	 * @return in ms
 	 */
-	public String getDataAsString() {
-			StringBuilder content = new StringBuilder(data.length);
-			char separator = ',';
-			int c=0;
-			for (float f : data) {
-				if (f!=0) {
-					c++;
-					content.append(f*1000);
+	public String getDataAsString(int everyNthn) {
+		if (everyNthn < 1) {
+			throw new IllegalArgumentException("At least every 1 must be selected.");
+		}
+		StringBuilder content = new StringBuilder(data.length);
+		char separator = ',';
+		int c = 0;
+		for (float f : data) {
+			if (f != 0) {
+				c++;
+				if (c % everyNthn == 0) {
+					content.append(f * 1000);
 					content.append(separator);
 				}
 			}
-			System.out.println("Got "+c+" frame times");
-			return content.toString();
+		}
+		System.out.println("Got ~" + (c / everyNthn) + " frame times from " + c + " recorded.");
+		return content.toString();
 	}
 }
