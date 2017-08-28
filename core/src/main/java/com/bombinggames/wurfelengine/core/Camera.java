@@ -383,7 +383,7 @@ public class Camera{
 	
 	public void initSorter() {
 		int currentSorterId = WE.getCVars().getValueI("depthSorter");
-		if (currentSorterId != sorterId) {
+		if (currentSorterId != sorterId || sorter==null) {
 			MessageManager.getInstance().removeListener(sorter, Events.mapChanged.getId(), Events.renderStorageChanged.getId());
 			//should react to an onchange event of cvar
 			switch (currentSorterId) {
