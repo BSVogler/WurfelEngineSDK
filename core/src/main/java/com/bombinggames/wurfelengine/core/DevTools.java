@@ -188,7 +188,9 @@ public class DevTools {
             shr.line(xPos, yPos-maxHeight+0.0666f*3000, xPos+getWidth(), yPos-maxHeight+0.0666f*3000);
 			//render each delta field in memory
 			int from = Math.max((field /maxStepsVisualized-1)*maxStepsVisualized,0);
-			int to = ((field /maxStepsVisualized+1)*maxStepsVisualized)%data.length-1;
+//			int to = ((field /maxStepsVisualized+1)*maxStepsVisualized)%(data.length);
+			int to = (field+maxStepsVisualized)%(data.length);
+			
             for (int i = from; i < to; i++) {
 				if (getSavedDelta(i + 1)>0 && i < field){
 					shr.line(
