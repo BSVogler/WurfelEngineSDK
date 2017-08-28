@@ -190,18 +190,16 @@ public class DevTools {
 			int from = Math.max((field /maxStepsVisualized-1)*maxStepsVisualized,0);
 			int to = ((field /maxStepsVisualized+1)*maxStepsVisualized)%data.length-1;
             for (int i = from; i < to; i++) {
-				shr.end();
-				shr.getColor().set(getSavedDelta(i+1)/0.0333f-0.5f, 1f-getSavedDelta(i+1)/0.0333f, 0, 0.9f);
-				shr.begin(ShapeRenderer.ShapeType.Line);
 				if (getSavedDelta(i + 1)>0 && i < field){
 					shr.line(
 						xPos + WIDTH * (i + 0.5f) % (WIDTH * maxStepsVisualized),
 						yPos + getSavedDelta(i) * 3000 - maxHeight,
 						xPos + WIDTH * (i + 1.5f) % (WIDTH * maxStepsVisualized),
-						yPos + getSavedDelta(i + 1) * 3000 - maxHeight
+						yPos + getSavedDelta(i + 1) * 3000 - maxHeight,
+						new Color(getSavedDelta(i)/0.0333f-0.5f, 1f-getSavedDelta(i)/0.0333f, 0, 0.9f),
+						new Color(getSavedDelta(i+1)/0.0333f-0.5f, 1f-getSavedDelta(i+1)/0.0333f, 0, 0.9f)
 					);
 				}
-
 			}
             
             //render average values       
