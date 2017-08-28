@@ -116,6 +116,9 @@ public class DevTools {
         memoryText = new StringBuilder(100);
         memoryText.append(format.format(usedMemory / 1024));
         memoryText.append("/").append(format.format(allocatedMemory / 1024)).append(" MB");
+		
+		setVisible(WE.getCVars().getValueB("devmode"));
+			
 //        memoryText.append("free: ").append(format.format(freeMemory / 1024));
 //        memoryText.append("allocated: ").append(format.format(allocatedMemory / 1024));
 //        memoryText.append("max: ").append(format.format(maxMemory / 1024));
