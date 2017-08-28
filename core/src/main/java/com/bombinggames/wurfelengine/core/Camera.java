@@ -588,19 +588,16 @@ public class Camera{
 				}
 			}
 
-			//render vom bottom to top
-			if (multiRendering) {
-				if (multiRenderPass == 0) {
-					sorter.createDepthList(depthlist);
-				}
-				for (AbstractGameObject abstractGameObject : depthlist) {
-					abstractGameObject.render(view);
-				}
-				multiRenderPass++;
-			} else {
+			//render vom back to front
+			if (!multiRendering || multiRenderPass == 0) {
 				sorter.renderSorted();
+				multiRenderPass = view.getGameSpaceSpriteBatch().getIdx();
+			} else {
+				//render same data again
+				view.getGameSpaceSpriteBatch().setIdx(multiRenderPass);
 			}
 			view.getGameSpaceSpriteBatch().end();
+			
 		
 			//debug rendering
 			if (WE.getCVars().getValueB("DevDebugRendering")) {

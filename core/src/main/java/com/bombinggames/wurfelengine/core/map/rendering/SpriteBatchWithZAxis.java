@@ -1088,10 +1088,35 @@ public class SpriteBatchWithZAxis implements Batch {
 		}
 
 		mesh.render(customShader != null ? customShader : shader, GL20.GL_TRIANGLES, 0, count);
-
 		idx = 0;
 	}
+	
+//	public void setContent(float[] vertices, int idx){
+//		for
+//		this.vertices = vertices;
+//		this.idx = idx;
+//	}
+//
+//	public float[] getVertices() {
+//		return vertices;
+//	}
 
+	/**
+	 * set this field to render same things twice
+	 * @param idx float position in vertices array
+	 */
+	public void setIdx(int idx) {
+		this.idx = idx;
+	}
+
+	/**
+	 * 
+	 * @return  float position in vertices array
+	 */
+	public int getIdx() {
+		return idx;
+	}
+	
 	@Override
 	public void disableBlending() {
 		if (blendingDisabled) {
