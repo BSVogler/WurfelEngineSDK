@@ -66,12 +66,12 @@ public class SpriteBatchWithZAxis implements Batch {
 	
 	private Mesh mesh;
 
-	final float[] vertices;
-	int idx = 0;
-	Texture lastTexture = null;
-	float invTexWidth = 0, invTexHeight = 0;
+	private final float[] vertices;
+	private int idx = 0;
+	private Texture lastTexture = null;
+	private float invTexWidth = 0, invTexHeight = 0;
 
-	boolean drawing = false;
+	private boolean drawing = false;
 
 	private final Matrix4 transformMatrix = new Matrix4();
 	private final Matrix4 projectionMatrix = new Matrix4();
@@ -1070,7 +1070,7 @@ public class SpriteBatchWithZAxis implements Batch {
 			maxSpritesInBatch = spritesInBatch;
 		}
 		
-		int count = spritesInBatch * 6;//why 6??? two triangels with 3 vertices
+		int count = spritesInBatch * 6;//why 6? two triangels with 3 vertices
 
 		//lastTexture.bind();
 		Mesh mesh = this.mesh;
