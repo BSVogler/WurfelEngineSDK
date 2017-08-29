@@ -62,6 +62,7 @@ public class DevTools {
     private long allocatedMemory;
     private long maxMemory;
     private long usedMemory;
+	private long lastFrame = System.nanoTime();
 
   /**
 	 *
@@ -98,7 +99,9 @@ public class DevTools {
 	 *
 	 */
 	public void update() {
-		float rdt = Gdx.graphics.getRawDeltaTime();
+		float rdt = (System.nanoTime()-lastFrame)/(float)1000000000;
+		lastFrame = System.nanoTime();
+		//float rdt = Gdx.graphics.getRawDeltaTime();
 		field++;//move to next field
 		if (field >= data.length) {
 			field = 0; //start over           
