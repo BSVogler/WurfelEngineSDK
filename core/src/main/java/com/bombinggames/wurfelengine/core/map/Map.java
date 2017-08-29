@@ -274,7 +274,7 @@ public class Map implements IndexedGraph<PfNode> {
 		}
 
 		//remove not spawned objects from list
-		entityList.removeIf((AbstractEntity entity) -> !entity.hasPosition());
+		entityList.removeIf((AbstractEntity entity) -> !entity.hasPosition() || entity.shouldBeDisposed());
 	}
 
 	/**
