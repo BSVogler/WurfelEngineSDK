@@ -700,7 +700,10 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 *
 	 * @param value
 	 */
-	public void setSpriteValue(byte value){
+	public void setSpriteValue(byte value) {
+		if (value >= RenderCell.VALUESNUM) {
+			throw new IllegalArgumentException();
+		}
 		if (value != this.value) {
 			this.value = value;
 			updateSpriteCache();
