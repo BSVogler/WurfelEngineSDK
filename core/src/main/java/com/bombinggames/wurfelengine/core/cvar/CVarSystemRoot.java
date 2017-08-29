@@ -134,6 +134,7 @@ public class CVarSystemRoot extends AbstractCVarSystem {
 		register(new IntCVar(536870912), "mapMaxMemoryUseBytes");//bytes, 512MB->17,9km^2
 		register(new BooleanCVar(false), "showMiniMapChunk");
 		register(new IntCVar(0), "depthbuffer");//0 disabled, 1 zbuffer 2 depth peeling
-		register(new IntCVar(1), "depthSorter");
+		register(new IntCVar(1), "depthSorter");//0 nosort, 1 toposort, 2 depthsort
+		register(new BooleanCVar(true), "singleBatchRendering");//faster multipass rendering when enabled but disallows multiple begin/end with the batch
 	}
 }

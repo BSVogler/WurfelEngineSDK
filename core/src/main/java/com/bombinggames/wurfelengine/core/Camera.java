@@ -145,7 +145,7 @@ public class Camera{
 	private int lastCenterX, lastCenterY;
 	private int sorterId;
 	private boolean multiRendering;
-	private int multiRenderPass;
+	private int multiPassLastIdx;
 
 	/**
 	 * Updates the needed chunks after recaclucating the center chunk of the
@@ -588,17 +588,28 @@ public class Camera{
 				}
 			}
 
-			//render vom back to front
-			if (!multiRendering || multiRenderPass == 0) {
+			//render vom bottom to top
+			if (!multiRendering || (WE.getCVars().getValueB("singleBatchRendering") && multiPassLastIdx == 0)){
 				sorter.renderSorted();
-				multiRenderPass = view.getGameSpaceSpriteBatch().getIdx();
+				multiPassLastIdx = view.getGameSpaceSpriteBatch().getIdx();
 			} else {
-				//render same data again
-				view.getGameSpaceSpriteBatch().setIdx(multiRenderPass);
+				if (WE.getCVars().getValueB("singleBatchRendering")){
+					//render same batch data again
+					view.getGameSpaceSpriteBatch().setIdx(multiPassLastIdx);
+				} else {
+					if (multiPassLastIdx == 0) {
+						sorter.createDepthList(depthlist);
+					}
+					//render depthlist again
+					for (AbstractGameObject abstractGameObject : depthlist) {
+						abstractGameObject.render(view);
+					}
+					multiPassLastIdx = view.getGameSpaceSpriteBatch().getIdx();
+				}
 			}
+			
 			view.getGameSpaceSpriteBatch().end();
 			
-		
 			//debug rendering
 			if (WE.getCVars().getValueB("DevDebugRendering")) {
 				drawDebug(view, this);
@@ -621,15 +632,15 @@ public class Camera{
 	}
 	
 	/**
-	 * Allows the rendering of mutiple images without resorting.
+	 * Allows the rendering of mutiple images (multipass) without resorting.
 	 */
 	public void startMultiRendering() {
 		multiRendering = true;
-		multiRenderPass = 0;
+		multiPassLastIdx = 0;
 	}
 	
 	/**
-	 * Stop the multi rendering. After this method each new call to {@link #render(GameView) } is sorting again.
+	 * Stop the multipass rendering. After this method each new call to {@link #render(GameView) } is sorting again.
 	 */
 	public void endMultiRendering(){
 		multiRendering = false;
