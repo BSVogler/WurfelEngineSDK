@@ -355,9 +355,17 @@ public class Map implements IndexedGraph<PfNode> {
 	 * @return
 	 */
 	public byte getBlockId(final Coordinate coord) {
-		return (byte) (getBlock(coord) & 255);
+		if (coord.getZ() < 0) {
+			return (byte) WE.getCVars().getValueI("groundBlockID");
+		}
+		Chunk chunk = getChunkContaining(coord);
+		if (chunk == null) {
+			return 0;
+		} else {
+			return chunk.getBlockId(coord.getX(), coord.getY(), coord.getZ());//find chunk in x coord
+		}
 	}
-
+	
 	/**
 	 * id, value and health
 	 *
