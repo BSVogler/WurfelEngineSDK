@@ -3,6 +3,7 @@ package com.bombinggames.wurfelengine.core.gameobjects;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Vector3;
+import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Intersection;
@@ -168,7 +169,7 @@ public class PointLightSource extends AbstractEntity {
 	public void update(float dt) {
 		super.update(dt);
 
-		if (enabled && hasPosition()) {
+		if (enabled && WE.getCVars().getValueB("enableVertexLighting") && hasPosition()) {
 			//check if moved and therefore has to be recalculated
 			if (!getPosition().equals(lastPos)) {
 				lightNearbyBlocks(dt);
@@ -187,8 +188,8 @@ public class PointLightSource extends AbstractEntity {
 						//get the light in the cache
 						float[] blocklight = lightcache[x + radius][y + radius * 2][z + radius];
 						tmpCoord.set(xCenter + x, yCenter + y, zCenter + z);
-						RenderCell rB = tmpCoord.getRenderCell(view.getRenderStorage());
-						if (rB != null && !rB.isHidden()) {
+						RenderCell rC = tmpCoord.getRenderCell(view.getRenderStorage());
+						if (rC != null && !rC.isHidden()) {
 							tmpCoord.addLightToBackEdge(view, Side.LEFT, tmpColor.set(color).mul(blocklight[0]));
 							tmpCoord.addLightToBackEdge(view, Side.TOP, tmpColor.set(color).mul(blocklight[1]));
 							tmpCoord.addLightToBackEdge(view, Side.RIGHT, tmpColor.set(color).mul(blocklight[2]));
