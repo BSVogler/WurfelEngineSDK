@@ -217,7 +217,7 @@ public class RenderChunk {
 		if (idexZ < Chunk.getBlocksZ() && idexZ >= 0) {
 			RenderCell block = data[idexX][idexY][idexZ];
 			if (block != null) {
-				data[idexX][idexY][idexZ].setLightlevel(1);
+				data[idexX][idexY][idexZ].resetLight()	;
 
 				//check if block above is transparent
 				if (idexZ < blocksZ - 2
