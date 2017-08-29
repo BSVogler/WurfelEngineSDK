@@ -309,16 +309,10 @@ public class Controller implements GameManager {
 	 * @param dt time since last call
 	 */
 	public void update(float dt) {
-		if (true || WE.getCVars().getValueB("DevMode")) { //at the moment engien is dependent on dev tools
-			if (devtools == null) {
-				devtools = new DevTools(10, 50);
-			}
-			devtools.update();
-		} else {
-			devtools = null;
+		if (devtools == null) {
+			devtools = new DevTools(10, 50);
 		}
-
-		
+		devtools.update();
 	}
 	
 	/**
