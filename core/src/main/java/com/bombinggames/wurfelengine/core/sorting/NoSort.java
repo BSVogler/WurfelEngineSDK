@@ -130,10 +130,4 @@ public class NoSort extends AbstractSorter {
 			}
 		}
 	}
-
-	@Override
-	public void bakeIteratorCache() {
-		super.bakeIteratorCache(0);
-	}
-
 }

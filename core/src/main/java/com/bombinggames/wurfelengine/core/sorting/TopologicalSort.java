@@ -36,6 +36,7 @@ import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import static com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject.getSprite;
+import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
@@ -131,9 +132,23 @@ public class TopologicalSort extends AbstractSorter {
 		//iterate over every block in renderstorage
 		objectsToBeRendered = 0;
 		
-		for (RenderCell cell : iteratorCache) {
-			if (cell != RenderChunk.CELLOUTSIDE && camera.inViewFrustum(cell.getPosition())) {
-				visit(cell.getTopoNode());
+//		for (RenderCell cell : iteratorCache) {
+		//iterate over top
+		int z = Chunk.getBlocksZ() - 1;
+		for (int x = camera.getVisibleLeftBorder(); x < camera.getVisibleRightBorder(); x++) {
+			int y;
+			for (y = camera.getVisibleBackBorder(); y < camera.getVisibleFrontBorderHigh(); y++) {
+				RenderCell cell = rS.getCell(x, y, z);
+				if (cell != RenderChunk.CELLOUTSIDE && camera.inViewFrustum(cell.getPosition())) {
+					visit(cell.getTopoNode());
+				}
+			}
+			//iterate over front
+			for (z = 0; z < Chunk.getBlocksZ() - 1; z++) {
+				RenderCell cell = rS.getCell(x, y, z);
+				if (cell != RenderChunk.CELLOUTSIDE && camera.inViewFrustum(cell.getPosition())) {
+					visit(cell.getTopoNode());
+				}
 			}
 		}
 		//remove ents from modified blocks
@@ -303,13 +318,12 @@ public class TopologicalSort extends AbstractSorter {
 
 	@Override
 	public void createDepthList(LinkedList<AbstractGameObject> depthlist) {
-		updateCacheIfOutdated();
 		//todo
 	}
 
 	@Override
 	public void bakeIteratorCache() {
-		super.bakeIteratorCache(getTopLevel() - 2);
+		//do nothing
 	}
 	
 }
