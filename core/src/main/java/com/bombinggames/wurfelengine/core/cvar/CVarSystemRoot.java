@@ -137,5 +137,6 @@ public class CVarSystemRoot extends AbstractCVarSystem {
 		register(new IntCVar(1), "depthSorter");//0 nosort, 1 toposort, 2 depthsort
 		register(new BooleanCVar(true), "singleBatchRendering");//faster multipass rendering when enabled but disallows multiple begin/end with the batch
 		register(new BooleanCVar(true), "enableVertexLighting");
+		register(new BooleanCVar(false), "enableMultiThreadRendering");
 	}
 }

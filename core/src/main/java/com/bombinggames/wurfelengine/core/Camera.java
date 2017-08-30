@@ -645,7 +645,10 @@ public class Camera{
 	public void endMultiRendering(){
 		multiRendering = false;
 	}
-
+	
+	boolean isMultiRendering() {
+		return multiRendering;
+	}
 
 	/**
 	 * checks if the projected position is inside the viewMat Frustum
@@ -1118,5 +1121,6 @@ public class Camera{
 		MessageManager.getInstance().removeListener(sorter, Events.mapChanged.getId());
 		MessageManager.getInstance().removeListener(sorter, Events.renderStorageChanged.getId());
 	}
+
 
 }

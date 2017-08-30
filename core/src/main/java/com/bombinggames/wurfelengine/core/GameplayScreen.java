@@ -51,6 +51,8 @@ public class GameplayScreen extends WEScreen {
 	 * the view used when changed to editor mode
 	 */
 	private EditorView editorView;
+	private boolean updateDone = true;
+	private boolean updatedAtLeastOnce;
 
 	/**
 	 * Create the gameplay state. This shows the loading screen.
@@ -99,24 +101,58 @@ public class GameplayScreen extends WEScreen {
 
 	@Override
 	public void renderImpl(final float delta) {
-		//game crashes if not in devmode
-		float avgDt = controller.getDevTools().getAverageDelta(WE.getCVars().getValueI("numFramesAverageDelta"))*1000;
-		
-		if (avgDt >= WE.getCVars().getValueF("MaxDelta")) {
-			avgDt = 1000f / 60f;//if <1 FPS assume it was stopped and set delta to 16,66ms ^= 60FPS
-		}
-		//aply game world speed
-		float dt = avgDt * WE.getCVars().getValueF("timespeed");
+		if (WE.getCVars().getValueB("enablemultiThreadRendering")) {
+			if (updateDone) {
+				updateDone = false;
+				if (updatedAtLeastOnce) {
+					view.getCameras().get(0).startMultiRendering();
+					view.render();
+				}
+				new Thread(() -> {
+					float avgDt = controller.getDevTools().getAverageDelta(WE.getCVars().getValueI("numFramesAverageDelta")) * 1000;
 
-		//update data
-		MessageManager.getInstance().update(delta);
-		view.preUpdate(dt);
-		controller.update(dt);
-		Controller.staticUpdate(dt);
-		view.update(dt);
-		getMap().postUpdate(dt);//hack to prevent 1-frame lag by too late write access via view update
+					if (avgDt >= WE.getCVars().getValueF("MaxDelta")) {
+						avgDt = 1000f / 60f;//if <1 FPS assume it was stopped and set delta to 16,66ms ^= 60FPS
+					}
+					//apply game world speed
+					float dt = avgDt * WE.getCVars().getValueF("timespeed");
+					//update data
+					MessageManager.getInstance().update(delta);
+					view.preUpdate(dt);
+					controller.update(dt);
+					Controller.staticUpdate(dt);
+					view.update(dt);
+					getMap().postUpdate(dt);//hack to prevent 1-frame lag by too late write access via view update
+
+					updateDone = true;
+					updatedAtLeastOnce = true;
+					//Gdx.app.postRunnable(() -> {});
+				}).start();
+			} else {
+				if (updatedAtLeastOnce) {
+					view.render();
+				}
+			}
+		} else {
+			float avgDt = controller.getDevTools().getAverageDelta(WE.getCVars().getValueI("numFramesAverageDelta")) * 1000;
+
+			if (avgDt >= WE.getCVars().getValueF("MaxDelta")) {
+				avgDt = 1000f / 60f;//if <1 FPS assume it was stopped and set delta to 16,66ms ^= 60FPS
+			}
+			//apply game world speed
+			float dt = avgDt * WE.getCVars().getValueF("timespeed");
+
+			//update data
+			MessageManager.getInstance().update(delta);
+			view.preUpdate(dt);
+			controller.update(dt);
+			Controller.staticUpdate(dt);
+			view.update(dt);
+			getMap().postUpdate(dt);//hack to prevent 1-frame lag by too late write access via view update
+			view.render();
+		}
+
 		//render data
-		view.render();
 		WE.getEngineView().getStage().draw();
 	}
 

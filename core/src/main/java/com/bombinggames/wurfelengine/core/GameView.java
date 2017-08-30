@@ -789,7 +789,11 @@ public class GameView implements GameManager {
 
 		//render offsceen
 		for (Camera camera : cameras) {
-			camera.startMultiRendering();
+			//skip this frame if
+//			if (WE.getCVars().getValueB("enableMultiThreadRendering") && !camera.isMultiRendering()) return;
+			
+			if (!camera.isMultiRendering())
+				camera.startMultiRendering();
 			for (int i = 0; i < numDPLayers; i++) {
 				//render to fbo
 				if (i == 0) {
