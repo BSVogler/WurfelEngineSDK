@@ -663,7 +663,7 @@ public class Camera{
 				>
 				(vspY - (RenderCell.VIEW_HEIGHT<<1))//bottom of sprite
 			&&
-				(vspY + RenderCell.VIEW_HEIGHT2 + RenderCell.VIEW_DEPTH)//top of sprite
+				(vspY + RenderCell.VIEW_HEIGHT + RenderCell.VIEW_DEPTH)//top of sprite
 				>
 				position.y - (heightAfterProj>>1))//fast division by two
 //fast division by two
