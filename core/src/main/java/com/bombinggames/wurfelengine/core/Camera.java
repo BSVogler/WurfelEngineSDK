@@ -739,7 +739,7 @@ public class Camera{
 	}
 
 	/**
-	 * Returns the bottom seight border y-coordinate of the highest cell
+	 * Returns the bottom seight border y-coordinate of the frontmost cells which could be visible.
 	 *
 	 * @return measured in grid-coordinates
 	 * @see #getVisibleFrontBorderLow()
@@ -747,7 +747,7 @@ public class Camera{
 	public int getVisibleFrontBorderHigh() {
 		return (int) ((position.y - heightAfterProj * 0.5) //bottom camera border
 			/ -RenderCell.VIEW_DEPTH2 //back to game coordinates
-			+ Chunk.getBlocksY() * 3 * RenderCell.VIEW_HEIGHT / RenderCell.VIEW_DEPTH2 //todo verify, try to add z component
+			+ Chunk.getBlocksZ()* RenderCell.VIEW_HEIGHT / RenderCell.VIEW_DEPTH2 //height in z as y distance
 			);
 	}
 
