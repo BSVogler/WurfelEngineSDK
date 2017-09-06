@@ -176,21 +176,6 @@ public class TopologicalSort extends AbstractSorter {
 	}
 	
 	/**
-	 * topological sort for ents
-	 * @param o root node
-	 */
-	private void visit(AbstractEntity o) {
-		LinkedList<RenderCell> covered = o.getCoveredBlocks(gameView.getRenderStorage());
-		if (!covered.isEmpty()) {
-			for (RenderCell cell : covered) {
-				if (cell.getTopoNode() != null && camera.inViewFrustum(cell.getPosition())) {
-					visit(cell.getTopoNode());
-				}
-			}
-		}
-	}
-	
-	/**
 	 * Topological sort for Cells
 	 * @param node 
 	 */
@@ -203,7 +188,14 @@ public class TopologicalSort extends AbstractSorter {
 			if (!coveredEnts.isEmpty() && !coveredEnts.getFirst().isMarkedDS(camera.getId())) {
 				coveredEnts.getFirst().markAsVisitedDS(camera.getId());
 				//inside a node entities share the dependencies, so only visti first then add all
-				visit(coveredEnts.getFirst());
+				LinkedList<RenderCell> covered = coveredEnts.getFirst().getCoveredBlocks(gameView.getRenderStorage());
+				if (!covered.isEmpty()) {
+					for (RenderCell cell : covered) {
+						if (cell.getTopoNode() != null && camera.inViewFrustum(cell.getPosition())) {
+							visit(cell.getTopoNode());
+						}
+					}
+				}
 					
 				for (AbstractEntity e : coveredEnts) {
 					if (camera.inViewFrustum(e.getPosition())
