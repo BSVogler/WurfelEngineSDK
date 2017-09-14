@@ -465,7 +465,7 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 	}
 
 	/**
-	 * Hides an object. It won't be rendered.
+	 * Hides an object. It won't be rendered but still affects physics.
 	 *
 	 * @param hidden
 	 */
