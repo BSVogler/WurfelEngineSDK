@@ -64,7 +64,7 @@ public class Explosion extends AbstractEntity implements Telegraph {
 	@Override
 	public AbstractEntity spawn(Point point) {
 		super.spawn(point);
-		//replace blocks by air
+		//damage surrounding blocks
 		Coordinate coord = new Coordinate();
 		for (int x = -radius; x < radius; x++) {
 			for (int y = -radius * 2; y < radius * 2; y++) {
