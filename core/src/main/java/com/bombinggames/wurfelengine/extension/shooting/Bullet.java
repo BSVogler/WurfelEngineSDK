@@ -72,7 +72,7 @@ public class Bullet extends MovableEntity {
 	 * @see #setSpriteId(byte)
 	 */
 	public Bullet() {
-		super((byte) 22, 0, false);
+		super((byte) 22, 0);
 		setName("Bullet");
 		setMass(0.002f);
 		setSavePersistent(false);

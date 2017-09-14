@@ -112,7 +112,7 @@ public class MovableEntity extends AbstractEntity  {
 	 * @param id 
 	 */
 	public MovableEntity(final byte id) {
-		this(id, 0, true);
+		this(id, 0);
 	}
 	
   /**
@@ -121,24 +121,13 @@ public class MovableEntity extends AbstractEntity  {
     * @param spritesPerDir The number of animation sprites per walking direction. if 0 then it only uses the value 0
     */
 	public MovableEntity(final byte id, final int spritesPerDir) {
-		this(id, spritesPerDir, true);
-	}
-	
-   /**
-    * Constructor of MovableEntity.
-    * @param id
-    * @param spritesPerDir The number of animation sprites per walking direction. if 0 then it only uses the value 0
-	 * @param shadow
-    */
-   public MovableEntity(final byte id, final int spritesPerDir, boolean shadow) {
-        super(id);
+		super(id);
         this.spritesPerDir = spritesPerDir;
 		movement = new Vector3(0,0,0);
 		floating = false;
 		friction = WE.getCVars().getValueF("friction");
-		if (shadow) addComponent(new EntityShadow());
-   }
-   
+	}
+	
    /**
 	* copy constructor
 	* @param entity 
@@ -150,8 +139,6 @@ public class MovableEntity extends AbstractEntity  {
 		friction = entity.friction;
 		collider = entity.collider;
 		floating = entity.floating;
-		
-		addComponent(new EntityShadow());
 	}
 
 	@Override

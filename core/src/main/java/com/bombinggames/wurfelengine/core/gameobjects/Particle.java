@@ -49,7 +49,7 @@ public class Particle extends MovableEntity {
 	 * @param maxtime TTL in ms
 	 */
 	public Particle(byte id, float maxtime) {
-		super(id, 0, false);
+		super(id, 0);
 		setMass(0.001f);
 		init(maxtime);
 	}
