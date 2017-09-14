@@ -65,6 +65,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	public static void registerEngineEntities() {
 		entityMap.put("Explosion", Explosion.class);
 		entityMap.put("Benchmarkball", BenchmarkBall.class);
+		entityMap.put("Destruction Particle", DestructionParticle.class);
 	}
 	
 	/**
