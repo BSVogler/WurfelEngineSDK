@@ -50,6 +50,7 @@ public class Particle extends MovableEntity {
 	 */
 	public Particle(byte id, float maxtime) {
 		super(id, 0, false);
+		setMass(0.001f);
 		init(maxtime);
 	}
 	
