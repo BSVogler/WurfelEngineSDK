@@ -533,6 +533,13 @@ public class MovableEntity extends AbstractEntity  {
 	 * @return true if colliding horizontal
 	 */
 	public boolean collidesWithWorld(final Point pos, final float colissionRadius) {
+		if (pos.z > Chunk.getGameHeight()) {
+			return false;
+		}
+		if (pos.z < 0) {
+			return true;
+		}
+		
 		if (checkCollisionCorners(pos)) {
 			return true;
 		}
