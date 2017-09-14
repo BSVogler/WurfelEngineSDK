@@ -890,7 +890,7 @@ public class MovableEntity extends AbstractEntity  {
 			return true;
 		}
 		
-		moveToAi = (MoveToAi) getComponent(MoveToAi.class);
+		moveToAi = (MoveToAi) getComponents(MoveToAi.class);
 		if (msg.message == Events.deselectInEditor.getId()) {
 			if (particleBand != null) {
 				particleBand.dispose();

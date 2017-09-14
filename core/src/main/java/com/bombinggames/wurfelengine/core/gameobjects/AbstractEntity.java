@@ -625,7 +625,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * @param filterType
 	 * @return
 	 */
-	public <T extends Component> Component getComponent(final Class<T> filterType) {
+	public <T extends Component> Component getComponents(final Class<T> filterType) {
 		for (Component comp : components) {
 			if (filterType.isInstance(comp)) {
 				return comp;
@@ -634,6 +634,10 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 		return null;
 	}
 
+	public LinkedList<Component> getComponents() {
+		return components;
+	}
+	
 	/**
 	 *
 	 * @param component
