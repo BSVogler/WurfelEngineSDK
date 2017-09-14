@@ -265,6 +265,7 @@ public class MovableEntity extends AbstractEntity  {
 				t * movement.y * GAME_EDGELENGTH,
 				0
 			);
+			dMove.limit(30);//30m/s=108km/h should be enough
 
 			Point newPos = getPosition().cpy().add(dMove);
 			//check if movement to new position is okay
