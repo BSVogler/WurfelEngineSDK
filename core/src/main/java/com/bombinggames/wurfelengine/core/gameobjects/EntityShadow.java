@@ -55,9 +55,11 @@ public class EntityShadow extends AbstractEntity implements Component {
 	@Override
 	public void update(float dt) {
 		setSavePersistent(false);
-		if (character == null || !character.hasPosition() || character.isHidden()) {
+		if (character == null || !character.hasPosition()) {
 			dispose();
-		} else {
+		} else if (character.isHidden())
+			setHidden(true);
+		else {
 			//spawn if needed
 			if (!hasPosition()) {
 				spawn(character.getPoint().cpy());
