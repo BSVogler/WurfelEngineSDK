@@ -928,14 +928,14 @@ public class MovableEntity extends AbstractEntity  {
 					float im1 = 1 / getMass();
 					float im2 = 1 / ent.getMass();
 					// collision impulse
-					Vector2 impulse = colVec2.scl((-91.1f* vn) / (im1 + im2));
+					Vector2 impulse = colVec2.scl((-2*vn) / (im1 + im2));//the factor 2 is a hack because pushing is to little, you can walk through objects
 
+					
 					impulse.scl(im1);
 					// change in momentum
 					//hack to prevent ultra fast speed, clamps
-					if (impulse.len2() > 25){//lenght is >5
-						impulse.nor().scl(5);
-					}
+					impulse.limit(20);
+					
 					addMovement(impulse);
 					ent.addMovement(impulse.scl(-im2));
 
