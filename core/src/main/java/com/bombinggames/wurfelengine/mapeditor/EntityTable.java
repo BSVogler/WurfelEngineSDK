@@ -96,12 +96,12 @@ public class EntityTable extends AbstractPlacableTable {
 			return null;
 		}
 		try {
-			AbstractEntity ent = entityClass.newInstance();
+			AbstractEntity ent = entityClass.getDeclaredConstructor().newInstance();
 			if (getValue() > -1) {
 				ent.setSpriteValue(getValue());
 			}
 			return ent;
-		} catch (InstantiationException | IllegalAccessException ex) {
+		} catch (ReflectiveOperationException ex) {
 			Logger.getLogger(CursorInfo.class.getName()).log(Level.SEVERE, null, ex);
 		}
 		return null;

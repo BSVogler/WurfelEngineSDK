@@ -45,13 +45,13 @@ public abstract class AbstractBlockLogicExtension {
 		Class<? extends AbstractBlockLogicExtension> logicClass = LOGICREGISTER.get(blockId);
 		if (logicClass != null) {
 			try {
-				AbstractBlockLogicExtension instance = logicClass.newInstance();
+				AbstractBlockLogicExtension instance = logicClass.getDeclaredConstructor().newInstance();
 				instance.id = blockId;
 				instance.coord = coord;
 				instance.setValue(value);
 				instance.setCoord(coord);
 				return instance;
-			} catch (InstantiationException | IllegalAccessException ex) {
+			} catch (ReflectiveOperationException ex) {
 				Logger.getLogger(AbstractBlockLogicExtension.class.getName()).log(Level.SEVERE, null, ex);
 			}
 		}
