@@ -36,6 +36,7 @@ import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import java.lang.reflect.InvocationTargetException;
 
 /**
  * Draw an entity in projection space.
@@ -50,9 +51,11 @@ public class EntityDrawable extends TextureRegionDrawable {
 	 * @param type
 	 * @throws java.lang.InstantiationException
 	 * @throws java.lang.IllegalAccessException
+	 * @throws java.lang.NoSuchMethodException
+	 * @throws java.lang.reflect.InvocationTargetException
 	 */
-	public EntityDrawable(Class<? extends AbstractEntity> type) throws InstantiationException, IllegalAccessException {
-		instance = type.newInstance();
+	public EntityDrawable(Class<? extends AbstractEntity> type) throws InstantiationException, IllegalAccessException, NoSuchMethodException, IllegalArgumentException, InvocationTargetException {
+		instance = type.getDeclaredConstructor().newInstance();
 		if (instance.getSpriteId() > 0) {
 			//if bigger then default sprite size
 			float spiteHeight = AbstractGameObject.getSprite('e', instance.getSpriteId(), instance.getSpriteValue()).packedHeight;

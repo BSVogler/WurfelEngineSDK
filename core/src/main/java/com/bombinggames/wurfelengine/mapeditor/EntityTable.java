@@ -30,16 +30,16 @@
  */
 package com.bombinggames.wurfelengine.mapeditor;
 
-import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
+import java.lang.reflect.InvocationTargetException;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * A table showing the registered entities.
@@ -75,7 +75,7 @@ public class EntityTable extends AbstractPlacableTable {
 							new EntityListener(entry.getKey(), entry.getValue(), foundItems)
 						)
 					);
-				} catch (InstantiationException | IllegalAccessException ex) {
+				} catch (NoSuchMethodException | IllegalArgumentException | InvocationTargetException | InstantiationException | IllegalAccessException ex) {
 					Gdx.app.error(this.getClass().getName(), "Please make sure that every registered entity has a construcor without arguments");
 					Logger.getLogger(AbstractPlacableTable.class.getName()).log(Level.SEVERE, null, ex);
 				}
