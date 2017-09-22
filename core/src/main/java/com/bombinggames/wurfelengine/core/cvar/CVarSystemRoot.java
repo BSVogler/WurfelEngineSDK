@@ -30,9 +30,8 @@
  */
 package com.bombinggames.wurfelengine.core.cvar;
 
-import java.io.File;
-
 import com.badlogic.gdx.Input;
+import java.io.File;
 
 /**
  *
@@ -47,7 +46,6 @@ public class CVarSystemRoot extends AbstractCVarSystem {
 	 */
 	public CVarSystemRoot(File path) {
 		super(path);
-		System.out.println("Init Engine CVars…");
 		register(new FloatCVar(9.81f), "gravity");
 		register(new IntCVar(-40), "worldSpinAngle");
 		register(new BooleanCVar(false), "loadPixmap");
@@ -55,7 +53,6 @@ public class CVarSystemRoot extends AbstractCVarSystem {
 		register(new BooleanCVar(false), "LEnormalMapRendering");
 		register(new IntCVar(1920), "renderResolutionWidth");
 		register(new BooleanCVar(true), "enableLightEngine");
-		register(new BooleanCVar(true), "enableFog");
 		register(new FloatCVar(0.3f), "fogR");
 		register(new FloatCVar(0.4f), "fogG");
 		register(new FloatCVar(1.0f), "fogB");
@@ -129,12 +126,17 @@ public class CVarSystemRoot extends AbstractCVarSystem {
 		register(new IntCVar(90), "CameraLeapRadius");
 		register(new FloatCVar(0.5f), "ambientOcclusion");
 		register(new FloatCVar(200), "MaxDelta");//skip delta if under 5 FPS to prevent glitches
-		register(new IntCVar(10), "numFramesAverageDelta");
+		register(new IntCVar(10), "numFramesAverageDelta");//the amount of frames for averaging delta
 		register(new StringCVar(""),"loadedMap", CVarFlags.VOlATILE); 
 		register(new StringCVar(""), "lastConsoleCommand");
 		register(new IntCVar(20), "undohistorySize");
-		register(new IntCVar(500), "mapIndexSpaceSize");
+		register(new IntCVar(500), "mapIndexSpaceSize");//size of hash map
 		register(new IntCVar(536870912), "mapMaxMemoryUseBytes");//bytes, 512MB->17,9km^2
 		register(new BooleanCVar(false), "showMiniMapChunk");
+		register(new IntCVar(0), "depthbuffer");//0 disabled, 1 zbuffer 2 depth peeling
+		register(new IntCVar(1), "depthSorter");//0 nosort, 1 toposort, 2 depthsort
+		register(new BooleanCVar(true), "singleBatchRendering");//faster multipass rendering when enabled but disallows multiple begin/end with the batch
+		register(new BooleanCVar(true), "enableVertexLighting");
+		register(new BooleanCVar(false), "enableMultiThreadRendering");
 	}
 }

@@ -30,16 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core.map;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.pfa.Connection;
@@ -52,12 +42,20 @@ import com.badlogic.gdx.utils.Array;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.Events;
-import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.cvar.CVarSystemMap;
 import com.bombinggames.wurfelengine.core.cvar.CVarSystemSave;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.map.Generators.AirGenerator;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * A map stores nine chunks as part of a bigger map. It also contains the
@@ -179,7 +177,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 * to the map file
 	 */
 	public Map(final File name, int saveslot) throws IOException {
-		this(name, getDefaultGenerator(), saveslot);
+		this(name, saveslot, getDefaultGenerator());
 	}
 
 	/**
@@ -191,7 +189,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 * @throws java.io.IOException thrown if there is no full read/write access
 	 * to the map file
 	 */
-	public Map(final File name, Generator generator, int saveSlot) throws IOException {
+	public Map(final File name, int saveSlot, Generator generator) throws IOException {
 		this.directory = name;
 		this.generator = generator;
 		
@@ -199,7 +197,7 @@ public class Map implements IndexedGraph<PfNode> {
 		chunkDim = WE.getCVars().getValueI("mapIndexSpaceSize");
 		data = new HashMap<>(chunkDim*chunkDim, 0.5f);
 		
-		maxChunks = WE.getCVars().getValueI("mapMaxMemoryUseBytes") / (Chunk.getBlocksX()*Chunk.getBlocksY()*Chunk.getBlocksZ()*3); //
+		maxChunks = WE.getCVars().getValueI("mapMaxMemoryUseBytes") / (Chunk.getBlocksX()*Chunk.getBlocksY()*Chunk.getBlocksZ()*3); //each block uses three bytes: id, sub id, health
 		loadedChunks = new LinkedList<>();
 		WE.getCVars().get("loadedMap").setValue(name.getName());
 		
@@ -265,21 +263,18 @@ public class Map implements IndexedGraph<PfNode> {
 
 		//update every entity
 		//old style for loop because allows modification during loop
-		float rawDelta = Gdx.graphics.getRawDeltaTime() * 1000f;
 		for (int i = 0; i < entityList.size(); i++) {
 			AbstractEntity entity = entityList.get(i);
 			if (!entity.isInMemoryArea()) {
 				entity.requestChunk();
 			}
-			if (entity.useRawDelta()) {
-				entity.update(rawDelta);
-			} else {
-				entity.update(dt);
-			}
+			//entities withouth being spawned are also updated
+			if (!entity.shouldBeDisposed())
+				entity.update(entity.useRawDelta() ? Gdx.graphics.getRawDeltaTime() * 1000f : dt);
 		}
 
 		//remove not spawned objects from list
-		entityList.removeIf((AbstractEntity entity) -> !entity.hasPosition());
+		entityList.removeIf((AbstractEntity entity) -> !entity.hasPosition() || entity.shouldBeDisposed());
 	}
 
 	/**
@@ -360,14 +355,22 @@ public class Map implements IndexedGraph<PfNode> {
 	 * @return
 	 */
 	public byte getBlockId(final Coordinate coord) {
-		return (byte) (getBlock(coord) & 255);
+		if (coord.getZ() < 0) {
+			return (byte) WE.getCVars().getValueI("groundBlockID");
+		}
+		Chunk chunk = getChunkContaining(coord);
+		if (chunk == null) {
+			return 0;
+		} else {
+			return chunk.getBlockId(coord.getX(), coord.getY(), coord.getZ());//find chunk in x coord
+		}
 	}
-
+	
 	/**
 	 * id, value and health
 	 *
 	 * @param coord
-	 * @return
+	 * @return first byte id, second value, third is health.
 	 */
 	public int getBlock(Coordinate coord) {
 		if (coord.getZ() < 0) {
@@ -410,25 +413,12 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 
 	/**
-	 * Replace a block. Assume that the map already has been filled at this
-	 * coordinate.
-	 *
-	 * @param block no null pointer
-	 * @see
-	 * #setBlock(com.bombinggames.wurfelengine.core.map.rendering.RenderCell)
-	 */
-	public void setBlock(final RenderCell block) {
-		getChunkContaining(block.getPosition()).setBlock(block);
-	}
-
-	/**
-	 * Set a block at this coordinate. This creates a logic instance if the
-	 * block if it has a logic.
+	 * Set a block at this coordinate. This creates a
+	 * {@link AbstractBlockLogicExtension} instance if the block has logic.
 	 *
 	 * @param coord
 	 * @param id
-	 * @see
-	 * #setBlock(com.bombinggames.wurfelengine.core.map.rendering.RenderCell)
+	 * @see #setBlock(Coordinate, int)
 	 */
 	public void setBlock(Coordinate coord, byte id) {
 		Chunk chunk = getChunkContaining(coord);
@@ -438,19 +428,23 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 	
 	/**
-	 * Set id, value and health at a coordinate in the map.
+	 * Set id, value and health at a coordinate in the map. This creates a
+	 * {@link AbstractBlockLogicExtension} instance if the block has logic.
+	 *
 	 * @param coord
-	 * @param block id, value and health
+	 * @param block id (bit 0-7), value (bit 8-15) and health (bit 16-23)
 	 */
 	public void setBlock(Coordinate coord, int block) {
 		Chunk chunk = getChunkContaining(coord);
-		if (chunk != null) {
+		if (chunk != null && coord.getZ()>= 0 && coord.getZ() < Chunk.getBlocksZ()) {
 			chunk.setBlock(coord, (byte) (block & 255), (byte) ((block >> 8) & 255), (byte) ((block >> 16) & 255));
 		}
 	}
 
 	/**
-	 * Set id and value at a coordinate in the map.
+	 * Set id and value at a coordinate in the map. This creates a
+	 * {@link AbstractBlockLogicExtension} instance if the block has logic.
+	 *
 	 * @param coord
 	 * @param id
 	 * @param value
@@ -469,14 +463,6 @@ public class Map implements IndexedGraph<PfNode> {
 	 */
 	public void setValue(Coordinate coord, byte value) {
 		getChunkContaining(coord).setValue(coord, value);//call to map
-		//call to update RenderStorage
-		GameView view = WE.getGameplay().getView();
-		if (view != null) {//only update RS if can access it
-			RenderCell renderCell = view.getRenderStorage().getCell(coord);
-			if (renderCell != null) {
-				renderCell.setValue(value);
-			}
-		}
 	}
 
 	/**
@@ -490,7 +476,7 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 
 	/**
-	 * get the chunk where the coordinates are on
+	 * get the chunk where the coordinates are on. Usese hashmap so O(1).
 	 *
 	 * @param coord not altered
 	 * @return can return null if not loaded
@@ -743,7 +729,7 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 
 	/**
-	 * should be executed after the update method
+	 * should be executed after the update method. Dispatches a message if a change occured.	
 	 */
 	public void modificationCheck() {
 		if (modified) {

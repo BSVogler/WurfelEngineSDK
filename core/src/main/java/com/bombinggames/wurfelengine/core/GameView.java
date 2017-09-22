@@ -30,22 +30,18 @@
  */
 package com.bombinggames.wurfelengine.core;
 
-import java.io.FileNotFoundException;
-import java.util.ArrayList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input.Keys;
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.glutils.FrameBuffer;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
-import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.utils.viewport.StretchViewport;
@@ -57,9 +53,17 @@ import com.bombinggames.wurfelengine.core.map.LoadMenu;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
+import com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis;
+import com.bombinggames.wurfelengine.extension.MiniMapChunkDebug;
+import java.io.FileNotFoundException;
+import java.util.ArrayList;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * The GameView manages everything what should be drawn in an active game in game space.
+ * The GameView manages everything what should be drawn in an active game in game space. It includes two batches. One for gamespace and one for projection space.<br>
+ * 
+ * Code which needs a running instance should be put into the {@link #init(com.bombinggames.wurfelengine.core.Controller, com.bombinggames.wurfelengine.core.GameView) } method.
  * @author Benedikt
  */
 public class GameView implements GameManager {
@@ -93,11 +97,6 @@ public class GameView implements GameManager {
 	 */
     private final ArrayList<Camera> cameras = new ArrayList<>(6);//max 6 cameras
     
-	/**
-	 * true if current rendering is debug only
-	 */
-	private boolean inDebug;
-	
     private ShaderProgram shader;
     private ShapeRenderer shRenderer;
     
@@ -113,7 +112,8 @@ public class GameView implements GameManager {
      * game related stage. e.g. holds hud and gui
      */
     private Stage stage;
-    private final SpriteBatch spriteBatch = new SpriteBatch(2000);
+    private final SpriteBatchWithZAxis gameSpaceSpriteBatch = new SpriteBatchWithZAxis(WE.getCVars().getValueI("MaxSprites"));
+	private final SpriteBatch projectionSpaceSpriteBatch = new SpriteBatch(1000);
     
     private LoadMenu loadMenu;
     
@@ -128,10 +128,19 @@ public class GameView implements GameManager {
 	private boolean useDefaultShader;
 	
 	private RenderStorage renderstorage;
+	/**
+	 * the sprites rendered so fat
+	 */
+	private int numSpritesThisFrame;
+	private int depthTexture;
+	private int depthTexture1;
+	private FrameBuffer[] fbo;
+	private ShaderProgram depthShader;
+	private MiniMapChunkDebug minimap;
     
 	/**
-	 * Loades some files and set up everything. After this has been inactive use {@link #onEnter() }
-	 * This method is a an implementation of the <a href="https://de.wikipedia.org/wiki/Dependency_Injection">Setter Inejction</a> pattern.
+	 * Loades some files and set up everything when the engine is running. After this has been inactive use {@link #onEnter() }<br>
+	 * This method is a an implementation of the <a href="https://de.wikipedia.org/wiki/Dependency_Injection">Setter Injection</a> pattern.
 	 *
 	 * @param controller The dependent data controller used for the view. Can be null but
 	 * should not.
@@ -140,11 +149,7 @@ public class GameView implements GameManager {
 	 */
 	public void init(final Controller controller, final GameView oldView) {
 		Gdx.app.debug("GameView", "Initializing");
-		try {
-			loadShaders();
-		} catch (Exception ex) {
-			Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
-		}
+		loadShaders();
 
 		this.controller = controller;
 
@@ -162,13 +167,12 @@ public class GameView implements GameManager {
 				Gdx.graphics.getWidth(),
 				Gdx.graphics.getHeight()
 			),
-			spriteBatch
+			projectionSpaceSpriteBatch
 		);//spawn at fullscreen
 
 		useDefaultShader();//set default shader
 
 		renderstorage = new RenderStorage();
-		MessageManager.getInstance().addListener(renderstorage, Events.mapChanged.getId());
 		initalized = true;
 	}
 	
@@ -183,58 +187,69 @@ public class GameView implements GameManager {
 	}
 	
 	/**
-	 * enable debug rendering only
-	 *
-	 * @param debug
-	 */
-	void setDebugRendering(boolean debug) {
-		this.inDebug = debug;
-	}
-
-	/**
-	 *
-	 * @return true if current rendering is debug only
-	 */
-	public boolean debugRendering() {
-		return inDebug;
-	}
-
-	/**
 	 * reloads the shaders
-	 * @throws java.lang.Exception
 	 */
-	public void loadShaders() throws Exception {
+	public void loadShaders() {
 		Gdx.app.debug("Shader", "loading");
-		//shaders are very fast to load and the asset loader does not support text files out of the box
-		String fragmentShader = Gdx.files.internal(
-			"com/bombinggames/wurfelengine/core/fragment"
-			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
-			+ ".fs"
-		).readString();
-		String vertexShader = Gdx.files.internal(
-			"com/bombinggames/wurfelengine/core/vertex"
-			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "NM" : "")
-			+ ".vs"
-		).readString();
-		//Setup shader
-		ShaderProgram.pedantic = false;
+		
+		//try loading external shader
+		String fragment = WE.getWorkingDirectory().getAbsolutePath() + "/fragment"
+			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "_NM": "")
+			+ ".fs";
+		String vertex = WE.getWorkingDirectory().getAbsolutePath() + "/vertex.vs";
 
-		ShaderProgram newshader = new ShaderProgram(vertexShader, fragmentShader);
-		if (newshader.isCompiled()) {
-			shader = newshader;
-			
-			//print any warnings
-			if (shader.getLog().length() != 0) {
-				System.out.println(shader.getLog());
+		ShaderProgram newshader = null;
+		try {
+			newshader = WE.loadShader(false, fragment, vertex);
+			for (Camera camera : cameras) {
+				camera.loadShader();
 			}
+		} catch (Exception ex) {
+			WE.getConsole().add(ex.getLocalizedMessage());
+			Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
+		}
 
+		//could not load initial external shader, so try loading internal
+		if (newshader == null) {
+			fragment = "com/bombinggames/wurfelengine/core/fragment"
+				+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "_NM" : "")
+				+ ".fs";
+			vertex = "com/bombinggames/wurfelengine/core/vertex.vs";
+			try {
+				newshader = WE.loadShader(true, fragment, vertex);
+			} catch (Exception ex) {
+				WE.getConsole().add(ex.getLocalizedMessage());
+				if (newshader == null) {
+					Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
+				}
+			}
+		}
+
+		if (newshader != null) {
+			shader = newshader;
 			//setup default uniforms
 			shader.begin();
 			//our normal map
 			shader.setUniformi("u_normals", 1); //GL_TEXTURE1
-			shader.end();
-		} else {
-			throw new Exception("Could not compile shader: " + newshader.getLog());
+			if (WE.getCVars().getValueI("depthbuffer") == 2) {
+				shader.setUniformi("u_depth", 2); //GL_TEXTURE2
+			}
+			shader.end();	
+		}
+		
+		if (WE.getCVars().getValueI("depthbuffer") == 2){
+			try {
+				String frag = WE.getWorkingDirectory().getAbsolutePath() + "/fragment_DP.fs";
+				String vert = WE.getWorkingDirectory().getAbsolutePath() + "/vertex.vs";
+				depthShader = WE.loadShader(false, frag, vert);
+				depthShader.begin();
+				//our normal map
+				depthShader.setUniformi("u_normals", 1); //GL_TEXTURE1
+				depthShader.setUniformi("u_depth", 2); //GL_TEXTURE2
+				depthShader.end();
+			} catch (Exception ex) {
+				Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
+			}
 		}
 	}
 
@@ -287,8 +302,6 @@ public class GameView implements GameManager {
     public void update(final float dt){
 		gameSpeed = WE.getCVars().getValueF("timespeed");
 		
-        AbstractGameObject.resetDrawCalls();
-        
         stage.act(dt);
 		        
         //update cameras
@@ -341,29 +354,52 @@ public class GameView implements GameManager {
         //Gdx.gl10.glViewport(0, 0,Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         
         //clear screen if wished
-        if ((boolean) WE.getCVars().get("clearBeforeRendering").getValue()){
-            Gdx.gl20.glClearColor(0, 0, 0, 1);
-            Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT);
-        }
+       if (WE.getCVars().getValueB(("clearBeforeRendering"))) {
+			Gdx.gl20.glClearColor(0, 0, 0, 1);//black
+			if (WE.getCVars().getValueI("depthbuffer") > 0) {
+				Gdx.gl20.glEnable(GL20.GL_DEPTH_TEST);
+				Gdx.gl.glClearDepthf(1f);
+				Gdx.gl20.glDepthMask(true); // enable depth depthTexture writes
+				Gdx.gl.glDepthRangef(0, 1);
+				Gdx.gl.glDepthFunc(GL20.GL_LEQUAL);
+				Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+			} else {
+				Gdx.gl20.glDepthMask(false);
+				Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
+				Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT);
+			}
+		}
+	   
+	   int spritesStart = gameSpaceSpriteBatch.getRenderedSprites();
 
         //render every camera
         if (cameras.isEmpty()){
             Gdx.gl20.glClearColor(0.5f, 1, 0.5f, 1);
             Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT);
-            drawString("No camera set up", Gdx.graphics.getWidth()/2, Gdx.graphics.getHeight()/2, Color.BLACK.cpy());
+            drawString("No camera set up", Gdx.graphics.getWidth()/2, Gdx.graphics.getHeight()/2, Color.BLACK.cpy(), true);
         } else {
-			setShader(getShader());
-            for (Camera camera : cameras) {
-                camera.render(this, camera);
-            }
-        }
+			//if depth peeling enabled
+			if (WE.getCVars().getValueI("depthbuffer") == 2) {
+				depthPeelingRendering();
+			} else {//simple depth buffer or no depth buffers
+				setShader(getShader());
+				if (WE.getCVars().getValueB("LEnormalMapRendering")) {
+					AbstractGameObject.getTextureNormal().bind(1);
+				}
+				
+				AbstractGameObject.getTextureDiffuse().bind(0);
+				
+				for (Camera camera : cameras) {
+					camera.render(this);
+				}
+			}
+		}
                
         //render HUD and GUI
 		useDefaultShader();
-		spriteBatch.setProjectionMatrix(libGDXcamera.combined);
+		//to screen space?
+		gameSpaceSpriteBatch.setProjectionMatrix(libGDXcamera.combined);
 		shRenderer.setProjectionMatrix(libGDXcamera.combined);
-		//spriteBatch.setTransformMatrix(new Matrix4());//reset transformation
-		shRenderer.setTransformMatrix(new Matrix4());//reset transformation
 
 		Gdx.gl20.glLineWidth(1);
 
@@ -379,8 +415,24 @@ public class GameView implements GameManager {
 			Controller.getLightEngine().render(this, getCameras().get(0).getCenter());
 		}
 
+		if (WE.getCVars().getValueB("showMiniMapChunk")) {
+			if (minimap == null) {
+				minimap = new MiniMapChunkDebug(Gdx.graphics.getWidth() / 2, Gdx.graphics.getHeight() / 2);
+			}
+			minimap.render(this);
+		}
+			
 		//render buttons
 		stage.draw();
+		numSpritesThisFrame = gameSpaceSpriteBatch.getRenderedSprites()-spritesStart;
+	}
+	
+	/**
+	 * sets matrix to render in screen space coordinates
+	 */
+	public void resetProjectionMatrix(){
+		gameSpaceSpriteBatch.setProjectionMatrix(libGDXcamera.combined);
+		shRenderer.setProjectionMatrix(libGDXcamera.combined);
 	}
 
     /**
@@ -400,27 +452,27 @@ public class GameView implements GameManager {
      * @return view coordinate
      */
     public float screenXtoView(final int screenX, final Camera camera){
-        return screenX / camera.getScreenSpaceScaling()
+        return screenX / camera.getProjScaling()
 			- camera.getScreenPosX()
 			+ camera.getViewSpaceX()
-			- camera.getWidthInProjSpc()/2;//use left side
+			- camera.getWorldWidthViewport()/2;//use left side
     }
     
    /**
-     * Reverts the projection and transforms it into a coordinate which can be used in the game logic. Should be verified if returning correct results.
+     * Reverts the projection and transforms it into game space. Should be verified if returning correct results.
      * @param screenY the y position on the screen. y-up
      * @param camera the camera where the position is on
      * @return view coordinate
      */
     public float screenYtoView(final int screenY, final Camera camera){
         return camera.getViewSpaceY() //to view space
-			+ camera.getHeightInProjSpc()/2//use top side, therefore /2
-			- screenY / camera.getScreenSpaceScaling() //to view space and then revert scaling
-			- camera.getScreenPosY(); //screen pos offset
+			+ camera.getWorldHeightViewport()/2//use top side, therefore /2
+			- screenY / camera.getProjScaling() //to view space and then revert scaling
+			- camera.getScreenPosY(); //to projection space
     }
     
     /**
-     * Returns deepest layer. Can be used in game space but then its on the floor layer.
+     * Returns matching point on the ground. Can be used in game space but then its on the floor layer.
      * @param x screen space
      * @param y screen space. y-up
      * @return the position on the map. deepest layer. If no camera returns map center.
@@ -436,9 +488,9 @@ public class GameView implements GameManager {
 			} while (
 				i < cameras.size()
 				 && !(x > camera.getScreenPosX()
-				 && x < camera.getScreenPosX() + camera.getWidthInScreenSpc()
+				 && x < camera.getScreenPosX() + camera.getWidthScreenSpc()
 				 && y > camera.getScreenPosY()
-				&& y < camera.getScreenPosY()+camera.getHeightInScreenSpc())
+				&& y < camera.getScreenPosY()+camera.getHeightScreenSpc())
 			);
 
 			 //find points
@@ -463,12 +515,13 @@ public class GameView implements GameManager {
 		if (cameras.size() > 0) {
 			Point p = screenToGameBasic(x, y);
 			//find point at top of map
-			float deltaZ = Chunk.getGameHeight() - RenderCell.GAME_EDGELENGTH - p.getZ();
-			p.add(0, deltaZ * Point.SQRT2, deltaZ);//top of map
+			Vector3 vectorToTop = new Vector3(0, RenderCell.PROJECTIONFACTORZ/RenderCell.PROJECTIONFACTORY, 1).scl((Chunk.getGameHeight()-1));//Vector can be calculated by using an equation where z values are known and top y is unknown and game to view projection is applied. May be a special when Y projection factor is 0.5
+			p.add(vectorToTop);//top of map
 
-			return p.rayMarching(new Vector3(0, -1, -RenderCell.ZAXISSHORTENING),//shoot in viewing direction, can not find correct vector: todo. Was -Point.SQRT12
+			return p.rayMarching(
+				new Vector3(0, -RenderCell.PROJECTIONFACTORZ, -RenderCell.PROJECTIONFACTORY),//now go in reverse direction
 				Float.POSITIVE_INFINITY,
-				this,
+				getRenderStorage(),
 				null
 			);
 		} else {
@@ -484,7 +537,7 @@ public class GameView implements GameManager {
 	 * @return screen space
 	 */
 	public int viewToScreenX(int x, Camera camera) {
-		return (int) (x - camera.getViewSpaceX() + camera.getWidthInScreenSpc() / 2);
+		return (int) (x - camera.getViewSpaceX() + camera.getWidthScreenSpc() / 2);
 	}
 
 	/**
@@ -495,40 +548,41 @@ public class GameView implements GameManager {
 	 * @return screen space
 	 */
 	public int viewToScreenY(int y, Camera camera) {
-		return (int) (y - camera.getViewSpaceY() + camera.getHeightInScreenSpc() / 2);
+		return (int) (y - camera.getViewSpaceY() + camera.getHeightScreenSpc() / 2);
 	}
 
 	/**
-	 * Draw a string using the color white.
+	 * Draw a string in a color. 
 	 *
 	 * @param msg
 	 * @param xPos screen space
 	 * @param yPos screen space
+	 * @param color
 	 * @param openbatch true if begin/end shoould be called
 	 */
-	public void drawString(final String msg, final int xPos, final int yPos, boolean openbatch) {
+	public void drawString(final String msg, final int xPos, final int yPos,final Color color, boolean openbatch) {
 		if (openbatch) {
-			spriteBatch.setProjectionMatrix(libGDXcamera.combined);
-			spriteBatch.begin();
+			projectionSpaceSpriteBatch.setProjectionMatrix(libGDXcamera.combined);
+			projectionSpaceSpriteBatch.begin();
 		}
-		WE.getEngineView().getFont().setColor(Color.WHITE.cpy());
-		WE.getEngineView().getFont().draw(spriteBatch, msg, xPos, yPos);
+		WE.getEngineView().getFont().setColor(color);
+		WE.getEngineView().getFont().draw(projectionSpaceSpriteBatch, msg, xPos, yPos);
 		if (openbatch) {
-			spriteBatch.end();
+			projectionSpaceSpriteBatch.end();
 		}
 	}
     
     /**
-     *Draw a string in a color. Using open batch.
+     * Draw a string in a color. Using open batch.
      * @param msg
      * @param xPos screen space
      * @param yPos screen space
      * @param color
      */
     public void drawString(final String msg, final int xPos, final int yPos, final Color color) {
-        spriteBatch.setColor(Color.WHITE.cpy());
+        projectionSpaceSpriteBatch.setColor(Color.WHITE.cpy());
 		WE.getEngineView().getFont().setColor(color);
-		WE.getEngineView().getFont().draw(spriteBatch, msg, xPos, yPos);
+		WE.getEngineView().getFont().draw(projectionSpaceSpriteBatch, msg, xPos, yPos);
     }
 
     /**
@@ -568,11 +622,13 @@ public class GameView implements GameManager {
      * Add a camera to the game. Adds this camera to the used {@link RenderStorage}.
      * @param camera
      */
-    protected void addCamera(final Camera camera) {
-        this.cameras.add(camera);
-		GameView.cameraIdCounter++;
-		camera.setId(GameView.cameraIdCounter);
-		getRenderStorage().addCamera(camera);
+    public void addCamera(final Camera camera) {
+		if (!cameras.contains(camera)) {
+			this.cameras.add(camera);
+			GameView.cameraIdCounter++;
+			camera.setId(GameView.cameraIdCounter);
+			getRenderStorage().addCamera(camera);
+		}
     }
     
      /**
@@ -603,10 +659,20 @@ public class GameView implements GameManager {
      * Game view dependent spriteBatch
      * @return 
      */
-    public SpriteBatch getSpriteBatch() {
-        return spriteBatch;
+    public SpriteBatchWithZAxis getGameSpaceSpriteBatch() {
+        return gameSpaceSpriteBatch;
     }
-    
+	
+
+	/**
+	 * Get the value of projectionSpaceSpriteBatch
+	 *
+	 * @return the value of projectionSpaceSpriteBatch
+	 */
+	public SpriteBatch getProjectionSpaceSpriteBatch() {
+		return projectionSpaceSpriteBatch;
+	}
+
     /**
      *
      * @return
@@ -620,7 +686,7 @@ public class GameView implements GameManager {
 	 *
 	 */
 	public void useDefaultShader(){
-		spriteBatch.setShader(null);
+		gameSpaceSpriteBatch.setShader(null);
 		useDefaultShader = true;
 	}
 
@@ -637,7 +703,7 @@ public class GameView implements GameManager {
 	 * @param shader 
 	 */
 	public void setShader(ShaderProgram shader){
-		spriteBatch.setShader(shader);
+		gameSpaceSpriteBatch.setShader(shader);
 		useDefaultShader = false;
 	}
 
@@ -659,10 +725,157 @@ public class GameView implements GameManager {
 			MessageManager.getInstance().removeListener(this.renderstorage, Events.mapChanged.getId());	
 		renderstorage.dispose();
 		shRenderer.dispose();
-		spriteBatch.dispose();
+		gameSpaceSpriteBatch.dispose();
 		stage.dispose();
 		
 		cameraIdCounter=0;
+	}
+
+	int getRenderedSprites() {
+		return numSpritesThisFrame;
+	}
+
+	/**
+	 * dual pass rendering
+	 */
+	private void depthPeelingRendering() {
+		int bufResX = Gdx.graphics.getBackBufferWidth();
+		int bufRefY = Gdx.graphics.getBackBufferHeight();		
+		ShaderProgram regularShader = shader;
+		if (depthShader == null) {
+			loadShaders();
+		}
+		shader = depthShader;
+		
+		int numDPLayers = 2;
+		boolean madenewTexture = false;//if depth texture must be rebound because back buffer size changed
+		if (fbo == null) {
+			fbo = new FrameBuffer[3];
+		}
+		if (fbo[0] == null || fbo[0].getWidth() != bufResX || fbo[0].getHeight() != bufRefY) {
+			fbo[0] = new FrameBuffer(Pixmap.Format.RGBA8888, bufResX, bufRefY, true);
+			madenewTexture=true;
+		}
+		if (numDPLayers>1 &&(fbo[1] == null  || fbo[0].getWidth() != bufResX || fbo[0].getHeight() != bufRefY)) {
+			fbo[1] = new FrameBuffer(Pixmap.Format.RGBA8888, bufResX, bufRefY, false);
+			madenewTexture=true;
+		}
+		
+		//create new depthtexture if needed
+		if (depthTexture == 0 || madenewTexture) {
+			depthTexture = Gdx.gl.glGenTexture();
+			//bind/upload? depth texture
+			Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture);
+			//Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
+			specifyZBuffer(bufResX,bufRefY);
+		}
+
+		if (depthTexture1 == 0 || madenewTexture) {
+			depthTexture1 = Gdx.gl.glGenTexture();
+			//bind/upload? depth texture
+			Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, depthTexture1);
+			//Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
+			specifyZBuffer(bufResX,bufRefY);
+		}
+
+//				int renderbuffer = Gdx.gl.glGenRenderbuffer();
+//				Gdx.gl.glBindRenderbuffer(GL20.GL_RENDERBUFFER, renderbuffer);
+//				Gdx.gl.glRenderbufferStorage(GL20.GL_RENDERBUFFER, GL20.GL_DEPTH_COMPONENT, 1024, 768);
+//				Gdx.gl.glFramebufferRenderbuffer(GL20.GL_FRAMEBUFFER, GL20.GL_DEPTH_ATTACHMENT, GL20.GL_RENDERBUFFER, renderbuffer);
+
+		// Set "renderedTexture" as our colour attachement #0
+		//Gdx.gl.glFramebufferTexture(GL20.GL_FRAMEBUFFER, GL20.GL_COLOR_ATTACHMENT0, renderedTexture, 0);
+		//Gdx.gl.glTexImage2D(GL20.GL_TEXTURE_2D, 0,GL20.GL_RGB, 1024, 768, 0,GL20.GL_RGB, GL20.GL_UNSIGNED_BYTE, null);
+
+		//render offsceen
+		for (Camera camera : cameras) {
+			//skip this frame if
+//			if (WE.getCVars().getValueB("enableMultiThreadRendering") && !camera.isMultiRendering()) return;
+			
+			if (!camera.isMultiRendering())
+				camera.startMultiRendering();
+			for (int i = 0; i < numDPLayers; i++) {
+				//render to fbo
+				if (i == 0) {
+					gameSpaceSpriteBatch.disableBlending();
+					fbo[i].begin();//same as Gdx.gl.glBindFramebuffer(GL20.GL_FRAMEBUFFER, fbo[0].getFramebufferHandle());
+				} else if (i == numDPLayers-1) {
+					gameSpaceSpriteBatch.enableBlending();
+				}
+				//active framebuffer, attach this texture as your depth buffer from now on
+				//Owrites to both frame buffers after second run
+				Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, GL20.GL_DEPTH_ATTACHMENT, GL20.GL_TEXTURE_2D, i % 2 == 0 ? depthTexture1 : depthTexture, 0);
+
+				if (Gdx.gl.glCheckFramebufferStatus(GL20.GL_FRAMEBUFFER) != GL20.GL_FRAMEBUFFER_COMPLETE) {
+					throw new AbstractMethodError();
+				}
+
+				//use last texture for read-only
+				Gdx.gl.glActiveTexture(GL20.GL_TEXTURE0 + 2);
+				Gdx.gl.glBindTexture(GL20.GL_TEXTURE_2D, i % 2 == 0 ? depthTexture : depthTexture1);
+				//bind normal map to texture unit 1
+				if (WE.getCVars().getValueB("LEnormalMapRendering")) {
+					AbstractGameObject.getTextureNormal().bind(1);
+				}
+				AbstractGameObject.getTextureDiffuse().bind(0);
+
+				//clear color of frame buffer
+				if (WE.getCVars().getValueB(("clearBeforeRendering"))) {
+					Gdx.gl20.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+				}else{
+					Gdx.gl20.glClear(GL20.GL_DEPTH_BUFFER_BIT);
+				}
+
+				//render to obtain i-th frontmost pixel
+
+				camera.render(this);
+
+				Gdx.gl.glFramebufferTexture2D(GL20.GL_FRAMEBUFFER, 0, GL20.GL_TEXTURE_2D, 0, 0);
+				if (i == 0) {
+					fbo[i].end();
+				}
+
+				//clear the read only
+				if (i==1){
+					fbo[0].begin();
+					Gdx.gl20.glClear(GL20.GL_DEPTH_BUFFER_BIT);
+					fbo[0].end();
+				}
+//					else {
+				//blend
+//				Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
+//				Gdx.gl.glBlendEquation(GL20.GL_FUNC_ADD);
+//                Gdx.gl.glBlendFuncSeparate(GL20.GL_DST_COLOR, GL20.GL_ONE, GL20.GL_ZERO, GL20.GL_ONE_MINUS_SRC_ALPHA);
+//				projectionSpaceSpriteBatch.begin();
+//				//draw flipped
+////				projectionSpaceSpriteBatch.draw(fbo[1].getColorBufferTexture(), 0, bufRefY, bufResX, -bufRefY);
+//				projectionSpaceSpriteBatch.draw(fbo[0].getColorBufferTexture(), 0, bufRefY, bufResX, -bufRefY);
+// 				projectionSpaceSpriteBatch.end();
+//					}
+			}
+			camera.endMultiRendering();
+
+			//depth peeling blend
+			Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
+			Gdx.gl.glBlendEquation(GL20.GL_FUNC_ADD);
+			Gdx.gl.glBlendFuncSeparate(GL20.GL_DST_COLOR, GL20.GL_ONE, GL20.GL_ZERO, GL20.GL_ONE_MINUS_SRC_ALPHA);
+			projectionSpaceSpriteBatch.begin();
+			//draw flipped
+//				projectionSpaceSpriteBatch.draw(fbo[1].getColorBufferTexture(), 0, bufRefY, bufResX, -bufRefY);
+			projectionSpaceSpriteBatch.draw(fbo[0].getColorBufferTexture(), 0, Gdx.graphics.getHeight(), Gdx.graphics.getWidth(), -Gdx.graphics.getHeight());
+			projectionSpaceSpriteBatch.end();
+
+			shader = regularShader;
+		}
+	}
+
+	private void specifyZBuffer(int bufResX, int bufRefY) {
+		//specifiy last bound texture to be a depth texture
+		Gdx.gl.glTexImage2D(GL20.GL_TEXTURE_2D, 0, GL20.GL_DEPTH_COMPONENT16, bufResX, bufRefY, 0, GL20.GL_DEPTH_COMPONENT, GL20.GL_FLOAT, null);
+		Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MAG_FILTER, GL20.GL_NEAREST);
+		Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_MIN_FILTER, GL20.GL_NEAREST); 
+		Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_S, GL20.GL_CLAMP_TO_EDGE);
+		Gdx.gl.glTexParameteri(GL20.GL_TEXTURE_2D, GL20.GL_TEXTURE_WRAP_T, GL20.GL_CLAMP_TO_EDGE);
 	}
 	
 }

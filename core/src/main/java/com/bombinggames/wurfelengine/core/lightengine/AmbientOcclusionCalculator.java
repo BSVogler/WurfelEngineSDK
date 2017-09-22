@@ -32,7 +32,7 @@ package com.bombinggames.wurfelengine.core.lightengine;
 
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
-import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator;
+import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator3D;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
@@ -53,7 +53,7 @@ public class AmbientOcclusionCalculator {
 		if (chunk==null) throw new IllegalArgumentException("Chunk can not be null.");
 		//iterate over every block in chunk
 		Coordinate coord = new Coordinate(0, 0, 0);
-		DataIterator<RenderCell> iterator = chunk.getIterator(0, Chunk.getBlocksZ() - 1);
+		DataIterator3D<RenderCell> iterator = chunk.getIterator(0, Chunk.getBlocksZ() - 1);
 		//Algorithm runs similar to marching cubes, could be optimized to cache neighbor row at the side and below todo
 		while (iterator.hasNext()) {
 			RenderCell next = iterator.next();

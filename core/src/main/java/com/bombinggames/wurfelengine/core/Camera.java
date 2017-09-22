@@ -1,18 +1,18 @@
 /*
- * Copyright 2015 Benedikt Vogler.
+ * If this software is used for a game the official „Wurfel Engine“ logo or its name must be visible in an intro screen or main menu.
+ *
+ * Copyright 2017 Benedikt Vogler.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * * If this software is used for dist game the official „Wurfel Engine“ logo or its name must be
- *   visible in an intro screen or main menu.
- * * Redistributions of source code must retain the above copyright notice,
+ * * Redistributions of source code must retain the above copyright notice, 
  *   this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
+ * * Redistributions in binary form must reproduce the above copyright notice, 
+ *   this list of conditions and the following disclaimer in the documentation 
  *   and/or other materials provided with the distribution.
- * * Neither the name of Benedikt Vogler nor the names of its contributors
+ * * Neither the name of Benedikt Vogler nor the names of its contributors 
  *   may be used to endorse or promote products derived from this software without specific
  *   prior written permission.
  *
@@ -30,14 +30,13 @@
  */
 package com.bombinggames.wurfelengine.core;
 
-import static com.badlogic.gdx.graphics.GL20.GL_BLEND;
-
-import java.util.ArrayList;
-import java.util.LinkedList;
-
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.graphics.glutils.FrameBuffer;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
+import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Vector2;
@@ -45,22 +44,25 @@ import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
-import com.bombinggames.wurfelengine.core.gameobjects.Renderable;
+import com.bombinggames.wurfelengine.core.lightengine.LightEngine;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
-import com.bombinggames.wurfelengine.core.map.Iterators.CoveredByCameraIterator;
+import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
-import com.bombinggames.wurfelengine.core.map.rendering.SideSprite;
+import com.bombinggames.wurfelengine.core.sorting.AbstractSorter;
+import com.bombinggames.wurfelengine.core.sorting.DepthValueSort;
+import com.bombinggames.wurfelengine.core.sorting.NoSort;
+import com.bombinggames.wurfelengine.core.sorting.TopologicalSort;
+import java.util.LinkedList;
 
 /**
- * Creates a virtual camera wich displays the game world on the viewport. A camer acan be locked to an entity.
+ * Creates a virtual camera wich displays the game world on the viewport. A camera can be locked to an entity with {@link #setFocusEntity(AbstractEntity) }.
  *
  * @author Benedikt Vogler
  */
-public class Camera {
+public class Camera{
 
 	/**
 	 * the position of the camera in view space. Y-up. Read only field.
@@ -85,9 +87,9 @@ public class Camera {
 	private final Matrix4 combined = new Matrix4();
 
 	/**
-	 * the viewport width&height. Origin top left.
+	 * the viewport size
 	 */
-	private int screenWidth, heightScreen;
+	private int screenWidth, screenHeight;
 
 	/**
 	 * the position on the screen (viewportWidth/Height ist the affiliated).
@@ -107,30 +109,25 @@ public class Camera {
 	private float shakeAmplitude;
 	private float shakeTime;
 
-	private final GameView gameView;
+	private GameView gameView;
+	/**
+	 * game pixels after projection into view space
+	 */
 	private int widthView;
-	private int heightView;
-	private int heightProj;
-	private int widthProj;
+	private int heightAfterProj;
+	private int widthAfterProj;
 	private int centerChunkX;
 	private int centerChunkY;
 	/**
 	 * true if camera is currently rendering
 	 */
-	private boolean active = false;
-	private final LinkedList<Renderable> depthlist = new LinkedList<>();
+	private boolean active = true;
+	private final LinkedList<AbstractGameObject> depthlist = new LinkedList<>();
 	/**
-	 * amount of objects to be rendered, used as an index during filling
+	 * object holding the center position
 	 */
-	private int objectsToBeRendered = 0;
-	private int renderResWidth;
-	private int maxsprites;
 	private final Point center = new Point(0, 0, 0);
-	private final ArrayList<RenderCell> modifiedCells = new ArrayList<>(30);
-	/**
-	 * is rendered at the end
-	 */
-	private final LinkedList<AbstractEntity> renderAppendix = new LinkedList<>();
+
 	/**
 	 * The radius which is used for loading the chunks around the center. May be reduced after the first time to a smaller value.
 	 */
@@ -139,6 +136,16 @@ public class Camera {
 	 * identifies the camera
 	 */
 	private int id;
+	private int sampleNum;
+	private FrameBuffer fbo;
+	private TextureRegion fboRegion;
+	private ShaderProgram postprocessshader;
+	private AbstractSorter sorter;
+	
+	private int lastCenterX, lastCenterY;
+	private int sorterId;
+	private boolean multiRendering;
+	private int multiPassLastIdx;
 
 	/**
 	 * Updates the needed chunks after recaclucating the center chunk of the
@@ -151,6 +158,18 @@ public class Camera {
 			checkNeededChunks();
 		}
 	}
+	
+	private void init(final GameView view, final int x, final int y, final int width, final int height){
+		gameView = view;
+		screenPosX = x;
+		screenPosY = y;
+		screenWidth = width;
+		screenHeight = height;
+		widthView = WE.getCVars().getValueI("renderResolutionWidth");
+		setZoom(1);
+		loadShader();
+		initSorter();
+	}
 
 	/**
 	 * Creates a fullscale camera pointing at the middle of the map.
@@ -158,11 +177,7 @@ public class Camera {
 	 * @param view
 	 */
 	public Camera(final GameView view) {
-		gameView = view;
-		screenWidth = Gdx.graphics.getBackBufferWidth();
-		heightScreen = Gdx.graphics.getBackBufferHeight();
-		updateViewSpaceSize();
-		widthProj = (int) (widthView / zoom);//update cache
+		init(view, 0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 
 		Point center = Controller.getMap().getCenter();
 		position.x = center.getViewSpcX();
@@ -185,20 +200,13 @@ public class Camera {
 	 * @param view
 	 */
 	public Camera(final GameView view, final int x, final int y, final int width, final int height) {
-		gameView = view;
-		screenWidth = width;
-		heightScreen = height;
-		screenPosX = x;
-		screenPosY = y;
-		renderResWidth = WE.getCVars().getValueI("renderResolutionWidth");
-		widthView = renderResWidth;
-		updateViewSpaceSize();
-		widthProj = (int) (widthView / zoom);//update cache
+		init(view, x, y, width, height);
 
 		Point center = Controller.getMap().getCenter();
 		position.x = center.getViewSpcX();
 		position.y = center.getViewSpcY();
 		initFocus();
+		loadShader();
 	}
 
 	/**
@@ -218,16 +226,7 @@ public class Camera {
 	 * @param view
 	 */
 	public Camera(final GameView view, final int x, final int y, final int width, final int height, final Point center) {
-		gameView = view;
-		screenWidth = width;
-		heightScreen = height;
-		screenPosX = x;
-		screenPosY = y;
-		renderResWidth = WE.getCVars().getValueI("renderResolutionWidth");
-		widthView = renderResWidth;
-		widthView = renderResWidth;
-		updateViewSpaceSize();
-		widthProj = (int) (widthView / zoom);//update cache
+		init(view, x, y, width, height);
 		position.x = center.getViewSpcX();
 		position.y = center.getViewSpcY();
 		initFocus();
@@ -249,15 +248,7 @@ public class Camera {
 	 * @param view
 	 */
 	public Camera(final GameView view, final int x, final int y, final int width, final int height, final AbstractEntity focusentity) {
-		gameView = view;
-		screenWidth = width;
-		heightScreen = height;
-		screenPosX = x;
-		screenPosY = y;
-		renderResWidth = WE.getCVars().getValueI("renderResolutionWidth");
-		widthView = renderResWidth;
-		updateViewSpaceSize();
-		widthProj = (int) (widthView / zoom);//update cache
+		init(view, x, y, width, height);
 		if (focusentity == null) {
 			throw new NullPointerException("Parameter 'focusentity' is null");
 		}
@@ -268,10 +259,27 @@ public class Camera {
 		}
 		position.x = focusEntity.getPosition().getViewSpcX();
 		position.y = (int) (focusEntity.getPosition().getViewSpcY()
-						+ focusEntity.getDimensionZ() * RenderCell.ZAXISSHORTENING/2);//have middle of object in center
+						+ focusEntity.getDimensionZ() * RenderCell.PROJECTIONFACTORZ/2);//have middle of object in center
 		initFocus();
 	}
-
+	
+	/**
+	 * 
+	 */
+	public void loadShader(){
+//		try {
+//			ShaderProgram newshader = WE.loadShader(true, WE.getWorkingDirectory().getAbsolutePath()+"/postprocess.fs", null);
+//			postprocessshader = newshader;
+//	} catch (Exception ex){
+//			WE.getConsole().add(ex.getLocalizedMessage());
+//			//could not load initial shader
+//			if (postprocessshader == null){
+//				Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
+//		
+//			}
+//		}
+	}
+	
 	/**
 	 * Updates the camera.
 	 *
@@ -284,7 +292,7 @@ public class Camera {
 				Vector2 newPos = new Vector2(
 					focusEntity.getPosition().getViewSpcX(),
 					(int) (focusEntity.getPosition().getViewSpcY()
-						+ focusEntity.getDimensionZ() * RenderCell.ZAXISSHORTENING/2)//have middle of object in center
+						+ focusEntity.getDimensionZ() * RenderCell.PROJECTIONFACTORZ/2)//have middle of object in center
 				);
 
 				//only follow if outside leap radius
@@ -304,37 +312,94 @@ public class Camera {
 				position.y += (float) (Math.random() * shakeAmplitude*dt % shakeAmplitude)-shakeAmplitude*0.5;
 			}
 
-			//move camera to the focus
-			viewMat.setToLookAt(
-				new Vector3(position, 0),
-				new Vector3(position, -1),
-				up
-			);
+			
+//			projection.setToProjection(
+//				100,
+//				1010,
+//				70,
+//				-16/9f
+//			);
 
-			//orthographic camera, libgdx stuff
-			projection.setToOrtho(
-				-getWidthInProjSpc() / 2,
-				getWidthInProjSpc() / 2,
-				-getHeightInProjSpc() / 2,
-				getHeightInProjSpc() / 2,
-				0,
-				1
-			);
 
 			//set up projection matrices
-			combined.set(projection);
-			Matrix4.mul(combined.val, viewMat.val);
+			if (true){
+				projection.setToOrtho(
+					getWorldWidthViewport()/ 2,
+					-getWorldWidthViewport() / 2,
+					getWorldHeightViewport() / 2,
+					-getWorldHeightViewport() / 2,
+					1,
+					2200
+				);
+
+				//set up projection matrices
+				combined.set(projection);
+			
+				//move camera to the position
+				viewMat.setToLookAt(
+					new Vector3(position, 1),
+					new Vector3(position, -1),
+					new Vector3(0,-1,0)
+				);
+
+				Matrix4.mul(combined.val, viewMat.val);
+
+				//wurfel engine viewport matrix
+				//there is some scaling in M11, keep it
+				combined.val[Matrix4.M12] = combined.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
+				combined.val[Matrix4.M11] *= -0.5f;
+
+				//combined.val[Matrix4.M22] *= -1.0f; // keep z for clip space
+				combined.val[Matrix4.M23] *= -1f; // reverse z for better fit with near and far plance
+			} else {
+				//orthographic camera
+				projection.setToOrtho(
+					-getWorldWidthViewport() / 2,
+					getWorldWidthViewport() / 2,
+					getWorldHeightViewport() / 2,
+					-getWorldHeightViewport() / 2,
+					-100,
+					1020
+				);
+				combined.set(projection);
+				
+				//move camera to the position
+				viewMat.setToLookAt(
+					new Vector3(position.x, -position.y, 1),
+					new Vector3(position.x, -position.y, -1),
+					new Vector3(0, 1, 0)
+				);
+
+				viewMat.rotate(1, 0.00f, 0.0f, 60);
+
+				Matrix4.mul(combined.val, viewMat.val);
+			}
 			
 			//recalculate the center position
 			updateCenter();
-
-			//don't know what this does
-			//Gdx.gl20.glMatrixMode(GL20.GL_PROJECTION);
-			//Gdx.gl20.glLoadMatrixf(projection.val, 0);
-			//Gdx.gl20.glMatrixMode(GL20.GL_MODELVIEW);
-			//Gdx.gl20.glLoadMatrixf(viewMat.val, 0);
-			//invProjectionView.set(combined);
-			//Matrix4.inv(invProjectionView.val);
+			initSorter();
+		}
+	}
+	
+	public void initSorter() {
+		int currentSorterId = WE.getCVars().getValueI("depthSorter");
+		if (currentSorterId != sorterId || sorter==null) {
+			MessageManager.getInstance().removeListener(sorter, Events.mapChanged.getId(), Events.renderStorageChanged.getId());
+			//should react to an onchange event of cvar
+			switch (currentSorterId) {
+				case 0:
+					sorter = new NoSort(this);
+					break;
+				case 1:
+					sorter = new TopologicalSort(this);
+					break;
+				case 2:
+					sorter = new DepthValueSort(this);
+					break;
+			}
+			MessageManager.getInstance().addListener(sorter, Events.mapChanged.getId());
+			MessageManager.getInstance().addListener(sorter, Events.renderStorageChanged.getId());
+			sorterId = currentSorterId;
 		}
 	}
 
@@ -378,7 +443,7 @@ public class Camera {
 //		if (
 //		getVisibleBackBorder()
 //		<
-//		chunkMap.getChunkContaining(centerChunkX, centerChunkY-1).getTopLeftCoordinate().getX()
+//		map.getChunkContaining(centerChunkX, centerChunkY-1).getTopLeftCoordinate().getX()
 //		//&& centerChunkX-1==//calculated xIndex -1
 //		) {
 //		centerChunkY--;
@@ -389,7 +454,7 @@ public class Camera {
 //		<
 //		map.getBlocksZ()*RenderCell.VIEW_HEIGHT
 //		-RenderCell.VIEW_DEPTH2*(
-//		chunkMap.getChunkContaining(centerChunkX, centerChunkY+1).getTopLeftCoordinate().getY()+Chunk.getBlocksY()//bottom coordinate
+//		map.getChunkContaining(centerChunkX, centerChunkY+1).getTopLeftCoordinate().getY()+Chunk.getBlocksY()//bottom coordinate
 //		)
 //		//&& centerChunkX-1==//calculated xIndex -1
 //		) {
@@ -399,7 +464,17 @@ public class Camera {
 		//this line is needed because the above does not work, calcualtes absolute position
 		centerChunkY = (int) Math.floor(-position.y / Chunk.getViewDepth());
 
-		checkNeededChunks();
+		
+		//check if center changed
+		if (lastCenterX != centerChunkX
+			|| lastCenterY != centerChunkY
+		) {
+			//update the last center
+			lastCenterX = centerChunkX;
+			lastCenterY = centerChunkY;
+			checkNeededChunks();
+		}
+
 	}
 
 	/**
@@ -407,14 +482,19 @@ public class Camera {
 	 */
 	private void checkNeededChunks() {
 		//check every chunk
+		Map map = Controller.getMap();
 		if (centerChunkX == 0 && centerChunkY == 0 || WE.getCVars().getValueB("mapChunkSwitch")) {
 			for (int x = -loadingRadius; x <= loadingRadius; x++) {
 				int lRad = loadingRadius/2;
-				if (lRad <= 2) {
+				//clamp to 2
+				if (lRad < 2) {
 					lRad = 2;
 				}
 				for (int y = -lRad; y <= lRad; y++) {
-					checkChunk(centerChunkX + x, centerChunkY + y);
+					//load missing chunks
+					if (map.getChunk(centerChunkX + x, centerChunkY + y) == null) {
+						map.loadChunk(centerChunkX + x, centerChunkY + y);
+					}
 				}
 			}
 			//after the first time reduce
@@ -425,215 +505,149 @@ public class Camera {
 	}
 
 	/**
-	 * Checks if chunk must be loaded or deleted.
-	 *
-	 * @param x
-	 * @param y
-	 */
-	private void checkChunk(int x, int y) {
-		Map chunkMap = Controller.getMap();
-		if (chunkMap.getChunk(x, y) == null) {
-			chunkMap.loadChunk(x, y);//load missing chunks
-		}
-	}
-
-	/**
 	 * Renders the viewport
 	 *
 	 * @param view
-	 * @param camera
 	 */
-	public void render(final GameView view, final Camera camera) {
+	public void render(final GameView view) {
 		if (active && Controller.getMap() != null) { //render only if map exists
-
-			view.getSpriteBatch().setProjectionMatrix(combined);
-			view.getShapeRenderer().setProjectionMatrix(combined);
+			
+//			//render offscreen
+//			screenWidth=1024;
+//			screenHeight=1024;
+//			if (fbo == null) {
+//				fbo = new FrameBuffer(Format.RGBA8888, screenWidth, screenHeight, true);
+//			}
+//			if (fboRegion == null) {
+//				fboRegion = new TextureRegion(fbo.getColorBufferTexture(), 0, 0,
+//					screenWidth, screenHeight);
+//				fboRegion.flip(false, true);
+//			}
+//			Gdx.gl.glClearColor(0f, 1f, 0f, 0f);
+//			Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+//			Gdx.gl20.glViewport(0, 0, fbo.getWidth(), fbo.getHeight());
+//			fbo.begin();
+			
+		//view.getGameSpaceSpriteBatch().setTransformMatrix(new Matrix4().idt());
+		//	view.getGameSpaceSpriteBatch().setProjectionMatrix(combined);//game space
+			
+			ShaderProgram shader = view.getShader();
+			if (shader==null) {
+				Gdx.app.error("Camera", "no shader found. Camera deactivated.");
+				setActive(false);
+				return;
+			}
+			
+			view.getGameSpaceSpriteBatch().setProjectionMatrix(combined);
+			view.getGameSpaceSpriteBatch().setShader(shader);
 			//set up the viewport, yIndex-up
-			HdpiUtils.glViewport(
-				screenPosX,
-				Gdx.graphics.getHeight() - heightScreen - screenPosY,
-				screenWidth,
-				heightScreen
+			HdpiUtils.glViewport(screenPosX,
+				Gdx.graphics.getHeight() - getHeightScreenSpc() - screenPosY,
+				getWidthScreenSpc(),
+				getHeightScreenSpc()
 			);
-
-			//render map
-			createDepthList();
-
-			Gdx.gl20.glEnable(GL_BLEND); // Enable the OpenGL Blending functionality
-			//Gdx.gl20.glBlendFunc(GL_SRC_ALPHA, GL20.GL_CONSTANT_COLOR);
-
-			view.setDebugRendering(false);
-			view.getSpriteBatch().begin();
-			//send a Vector4f to GLSL
-			if (WE.getCVars().getValueB("enablelightengine")) {
-				view.getShader().setUniformf(
-					"sunNormal",
-					Controller.getLightEngine().getSun(getCenter()).getNormal()
-				);
-				view.getShader().setUniformf(
-					"sunColor",
-					Controller.getLightEngine().getSun(getCenter()).getLight()
-				);
-				
-				Vector3 moonNormal;
-				Color moonColor;
-				Color ambientColor;
-				if (Controller.getLightEngine().getMoon(getCenter()) == null) {
-					moonNormal = new Vector3();
-					moonColor = new Color();
-					ambientColor = new Color();
-				} else {
-					moonNormal = Controller.getLightEngine().getMoon(getCenter()).getNormal();
-					moonColor = Controller.getLightEngine().getMoon(getCenter()).getLight();
-					ambientColor = Controller.getLightEngine().getAmbient(getCenter());
-				}
-				view.getShader().setUniformf("moonNormal", moonNormal);
-				view.getShader().setUniformf("moonColor", moonColor);
-				view.getShader().setUniformf("ambientColor", ambientColor);
-			}
-
-			//bind normal map to texture unit 1
-			if (WE.getCVars().getValueB("LEnormalMapRendering")) {
-				AbstractGameObject.getTextureNormal().bind(1);
-			}
-
-			//bind diffuse color to texture unit 0
-			//important that we specify 0 otherwise we'll still be bound to glActiveTexture(GL_TEXTURE1)
-			AbstractGameObject.getTextureDiffuse().bind(0);
+			
 
 			//settings for this frame
 			RenderCell.setStaticShade(WE.getCVars().getValueB("enableAutoShade"));
-			SideSprite.setAO(WE.getCVars().getValueF("ambientOcclusion"));
+			GameSpaceSprite.setAO(WE.getCVars().getValueF("ambientOcclusion"));
 			
-			//render vom bottom to top
-			for (Renderable obj : depthlist) {
-				obj.render(view, camera);
+			view.getGameSpaceSpriteBatch().begin();
+			//upload uniforms
+			shader.setUniformf("u_cameraPos",getCenter());
+			shader.setUniformf("u_fogColor",
+				WE.getCVars().getValueF("fogR"),
+				WE.getCVars().getValueF("fogG"),
+				WE.getCVars().getValueF("fogB")
+			);
+			shader.setUniformf("u_resBuffer", (float) Gdx.graphics.getBackBufferWidth(), (float) Gdx.graphics.getBackBufferHeight());
+			if (focusEntity != null && focusEntity.hasPosition()) {
+				shader.setUniformf("u_playerpos", focusEntity.getPoint());
+				shader.setUniformf("u_localLightPos", focusEntity.getPoint());
 			}
-			view.getSpriteBatch().end();
-
-			//if debugging render outline again
-			if (WE.getCVars().getValueB("DevDebugRendering")) {
-				view.setDebugRendering(true);
-				view.getSpriteBatch().begin();
-				//render vom bottom to top
-				for (Renderable obj : depthlist) {
-					obj.render(view, camera);
-				}
-				view.getSpriteBatch().end();
-			}
-
-			//outline 3x3 chunks
-			if (WE.getCVars().getValueB("DevDebugRendering")) {
-				drawDebug(view, camera);
-			}
-		}
-	}
-
-	/**
-	 * Fills the cameracontent plus entities into a list and sorts it in the order of the rendering,
-	 * called the "depthlist". This is done every frame.
-	 *
-	 * @return the depthlist
-	 */
-	private void createDepthList() {
-		depthlist.clear();
-		maxsprites = WE.getCVars().getValueI("MaxSprites");
-
-		//inverse dirty flag
-		AbstractGameObject.inverseMarkedFlag(id);
-		
-		//add entitys which should be rendered
-		ArrayList<AbstractEntity> ents = Controller.getMap().getEntities();
+			//send a Vector4f to GLSL
+			if (WE.getCVars().getValueB("enablelightengine")) {
+				LightEngine le = Controller.getLightEngine();
+				shader.setUniformf(
+					"u_sunNormal",
+					le.getSun(getCenter()).getNormal()
+				);
+				shader.setUniformf(
+					"u_sunColor",
+					le.getSun(getCenter()).getLight()
+				);
 				
-		//add entities by inserting them into the render store
-		ArrayList<RenderCell> modifiedCells = this.modifiedCells;
-		modifiedCells.clear();
-		modifiedCells.ensureCapacity(ents.size());
-		LinkedList<AbstractEntity> renderAppendix = this.renderAppendix;
-		renderAppendix.clear();
-		
-		//this should be made parallel via streams //ents.stream().parallel().forEach(action);?
-		for (AbstractEntity ent : ents) {
-			if (ent.hasPosition()
-				&& !ent.isHidden()
-				&& inViewFrustum(ent.getPosition())
-				&& ent.getPosition().getZ() < gameView.getRenderStorage().getZRenderingLimit()
-			) {
-				RenderCell cellAbove = gameView.getRenderStorage().getCell(ent.getPosition().add(0, 0, RenderCell.GAME_EDGELENGTH));//add in cell above
-				ent.getPosition().add(0, 0, -RenderCell.GAME_EDGELENGTH);//reverse change from line above
-				//in the renderstorage no nullpointer should exists, escept object is outside the array
-				if (cellAbove == RenderChunk.NULLPOINTEROBJECT) {
-					renderAppendix.add(ent);//render at the end
+				if (le.getMoon(getCenter()) == null) {
+					shader.setUniformf("u_moonNormal", new Vector3());
+					shader.setUniformf("u_moonColor", new Color());
+					shader.setUniformf("u_ambientColor", new Color());
 				} else {
-					cellAbove.addCoveredEnts(ent);//cell covers entities inside
-					modifiedCells.add(cellAbove);
+					shader.setUniformf("u_moonNormal", le.getMoon(getCenter()).getNormal());
+					shader.setUniformf("u_moonColor",le.getMoon(getCenter()).getLight());
+					shader.setUniformf("u_ambientColor", le.getAmbient(getCenter()));
 				}
 			}
-		}
-		
-		//iterate over every block in renderstorage
-		objectsToBeRendered = 0;
-		CoveredByCameraIterator iterator = new CoveredByCameraIterator(
-			gameView.getRenderStorage(),
-			centerChunkX,
-			centerChunkY,
-			0,
-			(int) (gameView.getRenderStorage().getZRenderingLimit()/RenderCell.GAME_EDGELENGTH)
-		);
-		//check/visit every visible cell
-		while (iterator.hasNext()) {
-			RenderCell cell = iterator.next();
 
-			if (cell != RenderChunk.NULLPOINTEROBJECT && inViewFrustum(cell.getPosition())) {
-				visit(cell);
-			}
-		}
-		//remove ents from modified blocks
-		for (RenderCell modifiedCell : modifiedCells) {
-			modifiedCell.clearCoveredEnts();
-		}
-		
-		//sort by depth
-		renderAppendix.sort((AbstractGameObject o1, AbstractGameObject o2) -> {
-			float d1 = o1.getDepth();
-			float d2 = o2.getDepth();
-			if (d1 > d2) {
-				return 1;
+			//render vom bottom to top
+			if (!multiRendering || (WE.getCVars().getValueB("singleBatchRendering") && multiPassLastIdx == 0)){
+				sorter.renderSorted();
+				multiPassLastIdx = view.getGameSpaceSpriteBatch().getIdx();
 			} else {
-				if (d1 == d2) {
-					return 0;
+				if (WE.getCVars().getValueB("singleBatchRendering")){
+					//render same batch data again
+					view.getGameSpaceSpriteBatch().setIdx(multiPassLastIdx);
+				} else {
+					if (multiPassLastIdx == 0) {
+						sorter.createDepthList(depthlist);
+					}
+					//render depthlist again
+					for (AbstractGameObject abstractGameObject : depthlist) {
+						abstractGameObject.render(view);
+					}
+					multiPassLastIdx = view.getGameSpaceSpriteBatch().getIdx();
 				}
-				return -1;
 			}
-		});
-		depthlist.addAll(renderAppendix);//render every entity which has no parent block at the end of the list
+			
+			view.getGameSpaceSpriteBatch().end();
+			
+			//debug rendering
+			if (WE.getCVars().getValueB("DevDebugRendering")) {
+				drawDebug(view, this);
+			}
+			//to render offscreen onscreen
+//			fbo.end();
+//			
+//			OrthographicCamera cam = new OrthographicCamera(Gdx.graphics.getWidth(),
+//				Gdx.graphics.getHeight());
+//			cam.setToOrtho(false, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+//			view.getProjectionSpaceSpriteBatch().setProjectionMatrix(cam.combined);
+//			view.getProjectionSpaceSpriteBatch().setShader(postprocessshader);
+//			//fboRegion.getTexture().bind();
+//			Gdx.gl.glClearColor(0f, 0f, 0f, 0f);
+//			Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+//			view.getProjectionSpaceSpriteBatch().begin();
+			//view.getProjectionSpaceSpriteBatch().draw(fboRegion, 0, 0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());
+//			view.getProjectionSpaceSpriteBatch().end();
+		}
 	}
 	
 	/**
-	 * topological sort
-	 * @param o root node
+	 * Allows the rendering of mutiple images (multipass) without resorting.
 	 */
-	private void visit(AbstractGameObject o) {
-		if (!o.isMarkedDS(id)) {
-			LinkedList<AbstractGameObject> covered = o.getCovered(gameView.getRenderStorage());
-			o.markPermanentDS(id);
-			if (!covered.isEmpty()) {
-				for (AbstractGameObject m : covered) {
-					if (inViewFrustum(m.getPosition())) {
-						visit(m);
-					}
-				}
-			}
-			if (
-				o.shouldBeRendered(this)
-				&& o.getPosition().getZPoint() < gameView.getRenderStorage().getZRenderingLimit()
-				&& objectsToBeRendered < maxsprites
-			) {
-				//fill only up to available size
-				depthlist.add(o);
-				objectsToBeRendered++;
-			}
-		}
+	public void startMultiRendering() {
+		multiRendering = true;
+		multiPassLastIdx = 0;
+	}
+	
+	/**
+	 * Stop the multipass rendering. After this method each new call to {@link #render(GameView) } is sorting again.
+	 */
+	public void endMultiRendering(){
+		multiRendering = false;
+	}
+	
+	boolean isMultiRendering() {
+		return multiRendering;
 	}
 
 	/**
@@ -645,60 +659,22 @@ public class Camera {
 	public boolean inViewFrustum(Position pos){
 		int vspY = pos.getViewSpcY();
 		if (!(
-				(position.y + (heightProj>>1))//fast division by two
+				(position.y + (heightAfterProj>>1))//fast division by two
 				>
 				(vspY - (RenderCell.VIEW_HEIGHT<<1))//bottom of sprite
 			&&
-				(vspY + RenderCell.VIEW_HEIGHT2 + RenderCell.VIEW_DEPTH)//top of sprite
+				(vspY + RenderCell.VIEW_HEIGHT + RenderCell.VIEW_DEPTH)//top of sprite
 				>
-				position.y - (heightProj>>1))//fast division by two
+				position.y - (heightAfterProj>>1))//fast division by two
+//fast division by two
 		)
 			return false;
 		int dist = (int) (pos.getViewSpcX()-position.x); //left side of sprite
 		//left and right check in one clause by using distance via squaring
-		return dist * dist < ( (widthProj >> 1) + RenderCell.VIEW_WIDTH2) * ((widthProj >> 1) + RenderCell.VIEW_WIDTH2);
+		return dist * dist < ( (widthAfterProj >> 1) + RenderCell.VIEW_WIDTH2) * ((widthAfterProj >> 1) + RenderCell.VIEW_WIDTH2);
 	}
 
-	/**
-	 * Set the zoom factor.
-	 *
-	 * @param zoom 1 is default
-	 */
-	public void setZoom(float zoom) {
-		this.zoom = zoom;
-		updateViewSpaceSize();
-		widthProj = (int) (widthView / zoom);//update cache
-	}
-
-	/**
-	 * the width of the internal render resolution
-	 *
-	 * @param resolution
-	 */
-	public void setInternalRenderResolution(int resolution) {
-		renderResWidth = resolution;
-		widthView = renderResWidth;
-		updateViewSpaceSize();
-	}
-
-	/**
-	 * Returns the zoomfactor.
-	 *
-	 * @return zoomfactor applied on the game world
-	 */
-	public float getZoom() {
-		return zoom;
-	}
-
-	/**
-	 * Returns a scaling factor calculated by the width to achieve the same
-	 * viewport size with every resolution
-	 *
-	 * @return a scaling factor applied on the projection
-	 */
-	public float getScreenSpaceScaling() {
-		return screenWidth / (float) renderResWidth;
-	}
+	
 
 	/**
 	 * Returns the left border of the actual visible area.
@@ -706,7 +682,7 @@ public class Camera {
 	 * @return left x position in view space
 	 */
 	public float getVisibleLeftBorderVS() {
-		return (position.x - widthProj*0.5f)- RenderCell.VIEW_WIDTH2;
+		return (position.x - widthAfterProj*0.5f)- RenderCell.VIEW_WIDTH2;
 	}
 
 	/**
@@ -715,7 +691,7 @@ public class Camera {
 	 * @return the left (X) border coordinate
 	 */
 	public int getVisibleLeftBorder() {
-		return (int) ((position.x - widthProj*0.5) / RenderCell.VIEW_WIDTH - 1);
+		return (int) ((position.x - widthAfterProj*0.5) / RenderCell.VIEW_WIDTH - 1);
 	}
 
 	/**
@@ -725,7 +701,7 @@ public class Camera {
 	 * @return measured in grid-coordinates
 	 */
 	public int getVisibleRightBorder() {
-		return (int) ((position.x + widthProj*0.5) / RenderCell.VIEW_WIDTH + 1);
+		return (int) ((position.x + widthAfterProj*0.5) / RenderCell.VIEW_WIDTH + 1);
 	}
 	
 	/**
@@ -735,7 +711,7 @@ public class Camera {
 	 * @return measured in grid-coordinates
 	 */
 	public float getVisibleRightBorderVS() {
-		return position.x + widthProj*0.5f + RenderCell.VIEW_WIDTH2;
+		return position.x + widthAfterProj*0.5f + RenderCell.VIEW_WIDTH2;
 	}
 
 	/**
@@ -745,7 +721,7 @@ public class Camera {
 	 */
 	public int getVisibleBackBorder() {
 		//TODO verify
-		return (int) ((position.y + heightProj * 0.5)//camera top border
+		return (int) ((position.y + heightAfterProj * 0.5)//camera top border
 			/ -RenderCell.VIEW_DEPTH2//back to game space
 			);
 	}
@@ -757,21 +733,21 @@ public class Camera {
 	 * @see #getVisibleFrontBorderHigh()
 	 */
 	public int getVisibleFrontBorderLow() {
-		return (int) ((position.y - heightProj * 0.5) //bottom camera border
+		return (int) ((position.y - heightAfterProj * 0.5) //bottom camera border
 			/ -RenderCell.VIEW_DEPTH2 //back to game coordinates
 			);
 	}
 
 	/**
-	 * Returns the bottom seight border y-coordinate of the highest cell
+	 * Returns the bottom seight border y-coordinate of the frontmost cells which could be visible.
 	 *
 	 * @return measured in grid-coordinates
 	 * @see #getVisibleFrontBorderLow()
 	 */
 	public int getVisibleFrontBorderHigh() {
-		return (int) ((position.y - heightProj * 0.5) //bottom camera border
+		return (int) ((position.y - heightAfterProj * 0.5) //bottom camera border
 			/ -RenderCell.VIEW_DEPTH2 //back to game coordinates
-			+ Chunk.getBlocksY() * 3 * RenderCell.VIEW_HEIGHT / RenderCell.VIEW_DEPTH2 //todo verify, try to add z component
+			+ Chunk.getBlocksZ()* RenderCell.VIEW_HEIGHT / RenderCell.VIEW_DEPTH2 //height in z as y distance
 			);
 	}
 
@@ -794,54 +770,65 @@ public class Camera {
 	}
 
 	/**
-	 * The amount of game pixel which are visible in X direction without zoom.
-	 * For screen pixels use {@link #getWidthInScreenSpc()}.
+	 * Set the zoom factor.
 	 *
-	 * @return in game pixels
+	 * @param zoom 1 is default
 	 */
-	public final int getWidthInViewSpc() {
-		return widthView;
+	public void setZoom(float zoom) {
+		this.zoom = zoom;
+		widthAfterProj = (int) (widthView / zoom);//update cache
+		heightAfterProj = (int) (screenHeight / (getProjScaling()*zoom));
 	}
 
 	/**
-	 * The amount of game pixel which are visible in Y direction without zoom.
-	 * For screen pixels use {@link #getHeightInScreenSpc() }.
+	 * the width of the internal render resolution
 	 *
-	 * @return in game pixels
+	 * @param resolution
 	 */
-	public final int getHeightInViewSpc() {
-		return heightView;
+	public void setInternalRenderResolution(int resolution) {
+		widthView = resolution;
 	}
 
 	/**
-	 * updates the cache
+	 * Returns the zoomfactor.
+	 *
+	 * @return zoomfactor applied on the game world
 	 */
-	private void updateViewSpaceSize() {
-		heightView = (int) (heightScreen / getScreenSpaceScaling());
-		heightProj = (int) (heightView / zoom);
+	public float getZoom() {
+		return zoom;
 	}
 
 	/**
-	 * The amount of game world pixels which are visible in X direction after
+	 * Returns a scaling factor calculated by the width to achieve the same
+	 * viewport size with every resolution. If displayed twice as big as render resolution has factor 2.
+	 *
+	 * @return a scaling factor applied on the projection
+	 */
+	public float getProjScaling() {
+		return screenWidth / (float) widthView;
+	}
+	
+	/**
+	 * The amount of game pixels which are visible in X direction after
 	 * the zoom has been applied. For screen pixels use
-	 * {@link #getWidthInScreenSpc()}.
+	 * {@link #getWidthScreenSpc()}.
 	 *
-	 * @return in viewMat pixels
+	 * @return in projection space
 	 */
-	public final int getWidthInProjSpc() {
-		return widthProj;
+	public final int getWorldWidthViewport() {
+		return widthAfterProj;
 	}
 
 	/**
 	 * The amount of game pixel which are visible in Y direction after the zoom
-	 * has been applied. For screen pixels use {@link #getHeightInScreenSpc() }.
+	 * has been applied. For screen pixels use {@link #getHeightScreenSpc() }.
 	 *
-	 * @return in projective pixels
+	 * @return in projection space
 	 */
-	public final int getHeightInProjSpc() {
-		return heightProj;
+	public final int getWorldHeightViewport() {
+		return heightAfterProj;
 	}
-
+	
 	/**
 	 * Returns the position of the cameras output (on the screen)
 	 *
@@ -865,8 +852,8 @@ public class Camera {
 	 *
 	 * @return the value before scaling
 	 */
-	public int getHeightInScreenSpc() {
-		return heightScreen;
+	public int getHeightScreenSpc() {
+		return screenHeight;
 	}
 
 	/**
@@ -874,7 +861,7 @@ public class Camera {
 	 *
 	 * @return the value before scaling
 	 */
-	public int getWidthInScreenSpc() {
+	public int getWidthScreenSpc() {
 		return screenWidth;
 	}
 
@@ -894,11 +881,12 @@ public class Camera {
 	 */
 	public void setFullWindow(boolean fullWindow) {
 		this.fullWindow = fullWindow;
-		this.screenWidth = Gdx.graphics.getWidth();
-		this.heightScreen = Gdx.graphics.getHeight();
-		this.screenPosX = 0;
-		this.screenPosY = 0;
-		updateViewSpaceSize();
+		if (fullWindow){
+			this.screenWidth = Gdx.graphics.getWidth();
+			this.screenHeight = Gdx.graphics.getHeight();
+			this.screenPosX = 0;
+			this.screenPosY = 0;
+		}
 	}
 
 	/**
@@ -910,10 +898,9 @@ public class Camera {
 	public void resize(int width, int height) {
 		if (fullWindow) {
 			this.screenWidth = width;
-			this.heightScreen = height;
+			this.screenHeight = height;
 			this.screenPosX = 0;
 			this.screenPosY = 0;
-			updateViewSpaceSize();
 		}
 	}
 
@@ -928,8 +915,7 @@ public class Camera {
 			fullWindow = false;
 		}
 		this.screenWidth = width;
-		this.heightScreen = height;
-		updateViewSpaceSize();
+		this.screenHeight = height;
 	}
 
 	/**
@@ -939,7 +925,7 @@ public class Camera {
 	 * @param y in game space
 	 */
 	public void move(int x, int y) {
-		if (focusEntity != null) {
+		if (focusEntity != null && focusEntity.hasPosition()) {
 			focusEntity.getPosition().add(x, y, 0);
 		} else {
 			position.x += x;
@@ -960,15 +946,15 @@ public class Camera {
 	}
 
 	/**
-	 * Returns the focuspoint
+	 * Returns the focuspoint. Approximated because is stored in view space and backtransformation is a line.
 	 *
-	 * @return in game space, copy safe
+	 * @return in game space
 	 */
 	public Point getCenter() {
 		return (Point) center.set(
 			position.x,
-			-position.y * 2,
-			0
+			-(position.y-RenderCell.VIEW_HEIGHT2*Chunk.getBlocksZ()) / RenderCell.PROJECTIONFACTORY,
+			RenderCell.GAME_EDGELENGTH2*Chunk.getBlocksZ()
 		);//view to game
 	}
 	
@@ -983,16 +969,18 @@ public class Camera {
 	}
 
 	/**
-	 *
-	 * @param focusEntity
+	 * Sets the center of the camera to this entity and follows it.
+	 * @param focusEntity must be spawned.
 	 */
 	public void setFocusEntity(AbstractEntity focusEntity) {
 		if (this.focusEntity != focusEntity) {
 			this.focusEntity = focusEntity;
-			position.set(focusEntity.getPosition().getViewSpcX(),
-				(int) (focusEntity.getPosition().getViewSpcY()
-					+ focusEntity.getDimensionZ() * RenderCell.ZAXISSHORTENING/2)//have middle of object in center
-			);
+			if (focusEntity.hasPosition()) {
+				position.set(focusEntity.getPosition().getViewSpcX(),
+					(int) (focusEntity.getPosition().getViewSpcY()
+					+ focusEntity.getDimensionZ() * RenderCell.PROJECTIONFACTORZ / 2)//have middle of object in center
+				);
+			}
 		}
 	}
 	
@@ -1012,8 +1000,15 @@ public class Camera {
 		this.active = active;
 	}
 
+	/**
+	 * 
+	 * @param view
+	 * @param camera 
+	 */
 	private void drawDebug(GameView view, Camera camera) {
+		//outline 3x3 chunks
 		ShapeRenderer sh = view.getShapeRenderer();
+		sh.setProjectionMatrix(combined);//draw in game space
 		sh.setColor(Color.RED.cpy());
 		sh.begin(ShapeRenderer.ShapeType.Line);
 		sh.rect(-Chunk.getGameWidth(),//one chunk to the left
@@ -1044,7 +1039,44 @@ public class Camera {
 			-Chunk.getGameDepth()
 		);
 		sh.end();
+		
+		view.resetProjectionMatrix();
+		sh.begin(ShapeRenderer.ShapeType.Filled);
+		//render vom bottom to top
+//		for (AbstractEntity ent : Controller.getMap().getEntities()) {
+//			sh.setColor(Color.GREEN);
+//			//life bar
+//			sh.rect(
+//				ent.getPoint().getProjectionSpaceX(view, camera),
+//				ent.getPoint().getProjectionSpaceY(view, camera) + RenderCell.VIEW_HEIGHT*ent.getScaling(),
+//				ent.getHealth() / 100.0f * RenderCell.VIEW_WIDTH2*ent.getScaling(),
+//				5
+//			);
+//		}
+
+		Color linecolor =new Color(0, 1, 1, 1); 
+		sh.setColor(linecolor);
+		AbstractGameObject last = null;
+		sorter.createDepthList(depthlist);
+		
+		for (AbstractGameObject current : depthlist) {
+			if (last==null){
+				last = current;
+				continue;
+			}
+			linecolor.add(1/(float) depthlist.size(), -1/(float) depthlist.size(), 0, 0);
+			sh.setColor(linecolor);
+			sh.line(last.getPosition().getProjectionSpaceX(view, camera), last.getPosition().getProjectionSpaceY(view, camera), current.getPosition().getProjectionSpaceX(view, camera), current.getPosition().getProjectionSpaceY(view, camera));
+			last = current;
+		}
+		sh.end();
+		
 	}
+
+	public GameView getGameView() {
+		return gameView;
+	}
+	
 
 	/**
 	 *
@@ -1074,12 +1106,21 @@ public class Camera {
 	 *
 	 * @param id
 	 */
-	public void setId(int id){
+	public void setId(int id) {
 		this.id = id;
 	}
-	
-	
-	void dispose() {
+
+	public int getId() {
+		return id;
 	}
+
+	/**
+	 * may be overwritten
+	 */
+	void dispose() {
+		MessageManager.getInstance().removeListener(sorter, Events.mapChanged.getId());
+		MessageManager.getInstance().removeListener(sorter, Events.renderStorageChanged.getId());
+	}
+
 
 }

@@ -30,14 +30,17 @@
  */
 package com.bombinggames.wurfelengine.core.cvar;
 
+import com.badlogic.gdx.Gdx;
+
 /**
  *
  * @author Benedikt Vogler
  */
 public class BooleanCVar extends CVar {
+
 	private boolean value;
 	private Boolean defaultValue;
-	
+
 	/**
 	 *
 	 * @param value
@@ -46,7 +49,7 @@ public class BooleanCVar extends CVar {
 		this.value = value;
 		this.defaultValue = value;
 	}
-	
+
 	/**
 	 *
 	 * @return
@@ -62,19 +65,23 @@ public class BooleanCVar extends CVar {
 	 */
 	@Override
 	public void setValue(Object value) {
-		if (value instanceof String) 
+		if (value instanceof String) {
 			this.value = value.equals("1");
-		else 
+		} else {
 			this.value = (boolean) value;
-		if (flags == CVarFlags.ARCHIVE) parent.save();
+		}
+		if (flags == CVarFlags.ARCHIVE && Gdx.files != null) {
+			parent.save();
+		}
 	}
 
 	@Override
 	public String toString() {
-		if (value)
+		if (value) {
 			return "1";
-		else
+		} else {
 			return "0";
+		}
 	}
 
 	/**
@@ -90,8 +97,9 @@ public class BooleanCVar extends CVar {
 	 *
 	 * @param defaultValue
 	 */
+	@Override
 	public void setDefaultValue(Object defaultValue) {
 		this.defaultValue = (Boolean) defaultValue;
 	}
-	
+
 }

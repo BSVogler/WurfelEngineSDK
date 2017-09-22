@@ -30,10 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core.map;
 
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.function.Predicate;
-
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.WE;
@@ -44,6 +40,10 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.function.Predicate;
 
 /**
  * A point is a single position in the game world not bound to the grid. Use
@@ -55,6 +55,15 @@ import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 public class Point extends Vector3 implements Position {
 
 	private static final long serialVersionUID = 2L;
+	private static Point tmp = new Point();
+
+	/**
+	 * A shared object to pass values without using the heap.
+	 * @return 
+	 */
+	public static Point getShared() {
+		return tmp;
+	}
 
 	/**
 	 * Creates a point refering to a position in the game world. Points at 0,0,0.
@@ -124,11 +133,10 @@ public class Point extends Vector3 implements Position {
 	}
 
 	/**
-	 * returns coordinate aquivalent. Removes floating of block.<br> Copy
-	 * safe.<br>
-	 * Looks complicated but has runtime O(const). You should avoid this method because it uses the heap.
+	 * returns coordinate aquivalent. Removes floating of block.<br>
+	 * Looks complicated but has runtime O(const). You should avoid this method in loops or the update method because it uses the heap.
 	 *
-	 * @return coordinate aquivalent
+	 * @return coordinate aquivalent, copy safe
 	 */
 	@Override
 	public Coordinate toCoord() {
@@ -270,25 +278,25 @@ public class Point extends Vector3 implements Position {
 
     @Override
     public int getViewSpcX() {
-        return (int) (getX()); //just the position as integer
+        return (int) (x); //just the position as integer
     }
 
     @Override
     public int getViewSpcY() {
         return (int)( 
-			-getY() / 2
-            + (int) (getZ() * RenderCell.ZAXISSHORTENING)
+			-y * RenderCell.PROJECTIONFACTORY
+            + z * RenderCell.PROJECTIONFACTORZ
 		);
     }
 
 	@Override
 	public int getProjectionSpaceX(GameView view, Camera camera) {
-		return (int) (getViewSpcX() - camera.getViewSpaceX() + camera.getWidthInProjSpc() / 2);
+		return (int) (getViewSpcX() - camera.getViewSpaceX() + camera.getWorldWidthViewport() / 2);// i think zoom and scaling is missing here
 	}
 	
 	@Override
 	public int getProjectionSpaceY(GameView view, Camera camera) {
-		return (int) (getViewSpcY()-camera.getViewSpaceY() + camera.getHeightInProjSpc() / 2);
+		return (int) (getViewSpcY()-camera.getViewSpaceY() + camera.getWorldHeightViewport() / 2);// i think zoom and scaling is missing here
 	}
 	
     
@@ -482,15 +490,16 @@ public class Point extends Vector3 implements Position {
 
     /**
      * Trace a ray through the map until ray hits non air block.<br>
-     * Does not work properly with the staggered map.
+     * Does not work properly with the staggered map but is quite fast.
      * @param dir dir of the ray
-     * @param maxDistance the distane after which it should stop. (in game meters)
-	 * @param view
+     * @param maxDistance the distance after which it should stop. (in game meters)
+	 * @param rs
 	 * @param hitCondition
      * @return can return <i>null</i> if not hitting anything. The normal on the back sides may be wrong. The normals are in a turned coordiante system.
      * @since 1.2.29
+	 * @see #rayMarching(com.badlogic.gdx.math.Vector3, float, com.bombinggames.wurfelengine.core.map.rendering.RenderStorage, java.util.function.Predicate) 
      */
-	public Intersection raycast(final Vector3 dir, float maxDistance, final GameView view, final Predicate<Byte> hitCondition) {
+	public Intersection raycast(final Vector3 dir, float maxDistance, final RenderStorage rs, final Predicate<Byte> hitCondition) {
 		/*  Call the callback with (x,y,z,value,normal) of all blocks along the line
 		segment from point 'origin' in vector dir 'dir' of length
 		'maxDistance'. 'maxDistance' may be infinite.
@@ -523,7 +532,7 @@ public class Point extends Vector3 implements Position {
 		dir.cpy().nor();
 		
 		Coordinate isectC = toCoord();
-		Point isectP = new Point(0, 0, 0);
+		Point isectPtmp = Point.getShared();
 		//curent coordinate position
         int curX = isectC.getX();
         int curY = isectC.getY();
@@ -552,9 +561,9 @@ public class Point extends Vector3 implements Position {
 			isectC.set(curX, curY, curZ);
 			//intersect?
 			if (
-				view == null
+				rs == null
 				||
-				(curZ*RenderCell.GAME_EDGELENGTH < view.getRenderStorage().getZRenderingLimit() && !view.getRenderStorage().isClipped(isectC))
+				(curZ*RenderCell.GAME_EDGELENGTH < rs.getZRenderingLimit() && !rs.isClipped(isectC))
 			) {
 				byte id = Controller.getMap().getBlockId(isectC);
 				if (
@@ -562,8 +571,8 @@ public class Point extends Vector3 implements Position {
 					&& (hitCondition == null || hitCondition.test(id))
 				){
 					//found intersection point
-					isectP.setFromCoord(isectC);
-					if (distanceTo(isectP) <= maxDistance*RenderCell.GAME_EDGELENGTH)
+					isectPtmp.setFromCoord(isectC);
+					if (distanceTo(isectPtmp) <= maxDistance*RenderCell.GAME_EDGELENGTH)
 						return Intersection.intersect(isectC, this, dir);
 					else return null;
 				}
@@ -635,20 +644,20 @@ public class Point extends Vector3 implements Position {
 	}
 
 	/**
-	 * Sends a ray by moving a coordiante though the map. Slow but it works.<br>
-	 * Stops at first point where the criteria are met, so positions relative to coordinate may differ.
+	 * Sends a ray by moving a coordinate though the map. Slow but it mostly returns precise results.<br>
+	 * Stops at first point where the criteria is met.
 	 * 
 	 * @param dir
 	 * @param maxDistance game space in meters
-	 * @param view
+	 * @param rS used when regarding clipping information
 	 * @param hitCondition can be null
-	 * @return 
-	 * @see #raycast(com.badlogic.gdx.math.Vector3, float, com.bombinggames.wurfelengine.core.GameView, java.util.function.Predicate) 
+	 * @return intersection point
+	 * @see #raycast(com.badlogic.gdx.math.Vector3, float, com.bombinggames.wurfelengine.core.map.rendering.RenderStorage, java.util.function.Predicate) 
 	 */
 	public Intersection rayMarching(
 		final Vector3 dir,
 		float maxDistance,
-		final GameView view,
+		final RenderStorage rS,
 		final Predicate<Byte> hitCondition
 	){
 		if (dir == null) {
@@ -662,30 +671,24 @@ public class Point extends Vector3 implements Position {
 		Point traverseP = cpy();
 		dir.cpy().nor().scl(3);
 		Coordinate isectC = traverseP.toCoord();
-		int lastCoordX = 0;
-		int lastCoordY = 0;
 		int lastCoordZ = 0;
 		while (
-			(lastCoordX == isectC.getX()
-			&& lastCoordY == isectC.getY()
-			&& lastCoordZ == isectC.getZ()
-			&& lastCoordZ > 0
+			(lastCoordZ > 0
 			&& lastCoordZ < Chunk.getBlocksZ()
-			|| isectC.isInMemoryAreaXYZ())
+			|| isectC.isInMemoryAreaXY())
 			&& distanceToSquared(traverseP) < maxDistance*RenderCell.GAME_EDGELENGTH*maxDistance*RenderCell.GAME_EDGELENGTH
 		){
 			//move
 			traverseP.add(dir);
 			isectC.setFromPoint(traverseP);
-			lastCoordX = isectC.getX();
-			lastCoordY = isectC.getY();
 			lastCoordZ = isectC.getZ();
 			
 			if (
-				view == null
+				rS == null
 				||
-				(lastCoordZ*RenderCell.GAME_EDGELENGTH < view.getRenderStorage().getZRenderingLimit() && !view.getRenderStorage().isClipped(isectC))
+				(lastCoordZ*RenderCell.GAME_EDGELENGTH < rS.getZRenderingLimit() && !rS.isClipped(isectC))
 			) {
+				//evaluate hit
 				byte id = isectC.getBlockId();
 				if (
 					id != 0
@@ -943,11 +946,13 @@ public class Point extends Vector3 implements Position {
 	/**
 	 * Set x,y,z based on a coordinate.
 	 * @param coord 
+	 * @return  
 	 */
-	public void setFromCoord(final Coordinate coord) {
-		x = coord.getX() * RenderCell.GAME_DIAGLENGTH + (y % 2 != 0 ? RenderCell.VIEW_WIDTH2 : 0)+RenderCell.GAME_DIAGLENGTH2;
-		y = coord.getY() * RenderCell.GAME_DIAGLENGTH2+RenderCell.GAME_DIAGLENGTH2;
+	public Point setFromCoord(final Coordinate coord) {
+		x = coord.getX() * RenderCell.GAME_DIAGLENGTH + (coord.getY() % 2 != 0 ? RenderCell.VIEW_WIDTH2 : 0);
+		y = coord.getY() * RenderCell.GAME_DIAGLENGTH2;
 		z = coord.getZ() * RenderCell.GAME_EDGELENGTH;
+		return this;
 	}
 
 	/**

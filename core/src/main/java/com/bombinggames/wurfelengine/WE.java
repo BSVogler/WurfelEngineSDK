@@ -36,8 +36,9 @@ import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics.DisplayMode;
 import com.badlogic.gdx.assets.AssetManager;
-import com.badlogic.gdx.backends.lwjgl.LwjglApplication;
-import com.badlogic.gdx.backends.lwjgl.LwjglApplicationConfiguration;
+import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
+import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
+import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.bombinggames.wurfelengine.core.AbstractMainMenu;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.EngineView;
@@ -61,36 +62,32 @@ import java.util.ArrayList;
  * and the API libGDX v1.8.0 (may work with older versions).
  *
  * @author Benedikt S. Vogler
- * @version 1.7.6
+ * @version 1.8.0
  */
 public class WE {
 
 	/**
 	 * The version of the Engine
 	 */
-	public static final String VERSION = "1.7.6";
-	/**
-	 * the working directory where the config and files are saved
-	 */
-	private static final File WORKDIR = WorkingDirectory.getWorkingDirectory();
+	public static final String VERSION = "1.8.0";
 
 	/**
-	 * The CVar system used by the engine.
+	 * The CVar system used by the engine. Uses the working dir as a root. WOrkdir must be set before intializing WE.
 	 */
-	private final static CVarSystemRoot CVARS = new CVarSystemRoot(new File(WORKDIR + "/engine.wecvars"));
+	private final static CVarSystemRoot CVARS = new CVarSystemRoot(new File( WorkingDirectory.getWorkingDirectory() + "/engine.wecvars"));
 	/**
 	 * The sound engine managing the sfx.
 	 */
 	public static final SoundEngine SOUND = new SoundEngine();
 	private static final WEGame GAME = new WEGame();
 	private static final AssetManager ASSETMANAGER = new AssetManager();
-	private static final LwjglApplicationConfiguration CONFIG = new LwjglApplicationConfiguration();
+	private static final Lwjgl3ApplicationConfiguration CONFIG = new Lwjgl3ApplicationConfiguration();
 	private static final ArrayList<LaunchCommand> POSTLAUNCHCOMMANDS = new ArrayList<>(0);
 	private static GameplayScreen gameplayScreen;
 	private static AbstractMainMenu mainMenu;
 	private static Console console;
 	private static EngineView engineView;
-	private static LwjglApplication application;
+	private static Lwjgl3Application application;
 	private static boolean skipintro = false;
 	private static String iconPath = null;
 	/**
@@ -140,42 +137,40 @@ public class WE {
 	/**
 	 * Start the engine. You should have passed a main menu first.<br> Until the
 	 * engine is launched it can take a while. Code that can only be run after
-	 * the engine has openend should be run in the screen class.
+	 * the engine has openend should be run in the screen class or as postlaunchCommand.
 	 *
 	 * @param title The title, which is displayed in the window.
 	 * @param args Wurfel Engine launch parameters. For a list look in the wiki.
 	 * @see #setMainMenu(com.bombinggames.wurfelengine.core.AbstractMainMenu)
+	 * @see #addPostLaunchCommands(com.bombinggames.wurfelengine.LaunchCommand) 
 	 */
 	public static void launch(final String title, final String[] args) {
-		CONFIG.resizable = false;
+		CONFIG.setResizable(false);
 		//config.setFromDisplayMode(LwjglApplicationConfiguration.getDesktopDisplayMode());
-		CONFIG.fullscreen = true;
-		CONFIG.vSyncEnabled = false;//if set to true the FPS is locked to 60
-		
+		//CONFIG.setFullscreenMode(Gdx.graphics.getDisplayMode(Gdx.graphics.getMonitor()));
+		CONFIG.useVsync(false);//if set to true the FPS is locked to 60
+
 		//get current resolution
-		DisplayMode dpms = LwjglApplicationConfiguration.getDesktopDisplayMode();
-		CONFIG.width = dpms.width;
-		CONFIG.height = dpms.height;
-		
+		DisplayMode dpms = Lwjgl3ApplicationConfiguration.getDisplayMode();
+		int width = dpms.width;
+		int height = dpms.height;
+
+		boolean windowed = false;
+		//arguments
 		//arguments
 		if (args != null && args.length > 0) {
 			//look if contains launch parameters
 			for (int i = 0; i < args.length; i++) {
 				switch (args[i]) {
-					case "--fullscreen":
-					case "-f":
-						//start in fullscreen
-						CONFIG.fullscreen = true;
-						break;
 					case "--windowed":
 						//start in windowed mode
-						CONFIG.fullscreen = false;
+						windowed = true;
 						break;
 					case "--width":
 						i++;
 						if (i < args.length){
 							//set the width
-							CONFIG.width = Integer.parseInt(args[i]);
+							width = Integer.parseInt(args[i]);
 						} else {
 							System.err.println("missing width value after launch parameter");
 						}
@@ -185,7 +180,7 @@ public class WE {
 						i++;
 						if (i < args.length){
 							//set the height
-							CONFIG.height = Integer.parseInt(args[i]);
+							height = Integer.parseInt(args[i]);
 						} else {
 							System.err.println("missing height value after launch parameter");
 						}
@@ -212,6 +207,20 @@ public class WE {
 			}
 		}
 
+		if (windowed) {
+			CONFIG.setWindowedMode(width, height);
+		} else {
+			//find fitting fullscreen mode, if cannot then uses native
+			DisplayMode[] modes = Lwjgl3ApplicationConfiguration.getDisplayModes();
+			DisplayMode fsMode = dpms;
+			for (DisplayMode mode : modes) {
+				if (mode.width == width && mode.height == height) {
+					fsMode = mode;
+				}
+			}
+			CONFIG.setFullscreenMode(fsMode);
+		}
+
 		//load cvars
 		CVARS.load();
 
@@ -220,40 +229,43 @@ public class WE {
 			System.setProperty("com.apple.mrj.application.apple.menu.about.name", title);
 		}
 
-		CONFIG.foregroundFPS = CVARS.getValueI("limitFPS");//don't lock FPS
-		CONFIG.backgroundFPS = 60;//60 FPS in background
+		//no alternative for LWJGL3?
+		//CONFIG.foregroundFPS = CVARS.getValueI("limitFPS");//don't lock FPS
+		CONFIG.setIdleFPS(60);//60 FPS in background
+
 		//config.addIcon("com/BombingGames/caveland/icon.png", Files.FileType.Internal); //commented this line because on mac this get's overwritten by something during runtime. mac build is best made via native packaging
 		if (iconPath != null) {
-			CONFIG.addIcon(iconPath, Files.FileType.Internal);//windows and linux?
+			CONFIG.setWindowIcon(iconPath);//windows and linux?
 		}
 
 		//load saved resolution
-		int width = CVARS.getValueI("resolutionx");
-		if (width > 0 && CONFIG.width <= 640) {
-			CONFIG.width = width;
-		}
-
-		int height = CVARS.getValueI("resolutiony");
-		if (height > 0 && CONFIG.height <= 480) {
-			CONFIG.height = CVARS.getValueI("resolutiony");
-		}
-
-		//limit resolution to maximum
-		if (CONFIG.width > dpms.width) {
-			CONFIG.width = dpms.width;
-		}
-
-		if (CONFIG.height > dpms.height) {
-			CONFIG.height = dpms.height;
-		}
-
-		CONFIG.title = title + " " + CONFIG.width + "x" + CONFIG.height;
+//		int width = CVARS.getValueI("resolutionx");
+//		if (width > 0 && CONFIG.width <= 640) {
+//			CONFIG.width = width;
+//		}
+//
+//		int height = CVARS.getValueI("resolutiony");
+//		if (height > 0 && CONFIG.height <= 480) {
+//			CONFIG.height = CVARS.getValueI("resolutiony");
+//		}
+//
+//		//limit resolution to maximum
+//		if (CONFIG.width > dpms.width) {
+//			CONFIG.width = dpms.width;
+//		}
+//
+//		if (CONFIG.height > dpms.height) {
+//			CONFIG.height = dpms.height;
+//		}
+		CONFIG.setTitle(title + " " + width + "x" + height);
 
 		//register entitys
 		AbstractEntity.registerEngineEntities();
 
+		CONFIG.setPreferencesConfig(VERSION, Files.FileType.Internal);
 		System.out.println("Fire Engine…");
-		application = new LwjglApplication(GAME, CONFIG);
+		application = new Lwjgl3Application(GAME, CONFIG);
+		//code is not executed below this line
 		application.setLogLevel(Application.LOG_DEBUG);
 	}
 
@@ -262,7 +274,7 @@ public class WE {
 	 *
 	 * @return
 	 */
-	public static LwjglApplicationConfiguration getLwjglApplicationConfiguration() {
+	public static Lwjgl3ApplicationConfiguration getLwjglApplicationConfiguration() {
 		return CONFIG;
 	}
 
@@ -270,12 +282,12 @@ public class WE {
 	 * Initialize the main game with you custom controller and view. This call
 	 * shows the loadingScreen and disposes the menu.
 	 *
+	 * @param customLoadingScreen
 	 * @param controller
 	 * @param view
-	 * @param customLoadingScreen
 	 * @see com.bombinggames.wurfelengine.WE#startGame()
 	 */
-	public static void initAndStartGame(final Controller controller, final GameView view, LoadingScreen customLoadingScreen) {
+	public static void initAndStartGame(LoadingScreen customLoadingScreen, final Controller controller, final GameView view) {
 		if (GAME != null) {
 			Gdx.app.log("Wurfel Engine", "Initializing game using Controller:" + controller.toString());
 			Gdx.app.log("Wurfel Engine", "and View:" + view.toString());
@@ -283,16 +295,19 @@ public class WE {
 
 			getEngineView().getEditorToggler().setGameView(view);
 
+			//start the gameplay with the loading
 			WE.customLoadingScreen = customLoadingScreen;
-				
+			
+			//remove gameplayscreen if it already exists
 			if (gameplayScreen != null) {
-				gameplayScreen.dispose();//remove gameplayscreen if it already exists
+				gameplayScreen.dispose();
 			}
 			gameplayScreen = new GameplayScreen(
 				controller,
-				view,
-				customLoadingScreen
+				view
 			);
+			Gdx.input.setInputProcessor(null);//why is this line needed? removes old input processors
+			WE.setScreen(customLoadingScreen);
 			getConsole().setGameplayRef(gameplayScreen);
 			mainMenu.dispose();
 		} else {
@@ -466,7 +481,7 @@ public class WE {
 		return "Wurfel Engine (" + VERSION + ")" + newline + newline
 			+ "Created by:" + newline
 			+ "Benedikt S. Vogler" + newline + newline
-			+ "Quality Assurance:" + newline
+			+ "Thanks to:" + newline
 			+ "Thomas Vogt" + newline + newline
 			+ "Wurfel Engine uses libGDX." + newline;
 	}
@@ -477,7 +492,7 @@ public class WE {
 	 * @return a folder
 	 */
 	public static File getWorkingDirectory() {
-		return WORKDIR;
+		return  WorkingDirectory.getWorkingDirectory();
 	}
 
 	/**
@@ -488,13 +503,12 @@ public class WE {
 	 */
 	public static void setFullscreen(final boolean fullscreen) {
 		DisplayMode currentMode = Gdx.graphics.getDisplayMode();
-		if (fullscreen)
+		if (fullscreen) {
 			Gdx.graphics.setFullscreenMode(currentMode);
-		else {
+		} else {
 			Gdx.graphics.setWindowedMode(currentMode.width, currentMode.height);
 		}
-		CONFIG.fullscreen = Gdx.graphics.isFullscreen();
-		Gdx.app.debug("Wurfel Engine", "Set to fullscreen:" + fullscreen + " It is now:" + Gdx.graphics.isFullscreen());
+		Gdx.app.debug("Wurfel Engine", "Set to fullscreen:" + fullscreen + "It " + ((Gdx.graphics.isFullscreen()) ? "worked.":"failed."));
 	}
 
 	/**
@@ -508,7 +522,7 @@ public class WE {
 	public static <T> T getAsset(String filename) throws FileNotFoundException {
 		try {
 			return ASSETMANAGER.get(filename);
-		} catch (com.badlogic.gdx.utils.GdxRuntimeException ex){
+		} catch (com.badlogic.gdx.utils.GdxRuntimeException ex) {
 			throw new FileNotFoundException("Asset \"" + filename + "\" could not be retrieved because it is not loaded.");
 		}
 	}
@@ -554,12 +568,17 @@ public class WE {
 	 * @param dt time in ms
 	 */
 	public static void updateAndRender(float dt) {
-		console.update(dt);
-		engineView.update(dt);
-		SOUND.update(dt);
-
-		engineView.getStage().act(dt);
-		engineView.getStage().draw();
+		if (console != null) {
+			console.update(dt);
+		}
+		if (engineView != null) {
+			engineView.update(dt);
+			engineView.getStage().act(dt);
+			engineView.getStage().draw();
+		}
+		if (SOUND != null) {
+			SOUND.update(dt);
+		}
 	}
 
 	/**
@@ -570,7 +589,7 @@ public class WE {
 	public static GameplayScreen getGameplay() {
 		return gameplayScreen;
 	}
-	
+
 	/**
 	 *
 	 * @return
@@ -578,12 +597,63 @@ public class WE {
 	public static CVarSystemRoot getCVars() {
 		return CVARS;
 	}
+	
+	/**
+	 * may return null, if three is an error throws exception
+	 * @param internal
+	 * @param fragmentPath
+	 * @param vertexPath
+	 * @return
+	 * @throws Exception 
+	 */
+	public static ShaderProgram loadShader(boolean internal, String fragmentPath, String vertexPath) throws Exception {
+		if (!Gdx.files.internal(fragmentPath).exists()){
+			Gdx.app.debug("Shader", "shader file not found at: "+fragmentPath);
+			return null;
+		}
+		
+		Gdx.app.debug("Shader", "loading");
+		//shaders are very fast to load and the asset loader does not support text files out of the box
+		String fragmentShader = internal ? Gdx.files.internal(fragmentPath).readString() : Gdx.files.absolute(fragmentPath).readString();
+		String vertexShader;
+		if (vertexPath==null){
+			vertexShader = "attribute vec4 a_position;    \n" + 
+                      "attribute vec4 a_color;\n" +
+                      "attribute vec2 a_texCoord0;\n" + 
+                      "uniform mat4 u_projTrans;\n" + 
+                      "varying vec4 v_color;" + 
+                      "varying vec2 v_texCoords;" + 
+                      "void main()                  \n" + 
+                      "{                            \n" + 
+                      "   v_color = vec4(1, 1, 1, 1); \n" + 
+                      "   v_texCoords = a_texCoord0; \n" + 
+                      "   gl_Position =  u_projTrans * a_position;  \n"      + 
+                      "}                            \n";
+		
+		} else {
+			vertexShader = internal ? Gdx.files.internal(vertexPath).readString() : Gdx.files.absolute(vertexPath).readString();
+		}
+		//Setup shader
+		ShaderProgram.pedantic = false;
+
+		ShaderProgram shader = new ShaderProgram(vertexShader, fragmentShader);
+		if (shader.isCompiled()) {
+			
+			//print any warnings
+			if (!shader.getLog().isEmpty()) {
+				Gdx.app.debug("shaderloading", shader.getLog());
+			}
+			return shader;
+		} else {
+			throw new Exception("Could not compile shader "+fragmentPath+"\n"+vertexPath+"\n" + shader.getLog());
+		}
+	}
 
 	private static class WEGame extends Game {
 
 		@Override
 		public void create() {
-			Gdx.graphics.getBackBufferWidth();
+			Gdx.app.setLogLevel(Application.LOG_DEBUG);
 			if (!skipintro) {
 				GAME.setScreen(new WurfelEngineIntro());
 			}

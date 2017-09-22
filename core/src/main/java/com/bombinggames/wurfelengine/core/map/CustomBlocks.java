@@ -44,7 +44,7 @@ public interface CustomBlocks {
 
 	/**
 	 *
-	 * @param id there are id's &lt; 10 which are filtered before
+	 * @param id there are ids &lt; 10 which are filtered before
 	 * @param value
 	 * @return
 	 */

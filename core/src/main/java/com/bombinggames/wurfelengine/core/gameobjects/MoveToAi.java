@@ -30,23 +30,24 @@
  */
 package com.bombinggames.wurfelengine.core.gameobjects;
 
-import java.io.Serializable;
-
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.core.map.Point;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import java.io.Serializable;
 
 /**
+ * A component that will move the connected {@link MovableEntity} to a position.
+ * Will keep the speed but if it falsl udner a threshold will use this.
  *
  * @author Benedikt Vogler
  */
 public class MoveToAi implements Telegraph, Serializable, Component {
 
 	private static final long serialVersionUID = 1L;
-	
+
 	private MovableEntity body;
 	/**
 	 * where does it move to?
@@ -66,6 +67,26 @@ public class MoveToAi implements Telegraph, Serializable, Component {
 		this.movementGoal = goal;
 	}
 
+	private float minspeed = 2;
+
+	/**
+	 * Get the value of minspeed
+	 *
+	 * @return the value of minspeed
+	 */
+	public float getMinspeed() {
+		return minspeed;
+	}
+
+	/**
+	 * Set the value of minspeed
+	 *
+	 * @param minspeed new value of minspeed
+	 */
+	public void setMinspeed(float minspeed) {
+		this.minspeed = minspeed;
+	}
+
 	/**
 	 *
 	 * @param dt
@@ -73,7 +94,7 @@ public class MoveToAi implements Telegraph, Serializable, Component {
 	@Override
 	public void update(float dt) {
 		if (movementGoal != null && body.getPosition() != null) {
-			if (!atGoal()) {
+			if (!atGoal(dt)) {
 				//movement logic
 				Vector3 d = movementGoal.cpy().sub(body.getPosition());
 				float movementSpeed;
@@ -84,10 +105,8 @@ public class MoveToAi implements Telegraph, Serializable, Component {
 					movementSpeed = body.getSpeedHor();
 				}
 
-				if (movementSpeed < 2) {
-					movementSpeed = 2;
-				}
-				d.nor().scl(movementSpeed);//direction only
+				movementSpeed = Math.max(movementSpeed,minspeed);
+				d.nor().scl(movementSpeed);//move in horizontal direction
 				//if walking keep momentum
 				if (!body.isFloating()) {
 					d.z = body.getMovement().z;
@@ -96,9 +115,9 @@ public class MoveToAi implements Telegraph, Serializable, Component {
 				body.setMovement(d);// update the movement vector
 			} else {
 				body.setSpeedHorizontal(0);// update the movement vector
-				dispose();
+				dispose();//dispose at goal
 			}
-			
+
 			//Movement AI: if standing on same position as in last update
 			if (!body.isFloating()) {
 				if (body.getPosition().equals(lastPos) && body.getSpeed() > 0) {//not standing still
@@ -116,24 +135,28 @@ public class MoveToAi implements Telegraph, Serializable, Component {
 			}
 		}
 	}
-	
+
 	/**
-	 *
-	 * @return
+	 * Can the goal be reached by the next frame?
+	 * @param dt delta time in ms for this this frame
+	 * @return if position is near the goal
 	 */
-	public boolean atGoal() {
+	public boolean atGoal(float dt) {
 		if (movementGoal == null) {
 			return true;
 		}
 		if (body.getPosition() == null) {
 			return false;
 		}
+		
+		float distance2;
 		if (body.isFloating()) {
-			return body.getPosition().dst2(movementGoal) < 20; //sqrt(20)~=4,4
+			distance2 = body.getPosition().dst2(movementGoal);
 		} else {
-			return new Vector2(body.getPosition().x, body.getPosition().y).dst2(new Vector2(movementGoal.x, movementGoal.y)) < 20; //sqrt(20)~=4,4
+			distance2 = new Vector2(body.getPosition().x, body.getPosition().y).dst2(new Vector2(movementGoal.x, movementGoal.y));
 		}
-			
+		return distance2<20 || distance2 < RenderCell.GAME_EDGELENGTH*body.getSpeed()*dt/(float)1000*RenderCell.GAME_EDGELENGTH*body.getSpeed()*dt/(float)1000; //sqrt(20)~=4,4
+
 	}
 
 	@Override
@@ -155,8 +178,8 @@ public class MoveToAi implements Telegraph, Serializable, Component {
 	 */
 	@Override
 	public void setParent(AbstractEntity body) {
-		if (!(body instanceof MovableEntity)){
-			Gdx.app.error("MoveToAi", "parent must be movable Entity");
+		if (!(body instanceof MovableEntity)) {
+			throw new IllegalArgumentException("Body must be instanceof " + MovableEntity.class.getSimpleName());
 		} else {
 			this.body = (MovableEntity) body;
 		}

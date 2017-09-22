@@ -28,16 +28,6 @@
  */
 package com.bombinggames.wurfelengine.mapeditor;
 
-import static com.bombinggames.wurfelengine.core.Controller.getMap;
-
-import java.io.FileNotFoundException;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Input.Buttons;
@@ -46,6 +36,7 @@ import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Vector2;
@@ -56,6 +47,7 @@ import com.bombinggames.wurfelengine.Command;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.Controller;
+import static com.bombinggames.wurfelengine.core.Controller.getMap;
 import com.bombinggames.wurfelengine.core.Events;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
@@ -63,7 +55,16 @@ import com.bombinggames.wurfelengine.core.gameobjects.Cursor;
 import com.bombinggames.wurfelengine.core.gameobjects.EntityShadow;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
+import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
+import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
+import java.io.FileNotFoundException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  *
@@ -117,13 +118,19 @@ public class EditorView extends GameView implements Telegraph {
 		}
 
 		if (oldView != null) {
+			Point center;
+			if (oldView.getCameras().isEmpty()) {
+				center = new Point();
+			} else {
+				center = oldView.getCameras().get(0).getCenter();
+			}
 			camera = new Camera(
 				this,
 				0,
 				0,
 				Gdx.graphics.getWidth(),
 				Gdx.graphics.getHeight(),
-				oldView.getCameras().get(0).getCenter()//keep position
+				center//keep position
 			);
 		} else {
 			camera = new Camera(
@@ -182,7 +189,8 @@ public class EditorView extends GameView implements Telegraph {
 	public void onEnter() {
 		controller.showCursor();
 		gameplayView.ifPresent(t -> {
-			camera.setCenter(t.getCameras().get(0).getCenter().cpy());
+			if (!t.getCameras().isEmpty())
+				camera.setCenter(t.getCameras().get(0).getCenter().cpy());
 		});//always keep the camera position
 		WE.getEngineView().addInputProcessor(new EditorInputListener(this.controller, this));
 		Gdx.input.setCursorCatched(false);
@@ -213,7 +221,7 @@ public class EditorView extends GameView implements Telegraph {
 		ArrayList<AbstractEntity> newSel = new ArrayList<>(4);
 		for (AbstractEntity ent : getMap().getEntities()) {
 			if (ent.hasPosition()) {
-				TextureAtlas.AtlasRegion aR = ent.getSprite();
+				GameSpaceSprite aR = ent.getSprite();
 				if (aR != null
 					&& ent.getPosition().getViewSpcX() + ent.getSprite().getRegionWidth() / 2 >= x1 //right sprite borde
 					&& ent.getPosition().getViewSpcX() - ent.getSprite().getRegionWidth() / 2 <= x2 //left spr. border
@@ -280,7 +288,7 @@ public class EditorView extends GameView implements Telegraph {
 
 			//outlines for selected entities
 			for (AbstractEntity selectedEntity : controller.getSelectedEntities()) {
-				TextureAtlas.AtlasRegion aR = selectedEntity.getSprite();
+				GameSpaceSprite aR = selectedEntity.getSprite();
 				shr.rect(
 					selectedEntity.getPosition().getProjectionSpaceX(this, camera) - aR.getRegionWidth() / 2,
 					selectedEntity.getPosition().getProjectionSpaceY(this, camera) - aR.getRegionHeight() / 2,
@@ -291,6 +299,7 @@ public class EditorView extends GameView implements Telegraph {
 					selectedEntity.getName(),
 					selectedEntity.getPosition().getProjectionSpaceX(this, camera) + aR.getRegionWidth() / 2,
 					selectedEntity.getPosition().getProjectionSpaceY(this, camera) - aR.getRegionHeight() / 2,
+					Color.WHITE.cpy(), 
 					true
 				);
 			}
@@ -497,6 +506,7 @@ public class EditorView extends GameView implements Telegraph {
 			if (button == Buttons.MIDDLE || (button == Buttons.LEFT && Gdx.input.isKeyPressed(Keys.ALT_LEFT))) {//middle mouse button works as pipet
 				if (toolSelection.getActiveTable() instanceof BlockTable) {
 					((BlockTable) toolSelection.getActiveTable()).select(coords.getBlockId(), coords.getBlockValue());
+					toolSelection.setValue(coords.getBlockValue());
 				}
 							
 			//other tools used

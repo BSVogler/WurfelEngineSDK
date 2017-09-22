@@ -36,9 +36,10 @@ import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import java.lang.reflect.InvocationTargetException;
 
 /**
- *
+ * Draw an entity in projection space.
  * @author Benedikt Vogler
  */
 public class EntityDrawable extends TextureRegionDrawable {
@@ -50,9 +51,11 @@ public class EntityDrawable extends TextureRegionDrawable {
 	 * @param type
 	 * @throws java.lang.InstantiationException
 	 * @throws java.lang.IllegalAccessException
+	 * @throws java.lang.NoSuchMethodException
+	 * @throws java.lang.reflect.InvocationTargetException
 	 */
-	public EntityDrawable(Class<? extends AbstractEntity> type) throws InstantiationException, IllegalAccessException {
-		instance = type.newInstance();
+	public EntityDrawable(Class<? extends AbstractEntity> type) throws InstantiationException, IllegalAccessException, NoSuchMethodException, IllegalArgumentException, InvocationTargetException {
+		instance = type.getDeclaredConstructor().newInstance();
 		if (instance.getSpriteId() > 0) {
 			//if bigger then default sprite size
 			float spiteHeight = AbstractGameObject.getSprite('e', instance.getSpriteId(), instance.getSpriteValue()).packedHeight;
@@ -67,21 +70,8 @@ public class EntityDrawable extends TextureRegionDrawable {
 	@Override
     public void draw(Batch batch, float x, float y, float width, float height) {
 		if (instance != null) {
-			batch.end();
 			
-			//then use gameplay batch
-			boolean wasDefault = false;
-			if (WE.getGameplay().getView().isUsingDefaultShader()) {
-				WE.getGameplay().getView().setShader(WE.getGameplay().getView().getShader());
-				wasDefault = true;
-			}
-			WE.getGameplay().getView().getSpriteBatch().begin();
-			instance.render(WE.getGameplay().getView(), (int) ((int) x+RenderCell.VIEW_WIDTH2*instance.getScaling()), (int) y);
-			WE.getGameplay().getView().getSpriteBatch().end();
-			if (wasDefault) {
-				WE.getGameplay().getView().useDefaultShader();
-			}
-			batch.begin();
+			instance.render(WE.getGameplay().getView(), (int) (x+RenderCell.VIEW_WIDTH2*instance.getScaling()), (int) y);
 		}
     }
 	

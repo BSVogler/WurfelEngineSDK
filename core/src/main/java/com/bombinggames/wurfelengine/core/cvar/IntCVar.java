@@ -66,7 +66,7 @@ public class IntCVar extends CVar {
 			this.value = Integer.parseInt((String) value);
 		else 
 			this.value = (int) value;
-		if (flags == CVarFlags.ARCHIVE) parent.save();
+		if (flags == CVarFlags.INSTANTSAVE) parent.save();
 	}
 
 

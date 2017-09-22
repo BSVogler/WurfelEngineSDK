@@ -30,9 +30,6 @@
  */
 package com.bombinggames.wurfelengine.extension.basicmainmenu;
 
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input.Buttons;
 import com.badlogic.gdx.audio.Sound;
@@ -44,6 +41,8 @@ import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.loading.LoadingScreen;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * A menu item is an object wich can be placed on a menu.
@@ -162,14 +161,11 @@ public class BasicMenuItem {
 			Gdx.app.exit();
 		} else {
 			try {
-				Controller c = getGameController().newInstance();
-				GameView v = getGameView().newInstance();
-				WE.initAndStartGame(c, v, new LoadingScreen());
-			} catch (InstantiationException ex) {
+				Controller c = getGameController().getDeclaredConstructor().newInstance();
+				GameView v = getGameView().getDeclaredConstructor().newInstance();
+				WE.initAndStartGame(new LoadingScreen(), c, v);
+			} catch (ReflectiveOperationException ex) {
 				Gdx.app.error("BasicMenuItem", "Failed intitalizing game by creating new instances of a class.");
-				Logger.getLogger(BasicMenuItem.class.getName()).log(Level.SEVERE, null, ex);
-			} catch (IllegalAccessException ex) {
-				Gdx.app.error("BasicMenuItem", "Failed intitalizing game.");
 				Logger.getLogger(BasicMenuItem.class.getName()).log(Level.SEVERE, null, ex);
 			}
 		}

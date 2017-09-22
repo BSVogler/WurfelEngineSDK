@@ -3,6 +3,7 @@ package com.bombinggames.wurfelengine.core.gameobjects;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Vector3;
+import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Intersection;
@@ -96,8 +97,11 @@ public class PointLightSource extends AbstractEntity {
 		if (hasPosition()) {
 			Point origin = getPosition();
 			lastPos.set(origin);
+			//local var for faster performance
+			float[][][][] lightcache = this.lightcache;
 			
-			//light blocks around
+			Vector3[] sidesvectors = new Vector3[]{Side.LEFT.toVector(), Side.TOP.toVector(), Side.RIGHT.toVector()};
+			//light blocks around, rumtime O(2*radius^3)
 			Vector3 dir = new Vector3();
 			for (int z = -radius; z < radius; z++) {
 				for (int x = -radius; x < radius; x++) {
@@ -126,12 +130,13 @@ public class PointLightSource extends AbstractEntity {
 							//get back edge of block
 							Point impactP = getPosition().toCoord().add(x, y, z).toPoint().add(0, -RenderCell.GAME_DIAGLENGTH2, 0);
 							//this should work in the future:getPoint().cpy().setToCenterOfCell().addCoord(x, y, z).add(0, -RenderCell.GAME_DIAGLENGTH2, 0)
-							float pow = origin.distanceTo(impactP) / RenderCell.GAME_EDGELENGTH;
-							float l = (1 + brightness) / (pow * pow);
+							
+							float pow = origin.distanceToSquared(impactP) / (RenderCell.GAME_EDGELENGTH*RenderCell.GAME_EDGELENGTH);
+							float l = (1 + brightness) / pow;
 
 							Vector3 vecToBlock = origin.cpy().sub(impactP).nor();
 							//side 0
-							float lambert = vecToBlock.dot(Side.LEFT.toVector());
+							float lambert = vecToBlock.dot(sidesvectors[0]);
 
 							float newbright = l *lambert* (0.15f + 0.1f * 0.005f);
 							if (lambert > 0 && newbright > lightcache[x + radius][y + radius * 2][z + radius][0]) {
@@ -139,7 +144,7 @@ public class PointLightSource extends AbstractEntity {
 							}
 
 							//side 1
-							lambert = vecToBlock.dot(Side.TOP.toVector());
+							lambert = vecToBlock.dot(sidesvectors[1]);
 
 							newbright = l * lambert * (0.15f + 0.2f * 0.005f);
 							if (lambert > 0 && newbright > lightcache[x + radius][y + radius * 2][z + radius][1]) {
@@ -147,7 +152,7 @@ public class PointLightSource extends AbstractEntity {
 							}
 
 							//side 2
-							lambert = vecToBlock.dot(Side.RIGHT.toVector());
+							lambert = vecToBlock.dot(sidesvectors[2]);
 
 							newbright = l *lambert* (0.15f + 0.25f * 0.005f);
 							if (lambert > 0 && newbright > lightcache[x + radius][y + radius * 2][z + radius][2]) {
@@ -164,7 +169,7 @@ public class PointLightSource extends AbstractEntity {
 	public void update(float dt) {
 		super.update(dt);
 
-		if (enabled && hasPosition()) {
+		if (enabled && WE.getCVars().getValueB("enableVertexLighting") && hasPosition()) {
 			//check if moved and therefore has to be recalculated
 			if (!getPosition().equals(lastPos)) {
 				lightNearbyBlocks(dt);
@@ -183,8 +188,8 @@ public class PointLightSource extends AbstractEntity {
 						//get the light in the cache
 						float[] blocklight = lightcache[x + radius][y + radius * 2][z + radius];
 						tmpCoord.set(xCenter + x, yCenter + y, zCenter + z);
-						RenderCell rB = tmpCoord.getRenderCell(view.getRenderStorage());
-						if (rB != null && !rB.isHidden()) {
+						RenderCell rC = tmpCoord.getRenderCell(view.getRenderStorage());
+						if (rC != null && !rC.isHidden()) {
 							tmpCoord.addLightToBackEdge(view, Side.LEFT, tmpColor.set(color).mul(blocklight[0]));
 							tmpCoord.addLightToBackEdge(view, Side.TOP, tmpColor.set(color).mul(blocklight[1]));
 							tmpCoord.addLightToBackEdge(view, Side.RIGHT, tmpColor.set(color).mul(blocklight[2]));

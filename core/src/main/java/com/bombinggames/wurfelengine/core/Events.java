@@ -99,7 +99,7 @@ public enum Events {
 	chunkChanged(22),
 	
 	/**
-	 *
+	 * event fired when a block in the map changed
 	 */
 	mapChanged(23),
 	
@@ -109,9 +109,11 @@ public enum Events {
 	mapReloaded(24),
 
 	/**
-	 * if a cell is changed
+	 * if a cell is changed. Extra information contains {@link com.bombinggames.wurfelengine.core.map.Coordinate}
 	 */
-	cellChanged(25);
+	cellChanged(25),
+	
+	renderStorageChanged(26);
 	
 	private final int id;
 

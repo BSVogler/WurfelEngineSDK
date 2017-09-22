@@ -30,11 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core.map.rendering;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
@@ -45,8 +40,13 @@ import com.bombinggames.wurfelengine.core.Events;
 import com.bombinggames.wurfelengine.core.lightengine.AmbientOcclusionCalculator;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
+import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator3D;
 import com.bombinggames.wurfelengine.core.map.Point;
-import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator;
+import com.bombinggames.wurfelengine.core.sorting.TopoGraphNode;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
 
 /**
  * A RenderStorage is container which saves {@link RenderChunk}s used for chunks storing rendering-data. It manages which {@link Chunk}s must be transformed to {@link RenderChunk}s.
@@ -59,23 +59,48 @@ public class RenderStorage implements Telegraph  {
 	 */
 	private final LinkedList<RenderChunk> data = new LinkedList<>();
 	private final List<Camera> cameraContainer;
-	/**
-	 * index means camera
-	 */
-	private final ArrayList<Integer> lastCenterX, lastCenterY;
+
 	/**
 	 * a list of cells marked as dirty. Dirty cells are reshaded.
 	 */
 	private final HashSet<Coordinate> dirtyFlags = new HashSet<>(200);
 	private float zRenderingLimit = Float.POSITIVE_INFINITY;
+	/**
+	 * set to true for a frame if block was added or removed
+	 */
+	private boolean modified;
+	/**
+	 * set to true for a frame if a chunk was added or removed
+	 */
+	private boolean chunkChanged;
 
 	/**
 	 * Creates a new renderstorage.
 	 */
 	public RenderStorage() {
 		this.cameraContainer = new ArrayList<>(1);
-		lastCenterX = new ArrayList<>(1);
-		lastCenterY = new ArrayList<>(1);
+		MessageManager.getInstance().addListener(this, Events.cellChanged.getId());
+	}
+	
+	/**
+	 * creates a new {@link RenderCell} instance at the coordinate
+	 * 
+	 * @param coord
+	 * @param id
+	 * @param value 
+	 * @return the instance or null if the process failed 
+	 */
+	public RenderCell refreshCell(Coordinate coord, byte id, byte value){
+		if (coord.getZ() >= 0) {
+			RenderChunk chunk = getChunk(coord);
+			if (chunk == null) {
+				throw new IllegalAccessError("chunk with coordinate could not be accessed");
+			}
+			RenderCell instance = RenderCell.newInstance(id, value);
+			chunk.setCell(coord.getX(), coord.getY(), coord.getZ(), instance);
+			return instance;
+		}
+		throw new IllegalArgumentException("coordinate is under the map");
 	}
 	
 	/**
@@ -92,12 +117,16 @@ public class RenderStorage implements Telegraph  {
 	 */
 	public void update(float dt){
 		checkNeededChunks();
+		
+		if (modified){
+			bakeChunks();
+		}
 		//update rendderblocks
 		for (RenderChunk renderChunk : data) {
 			for (RenderCell[][] x : renderChunk.getData()) {
 				for (RenderCell[] y : x) {
 					for (RenderCell z : y) {
-						if (z != RenderChunk.NULLPOINTEROBJECT) {
+						if (z != RenderChunk.CELLOUTSIDE) {
 							z.update(dt);
 						}
 					}
@@ -123,14 +152,6 @@ public class RenderStorage implements Telegraph  {
 						checkChunk(camera.getCenterChunkX() + x, camera.getCenterChunkY() + y);
 					}
 				}
-				//check if center changed
-				if (lastCenterX.get(i) == null || lastCenterX.get(i) != camera.getCenterChunkX() || lastCenterY.get(i) != camera.getCenterChunkY()) {
-					//update the last center
-					lastCenterX.set(i, camera.getCenterChunkX());
-					lastCenterY.set(i, camera.getCenterChunkY());
-					//rebuild
-					RenderCell.rebuildCoverList();
-				}
 			}
 		}
 		
@@ -138,32 +159,40 @@ public class RenderStorage implements Telegraph  {
 		data.forEach(chunk -> {
 			if (!chunk.getCameraAccess()) {
 				chunk.dispose();
+				chunkChanged=true;
 			}
 		});
 		data.removeIf(chunk -> !chunk.getCameraAccess());
+		if (chunkChanged){
+			chunkChanged=false;
+			MessageManager.getInstance().dispatchMessage(Events.renderStorageChanged.getId());
+			//request a rebuild of toposortgraph
+			TopoGraphNode.flagRebuildCoverList();
+		}
 	}
 	
 	/**
-	 * Checks if chunk must be loaded or deleted.
+	 * Checks if specific {@link RenderChunk} must be loaded or deleted.
+	 * If chunk is there camera access flag is set to true.
 	 *
-	 * @param x
-	 * @param y
+	 * @param x chunk coordinate
+	 * @param y chunk coordinate
 	 */
 	private void checkChunk(int x, int y) {
-		//check if in render storage
+		//check if chunk is in render storage
 		RenderChunk rChunk = getChunk(x, y);
 		if (rChunk == null) {
+			
+			//is chunk data is in RAM then create new renderchunk and put in renderStorage
 			Chunk mapChunk = Controller.getMap().getChunk(x, y);
-			//is chunk data in RAM?
 			if (mapChunk != null) {
-				//create new renderchunk and put in renderStorage
 				rChunk = new RenderChunk(mapChunk);
 				data.add(rChunk);
 				rChunk.setCameraAccess(true);
 				AmbientOcclusionCalculator.calcAO(this, rChunk);
 				occlusionCulling(rChunk);
 
-				//update neighbors
+				//update neighbor chunks
 				RenderChunk neighbor = getChunk(x - 1, y);
 				if (neighbor != null) {
 					occlusionCulling(neighbor);
@@ -176,6 +205,8 @@ public class RenderStorage implements Telegraph  {
 				if (neighbor != null) {
 					occlusionCulling(neighbor);
 				}
+				
+				chunkChanged=true;
 			}
 		} else {
 			rChunk.setCameraAccess(true);
@@ -203,15 +234,15 @@ public class RenderStorage implements Telegraph  {
 	
 	/**
 	 * Marks this block as "dirty".
-	 * @param rB
+	 * @param coord
 	 */
-	public void setLightFlag(RenderCell rB) {
-		dirtyFlags.add(rB.getPosition());//passing coordinates makes using the same coordiante for more then one illegal, therefore read coord from rendercell
+	public void setLightFlag( Coordinate coord) {
+		dirtyFlags.add(coord);
 	}
 	
 	
 	/**
-	 * Clears the used RenderChunks then rebuilds them (shadows, AO,  occlusion culling).
+	 * Clears the the content of the used {@link RenderChunk}s then after refilling them calculates the renderdata (shadows, AO,  occlusion culling). Very heavy operation.
 	 */
 	public void bakeChunks() {
 		//loop over clone because may add new chunks in different thread to data while looping
@@ -223,11 +254,12 @@ public class RenderStorage implements Telegraph  {
 		dataclone.forEach((RenderChunk rChunk) -> {
 			AmbientOcclusionCalculator.calcAO(this, rChunk);
 			occlusionCulling(rChunk);
-		});			
+		});
+		modified=false;
 	}
 	
 	/**
-	 * get the chunk where the coordinates are on.
+	 * get the chunk where the coordinates are on. Worst case O(n). Average case O(1).
 	 *
 	 * @param coord not altered
 	 * @return can return null if not loaded
@@ -235,7 +267,7 @@ public class RenderStorage implements Telegraph  {
 	public RenderChunk getChunk(final Coordinate coord) {
 		int left, top;
 		//loop over storage
-		for (RenderChunk chunk : data) {
+		for (RenderChunk chunk : data) {//impact of using this loop has to be measured
 			left = chunk.getTopLeftCoordinateX();
 			top = chunk.getTopLeftCoordinateY();
 			//check if coordinates are inside the chunk
@@ -297,24 +329,24 @@ public class RenderStorage implements Telegraph  {
 				return chunk.getCell(x, y, z);//find chunk in x coord
 			}
 		}
-		return RenderChunk.NULLPOINTEROBJECT;
+		return RenderChunk.CELLOUTSIDE;
 	}
 
 	/**
-	 * If the cell can not be found returns null pointer.
+	 * If the cell can not be found returns {@link RenderChunk#CELLOUTSIDE}.
 	 *
 	 * @param coord transform safe
 	 * @return
 	 */
 	public RenderCell getCell(final Coordinate coord) {
 		if (coord.getZ() < 0) {
-			return RenderChunk.NULLPOINTEROBJECT;
+			return RenderChunk.CELLOUTSIDE;
 		}
 		RenderChunk chunk = getChunk(coord);
 		if (chunk == null) {
-			return RenderChunk.NULLPOINTEROBJECT;
+			return RenderChunk.CELLOUTSIDE;
 		} else {
-			return chunk.getCell(coord.getX(), coord.getY(), coord.getZ());//find chunk in x coord
+			return chunk.getCell(coord.getX(), coord.getY(), coord.getZ());//find coord in chunk
 		}
 	}
 	
@@ -368,13 +400,14 @@ public class RenderStorage implements Telegraph  {
 				break;
 		}
 
-		return RenderStorage.this.getCell(xCoord, yCoord, Math.floorDiv((int) point.z, RenderCell.GAME_EDGELENGTH));
+		return getCell(xCoord, yCoord, Math.floorDiv((int) point.z, RenderCell.GAME_EDGELENGTH));
 	}
 	
 	
 	
 	/**
-	 * performs a simple clipping check by looking at the direct neighbours. O(n) where n is blocks in chunk
+	 * performs a simple clipping check by looking at the direct neighbours.
+	 * O(n) where n is blocks in chunk
 	 *
 	 * @param chunk
 	 */
@@ -383,35 +416,19 @@ public class RenderStorage implements Telegraph  {
 			throw new IllegalArgumentException();
 		}
 
-
 		chunk.resetClipping();
-
-		//loop over floor for ground level
-		//DataIterator floorIterator = chunk.getIterator(0, 0);
-//		while (floorIterator.hasNext()) {
-//			if (((Block) floorIterator.next()).hidingPastBlock())
-//				chunk.getCell(
-//					floorIterator.getCurrentIndex()[0],
-//					floorIterator.getCurrentIndex()[1],
-//					chunkY)setClippedTop(
-//					floorIterator.getCurrentIndex()[0],
-//					floorIterator.getCurrentIndex()[1],
-//					-1
-//				);
-//		}
-
 		RenderCell[][][] chunkData = chunk.getData();
 		//iterate over chunk
-		DataIterator<RenderCell> dataIter = new DataIterator<>(
+		DataIterator3D<RenderCell> dataIter = new DataIterator3D<>(
 			chunkData,
 			0,
-			(int) (zRenderingLimit/RenderCell.GAME_EDGELENGTH)
+			(int) (zRenderingLimit / RenderCell.GAME_EDGELENGTH)
 		);
 
 		while (dataIter.hasNext()) {
 			RenderCell current = dataIter.next();//next is the current block
 
-			if (current != RenderChunk.NULLPOINTEROBJECT) {
+			if (current != RenderChunk.CELLOUTSIDE) {
 				//calculate index position relative to camera border
 				final int x = dataIter.getCurrentIndex()[0];
 				final int y = dataIter.getCurrentIndex()[1];
@@ -421,7 +438,7 @@ public class RenderStorage implements Telegraph  {
 				//get neighbour block
 				RenderCell neighbour = getCellByIndex(chunk, x - ((y % 2 == 0) ? 1 : 0), y + 1, z);//next row can be shifted right(?)
 
-				if (neighbour != RenderChunk.NULLPOINTEROBJECT
+				if (neighbour != RenderChunk.CELLOUTSIDE
 					&& (neighbour.hidingPastBlock() || (neighbour.isLiquid() && current.isLiquid()))) {
 					current.setClippedLeft();
 				}
@@ -430,7 +447,7 @@ public class RenderStorage implements Telegraph  {
 				//get neighbour block
 				neighbour = getCellByIndex(chunk, x + ((y % 2 == 0) ? 0 : 1), y + 1, z);//next row is shifted right
 
-				if (neighbour != RenderChunk.NULLPOINTEROBJECT
+				if (neighbour != RenderChunk.CELLOUTSIDE
 					&& (neighbour.hidingPastBlock() || (neighbour.isLiquid() && current.isLiquid()))) {
 					current.setClippedRight();
 				}
@@ -441,7 +458,7 @@ public class RenderStorage implements Telegraph  {
 					if (
 						neighbour.hidingPastBlock()
 						||
-						(chunkData[x][y][z + 1] != RenderChunk.NULLPOINTEROBJECT
+						(chunkData[x][y][z + 1] != RenderChunk.CELLOUTSIDE
 						&& (chunkData[x][y][z + 1].hidingPastBlock()
 						|| chunkData[x][y][z + 1].isLiquid() && current.isLiquid()))
 					) {
@@ -474,7 +491,7 @@ public class RenderStorage implements Telegraph  {
 	}
 
 	private RenderCell getNewGroundCellInstance() {
-		return RenderCell.newRenderCell((byte) WE.getCVars().getValueI("groundBlockID"), (byte) 0); //the representative of the bottom layer (ground) block
+		return RenderCell.newInstance((byte) WE.getCVars().getValueI("groundBlockID"), (byte) 0); //the representative of the bottom layer (ground) block
 	}
 
 	/**
@@ -492,8 +509,6 @@ public class RenderStorage implements Telegraph  {
 	public void addCamera(Camera camera) {
 		if (!cameraContainer.contains(camera)) {//avoid duplicates
 			this.cameraContainer.add(camera);
-			lastCenterX.add(null);
-			lastCenterY.add(null);
 		}
 	}
 	
@@ -543,10 +558,28 @@ public class RenderStorage implements Telegraph  {
 	
 	@Override
 	public boolean handleMessage(Telegram msg) {
-		if (msg.message == Events.mapChanged.getId()) {
-			bakeChunks();//coould be optimized by only updating blocks that changed
-			RenderCell.rebuildCoverList();
-			return true;
+		if (msg.message == Events.cellChanged.getId()) {
+			//get coordinate from message and get cell
+			Coordinate coord = (Coordinate)msg.extraInfo;
+			TopoGraphNode toponode = getCell(coord).getTopoNode();
+			if (toponode != null) {//if the message is not possible
+				int blockdata = coord.getBlock();
+				RenderCell instance = refreshCell(coord, (byte) (blockdata & 255), (byte) (blockdata >> 8 & 255));
+				toponode.setCell(instance);
+				instance.setTopoNode(toponode);
+				
+				//calculates shadow for single coordinate, at the moment redudant because of heavy modified flag below
+				//setLightFlag(coord);
+				
+				
+				//this should be only be performed for the neighbors cells and not every renderchunk
+				modified=true;//todo
+				//recaluculate AO for neighbors
+				//oclusion culling for neighbors
+			}
+			
+			
+			return false;
 		}
 		
 		return false;
@@ -557,7 +590,7 @@ public class RenderStorage implements Telegraph  {
 	 */
 	public void dispose() {
 		RenderChunk.clearPool();
-		MessageManager.getInstance().removeListener(this, Events.mapChanged.getId());
+		MessageManager.getInstance().removeListener(this, Events.cellChanged.getId());
 	}
 
 }

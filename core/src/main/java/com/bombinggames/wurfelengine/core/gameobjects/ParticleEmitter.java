@@ -37,6 +37,7 @@ import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Pool;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.map.Point;
+import java.util.Random;
 
 /**
  * Light is per default disabled.
@@ -46,6 +47,8 @@ import com.bombinggames.wurfelengine.core.map.Point;
 public class ParticleEmitter extends AbstractEntity {
 
 	private static final long serialVersionUID = 2L;
+	
+	private final static Random RANDOMGENERATOR = new java.util.Random(1);
 	private boolean active = false;
 	/**
 	 * counts the time
@@ -60,7 +63,7 @@ public class ParticleEmitter extends AbstractEntity {
 	private Vector3 spread = new Vector3(0, 0, 0);
 	private PointLightSource lightsource;
 	private Particle prototype = new Particle((byte) 22);
-	private Pool<Particle> pool;
+	private transient Pool<Particle> pool;
 
 	/**
 	 * Initializes with defautl size
@@ -81,6 +84,19 @@ public class ParticleEmitter extends AbstractEntity {
 		setIndestructible(true);
 		setName("Particle Emitter");
 		setActive(true);
+		setHidden(true);
+		
+		setParticleStartMovement(new Vector3(
+			(RANDOMGENERATOR.nextFloat() - 0.5f) * 2,
+			(RANDOMGENERATOR.nextFloat() - 0.5f) * 2,
+			(RANDOMGENERATOR.nextFloat() - 0.5f) * 2
+		));
+		setParticleSpread(new Vector3(
+			(RANDOMGENERATOR.nextFloat() - 0.5f) * 2*0.4f,
+			(RANDOMGENERATOR.nextFloat() - 0.5f) * 2*0.4f,
+			(RANDOMGENERATOR.nextFloat() - 0.5f) * 2*0.4f
+		));
+		
 		pool = new Pool<Particle>(size) {
 			@Override
 			protected Particle newObject() {
@@ -90,12 +106,12 @@ public class ParticleEmitter extends AbstractEntity {
 
 			@Override
 			public Particle obtain() {
-				boolean init = false;
+				boolean mustInitialize = false;
 				if (getFree() > 0) {
-					init = true;//will obtain from pool
+					mustInitialize = true;//will obtain from pool
 				}
 				Particle particle = super.obtain();
-				if (init) {
+				if (mustInitialize) {
 					particle.init(2000f);
 				}
 				return particle;
@@ -127,18 +143,20 @@ public class ParticleEmitter extends AbstractEntity {
 			//loop to allow more then one spawn each frame
 			while (timer >= timeEachSpawn) {
 				timer -= timeEachSpawn;
+				//create new particle
 				Particle particle = pool.obtain();
 				particle.setPool(pool);
 				particle.setType(prototype.getType());
 				particle.setColor(prototype.getColor());
 				particle.setRotation((float) (Math.random() * 360f));
+				particle.addMovement(startingVector);
+				//add a little noise
 				particle.addMovement(
-					startingVector.add(
-						(float) (Math.random() - 0.5f) * 2 * spread.x,
-						(float) (Math.random() - 0.5f) * 2 * spread.y,
-						(float) (Math.random() - 0.5f) * 2 * spread.z
-					)
+					(RANDOMGENERATOR.nextFloat() - 0.5f) * 2 * spread.x,
+					(RANDOMGENERATOR.nextFloat() - 0.5f) * 2 * spread.y,
+					(RANDOMGENERATOR.nextFloat() - 0.5f) * 2 * spread.z
 				);
+					
 				if (particle.hasPosition()) {
 					particle.getPosition().set(getPosition());
 				} else {

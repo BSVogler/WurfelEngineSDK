@@ -16,13 +16,22 @@ public class DestructionParticle extends MovableEntity {
 	private float modMoved =0;
 
 	/**
+	 * 
+	 */
+	public DestructionParticle() {
+		this((byte) 0);
+	}
+
+	
+	/**
 	 *
 	 * @param id
 	 */
 	public DestructionParticle(byte id) {
-		super(id,(byte) 0, false);
+		super(id,(byte) 0);
 		setSavePersistent(false);
 		addMovement(new Vector3((float) Math.random()-0.5f, (float) Math.random()-0.5f,(float) Math.random()*5f));
+		setScaling((float) (1-Math.random()*0.5f));
 		setRotation((float) Math.random()*360);
 		setMass(1.5f);
 		setName("Destruction Particle");
@@ -39,7 +48,7 @@ public class DestructionParticle extends MovableEntity {
 			modMoved = modMoved % rotateEachNMeters;
 		}
 		
-		if (timeofExistance>2000) dispose();
+		if (timeofExistance>6000) dispose();
 		
 	}
 	

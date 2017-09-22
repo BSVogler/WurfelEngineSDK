@@ -30,10 +30,6 @@
  */
 package com.bombinggames.wurfelengine.soundengine;
 
-import java.io.FileNotFoundException;
-import java.util.ArrayList;
-import java.util.HashMap;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.audio.Sound;
@@ -43,6 +39,9 @@ import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import java.io.FileNotFoundException;
+import java.util.ArrayList;
+import java.util.HashMap;
 
 /**
  * Manages the sounds in the game world.
@@ -59,6 +58,7 @@ public class SoundEngine {
 	 */
 	private float musicLoudness = 1;
 	private Music music;
+	private float loudnessSound;
 
 	/**
 	 * loads and registers the ig-sounds
@@ -89,7 +89,7 @@ public class SoundEngine {
 				Sound s = WE.getAsset(path);
 				sounds.put(identifier, s);
 			} catch (FileNotFoundException ex) {
-				Gdx.app.debug("SoundEngine", "Registering of "+ identifier+ " failed. File may not be loaded.");
+				Gdx.app.debug("SoundEngine", "Registering of " + identifier + " failed. File may not be loaded.");
 			}
 		}
 	}
@@ -132,11 +132,15 @@ public class SoundEngine {
 				if (view.getCameras().size() > 0) {
 					pan = pos.getViewSpcX() - view.getCameras().get(0).getViewSpaceX();
 					pan /= 500;//arbitrary chosen
-					if (pan > 1) pan = 1;
-					if (pan < -1) pan = -1;
+					if (pan > 1) {
+						pan = 1;
+					}
+					if (pan < -1) {
+						pan = -1;
+					}
 				}
 			} else {
-				volume *= WE.getCVars().getValueF("sound");
+				volume *= loudnessSound;
 			}
 			if (volume >= 0.1) { //only play sound louder>10%
 				result.play(volume, 1, pan);
@@ -158,7 +162,7 @@ public class SoundEngine {
 		}
 		return 0;
 	}
-	
+
 	/**
 	 * *
 	 *
@@ -221,11 +225,13 @@ public class SoundEngine {
 	 * @see com.badlogic.​gdx.​audio.​Sound#loop()
 	 */
 	public long loop(String identifier, Position pos) {
-		Sound result = sounds.get(identifier);
-		if (result != null) {
-			long id = result.loop(WE.getCVars().getValueF("sound"));
-			playingLoops.add(new SoundInstance(this, result, id, pos));
-			return id;
+		if (loudnessSound > 0) {
+			Sound result = sounds.get(identifier);
+			if (result != null) {
+				long id = result.loop(loudnessSound);
+				playingLoops.add(new SoundInstance(this, result, id, pos));
+				return id;
+			}
 		}
 		return 0;
 	}
@@ -281,7 +287,7 @@ public class SoundEngine {
 	public void setVolume(String identifier, long instance, float volume) {
 		Sound result = sounds.get(identifier);
 		if (result != null) {
-			result.setVolume(instance, volume);
+			result.setVolume(instance, volume * loudnessSound);
 		}
 	}
 
@@ -290,9 +296,10 @@ public class SoundEngine {
 	 * @param dt
 	 */
 	public void update(float dt) {
-		float loudness = WE.getCVars().getValueF("music");
-		if (loudness != getMusicLoudness()) {
-			setMusicLoudness(loudness);
+		float loudnessMusic = WE.getCVars().getValueF("music");
+		loudnessSound = WE.getCVars().getValueF("sound");
+		if (loudnessMusic != getMusicLoudness()) {
+			setMusicLoudness(loudnessMusic);
 		}
 		for (SoundInstance sound : playingLoops) {
 			sound.update();
@@ -334,7 +341,7 @@ public class SoundEngine {
 				volume = 1;
 			}
 		}
-		return volume * WE.getCVars().getValueF("sound");
+		return volume * loudnessSound;
 	}
 
 	/**

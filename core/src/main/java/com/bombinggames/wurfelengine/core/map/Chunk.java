@@ -30,17 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core.map;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InvalidClassException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.util.ArrayList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.msg.Telegram;
@@ -53,6 +42,16 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InvalidClassException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.util.ArrayList;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * A Chunk is filled with many Blocks and is a part of the map.
@@ -164,6 +163,9 @@ public class Chunk implements Telegraph {
 	 * A list containing the logic blocks to be updated. Each logic block object points to some block inside this chunk.
 	 */
 	private final ArrayList<AbstractBlockLogicExtension> logicBlocks = new ArrayList<>(4);
+	/**
+	 * keeps track of a change in this frame
+	 */
 	private boolean modified;
 
 	/**
@@ -286,7 +288,8 @@ public class Chunk implements Telegraph {
 					data[x][y][z + 1] = (byte) ((generated>>8)&255);
 					data[x][y][z + 2] = 100;//health
 					if (data[x][y][z] != 0) {
-						AbstractBlockLogicExtension logic = RenderCell.createLogicInstance(data[x][y][z],
+						AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(
+							data[x][y][z],
 							data[x][y][z + 1],
 							new Coordinate(left + x, top + y, z)
 						);
@@ -320,7 +323,7 @@ public class Chunk implements Telegraph {
 			chunkInRoot.copyTo(Gdx.files.absolute(path+"/save"+saveSlot+"/chunk"+coordX+","+coordY+"."+CHUNKFILESUFFIX));
 			load(path, saveSlot, coordX, coordY);
 		} else {
-			Gdx.app.log("Chunk","Restoring:" + chunkInRoot +" failed.");
+			Gdx.app.log("Chunk","Restoring "+ coordX+","+coordY + " from root failed.");
 			return false;
 		}
 		return true;
@@ -396,8 +399,8 @@ public class Chunk implements Telegraph {
 							data[x][y][z * 3 + 2] = 100;//health
 							//if has logicblock then add logicblock
 							if (id != 0) {
-								if (RenderCell.hasLogic(id, bChar)) {
-									AbstractBlockLogicExtension logic = RenderCell.createLogicInstance(
+								if (AbstractBlockLogicExtension.isRegistered(id)) {
+									AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(
 										id,
 										bChar,
 										new Coordinate(
@@ -423,7 +426,8 @@ public class Chunk implements Telegraph {
 							id = -1;
 						}
 					} catch (ArrayIndexOutOfBoundsException ex) {
-						Gdx.app.error("Chunk", "too much blocks loaded:" + x + "," + y + "," + z + ". Map file corrrupt?");
+						Gdx.app.error("Chunk", "too much blocks loaded in chunk "+chunkX+","+chunkY+" position" + x + "," + y + "," + z + ". Map file corrrupt?");
+						break;
 					}
 				}
 			}
@@ -468,7 +472,8 @@ public class Chunk implements Telegraph {
 					}
 					ois.close();
 				} catch (IOException ex) {
-					Gdx.app.error("Chunk", "Loading of entities in chunk" + path + "/" + chunkX + "," + chunkY + " failed: " + ex);
+					Gdx.app.error("Chunk", "Loading of entities in chunk" + path + "/" + chunkX + "," + chunkY + " failed");
+					ex.printStackTrace();
 				} catch (java.lang.NoClassDefFoundError ex) {
 					Gdx.app.error("Chunk", "Loading of entities in chunk " + path + "/" + chunkX + "," + chunkY + " failed. Map file corrupt: " + ex);
 				}
@@ -508,10 +513,10 @@ public class Chunk implements Telegraph {
 				return true;
 
 			} catch (IOException ex){
-				Gdx.app.error("Chunk","Loading of chunk " +path+"/"+coordX+","+coordY + " failed. Chunk or meta file corrupt: "+ex);
+				Gdx.app.error("Chunk","Loading of chunk "+coordX+","+coordY + " failed. Chunk or meta file corrupt: "+ex);
 			}
 		} else {
-			Gdx.app.log("Chunk",savepath+" could not be found on disk. Trying to restore chunk.");
+			Gdx.app.log("Chunk", coordX+","+coordY + " could not be found on disk. Trying to load from root next.");
 			if (restoreFromRoot(path, saveSlot, coordX, coordY))
 				load(path, saveSlot, coordX, coordY);
 		}
@@ -586,7 +591,7 @@ public class Chunk implements Telegraph {
 						try {
 							fileOut.writeObject(ent);
 						} catch(java.io.NotSerializableException ex){
-							Gdx.app.error("Chunk", "Something is not NotSerializable: "+ex.getMessage()+":"+ex.toString());
+							Gdx.app.error("Chunk", "A class used in "+ent.getClass().getName()+" is not NotSerializable: "+ ex.toString());
 						}
 					}
 				}
@@ -600,7 +605,7 @@ public class Chunk implements Telegraph {
     }
 
 	/**
-     * Returns the data of the chunk
+     * Returns the data of the chunk. each block uses three bytes, id, value and health
      * @return
      */
     public byte[][][] getData() {
@@ -697,26 +702,56 @@ public class Chunk implements Telegraph {
 	}
 
 	/**
-	 * sets a block in the map. if position is under the map does nothing.
-	 * @param rblock no null pointer allowed
+	 * Almost lowest level method to set a block in the map. If the block has
+	 * logic a new {@link AbstractBlockLogicExtension} instance will be created.
+	 * Health set to 100 and value set to 0
+	 * @param x
+	 * @param y
+	 * @param z
+	 * @param id 
 	 */
-	public void setBlock(RenderCell rblock) {
-		int xIndex = rblock.getPosition().getX()-topleftX;
-		int yIndex = rblock.getPosition().getY()-topleftY;
-		int z = rblock.getPosition().getZ()*3;
+	public void setBlock(int x, int y, int z, byte id) {
+		int xIndex = x - topleftX;
+		int yIndex = y - topleftY;
+		z = z*3;//because each block uses three bytes
 		if (z >= 0){
-			data[xIndex][yIndex][z] = rblock.getId();
-			data[xIndex][yIndex][z+1] = rblock.getValue();
-			data[xIndex][yIndex][z+2] = rblock.getHealth();
+			data[xIndex][yIndex][z] = id;
+			data[xIndex][yIndex][z+1] = 0;
+			data[xIndex][yIndex][z+2] = 100;
 			modified = true;
+			//get corresponding logic and update
+			if (id != 0) {
+				AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, (byte) 0, new Coordinate(x, y, z));
+				if (logic != null)
+					logicBlocks.add(logic);
+			}
+			MessageManager.getInstance().dispatchMessage(Events.cellChanged.getId(), new Coordinate(x, y, z));
 		}
-		
-		//get corresponding logic and update
-		if (rblock.getId() != 0) {
-			AbstractBlockLogicExtension logic = RenderCell.createLogicInstance(rblock.getId(), rblock.getValue(), rblock.getPosition());
-			if (logic != null)
-				logicBlocks.add(logic);
-		}
+	}
+	
+	/**
+	 * Almost lowest level method to set a block in the map. If the block has
+	 * logic a new {@link AbstractBlockLogicExtension} instance will be created.
+	 * Health set to 100 and value set to 0
+	 *
+	 * @param coord
+	 * @param id
+	 */
+	public void setBlock(Coordinate coord, byte id) {
+		setBlock(coord, id, (byte) 0, (byte) 100);
+	}
+
+	/**
+	 * Almost lowest level method to set a block in the map. If the block has
+	 * logic a new {@link AbstractBlockLogicExtension} instance will be created.
+	 * Sets health to 100.
+	 *
+	 * @param coord
+	 * @param id
+	 * @param value
+	 */
+	public void setBlock(Coordinate coord, byte id, byte value) {
+		setBlock(coord, id, value, (byte) 100);
 	}
 
 	/**
@@ -732,73 +767,24 @@ public class Chunk implements Telegraph {
 	public void setBlock(Coordinate coord, byte id, byte value, byte health) {
 		int xIndex = coord.getX() - topleftX;
 		int yIndex = coord.getY() - topleftY;
-		int z = coord.getZ()*3;
-		if (z >= 0){
+		int z = coord.getZ() * 3;
+		if (z >= 0) {
 			data[xIndex][yIndex][z] = id;
-			data[xIndex][yIndex][z+1] = value;
-			data[xIndex][yIndex][z+2] = health;
+			data[xIndex][yIndex][z + 1] = value;
+			data[xIndex][yIndex][z + 2] = health;
 			modified = true;
+
+			//get corresponding logic and update
+			if (id != 0) {
+				AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(id, value, coord);
+				if (logic != null) {
+					logicBlocks.add(logic);//maybe this leads to duplicates
+				}
+			}
+
+			MessageManager.getInstance().dispatchMessage(Events.cellChanged.getId(), coord);
 		}
-		
-		//get corresponding logic and update
-		if (id != 0) {
-			AbstractBlockLogicExtension logic = RenderCell.createLogicInstance(id, value, coord);
-			if (logic != null)
-				logicBlocks.add(logic);
-		}
-	}
-	
-	/**
-	 * Almost lowest level method to set a block in the map. If the block has
-	 * logic a new logicinstance will be created.
-	 * Sets health to 100.
-	 * @param coord
-	 * @param id
-	 * @param value 
-	 */
-	public void setBlock(Coordinate coord, byte id, byte value) {
-		int xIndex = coord.getX() - topleftX;
-		int yIndex = coord.getY() - topleftY;
-		int z = coord.getZ()*3;
-		if (z >= 0){
-			data[xIndex][yIndex][z] = id;
-			data[xIndex][yIndex][z+1] = value;
-			data[xIndex][yIndex][z+2] = 100;
-			modified = true;
-		}
-		
-		//get corresponding logic and update
-		if (id != 0) {
-			AbstractBlockLogicExtension logic = RenderCell.createLogicInstance(id, value, coord);
-			if (logic != null)
-				logicBlocks.add(logic);
-		}
-	}
-	
-	/**
-	 * Almost lowest level method to set a block in the map. If the block has
-	 * logic a new logicinstance will be created.
-	 * Health set to 100 and value set to 0
-	 * @param coord
-	 * @param id 
-	 */
-		public void setBlock(Coordinate coord, byte id) {
-		int xIndex = coord.getX() - topleftX;
-		int yIndex = coord.getY() - topleftY;
-		int z = coord.getZ()*3;
-		if (z >= 0){
-			data[xIndex][yIndex][z] = id;
-			data[xIndex][yIndex][z+1] = 0;
-			data[xIndex][yIndex][z+2] = 100;
-			modified = true;
-		}
-		
-		//get corresponding logic and update
-		if (id != 0) {
-			AbstractBlockLogicExtension logic = RenderCell.createLogicInstance(id, (byte) 0, coord);
-			if (logic != null)
-				logicBlocks.add(logic);
-		}
+
 	}
 	
 	/**
@@ -809,12 +795,13 @@ public class Chunk implements Telegraph {
 	public void setValue(Coordinate coord, byte value) {
 		int xIndex = coord.getX() - topleftX;
 		int yIndex = coord.getY() - topleftY;
-		int z = coord.getZ()*3;
+		int z = coord.getZ() * 3;
 		if (z >= 0) {
 			//check if actually changed
-			if (data[xIndex][yIndex][z+1] != value) {
-				data[xIndex][yIndex][z+1] = value;
+			if (data[xIndex][yIndex][z + 1] != value) {
+				data[xIndex][yIndex][z + 1] = value;
 				modified = true;
+				MessageManager.getInstance().dispatchMessage(Events.cellChanged.getId(), coord);
 			}
 		}
 	}
@@ -900,21 +887,12 @@ public class Chunk implements Telegraph {
 		return false;
 	}
 
-	/*
+	/**
 	 * @param x coordinate
 	 * @param y coordinate
 	 * @param z coordinate
-	 * @return can be null
+	 * @return can be null-pointer
 	 */
-
-	/**
-	 *
-	 * @param x
-	 * @param y
-	 * @param z
-	 * @return
-	 */
-
 	public byte getBlockId(int x, int y, int z) {
 		if (z >= Chunk.blocksZ) {
 			return 0;

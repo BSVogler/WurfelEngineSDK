@@ -30,8 +30,6 @@
  */
 package com.bombinggames.wurfelengine.extension.shooting;
 
-import java.util.LinkedList;
-
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.graphics.Color;
@@ -44,6 +42,7 @@ import com.bombinggames.wurfelengine.core.gameobjects.Particle;
 import com.bombinggames.wurfelengine.core.gameobjects.ParticleType;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
+import java.util.LinkedList;
 
 /**
  * A bullet is a moving object which can destroy and damage entities or the
@@ -73,7 +72,7 @@ public class Bullet extends MovableEntity {
 	 * @see #setSpriteId(byte)
 	 */
 	public Bullet() {
-		super((byte) 22, 0, false);
+		super((byte) 22, 0);
 		setName("Bullet");
 		setMass(0.002f);
 		setSavePersistent(false);
@@ -108,16 +107,15 @@ public class Bullet extends MovableEntity {
 		}
 
         //check character hit
-		LinkedList<AbstractEntity> entitylist = getCollidingEntities();
+		LinkedList<AbstractEntity> colissions = getCollidingEntities();
 		//entitylist.remove(gun);//remove self from list to prevent self shooting
-		//remove
-		entitylist.removeIf(
-			item -> !item.isObstacle() || item.getPosition().toCoord().equals(ignoreCoord)
+		//remove things which don't stop the bullet
+		colissions.removeIf(
+			item -> item.getMass()<0.2 || item.getCoord().equals(ignoreCoord)
 		);
-		if (!entitylist.isEmpty()) {
-			MessageManager.getInstance().dispatchMessage(
-				this,
-				entitylist.getFirst(),//damage only the first unit on the list
+		if (!colissions.isEmpty()) {
+			MessageManager.getInstance().dispatchMessage(this,
+				colissions.getFirst(),//damage only the first unit on the list
 				Events.damage.getId(),
 				damage
 			);

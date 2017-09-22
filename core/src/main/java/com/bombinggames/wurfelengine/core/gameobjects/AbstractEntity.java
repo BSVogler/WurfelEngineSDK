@@ -28,12 +28,6 @@
  */
 package com.bombinggames.wurfelengine.core.gameobjects;
 
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_DIAGLENGTH2;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
-
-import java.util.ArrayList;
-import java.util.LinkedList;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ai.msg.Telegraph;
 import com.bombinggames.wurfelengine.WE;
@@ -43,7 +37,12 @@ import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_DIAGLENGTH2;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
+import com.bombinggames.wurfelengine.core.sorting.TopoGraphNode;
+import java.util.ArrayList;
+import java.util.LinkedList;
 
 /**
  * An entity is a game object which has the key feature that is has a position.
@@ -66,6 +65,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	public static void registerEngineEntities() {
 		entityMap.put("Explosion", Explosion.class);
 		entityMap.put("Benchmarkball", BenchmarkBall.class);
+		entityMap.put("Destruction Particle", DestructionParticle.class);
 	}
 	
 	/**
@@ -85,17 +85,18 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 		return entityMap;
 	}
 	
-	private float lightlevelG;
 	private float lightlevelR;
+	private float lightlevelG;
 	private float lightlevelB;
+	private byte spriteId;
+	private byte value;
 	private float health = 100f;
     private Point position;//the position in the map-grid
     private int dimensionZ = GAME_EDGELENGTH;  
     private boolean dispose;
-	private boolean obstacle;
 	private String name = "undefined";
 	private boolean indestructible = false;
-		/**
+	/**
 	 * time in ms to pass before new sound can be played
 	 */
 	private transient float soundTimeLimit;
@@ -106,31 +107,41 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	private boolean savePersistent = true;
 	private transient String[] damageSounds;
 	private char spriteCategory = 'e';
+	/**
+	 * if true is not affected by physics time
+	 */
 	private boolean useRawDelta = false;
 	private float mass = 0.4f;
-	private final LinkedList<AbstractGameObject> covered = new LinkedList<>();
+	private transient LinkedList<RenderCell> covered = new LinkedList<>();
 	private final LinkedList<Component> components = new LinkedList<>();
-	private byte value;
-	private byte id;
+
+	
+	/**
+	 * can be used to save a heap call to obtain the coordiante.
+	 * @see Coordinate#setFromPoint(com.bombinggames.wurfelengine.core.map.Point) 
+	 * */
+	private transient Coordinate tmpCoordinate = new Coordinate(0, 0, 0);
+	
+	transient byte marked;
 	/**
 	 * Create an abstractEntity.
 	 *
-	 * @param id objects with id = -1 will be deleted. 0 are invisible objects
+	 * @param spriteId objects with id = -1 will be deleted. 0 are invisible objects
 	 */
-	public AbstractEntity(byte id) {
+	public AbstractEntity(byte spriteId) {
 		super();
-		this.id = id;
+		this.spriteId = spriteId;
 	}
 
 	/**
 	 * Create an abstractEntity.
 	 *
-	 * @param id objects with id -1 are to deleted. 0 are invisible objects
+	 * @param spriteId objects with id -1 are to be deleted. 0 are invisible objects
 	 * @param value
 	 */
-	public AbstractEntity(byte id, byte value) {
+	public AbstractEntity(byte spriteId, byte value) {
 		super();
-		this.id = id;
+		this.spriteId = spriteId;
 		this.value = value;
 	}
 
@@ -162,7 +173,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 			}
 		}
 	}
-
+	
     //AbstractGameObject implementation
     @Override
     public final Point getPosition() {
@@ -320,23 +331,6 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	}
 
 	/**
-	 * Make the object to an obstacle or passable.
-	 *
-	 * @param obstacle true when obstacle. False when passable.
-	 */
-	public void setObstacle(boolean obstacle) {
-		this.obstacle = obstacle;
-	}
-
-	/**
-	 *
-	 * @return
-	 */
-	public boolean isObstacle() {
-		return obstacle;
-	}
-
-	/**
 	 * Get the mass of the object.
 	 * @return in kg
 	 */
@@ -483,14 +477,14 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 */
 	public void requestChunk() {
 		if (hasPosition()) {
-			Coordinate coord = position.toCoord();
+			Coordinate coord = getCoord();
 			Chunk chunk = coord.getChunk();
 			if (chunk == null) {
 				int chunkX = coord.getChunkX();
 				int chunkY = coord.getChunkY();
 				if (!Controller.getMap().isLoading(chunkX, chunkY)) {
-					WE.getConsole().add("Entity " + getName() + " requested chunk " + position.toCoord().getChunkX() + "," + position.toCoord().getChunkY());
-					Controller.getMap().loadChunk(position.toCoord().getChunkX(), position.toCoord().getChunkY());
+					WE.getConsole().add("Entity " + getName() + " requested chunk " + coord.getChunkX() + "," + coord.getChunkY());
+					Controller.getMap().loadChunk(coord.getChunkX(), coord.getChunkY());
 				}
 			}
 		}
@@ -548,49 +542,59 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	}
 
 	
-	@Override
-	public LinkedList<AbstractGameObject> getCovered(RenderStorage rs) {
-		covered.clear();
+	/**
+	 * get the blocks which must be rendered before
+	 *
+	 * @param rs
+	 * @return
+	 */
+	public LinkedList<RenderCell> getCoveredBlocks(RenderStorage rs) {
+		if (covered == null) {//transient field
+			covered = new LinkedList<>();
+		} else {
+			covered.clear();
+		}
 		if (position != null) {
 			Coordinate coord = getCoord();
-			coord.add(0, 0, -1);//go one down because the ents are added one too high
 			RenderCell block;
-//			block = rs.getCell(coord);//draw block in this cell first
-//			if (block != null) {
-//				covered.add(block);
-//			}
-//			block = rs.getCell(coord.goToNeighbour(7));//block behind left
-//			if (block != null) {
-//				covered.add(block);
-//			}
-//			block = rs.getCell(coord.goToNeighbour(1));//block behind
-//			if (block != null) {
-//				covered.add(block);
-//			}
-//			block = rs.getCell(coord.goToNeighbour(3));//block behind right
-//			if (block != null) {
-//				covered.add(block);
-//			}
-//			coord.goToNeighbour(5);
+			
+			//add bottom layer
+			block = rs.getCell(coord);//self
+			if (block != null) {
+				covered.add(block);
+			}
 
-			//render this ent before blocks below
-			if (coord.getZ()<1){
-				block = rs.getCell(coord);//front
+			if (coord.getZ() < Chunk.getBlocksZ()) {
+				block = rs.getCell(coord.goToNeighbour(7).add(0, 0, 1));//back left
 				if (block != null) {
 					covered.add(block);
 				}
-			} else {
-				if (coord.getZ() > 0) {
-	//				if (block != null) {
-	//					covered.add(block);
-	//				}
-					block = rs.getCell(coord.add(0, 0, -1).goToNeighbour(4));//front
-					if (block != null) {
-						covered.add(block);
-					}
+
+				block = rs.getCell(coord.goToNeighbour(2));//back right
+				if (block != null) {
+					covered.add(block);
 				}
+				coord.goToNeighbour(5).add(0, 0, -1);
 			}
+		
+			if (coord.getZ() > 0){
+				coord.add(0, 0, -1);//bottom
+				block = rs.getCell(coord.goToNeighbour(5));//front left
+				if (block != null) {
+					covered.add(block);
+				}
+
+				block = rs.getCell(coord.goToNeighbour(3));//front
+				if (block != null) {
+					covered.add(block);
+				}
 				
+				block = rs.getCell(coord.goToNeighbour(1));//front right
+				if (block != null) {
+					covered.add(block);
+				}
+				coord.goToNeighbour(7).add(0, 0, 1);
+			}
 		}
 		return covered;
 	}
@@ -602,7 +606,9 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 
 	@Override
 	public Coordinate getCoord() {
-		return position.toCoord();
+		if (tmpCoordinate==null)
+			tmpCoordinate=new Coordinate();//transient field
+		return tmpCoordinate.setFromPoint(position);
 	}
 
 	/**
@@ -620,7 +626,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * @param filterType
 	 * @return
 	 */
-	public <T extends Component> Component getComponent(final Class<T> filterType) {
+	public <T extends Component> Component getComponents(final Class<T> filterType) {
 		for (Component comp : components) {
 			if (filterType.isInstance(comp)) {
 				return comp;
@@ -629,6 +635,10 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 		return null;
 	}
 
+	public LinkedList<Component> getComponents() {
+		return components;
+	}
+	
 	/**
 	 *
 	 * @param component
@@ -672,7 +682,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 
 	@Override
 	public byte getSpriteId() {
-		return id;
+		return spriteId;
 	}
 
 	@Override
@@ -685,14 +695,43 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * @param id
 	 */
 	public void setSpriteId(byte id){
-		this.id = id;
+		if (id != this.spriteId) {
+			this.spriteId = id;
+			updateSpriteCache();
+		}
 	}
 	
 	/**
 	 *
 	 * @param value
 	 */
-	public void setSpriteValue(byte value){
-		this.value = value;
+	public void setSpriteValue(byte value) {
+		if (value >= RenderCell.VALUESNUM) {
+			throw new IllegalArgumentException();
+		}
+		if (value != this.value) {
+			this.value = value;
+			updateSpriteCache();
+		}
+	}
+	
+	
+		/**
+	 * Check if it is marked in this frame. Used for depth sorting.
+	 * @param id camera id
+	 * @return 
+	 * @see com.bombinggames.wurfelengine.core.sorting.TopologicalSort#visit(RenderCell) 
+	 */
+	public final boolean isMarkedDS(final int id) {
+		return ((marked>>id)&1) == ((TopoGraphNode.currentMarkedFlag >> id) & 1);
+	}
+
+	/**
+	 * Marks as visited in the depth sorting algorithm.
+	 * @param id camera id
+	 * @see com.bombinggames.wurfelengine.core.sorting.TopologicalSort#visit(RenderCell) 
+	 */
+	public void markAsVisitedDS(final int id) {
+		marked ^= (-((TopoGraphNode.currentMarkedFlag >> id) & 1) ^ marked) & (1 << id);
 	}
 }

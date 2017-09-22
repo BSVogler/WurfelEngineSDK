@@ -101,7 +101,7 @@ public interface Position extends Serializable {
 	public abstract int getViewSpcY();
     
 	/**
-	 * maybe I mean screen space
+	 * equals screen space when zoom=1 with a single, fullscreen camera.
 	 * @param View
 	 * @param camera
 	 * @return 
@@ -109,7 +109,7 @@ public interface Position extends Serializable {
 	public abstract int getProjectionSpaceX(GameView View, Camera camera);
 	
 	/**
-	 * maybe I mean screen space
+	 * equals screen space when zoom=1 with a single camera.
 	 * @param View
 	 * @param camera
 	 * @return 

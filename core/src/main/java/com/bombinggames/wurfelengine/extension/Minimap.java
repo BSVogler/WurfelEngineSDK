@@ -30,8 +30,6 @@
  */
 package com.bombinggames.wurfelengine.extension;
    
-import java.util.ArrayList;
-
 import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.ai.msg.Telegraph;
 import com.badlogic.gdx.graphics.Color;
@@ -50,6 +48,7 @@ import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import java.util.ArrayList;
 
 /**
  *A minimap is a view that draws the map from top in a small window.
@@ -275,9 +274,9 @@ public class Minimap implements Telegraph {
         if (visible) {
             //this needs offscreen rendering for a single call with a recalc
 			if (fboRegion!=null){
-				view.getSpriteBatch().begin();
-				view.getSpriteBatch().draw(fboRegion, posX, posY);
-				view.getSpriteBatch().end();
+				view.getProjectionSpaceSpriteBatch().begin();
+				view.getProjectionSpaceSpriteBatch().draw(fboRegion, posX, posY);
+				view.getProjectionSpaceSpriteBatch().end();
 			}
 			
 			ShapeRenderer sh = view.getShapeRenderer();
@@ -301,8 +300,8 @@ public class Minimap implements Telegraph {
 					sh.translate(0, -mapdata[0].length*scaleY, 0);//projection is y-up
 					sh.rect(scaleX * camera.getViewSpaceX() / RenderCell.VIEW_WIDTH,
 						scaleY * camera.getViewSpaceY() / RenderCell.VIEW_DEPTH2,
-						scaleX*camera.getWidthInProjSpc()/ RenderCell.VIEW_WIDTH,
-						scaleY*camera.getHeightInProjSpc()/ RenderCell.VIEW_DEPTH2
+						scaleX*camera.getWorldWidthViewport()/ RenderCell.VIEW_WIDTH,
+						scaleY*camera.getWorldHeightViewport()/ RenderCell.VIEW_DEPTH2
 					);
 
 					//player level getCameras() rectangle
@@ -322,8 +321,8 @@ public class Minimap implements Telegraph {
 					sh.rect(scaleX * camera.getViewSpaceX() / RenderCell.VIEW_WIDTH,
 						scaleY * camera.getViewSpaceY() / RenderCell.VIEW_DEPTH2
 							-scaleY *2*(Chunk.getBlocksZ() * RenderCell.VIEW_HEIGHT)/ RenderCell.VIEW_DEPTH,
-						scaleX*camera.getWidthInProjSpc() / RenderCell.VIEW_WIDTH,
-						scaleY*camera.getHeightInProjSpc() / RenderCell.VIEW_DEPTH2
+						scaleX*camera.getWorldWidthViewport() / RenderCell.VIEW_WIDTH,
+						scaleY*camera.getWorldHeightViewport() / RenderCell.VIEW_DEPTH2
 					);
 					
 				sh.end();

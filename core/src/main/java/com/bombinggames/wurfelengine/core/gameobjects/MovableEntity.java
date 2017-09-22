@@ -28,20 +28,16 @@
  */
 package com.bombinggames.wurfelengine.core.gameobjects;
 
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
-
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.ai.msg.Telegram;
-import com.badlogic.gdx.graphics.Color;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Events;
-import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
 import com.bombinggames.wurfelengine.extension.AimBand;
 
 /**
@@ -69,7 +65,7 @@ public class MovableEntity extends AbstractEntity  {
 	/**
 	 * Direction and speed of movement.
 	 */
-	private final Vector3 movement;
+	private Vector3 movement;
 	/**
 	 * saves the viewing direction even if the player is not moving. Should never be len()==0
 	 */
@@ -116,7 +112,7 @@ public class MovableEntity extends AbstractEntity  {
 	 * @param id 
 	 */
 	public MovableEntity(final byte id) {
-		this(id, 0, true);
+		this(id, 0);
 	}
 	
   /**
@@ -125,24 +121,13 @@ public class MovableEntity extends AbstractEntity  {
     * @param spritesPerDir The number of animation sprites per walking direction. if 0 then it only uses the value 0
     */
 	public MovableEntity(final byte id, final int spritesPerDir) {
-		this(id, spritesPerDir, true);
-	}
-	
-   /**
-    * Constructor of MovableEntity.
-    * @param id
-    * @param spritesPerDir The number of animation sprites per walking direction. if 0 then it only uses the value 0
-	 * @param shadow
-    */
-   public MovableEntity(final byte id, final int spritesPerDir, boolean shadow) {
-        super(id);
+		super(id);
         this.spritesPerDir = spritesPerDir;
 		movement = new Vector3(0,0,0);
 		floating = false;
 		friction = WE.getCVars().getValueF("friction");
-		if (shadow) addComponent(new EntityShadow());
-   }
-   
+	}
+	
    /**
 	* copy constructor
 	* @param entity 
@@ -154,8 +139,6 @@ public class MovableEntity extends AbstractEntity  {
 		friction = entity.friction;
 		collider = entity.collider;
 		floating = entity.floating;
-		
-		addComponent(new EntityShadow());
 	}
 
 	@Override
@@ -254,10 +237,14 @@ public class MovableEntity extends AbstractEntity  {
 		if (hasPosition()) {
 			float t = dt * 0.001f; //t = time in s
 			Vector3 movement = this.movement;
+			if (movement == null) {
+				this.movement = new Vector3();
+				movement = this.movement;
+			}
 			
 			if (moveToAi != null) {
 				moveToAi.update(dt);
-				if (moveToAi.atGoal()){
+				if (moveToAi.atGoal(dt)){
 					moveToAi = null;
 				}
 			}
@@ -269,6 +256,7 @@ public class MovableEntity extends AbstractEntity  {
 				t * movement.y * GAME_EDGELENGTH,
 				0
 			);
+			dMove.limit(30);//30m/s=108km/h should be enough
 
 			Point newPos = getPosition().cpy().add(dMove);
 			//check if movement to new position is okay
@@ -295,7 +283,9 @@ public class MovableEntity extends AbstractEntity  {
 			}
 			
 			//check collision with other entities
-			checkEntColl();
+			if (getMass() > 0.5f && collider) {
+				checkEntColl();
+			}
 			
 			//apply movement
 			getPosition().set(newPos);
@@ -386,29 +376,27 @@ public class MovableEntity extends AbstractEntity  {
             /* SOUNDS */
             //should the runningsound be played?
             if (runningSound != null) {
-                if (getSpeed() < 0.5f) {
+                if (getSpeed() < 0.5f && runningSoundPlaying) {
                     WE.SOUND.stop(runningSound);
                     runningSoundPlaying = false;
-                } else {
-                    if (!runningSoundPlaying){
-                        WE.SOUND.play(runningSound, getPosition());
-                        runningSoundPlaying = true;
-                    }
-                }
+                } else if (!runningSoundPlaying){
+					WE.SOUND.play(runningSound, getPosition());
+					runningSoundPlaying = true;
+				}
             }
 
             //should the fallingsound be played?
             if (fallingSound != null) {
-                if (!floating && getMovement().z < 0 && movement.len2() > 0.0f) {
-                    if (fallingSoundInstance == 0) {
-                        fallingSoundInstance = WE.SOUND.loop(fallingSound);
-                    }
-					WE.SOUND.setVolume(fallingSound,fallingSoundInstance, getSpeed()/10f);
-                } else {
-                    WE.SOUND.stop(fallingSound);
-                    fallingSoundInstance = 0;
-                }
-            }
+				if (!floating && getMovement().z < 0 && getMass() > 0.3) {
+					if (fallingSoundInstance == 0) {
+						fallingSoundInstance = WE.SOUND.loop(fallingSound);
+					}
+					WE.SOUND.setVolume(fallingSound, fallingSoundInstance, getSpeed() / 10f);
+				} else if (fallingSoundInstance != 0) {
+					WE.SOUND.stop(fallingSound);
+					fallingSoundInstance = 0;
+				}
+			}
         }
     }
 	
@@ -494,23 +482,6 @@ public class MovableEntity extends AbstractEntity  {
 		}
 	}
 
-	@Override
-	public void render(GameView view, int xPos, int yPos) {
-		if (view.debugRendering()) {
-			ShapeRenderer sh = view.getShapeRenderer();
-			sh.begin(ShapeRenderer.ShapeType.Filled);
-			sh.setColor(Color.GREEN);
-			//life bar
-			sh.rect(xPos - RenderCell.VIEW_WIDTH2,
-				yPos + RenderCell.VIEW_HEIGHT,
-				getHealth() * RenderCell.VIEW_WIDTH / 1000,
-				5
-			);
-			sh.end();
-		}
-		super.render(view, xPos, yPos);
-	}
-
 	/**
 	 * O(1)
 	 *
@@ -554,6 +525,13 @@ public class MovableEntity extends AbstractEntity  {
 	 * @return true if colliding horizontal
 	 */
 	public boolean collidesWithWorld(final Point pos, final float colissionRadius) {
+		if (pos.z > Chunk.getGameHeight()) {
+			return false;
+		}
+		if (pos.z < 0) {
+			return true;
+		}
+		
 		if (checkCollisionCorners(pos)) {
 			return true;
 		}
@@ -637,11 +615,11 @@ public class MovableEntity extends AbstractEntity  {
 	}
 	
 	/**
-	 * Get the movement vector as the product of direction and speed.
-	 * @return in m/s. copy safe
+	 * Get the movement vector as the product of direction and speed. Don't use this method to change values. Use {@link #setMovement(Vector3) }.
+	 * @return in m/s. returns reference
 	 */
 	public final Vector3 getMovement(){
-		return movement.cpy();
+		return movement;
 	}
 	
 	/**
@@ -819,20 +797,18 @@ public class MovableEntity extends AbstractEntity  {
 		Point pos = getPosition();
 		if (pos == null) {
 			return false;
-		} else {
-			if (pos.getZ() > 0) {
-				if (pos.getZ() > Chunk.getGameHeight()) {
-					return false;
-				}
-				pos.setZ(pos.getZ() - 1);//move one down for check
-
-				boolean colission = pos.isObstacle() || collidesWithWorld(pos, colissionRadius);
-				pos.setZ(pos.getZ() + 1);//reverse
-
-				return colission;
-			} else {
-				return true;
+		} else if (pos.getZ() > 0) {
+			if (pos.getZ() > Chunk.getGameHeight()) {
+				return false;
 			}
+			pos.setZ(pos.getZ() - 1);//move one down for check
+
+			boolean colission = pos.isObstacle() || collidesWithWorld(pos, colissionRadius);
+			pos.setZ(pos.getZ() + 1);//reverse
+
+			return colission;
+		} else {
+			return true;
 		}
     }
 	
@@ -913,7 +889,7 @@ public class MovableEntity extends AbstractEntity  {
 			return true;
 		}
 		
-		moveToAi = (MoveToAi) getComponent(MoveToAi.class);
+		moveToAi = (MoveToAi) getComponents(MoveToAi.class);
 		if (msg.message == Events.deselectInEditor.getId()) {
 			if (particleBand != null) {
 				particleBand.dispose();
@@ -932,15 +908,13 @@ public class MovableEntity extends AbstractEntity  {
 	}
 
 	/**
-	 * checks the colissions with entities, O(n)
+	 * checks the outgoing colissions with entities, O(n)
 	 */
 	private void checkEntColl() {
 		Iterable<MovableEntity> nearbyEnts = getCollidingEntities(MovableEntity.class);
 		Vector2 colVec2 = new Vector2();
 		for (MovableEntity ent : nearbyEnts) {
-			//if (this.collidesWith(ent))
-			if (ent.isObstacle() && getMass() > 0.5f) {
-
+			if (ent.collider) {
 				Vector3 colVec3 = getPosition().sub(ent.getPosition());
 				colVec2.set(colVec3.x, colVec3.y);
 				float d = colVec2.len();
@@ -958,14 +932,14 @@ public class MovableEntity extends AbstractEntity  {
 					float im1 = 1 / getMass();
 					float im2 = 1 / ent.getMass();
 					// collision impulse
-					Vector2 impulse = colVec2.scl((-91.1f* vn) / (im1 + im2));
+					Vector2 impulse = colVec2.scl((-2*vn) / (im1 + im2));//the factor 2 is a hack because pushing is to little, you can walk through objects
 
+					
 					impulse.scl(im1);
 					// change in momentum
 					//hack to prevent ultra fast speed, clamps
-					if (impulse.len2() > 25){//lenght is >5
-						impulse.nor().scl(5);
-					}
+					impulse.limit(20);
+					
 					addMovement(impulse);
 					ent.addMovement(impulse.scl(-im2));
 

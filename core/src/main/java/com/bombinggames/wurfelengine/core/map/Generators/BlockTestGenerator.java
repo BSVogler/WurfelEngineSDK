@@ -36,7 +36,7 @@ import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.OBJECT
 import com.bombinggames.wurfelengine.core.map.Generator;
 
 /**
- *A generator which uses every block.
+ *A generator which uses every block at the bottom layer.
  * @author Benedikt Vogler
  */
 public class BlockTestGenerator implements Generator{

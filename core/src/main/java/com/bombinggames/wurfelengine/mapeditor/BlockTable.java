@@ -30,13 +30,12 @@
  */
 package com.bombinggames.wurfelengine.mapeditor;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import java.util.ArrayList;
+import java.util.Iterator;
 
 /**
  *
@@ -59,7 +58,7 @@ public class BlockTable extends AbstractPlacableTable {
 
 		//setScale(5f);
 		if (!hasChildren()) {
-			byte foundItems = 0;
+
 			blockDrawables.clear();
 			//add air
 			BlockDrawable blockDrawable = new BlockDrawable((byte) 0, (byte) 0, 0.35f);
@@ -70,19 +69,21 @@ public class BlockTable extends AbstractPlacableTable {
 					new BlockListener((byte) 0, (byte) 0)
 				)
 			);
-			foundItems++;
+			byte foundItems = 1;
+
 			//add rest
 			for (byte i = 1; i < RenderCell.OBJECTTYPESNUM; i++) {//add every possible block
 				if (RenderCell.isSpriteDefined(i, (byte) 0) //add defined blocks
 					|| !RenderCell.getName(i, (byte) 0).equals("undefined")) {
 					blockDrawable = new BlockDrawable(i, (byte) 0, 0.35f);
 					blockDrawables.add(blockDrawable);
-					add(
-						new PlacableItem(
-							blockDrawable,
-							new BlockListener(foundItems, i)
-						)
+					PlacableItem plItem = new PlacableItem(
+						blockDrawable,
+						new BlockListener(foundItems, i)
 					);
+					add(plItem);
+					blockDrawable.setOffsetX(plItem.getWidth() / 2);
+					blockDrawable.setOffsetY(30);
 					foundItems++;
 					if (foundItems % 4 == 0) {
 						row();//make new row
@@ -121,19 +122,22 @@ public class BlockTable extends AbstractPlacableTable {
 
 	/**
 	 * Returns the data of the selected block.
+	 *
 	 * @return id, value and 100 health
 	 */
 	public int getSelectedBlock() {
-		return selectionId+(getValue() << 8)+(100<<16);
+		return selectionId + (getValue() << 8) + (100 << 16);
 	}
 
 	/**
 	 * Select a block. Will be highlighted in the table.
+	 *
 	 * @param blockId id of block data
 	 * @param blockValue value of block data
 	 */
 	public void select(byte blockId, byte blockValue) {
 		selectionId = blockId;
+
 		byte i = 0;
 		Iterator<BlockDrawable> iter = blockDrawables.iterator();
 		while (iter.hasNext()) {
@@ -143,7 +147,8 @@ public class BlockTable extends AbstractPlacableTable {
 			}
 			i++;
 		}
-		setValue(selectedDrawable.getValue());
+
+		setValue(blockValue);
 	}
 
 	/**

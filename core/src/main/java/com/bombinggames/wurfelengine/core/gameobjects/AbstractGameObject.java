@@ -1,5 +1,7 @@
 /*
- * Copyright 2013 Benedikt Vogler.
+ * If this software is used for a game the official „Wurfel Engine“ logo or its name must be visible in an intro screen or main menu.
+ *
+ * Copyright 2017 Benedikt Vogler.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -10,7 +12,7 @@
  * * Redistributions in binary form must reproduce the above copyright notice, 
  *   this list of conditions and the following disclaimer in the documentation 
  *   and/or other materials provided with the distribution.
- * * Neither the name of Bombing Games nor Benedikt Vogler nor the names of its contributors 
+ * * Neither the name of Benedikt Vogler nor the names of its contributors 
  *   may be used to endorse or promote products derived from this software without specific
  *   prior written permission.
  *
@@ -28,13 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core.gameobjects;
 
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_DEPTH2;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
-import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_WIDTH2;
-
-import java.io.FileNotFoundException;
-import java.io.Serializable;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
@@ -42,20 +37,25 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas.AtlasRegion;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.graphics.g3d.Renderable;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Camera;
 import com.bombinggames.wurfelengine.core.GameView;
+import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
+import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.VIEW_HEIGHT2;
+import java.io.FileNotFoundException;
+import java.io.Serializable;
 
 /**
  * An AbstractGameObject is something wich can be found in the game world.
  *
  * @author Benedikt
  */
-public abstract class AbstractGameObject implements Serializable, Renderable {
+public abstract class AbstractGameObject extends Renderable implements Serializable {
 
 	private transient static final long serialVersionUID = 2L;
 
@@ -63,16 +63,14 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * The sprite texture which contains every object texture
 	 */
 	private transient static TextureAtlas spritesheet;
-	private transient static String spritesheetPath = "com/bombinggames/wurfelengine/core/images/Spritesheet";
+	private transient static String spritesheetPath = "com/bombinggames/wurfelengine/core/images/spritesheet";
 	private transient static Pixmap pixmap;
 	/**
 	 * indexed acces to the spritesheet
 	 */
-	private transient static AtlasRegion[][][] sprites = new AtlasRegion['z'][RenderCell.OBJECTTYPESNUM][RenderCell.VALUESNUM];//{category}{id}{value}
-	private transient static int drawCalls = 0;
+	private static final transient AtlasRegion[][][] sprites = new AtlasRegion['z'][RenderCell.OBJECTTYPESNUM][RenderCell.VALUESNUM];//{category}{id}{value}
 	private static Texture textureDiff;
 	private static Texture textureNormal;
-	private static int currentMarkedFlag;
 
 	/**
 	 * disposes static fields
@@ -141,30 +139,17 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	}
 
 	/**
-	 * Reset couner for this frame
-	 */
-	public static void resetDrawCalls() {
-		AbstractGameObject.drawCalls = 0;
-	}
-
-	/**
-	 * Maybe not quite correct. A single block has only one drawcall even it
-	 * should consist of three.
-	 *
-	 * @return
-	 */
-	public static int getDrawCalls() {
-		return drawCalls;
-	}
-
-	/**
 	 * Load the spritesheet from memory.
 	 * @throws java.io.FileNotFoundException
 	 */
 	public static void loadSheet() throws FileNotFoundException {
-		//spritesheet = new TextureAtlas(Gdx.files.internal("com/bombinggames/Game/Blockimages/Spritesheet.txt"), true);
 		Gdx.app.log("AGameObject", "getting spritesheet");
 		if (spritesheet == null) {
+			//if not in asset manager, then load into it
+			if (!WE.getAssetManager().isLoaded(spritesheetPath + ".txt")) {
+				WE.getAssetManager().load(spritesheetPath + ".txt", TextureAtlas.class);
+				WE.getAssetManager().finishLoadingAsset(spritesheetPath + ".txt");
+			}
 			spritesheet = WE.getAsset(spritesheetPath + ".txt");
 		}
 		textureDiff = spritesheet.getTextures().first();
@@ -224,14 +209,6 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 		return spritesheet;
 	}
 
-	/**
-	 * inverses the dirty flag comparison so everything marked is now unmarked.
-	 * used to mark the visited obejcts with depthsort.
-	 * @param id
-	 */
-	public static void inverseMarkedFlag(int id) {
-		currentMarkedFlag ^= 1 << id;
-	}
 
 	//render information
 	private boolean hidden;
@@ -242,14 +219,17 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * default is RGBA 0x808080FF.
 	 */
 	private transient Color tint = new Color(0.5f, 0.5f, 0.5f, 1f);
-	private int marked;
+
+	/**
+	 * caching the sprite for rendering
+	 */
+	protected transient GameSpaceSprite sprite;
 
 	/**
 	 * Creates an object.
 	 *
 	 */
 	protected AbstractGameObject() {
-		//markPermanent();//create as marked
 	}
 
 	/**
@@ -275,6 +255,64 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	public abstract void setPosition(Position pos);
 
 	/**
+	 * How bright is the object? The lightlevel is a scale applied to the color.
+	 * 1 is default value.
+	 *
+	 * @return 1 is default bright. 0 is black.
+	 */
+	abstract public float getLightlevelR();
+
+	/**
+	 * How bright is the object? The lightlevel is a scale applied to the color.
+	 * 1 is default value.
+	 *
+	 * @return 1 is default bright. 0 is black.
+	 */
+	abstract public float getLightlevelG();
+
+	/**
+	 * How bright is the object? The lightlevel is a scale applied to the color.
+	 * 1 is default value.
+	 *
+	 * @return 1 is default bright. 0 is black.
+	 */
+	abstract public float getLightlevelB();
+
+	/**
+	 * Set the brightness of the object. The lightlevel is a scaling factor. 1
+	 * is default value.
+	 *
+	 * @param lightlevel 1 is default bright. 0 is black.
+	 */
+	abstract public void setLightlevel(float lightlevel);
+
+	/**
+	 * Return the coordinates of the object in the game world. Not copy safe as
+	 * it points to the interaly used object.
+	 *
+	 * @return Reference to the position object which points to the location in
+	 * the game world.
+	 * @see #getPoint()
+	 */
+	abstract public Position getPosition();
+
+	/**
+	 * Can be internal reference or shared object.
+	 *
+	 * @return
+	 * @see #getPosition()
+	 */
+	abstract public Point getPoint();
+
+	/**
+	 * not copy save
+	 *
+	 * @return
+	 * @see #getPosition()
+	 */
+	abstract public Coordinate getCoord();
+
+	/**
 	 * Returns the depth of the object. The depth is the game world space
 	 * projected on one axis orthogonal to the camera's angle.
 	 * Objects nearer to camera have a bigger value.
@@ -283,132 +321,96 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 */
 	public float getDepth() {
 		Point pos = getPoint();
-		return pos.getY() + (pos.getZ() + getDimensionZ()) * RenderCell.ZAXISSHORTENING;//or Point.SQRT12?
+		return pos.getY() + (pos.getZ() + getDimensionZ()) * RenderCell.PROJECTIONFACTORZ;//or Point.SQRT12?
 	}
 
 	/**
-	 * When calling sprite.draw this hsould also be called for statistics.
+	 * Draws an object if it is not hidden and not clipped.
+	 * in game space
+	 * @param view
 	 */
-	protected void increaseDrawCalls() {
-		drawCalls++;
-	}
-
-	@Override
-	public void render(GameView view, Camera camera) {
-		if (!hidden && getPosition()!=null) {
-			Color fogcolor = null;
-			if (WE.getCVars().getValueB("enableFog")) {
-				//can use CVars for dynamic change. using harcored values for performance reasons
-				float factor = (float) (Math.exp(0.025f * (camera.getVisibleFrontBorderHigh() - getPosition().toCoord().getY() - 18.0)) - 1);
-				fogcolor = new Color(
-					0.5f + 0.3f * factor,
-					0.5f + 0.4f * factor,
-					0.5f + 0.1f * factor,
-					0.5f
-				);
+	public void render(GameView view) {
+		byte id = getSpriteId();
+		byte value = getSpriteValue();
+		if (id > 0 && value >= 0 && !hidden && getPosition() != null) {
+			if (sprite==null) {
+				updateSpriteCache();
 			}
-			render(
-				view,
-				getPosition().getViewSpcX(),
-				getPosition().getViewSpcY(),
-				fogcolor
+			if (rotation != sprite.getRotation()) {
+				sprite.setRotation(rotation);
+			}
+			//sprite.setOrigin(0, 0);
+			if (scaling != sprite.getScaleX()) {
+				sprite.setScale(scaling);
+			}
+
+			Point pos = getPoint();
+			sprite.setPosition(
+				pos.getX(),
+				pos.getY()+RenderCell.GAME_DIAGLENGTH2,//center, move a bit to draw front
+				pos.getZ()
 			);
+
+			sprite.setColor(getColor());
+
+			sprite.draw(view.getGameSpaceSpriteBatch());
 		}
 	}
-
+	
 	/**
-	 * Renders at a custom position.
+	 * Renders at a custom position in projection space. uses heap
 	 *
 	 * @param view
-	 * @param xPos rendering position, center of sprite in projection (?) space
-	 * @param yPos rendering position, center of sprite in projection (?) space
+	 * @param xPos rendering position, center of sprite in projection space
+	 * @param yPos rendering position, center of sprite in projection space
 	 */
 	public void render(GameView view, int xPos, int yPos) {
-		render(view, xPos, yPos, null);
-	}
-
-	/**
-	 * Renders at a custom position with a custom light.
-	 *
-	 * @param view
-	 * @param xPos rendering position, center of sprite in projection space (?)
-	 * @param yPos rendering position, center of sprite in projection space (?)
-	 * @param color color which gets multiplied with the tint. No change ( =
-	 * multiply with 1) is when passed RGBA 0x80808080.
-	 */
-	public void render(GameView view, int xPos, int yPos, Color color) {
 		byte id = getSpriteId();
 		byte value = getSpriteValue();
 		if (id > 0 && value >= 0) {
-			AtlasRegion texture = AbstractGameObject.getSprite(getSpriteCategory(), id, value);
+			AtlasRegion texture = AbstractGameObject.getSprite(getSpriteCategory(), getSpriteId(), getSpriteValue());
 			Sprite sprite = new Sprite(texture);
 			sprite.setOrigin(
 				texture.originalWidth / 2 - texture.offsetX,
 				VIEW_HEIGHT2 - texture.offsetY
 			);
-			sprite.setRotation(rotation);
-			//sprite.setOrigin(0, 0);
-			sprite.setScale(scaling);
+			if (rotation != sprite.getRotation()) {
+				sprite.setRotation(rotation);
+			}
+			
+			if (scaling != sprite.getScaleX()) {
+				sprite.setScale(scaling);
+			}
 
 			sprite.setPosition(
-				xPos + texture.offsetX - texture.originalWidth / 2,
+				xPos+texture.offsetX - texture.originalWidth / 2,
 				yPos//center
 				- VIEW_HEIGHT2
 				+ texture.offsetY
 			);
 
-			//hack for transient field tint
-			if (tint == null) {
-				tint = new Color(0.5f, 0.5f, 0.5f, 1f);
-			}
-			if (color != null) {
-				sprite.setColor(
-					tint.cpy().mul(
-						color.r + 0.5f,
-						color.g + 0.5f,
-						color.b + 0.5f,
-						color.a + 0.5f
-					)
-				);
-			} else {
-				sprite.setColor(tint);
-			}
+			sprite.setColor(getColor());
 
-			if (view.debugRendering()) {
-				ShapeRenderer sh = view.getShapeRenderer();
-				sh.begin(ShapeRenderer.ShapeType.Line);
-				//sprite outline
-				sh.rect(
-					sprite.getX(),
-					sprite.getY(),
-					sprite.getWidth(),
-					sprite.getHeight()
-				);
-				//crossing lines
-				sh.line(
-					xPos - VIEW_WIDTH2,
-					yPos - VIEW_DEPTH2,
-					xPos + VIEW_WIDTH2,
-					yPos + VIEW_DEPTH2
-				);
-				sh.line(
-					xPos - VIEW_WIDTH2,
-					yPos + VIEW_DEPTH2,
-					xPos + VIEW_WIDTH2,
-					yPos - VIEW_DEPTH2
-				);
-				//bounding box
-				sh.line(xPos - VIEW_WIDTH2, yPos, xPos, yPos - VIEW_DEPTH2);
-				sh.line(xPos - VIEW_WIDTH2, yPos, xPos, yPos + VIEW_DEPTH2);
-				sh.line(xPos, yPos - VIEW_DEPTH2, xPos + VIEW_WIDTH2, yPos);
-				sh.line(xPos, yPos + VIEW_DEPTH2, xPos + VIEW_WIDTH2, yPos);
-				sh.end();
+			sprite.draw(view.getProjectionSpaceSpriteBatch());
+		}
+	}
+
+	
+	/**
+	 * Updates the saved vertex data with the engine default configuration (category, sprite id and sprite value).
+	 */
+	public void updateSpriteCache(){
+		if (getSpriteId() != 0) {
+			AtlasRegion texture = AbstractGameObject.getSprite(getSpriteCategory(), getSpriteId(), getSpriteValue());
+			if (texture == null) {
+				Gdx.app.error("ago", "could not init sprite:" + getSpriteCategory() + "," + getSpriteId() + "," + getSpriteValue());
 			} else {
-				sprite.draw(view.getSpriteBatch());
-				drawCalls++;
+				sprite = new GameSpaceSprite(texture);
 			}
 		}
 	}
+
+	
 
 	//getter & setter
 	/**
@@ -463,7 +465,7 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	}
 
 	/**
-	 * Hides an object. It won't be rendered.
+	 * Hides an object. It won't be rendered but still affects physics.
 	 *
 	 * @param hidden
 	 */
@@ -494,9 +496,9 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * @param color refence is kept
 	 */
 	public void setColor(Color color) {
-		if (color != null) {
-			this.tint = color;
-		}
+		if (color == null)
+			throw new IllegalArgumentException("color can not be null");
+		this.tint = color;
 	}
 
 	/**
@@ -506,39 +508,32 @@ public abstract class AbstractGameObject implements Serializable, Renderable {
 	 * @return not copy safe, not null
 	 */
 	public Color getColor() {
+		if (tint == null) {
+			tint = new Color(0.5f, 0.5f, 0.5f, 1f);
+		};//because field is transient
 		return tint;
 	}
 
 	/**
-	 * Should i.g. not be used for rendering.
 	 *
 	 * @return the sprite used for rendering
 	 */
-	public AtlasRegion getSprite() {
-		return AbstractGameObject.getSprite(getSpriteCategory(), getSpriteId(), getSpriteValue());
+	public GameSpaceSprite getSprite() {
+		if (sprite==null) {
+			updateSpriteCache();
+		}
+		return sprite;
 	}
 
 	/**
-	 * Check if it is marked in this frame. Used for depth sorting.
-	 * @param id camera id
-	 * @return 
+	 * Gives information if object should be rendered.
+	 *
+	 * @param camera
+	 * @return
 	 */
-	public final boolean isMarkedDS(final int id) {
-		return ((marked>>id)&1) == ((AbstractGameObject.currentMarkedFlag >> id) & 1);
-	}
-
-	/**
-	 * Marks as visited in the depth sorting algorithm.
-	 * @param id camera id
-	 * @see com.bombinggames.wurfelengine.core.Camera#visit(com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject) 
-	 */
-	public void markPermanentDS(final int id) {
-		marked ^= (-((AbstractGameObject.currentMarkedFlag >> id) & 1) ^ marked) & (1 << id);
-	}
-
-	@Override
 	public boolean shouldBeRendered(Camera camera) {
 		return true;
 	}
+
 
 }

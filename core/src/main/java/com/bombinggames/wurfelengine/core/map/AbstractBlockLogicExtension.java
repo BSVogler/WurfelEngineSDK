@@ -21,33 +21,41 @@ public abstract class AbstractBlockLogicExtension {
 	private static final long serialVersionUID = 2L;
 	private static final HashMap<Byte, Class<? extends AbstractBlockLogicExtension>> LOGICREGISTER = new HashMap<>(20);
 
+	/**
+	 * Register a block id with a logic block class.
+	 * @param id
+	 * @param aClass 
+	 */
 	public static void registerClass(byte id, Class<? extends AbstractBlockLogicExtension> aClass){
 		LOGICREGISTER.put(id, aClass);
 }
 	/**
-	 * 
+	 * Creates a new logic instance if registered. This can happen before the chunk is filled
+	 * at this position.
 	 * @param blockId the block at the position
 	 * @param value
 	 * @param coord the position where the logic block is placed
-	 * @return 
+	 * @return null if not registered
 	 */
  	public static AbstractBlockLogicExtension newLogicInstance(byte blockId, byte value, Coordinate coord) {
 		if (coord == null) {
 			throw new NullPointerException();
 		}
-		try {
-			Class<? extends AbstractBlockLogicExtension> aClass = LOGICREGISTER.get(blockId);
-			if (aClass!=null) {
-				AbstractBlockLogicExtension instance = aClass.newInstance();
+	
+		Class<? extends AbstractBlockLogicExtension> logicClass = LOGICREGISTER.get(blockId);
+		if (logicClass != null) {
+			try {
+				AbstractBlockLogicExtension instance = logicClass.getDeclaredConstructor().newInstance();
 				instance.id = blockId;
 				instance.coord = coord;
 				instance.setValue(value);
 				instance.setCoord(coord);
 				return instance;
+			} catch (ReflectiveOperationException ex) {
+				Logger.getLogger(AbstractBlockLogicExtension.class.getName()).log(Level.SEVERE, null, ex);
 			}
-		} catch (InstantiationException | IllegalAccessException ex) {
-			Logger.getLogger(AbstractBlockLogicExtension.class.getName()).log(Level.SEVERE, null, ex);
 		}
+
 		return null;
 	}
 
@@ -68,7 +76,6 @@ public abstract class AbstractBlockLogicExtension {
 	 * Called when spawned. Should not access the map because during map
 	 * creating this method is called and the map still empty. Also entities can not be spawned here.
 	 *
-
 	 */
 	public AbstractBlockLogicExtension() {
 	}
@@ -95,7 +102,7 @@ public abstract class AbstractBlockLogicExtension {
 
 	/**
 	 *
-	 * @param dt
+	 * @param dt time in ms
 	 */
 	public abstract void update(float dt);
 

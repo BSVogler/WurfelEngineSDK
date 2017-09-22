@@ -68,10 +68,10 @@ public class Laserdot extends SimpleEntity {
 
 	/**
 	 *
-	 * @param aimDir
-	 * @param origin
+	 * @param origin starting point of the ray
+	 * @param aimDir direction of the ray
 	 */
-	public void update(Vector3 aimDir, Point origin) {
+	public void update(Point origin, Vector3 aimDir) {
 		if (hasPosition() && !aimDir.isZero()) {
 			
 			Intersection raycast = origin.rayMarching(aimDir,

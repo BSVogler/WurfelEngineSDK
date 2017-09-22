@@ -35,7 +35,6 @@ import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.graphics.glutils.HdpiUtils;
 import com.bombinggames.wurfelengine.WE;
 import static com.bombinggames.wurfelengine.core.Controller.getMap;
-import com.bombinggames.wurfelengine.core.loading.LoadingScreen;
 import com.bombinggames.wurfelengine.mapeditor.EditorView;
 
 /**
@@ -52,20 +51,16 @@ public class GameplayScreen extends WEScreen {
 	 * the view used when changed to editor mode
 	 */
 	private EditorView editorView;
+	private boolean updateDone = true;
+	private boolean updatedAtLeastOnce;
 
 	/**
 	 * Create the gameplay state. This shows the loading screen.
 	 *
 	 * @param controller The controller of this screen.
 	 * @param view The user view of this screen.
-	 * @param loadingScreen
 	 */
-	public GameplayScreen(final Controller controller, final GameView view, LoadingScreen loadingScreen) {
-		Gdx.app.log("GameplayScreen", "Initializing");
-
-		Gdx.input.setInputProcessor(null);//why is this line needed?
-		WE.setScreen(loadingScreen);
-
+	public GameplayScreen(final Controller controller, final GameView view) {
 		this.controller = controller;
 		this.view = view;
 	}
@@ -106,20 +101,58 @@ public class GameplayScreen extends WEScreen {
 
 	@Override
 	public void renderImpl(final float delta) {
-		float avgDt = controller.getDevTools().getAverageDelta(WE.getCVars().getValueI("numFramesAverageDelta"));
-		
-		//aply game world speed
-		float dt = avgDt * WE.getCVars().getValueF("timespeed");
-		
-		//update data
-		MessageManager.getInstance().update(delta);
-		view.preUpdate(dt);
-		controller.update(dt);
-		Controller.staticUpdate(dt);
-		view.update(dt);
-		getMap().postUpdate(dt);//hack to prevent 1-frame lag by too late write access via view update
+		if (WE.getCVars().getValueB("enablemultiThreadRendering")) {
+			if (updateDone) {
+				updateDone = false;
+				if (updatedAtLeastOnce) {
+					view.getCameras().get(0).startMultiRendering();
+					view.render();
+				}
+				new Thread(() -> {
+					float avgDt = controller.getDevTools().getAverageDelta(WE.getCVars().getValueI("numFramesAverageDelta")) * 1000;
+
+					if (avgDt >= WE.getCVars().getValueF("MaxDelta")) {
+						avgDt = 1000f / 60f;//if <1 FPS assume it was stopped and set delta to 16,66ms ^= 60FPS
+					}
+					//apply game world speed
+					float dt = avgDt * WE.getCVars().getValueF("timespeed");
+					//update data
+					MessageManager.getInstance().update(delta);
+					view.preUpdate(dt);
+					controller.update(dt);
+					Controller.staticUpdate(dt);
+					view.update(dt);
+					getMap().postUpdate(dt);//hack to prevent 1-frame lag by too late write access via view update
+
+					updateDone = true;
+					updatedAtLeastOnce = true;
+					//Gdx.app.postRunnable(() -> {});
+				}).start();
+			} else {
+				if (updatedAtLeastOnce) {
+					view.render();
+				}
+			}
+		} else {
+			float avgDt = controller.getDevTools().getAverageDelta(WE.getCVars().getValueI("numFramesAverageDelta")) * 1000;
+
+			if (avgDt >= WE.getCVars().getValueF("MaxDelta")) {
+				avgDt = 1000f / 60f;//if <1 FPS assume it was stopped and set delta to 16,66ms ^= 60FPS
+			}
+			//apply game world speed
+			float dt = avgDt * WE.getCVars().getValueF("timespeed");
+
+			//update data
+			MessageManager.getInstance().update(delta);
+			view.preUpdate(dt);
+			controller.update(dt);
+			Controller.staticUpdate(dt);
+			view.update(dt);
+			getMap().postUpdate(dt);//hack to prevent 1-frame lag by too late write access via view update
+			view.render();
+		}
+
 		//render data
-		view.render();
 		WE.getEngineView().getStage().draw();
 	}
 

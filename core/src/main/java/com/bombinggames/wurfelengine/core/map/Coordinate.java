@@ -30,9 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core.map;
 
-import java.util.ArrayList;
-import java.util.LinkedList;
-
 import com.badlogic.gdx.ai.msg.MessageManager;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Vector3;
@@ -48,6 +45,8 @@ import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell.Channel;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
+import java.util.ArrayList;
+import java.util.LinkedList;
 
 /**
  * A coordinate is a reference to a specific cell in the map. The coordinate
@@ -58,6 +57,11 @@ import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
 public class Coordinate implements Position {
 
 	private static final long serialVersionUID = 3L;
+	private static Coordinate shared = new Coordinate();
+
+	public static Coordinate getShared() {
+		return shared;
+	}
 	/**
 	 * The x coordinate. Position from left to right.
 	 */
@@ -72,6 +76,11 @@ public class Coordinate implements Position {
 	private int z;
 
 	/**
+	 * 0,0,0,
+	 */
+	public Coordinate() {
+	}
+	/**
 	 * Creates a coordiante refering to the given position on the map.
 	 *
 	 * @param x The x value as coordinate.
@@ -79,7 +88,6 @@ public class Coordinate implements Position {
 	 * @param z The z value as coordinate.
 	 */
 	public Coordinate(int x, int y, int z) {
-		super();
 		this.x = x;
 		this.y = y;
 		this.z = z;
@@ -278,8 +286,8 @@ public class Coordinate implements Position {
 	}
 
 	/**
-	 *
-	 * @return
+	 * To optain value use <i>(byte) (255&(block>>8)</i>
+	 * @return first byte id, second value, third is health.
 	 */
 	public int getBlock() {
 		if (z < 0) {
@@ -478,7 +486,7 @@ public class Coordinate implements Position {
 	@Override
 	public Point toPoint() {
 		return new Point(
-			x * RenderCell.GAME_DIAGLENGTH + (y % 2 != 0 ? RenderCell.VIEW_WIDTH2 : 0),
+			x * RenderCell.GAME_DIAGLENGTH + (y % 2 != 0 ? RenderCell.GAME_DIAGLENGTH2 : 0),
 			y * RenderCell.GAME_DIAGLENGTH2,
 			z * RenderCell.GAME_EDGELENGTH
 		);
@@ -533,12 +541,12 @@ public class Coordinate implements Position {
 
 	@Override
 	public int getProjectionSpaceX(GameView view, Camera camera) {
-		return (int) (getViewSpcX() - camera.getViewSpaceX() + camera.getWidthInProjSpc()*0.5);
+		return (int) (getViewSpcX() - camera.getViewSpaceX() + camera.getWorldWidthViewport()*0.5);
 	}
 
 	@Override
 	public int getProjectionSpaceY(GameView view, Camera camera) {
-		return (int) (getViewSpcY() - camera.getViewSpaceY() + camera.getHeightInProjSpc()*0.5);
+		return (int) (getViewSpcY() - camera.getViewSpaceY() + camera.getWorldHeightViewport()*0.5);
 	}
 
 	@Override
@@ -603,13 +611,9 @@ public class Coordinate implements Position {
 	public boolean damage(byte amount) {
 		byte block = getBlockId();
 		if (block != 0 && amount > 0) {
-			if (getHealth() - amount < 0) {
-				setHealth((byte) 0);
-			} else {
-				Controller.getMap().setHealth(this, (byte) (getHealth() - amount));
-			}
-			if (getHealth() <= 0 && !RenderCell.isIndestructible(block, (byte)0)) {
-				//broadcast event that this block got blockDestroyed
+			int newhealth = Math.max(getHealth() - amount,0);
+			Controller.getMap().setHealth(this, (byte) (newhealth));
+			if (newhealth <= 0 && !RenderCell.isIndestructible(block, (byte)0)) {
 				MessageManager.getInstance().dispatchMessage(Events.blockDestroyed.getId(), this);
 				setBlock(0);
 			}
@@ -742,9 +746,9 @@ public class Coordinate implements Position {
 	 */
 	public RenderCell getRenderCell(RenderStorage rs) {
 		if (z < 0) {
-			return RenderChunk.NULLPOINTEROBJECT;
+			return RenderChunk.CELLOUTSIDE;
 		} else if (z >= Chunk.getBlocksZ()) {
-			return RenderChunk.NULLPOINTEROBJECT;
+			return RenderChunk.CELLOUTSIDE;
 		} else {
 			return rs.getCell(this);
 		}
@@ -761,7 +765,7 @@ public class Coordinate implements Position {
 	public void addLight(final GameView view, Side side, byte vertex, final Color color) {
 		RenderCell rB = getRenderCell(view.getRenderStorage());
 		if (rB != null && !rB.isHidden()) {
-			view.getRenderStorage().setLightFlag(rB);
+			view.getRenderStorage().setLightFlag(rB.getCoord());
 			rB.addLightlevel(color.r, side, Channel.Red, vertex);
 			rB.addLightlevel(color.g, side, Channel.Green, vertex);
 			rB.addLightlevel(color.b, side, Channel.Blue, vertex);

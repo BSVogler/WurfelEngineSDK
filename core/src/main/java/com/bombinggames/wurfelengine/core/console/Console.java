@@ -30,11 +30,6 @@
  */
 package com.bombinggames.wurfelengine.core.console;
 
-import java.io.File;
-import java.util.ArrayList;
-import java.util.Stack;
-import java.util.StringTokenizer;
-
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input.Keys;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
@@ -48,6 +43,10 @@ import com.bombinggames.wurfelengine.core.WorkingDirectory;
 import com.bombinggames.wurfelengine.core.cvar.CVar;
 import com.bombinggames.wurfelengine.core.cvar.CVarSystemMap;
 import com.bombinggames.wurfelengine.core.cvar.CVarSystemSave;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Stack;
+import java.util.StringTokenizer;
 
 /**
  * The message system can manage &amp; show messages (Line).
@@ -62,10 +61,6 @@ public class Console {
     private final Stack<Line> messages; 
     private boolean keyConsoleDown;
     private StageInputProcessor inputprocessor;
-	/**
-	 * the mode of the console
-	 */
-    private Modes mode;
 	private final TextArea log;
 	private final ArrayList<ConsoleCommand> registeredCommands = new ArrayList<>(10);
 	
@@ -87,11 +82,6 @@ public class Console {
 		return path;
 	}
 
-
-    
-    private enum Modes {
-        Chat, Console
-    }
     /**
      * A message is put into the Console. It contains the message, the sender and the importance.
      * @author Benedikt
@@ -101,7 +91,12 @@ public class Console {
         private String sender = "System";
         private int importance = 1;
 
-
+		/**
+		 * 
+		 * @param pmessage
+		 * @param psender
+		 * @param imp importance
+		 */
         protected Line(String pmessage, String psender, int imp) {
             message = pmessage;
             sender = psender;
@@ -136,6 +131,7 @@ public class Console {
      */
     public Console(Skin skin, final int xPos, final int yPos) {
         this.messages = new Stack<>();
+		messages.add(new Line(WE.getCVars().getValueS("lastConsoleCommand"), "Console", 100));
 		
 		//register engine commands
 		registeredCommands.add(new BenchmarkCommand());
@@ -232,20 +228,10 @@ public class Console {
        
         //open close console/chat box. Update is called when the console is not active. The StageInputProcessor oly when it is ipen
         if (!keyConsoleDown && Gdx.input.isKeyPressed(WE.getCVars().getValueI("KeyConsole"))) {
-            setActive(Modes.Console, !textinput.isVisible());//toggle
+            setActive(!textinput.isVisible());//toggle
         }
         keyConsoleDown = Gdx.input.isKeyPressed(WE.getCVars().getValueI("KeyConsole"));
 		
-		if (
-			!keySuggestionDown
-			&& Gdx.input.isKeyPressed( WE.getCVars().getValueI("KeySuggestion") )
-			&& isActive()
-		) {
-            autoComplete();
-        }
-        keySuggestionDown = Gdx.input.isKeyPressed(WE.getCVars().getValueI("KeySuggestion"));
-		
-
 		//decrease importance every 30ms
 		if (timelastupdate >= 30) {
 			timelastupdate = 0;
@@ -256,23 +242,18 @@ public class Console {
 			}
 		}
 		
-		if (!textinput.getText().startsWith(path+" $ "))
-			setText(path+" $ ");
+		if (!textinput.getText().startsWith(path + " $ ")) {
+			textinput.setText(path+" $ ");
+			textinput.setCursorPosition(textinput.getText().length());
+		}
+		 
     }
     
     /**
      * Tell the msg system if it should listen for input.
      * @param active If deactivating the input will be saved.
      */
-   private void setActive(Modes mode, final boolean active) {
-		this.mode = mode;
-		if (mode == Modes.Chat) {
-			if (!active && !textinput.getText().isEmpty()) {//message entered and closing?
-				enter();
-			} else if (active && !textinput.isVisible()) {//window should be opened?
-				clearCommandLine();//clear if openend
-			}
-        }
+   private void setActive(final boolean active) {
         
 		if (active && !textinput.isVisible()) {//window should be opened?
 			inputprocessor = new StageInputProcessor(this);
@@ -301,9 +282,11 @@ public class Console {
 		add(lineBreak + textinput.getText() + "\n", "Console");//add message to message list
 		if (!textinput.getText().isEmpty()) {
 			String command = textinput.getText().substring(textinput.getText().indexOf("$ ") + 2);
-			WE.getCVars().get("lastConsoleCommand").setValue(command);
-			if (!executeCommand(command)) {
-				add("Failed executing command.\n", "System");
+			if (!command.isEmpty()) {
+				WE.getCVars().get("lastConsoleCommand").setValue(command);
+				if (!executeCommand(command)) {
+					add("Failed executing command.\n", "System");
+				}
 			}
 			clearCommandLine();
 		}
@@ -365,15 +348,19 @@ public class Console {
 		}
 
 		String line = filt.get(filt.size() - 1 - skip).message;//apply filter
-		return line.substring(textinput.getText().indexOf("$ ") + 2, line.length() - 1);
+		if (line.contains("$ ")) {
+			return line.substring(line.indexOf("$ ") + 2, line.length() - 1);
+		} else {
+			return line;
+		}
 	}
     
     /**
-     *Set the text in the box.
+     *Set the text in the box and the cursor at the end.
      * @param text
      */
     public void setText(String text){
-        textinput.setText(text);
+        textinput.setText(path+" $ "+text);
         textinput.setCursorPosition(textinput.getText().length());
 		//nextSuggestionNo=0;//start with suggestions all over
     }
@@ -414,11 +401,6 @@ public class Console {
 			}
 		}
 		
-		//displaySuggestion
-		if (suggestions.size()==1) {
-			textinput.setText(path+" $ "+suggestions.get(0)+" ");
-			textinput.setCursorPosition(textinput.getText().length());
-		}
 		return suggestions;
 	}
     
@@ -549,7 +531,6 @@ public class Console {
     
     private class StageInputProcessor extends InputListener {
         private final Console parentRef;
-		private boolean lastKeyWasTab;
 		private int posInLastCommands = -1;
 
         private StageInputProcessor(Console parent) {
@@ -571,22 +552,19 @@ public class Console {
 					if (message.sender.equals("Console")) {
 						filt.add(message);
 					}
-				}	
+				}
+				//increase position
 				if (posInLastCommands < filt.size()) {
 					posInLastCommands++;
 				}
-				if (posInLastCommands >= filt.size()){
-					parentRef.setText(WE.getCVars().getValueS("lastConsoleCommand"));
-				} else {
-					parentRef.setText(parentRef.getLastMessage("Console",posInLastCommands));
-				}
+				parentRef.setText(parentRef.getLastMessage("Console",posInLastCommands));
             }
 			if (keycode == Keys.DOWN){
 				if (posInLastCommands > -1) {
 					posInLastCommands--;
 				}
 				if (posInLastCommands == -1) {
-					parentRef.setText(path + " $ ");
+					parentRef.setText("");//todo should be current text
 				} else {
 					parentRef.setText(parentRef.getLastMessage("Console", posInLastCommands));
 				}
@@ -598,23 +576,23 @@ public class Console {
             }
 			
 			if (keycode == Keys.ESCAPE){
-                setActive(Modes.Console, false);//toggle
+                setActive(false);//toggle
             }
 			
-			if (keycode == Keys.TAB){
-				ArrayList<String> possibilities = autoComplete();
-				if (possibilities.size()>1){
-					if (lastKeyWasTab){
-						add(possibilities+"\n");
-					}
-				} else {
-					if (possibilities.size()==1)
-						setText(path + " $ "+possibilities.get(0));
+			if (keycode == WE.getCVars().getValueI("KeySuggestion")){
+				ArrayList<String> suggestions = autoComplete();
+				if (isActive()) {
+					autoComplete();
 				}
-				lastKeyWasTab = true;
-            }else {
-				lastKeyWasTab = false;
-			}
+				
+				if (suggestions.size()>1){
+					//displaySuggestion
+					add(suggestions+"\n");
+				} else if (!suggestions.isEmpty()) {
+					setText(suggestions.get(0)+" ");
+				}
+            }
+			
             return true;
         }
     }

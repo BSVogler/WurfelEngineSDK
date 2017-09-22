@@ -2,6 +2,7 @@ package com.bombinggames.wurfelengine.core.gameobjects;
 
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Interpolation;
+import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Pool;
 
 /**
@@ -48,7 +49,8 @@ public class Particle extends MovableEntity {
 	 * @param maxtime TTL in ms
 	 */
 	public Particle(byte id, float maxtime) {
-		super(id, 0, false);
+		super(id, 0);
+		setMass(0.001f);
 		init(maxtime);
 	}
 	
@@ -71,6 +73,7 @@ public class Particle extends MovableEntity {
 		startingAlpha =1;
 		setMass(0.0005f);
 		rotateRight = Math.random() > 0.5f;
+		setMovement(Vector3.Zero);
 	}
 
 	/**
