@@ -16,6 +16,14 @@ public class DestructionParticle extends MovableEntity {
 	private float modMoved =0;
 
 	/**
+	 * 
+	 */
+	public DestructionParticle() {
+		this((byte) 0);
+	}
+
+	
+	/**
 	 *
 	 * @param id
 	 */
