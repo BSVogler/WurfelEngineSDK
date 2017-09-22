@@ -65,7 +65,7 @@ public class MovableEntity extends AbstractEntity  {
 	/**
 	 * Direction and speed of movement.
 	 */
-	private final Vector3 movement;
+	private Vector3 movement;
 	/**
 	 * saves the viewing direction even if the player is not moving. Should never be len()==0
 	 */
@@ -237,6 +237,10 @@ public class MovableEntity extends AbstractEntity  {
 		if (hasPosition()) {
 			float t = dt * 0.001f; //t = time in s
 			Vector3 movement = this.movement;
+			if (movement == null) {
+				this.movement = new Vector3();
+				movement = this.movement;
+			}
 			
 			if (moveToAi != null) {
 				moveToAi.update(dt);
