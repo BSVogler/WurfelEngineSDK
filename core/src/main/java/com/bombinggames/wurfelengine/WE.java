@@ -287,7 +287,7 @@ public class WE {
 	 * @param view
 	 * @see com.bombinggames.wurfelengine.WE#startGame()
 	 */
-	public static void initAndStartGame(LoadingScreen customLoadingScreen, final Controller controller, final GameView view) {
+	public static void initAndStartGame(final LoadingScreen customLoadingScreen, final Controller controller, final GameView view) {
 		if (GAME != null) {
 			Gdx.app.log("Wurfel Engine", "Initializing game using Controller:" + controller.toString());
 			Gdx.app.log("Wurfel Engine", "and View:" + view.toString());
