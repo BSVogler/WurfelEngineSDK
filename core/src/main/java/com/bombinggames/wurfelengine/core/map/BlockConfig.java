@@ -7,7 +7,7 @@ import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
  *
  * @author Benedikt Vogler
  */
-public class CustomBlocks {
+public class BlockConfig {
 
 	/**
 	 * When it is possible to see though the sides.

@@ -136,22 +136,21 @@ public class Map implements IndexedGraph<PfNode> {
 		return i;
 	}
 	
-	private static CustomBlocks blockConfig = new CustomBlocks();
-		
-	public static CustomBlocks getBlockConfig(){
+	private static BlockConfig blockConfig = new BlockConfig();
 	
 	/**
 	 * Get the currently set block config.
 	 * @return 
 	 */	
+	public static BlockConfig getBlockConfig(){
 		return blockConfig;
 	}
 
-	public static void setBlockConfig(CustomBlocks blockConfig) {
 	/**
 	 * Set the currently set block config.
 	 * @param blockConfig 
 	 */
+	public static void setBlockConfig(BlockConfig blockConfig) {
 		Map.blockConfig = blockConfig;
 	}
 
