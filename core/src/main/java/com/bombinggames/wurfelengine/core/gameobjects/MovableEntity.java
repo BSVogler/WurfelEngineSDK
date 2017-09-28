@@ -35,6 +35,7 @@ import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.Events;
 import com.bombinggames.wurfelengine.core.map.Chunk;
+import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import static com.bombinggames.wurfelengine.core.map.rendering.RenderCell.GAME_EDGELENGTH;
@@ -492,13 +493,13 @@ public class MovableEntity extends AbstractEntity  {
 		int colRad = colissionRadius;
 		int block = (byte) pos.add(0, -colRad, 0).getBlock();
 		//back corner top
-		if (RenderCell.isObstacle(block)) {
+		if (Map.getBlockConfig().isObstacle(block)) {
 			pos.add(0, colRad, 0);
 			return true;
 		}
 		//front corner
 		block = pos.add(0, 2 * colRad, 0).getBlock();
-		if (RenderCell.isObstacle(block)) {
+		if (Map.getBlockConfig().isObstacle(block)) {
 			pos.add(0, -colRad, 0);
 			return true;
 		}
@@ -506,14 +507,14 @@ public class MovableEntity extends AbstractEntity  {
 		//check X
 		//left
 		block = pos.add(-colRad, -colRad, 0).getBlock();
-		if (RenderCell.isObstacle(block)) {
+		if (Map.getBlockConfig().isObstacle(block)) {
 			pos.add(colRad, 0, 0);
 			return true;
 		}
 		//bottom corner
 		block = pos.add(2 * colRad, 0, 0).getBlock();
 		pos.add(-colRad, 0, 0);
-		return RenderCell.isObstacle(block);
+		return Map.getBlockConfig().isObstacle(block);
 	}
 	
 	/**

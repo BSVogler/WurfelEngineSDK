@@ -32,7 +32,9 @@ package com.bombinggames.wurfelengine.core.lightengine;
 
 import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
+import com.bombinggames.wurfelengine.core.map.CustomBlocks;
 import com.bombinggames.wurfelengine.core.map.Iterators.DataIterator3D;
+import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
@@ -54,6 +56,8 @@ public class AmbientOcclusionCalculator {
 		//iterate over every block in chunk
 		Coordinate coord = new Coordinate(0, 0, 0);
 		DataIterator3D<RenderCell> iterator = chunk.getIterator(0, Chunk.getBlocksZ() - 1);
+		CustomBlocks config = Map.getBlockConfig();
+		
 		//Algorithm runs similar to marching cubes, could be optimized to cache neighbor row at the side and below todo
 		while (iterator.hasNext()) {
 			RenderCell next = iterator.next();
@@ -76,7 +80,7 @@ public class AmbientOcclusionCalculator {
 					RenderCell neighBlock = coord.goToNeighbour(side).getRenderCell(rS);
 					byte neighborId = neighBlock.getSpriteId();
 					byte neighborValue = neighBlock.getSpriteValue();
-					if (neighborId != 0 && !RenderCell.isTransparent(neighborId, neighborValue) && RenderCell.hasSides(neighborId, neighborValue)) {
+					if (neighborId != 0 && !config.isTransparent(neighborId, neighborValue) && config.hasSides(neighborId, neighborValue)) {
 						aoFlags |= 1 << (side + 8);
 						//don't double draw the sides in between
 						if (side % 2 == 1) {
@@ -102,7 +106,7 @@ public class AmbientOcclusionCalculator {
 				RenderCell neighBlock = coord.add(0, 2, -1).getRenderCell(rS);
 				byte neighborId = neighBlock.getSpriteId();
 				byte neighborValue = neighBlock.getSpriteValue();
-				if (!RenderCell.isTransparent(neighborId, neighborValue)&& RenderCell.hasSides(neighborId, neighborValue)) {
+				if (!config.isTransparent(neighborId, neighborValue)&& config.hasSides(neighborId, neighborValue)) {
 					aoFlags |= 1 << 3;//first byte position 3
 				}
 				coord.add(0, -2, 1);//revert
@@ -111,7 +115,7 @@ public class AmbientOcclusionCalculator {
 				neighBlock = coord.add(-1, 0, -1).getRenderCell(rS);
 				neighborId = neighBlock.getSpriteId();
 				neighborValue = neighBlock.getSpriteValue();
-				if (neighborId != 0 && !RenderCell.isTransparent(neighborId, neighborValue) && RenderCell.hasSides(neighborId, neighborValue)) {
+				if (neighborId != 0 && !config.isTransparent(neighborId, neighborValue) && config.hasSides(neighborId, neighborValue)) {
 					aoFlags |= 1 << 5;//first byte position 5
 				}
 				coord.add(1, 0, 1);
@@ -120,7 +124,7 @@ public class AmbientOcclusionCalculator {
 				neighBlock = coord.add(-1, 0, 0).getRenderCell(rS);//go to left
 				neighborId = neighBlock.getSpriteId();
 				neighborValue = neighBlock.getSpriteValue();
-				if (neighborId != 0 && !RenderCell.isTransparent(neighborId, neighborValue) && RenderCell.hasSides(neighborId, neighborValue)) {
+				if (neighborId != 0 && !config.isTransparent(neighborId, neighborValue) && config.hasSides(neighborId, neighborValue)) {
 					aoFlags |= 1 << 6;//first byte position 6
 					aoFlags &= ~(1 << 5);//set next to false
 					aoFlags &= ~(1 << 7);//Set previous to false
@@ -131,7 +135,7 @@ public class AmbientOcclusionCalculator {
 				neighBlock = coord.add(0, 0, -1).goToNeighbour(5).getRenderCell(rS);//revert changes and go to neighbor
 				neighborId = neighBlock.getSpriteId();
 				neighborValue = neighBlock.getSpriteValue();
-				if (neighborId != 0 && !RenderCell.isTransparent(neighborId, neighborValue) && RenderCell.hasSides(neighborId, neighborValue)) {
+				if (neighborId != 0 && !config.isTransparent(neighborId, neighborValue) && config.hasSides(neighborId, neighborValue)) {
 					aoFlags |= 1 << 4;//first byte position 4
 					aoFlags &= ~(1 << 5);//set next to false
 					aoFlags &= ~(1 << 3);//Set previous to false
@@ -143,7 +147,7 @@ public class AmbientOcclusionCalculator {
 				neighBlock =coord.add(1, 0, -1).getRenderCell(rS);
 				neighborId = neighBlock.getSpriteId();
 				neighborValue = neighBlock.getSpriteValue();
-				if (neighborId != 0 && !RenderCell.isTransparent(neighborId, neighborValue) && RenderCell.hasSides(neighborId, neighborValue)) {
+				if (neighborId != 0 && !config.isTransparent(neighborId, neighborValue) && config.hasSides(neighborId, neighborValue)) {
 					aoFlags |= 1 << 19;//third byte position 3
 				}
 				coord.add(-1, 0, 1);
@@ -152,7 +156,7 @@ public class AmbientOcclusionCalculator {
 				neighBlock = coord.add(0, 2, -1).getRenderCell(rS);//revert changes and go to neighbor
 				neighborId = neighBlock.getSpriteId();
 				neighborValue = neighBlock.getSpriteValue();
-				if (neighborId != 0 && !RenderCell.isTransparent(neighborId, neighborValue) && RenderCell.hasSides(neighborId, neighborValue)) {
+				if (neighborId != 0 && !config.isTransparent(neighborId, neighborValue) && config.hasSides(neighborId, neighborValue)) {
 					aoFlags |= 1 << 21;//third byte position 5
 				}
 				coord.add(0, -2, 1);
@@ -161,7 +165,7 @@ public class AmbientOcclusionCalculator {
 				neighBlock = coord.add(1, 0, 0).getRenderCell(rS);
 				neighborId = neighBlock.getSpriteId();
 				neighborValue = neighBlock.getSpriteValue();
-				if (neighborId != 0 && !RenderCell.isTransparent(neighborId, neighborValue) && RenderCell.hasSides(neighborId, neighborValue)) {
+				if (neighborId != 0 && !config.isTransparent(neighborId, neighborValue) && config.hasSides(neighborId, neighborValue)) {
 					aoFlags |= 1 << 18;//third byte position 2
 					aoFlags &= ~(1 << 17);//set next to false
 					aoFlags &= ~(1 << 19);//Set previous to false
@@ -172,7 +176,7 @@ public class AmbientOcclusionCalculator {
 				neighBlock = coord.add(0, 0, -1).goToNeighbour(3).getRenderCell(rS);//revert changes and go to neighbor
 				neighborId = neighBlock.getSpriteId();
 				neighborValue = neighBlock.getSpriteValue();
-				if (neighborId != 0 && !RenderCell.isTransparent(neighborId, neighborValue) && RenderCell.hasSides(neighborId, neighborValue)) {
+				if (neighborId != 0 && !config.isTransparent(neighborId, neighborValue) && config.hasSides(neighborId, neighborValue)) {
 					aoFlags |= 1 << 20;//third byte position 4
 					aoFlags &= ~(1 << 21);//set next to false
 					aoFlags &= ~(1 << 19);//Set previous to false
@@ -182,7 +186,7 @@ public class AmbientOcclusionCalculator {
 				neighBlock = coord.add(0, 2, 0).getRenderCell(rS);//revert changes and go to neighbor
 				neighborId = neighBlock.getSpriteId();
 				neighborValue = neighBlock.getSpriteValue();
-				if (neighborId != 0 && !RenderCell.isTransparent(neighborId, neighborValue) && RenderCell.hasSides(neighborId, neighborValue)) {
+				if (neighborId != 0 && !config.isTransparent(neighborId, neighborValue) && config.hasSides(neighborId, neighborValue)) {
 					aoFlags |= 1 << 2;//first byte position 2
 					aoFlags |= 1 << 22;//third byte position 6
 				}

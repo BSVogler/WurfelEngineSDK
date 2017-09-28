@@ -35,8 +35,8 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Vector3;
 import com.bombinggames.wurfelengine.core.gameobjects.SimpleEntity;
 import com.bombinggames.wurfelengine.core.map.Intersection;
+import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 
 /**
  * Uses sprite e22-0
@@ -77,7 +77,7 @@ public class Laserdot extends SimpleEntity {
 			Intersection raycast = origin.rayMarching(aimDir,
 				12,
 				null,
-				(Byte t) -> !RenderCell.isTransparent(t,(byte) 0) && t != ignoreId
+				(Byte t) -> !Map.getBlockConfig().isTransparent(t,(byte) 0) && t != ignoreId
 			);
 			setHidden(raycast == null);
 			if (raycast != null && raycast.getPoint() != null) {

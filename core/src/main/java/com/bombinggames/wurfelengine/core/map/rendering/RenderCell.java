@@ -39,7 +39,7 @@ import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 import com.bombinggames.wurfelengine.core.gameobjects.Side;
 import com.bombinggames.wurfelengine.core.gameobjects.SimpleEntity;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
-import com.bombinggames.wurfelengine.core.map.CustomBlocks;
+import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.sorting.TopoGraphNode;
@@ -154,28 +154,6 @@ public class RenderCell extends AbstractGameObject {
 	public transient static final int VALUESNUM = 64;
 
 	/**
-	 * the factory for custom blocks
-	 */
-	private static CustomBlocks customBlocks;
-	
-	/**
-	 * If you want to define custom id's &gt;39
-	 *
-	 * @param customBlockFactory new value of customBlockFactory
-	 */
-	public static void setCustomBlockFactory(CustomBlocks customBlockFactory) {
-		customBlocks = customBlockFactory;
-	}
-
-	/**
-	 *
-	 * @return
-	 */
-	public static CustomBlocks getFactory() {
-		return customBlocks;
-	}
-
-	/**
 	 * value between 0-100
 	 *
 	 * @param coord
@@ -220,100 +198,27 @@ public class RenderCell extends AbstractGameObject {
 			return new Sea(id, value);
 		}
 
-		if (customBlocks != null) {
-			return customBlocks.toRenderBlock(id, value);
-		} else {
-			return new RenderCell(id, value);
-		}
+		return Map.getBlockConfig().toRenderBlock(id, value);
 	}
 
-	/**
-	 * 
-	 * @param id
-	 * @param value
-	 * @return 
-	 */
-	public static boolean isObstacle(byte id, byte value) {
-		if (id > 9 && customBlocks != null) {
-			return customBlocks.isObstacle(id, value);
-		}
-		if (id == 9) {
-			return false;
-		}
-		
-		return id != 0;
-	}
-	
-	/**
-	 * 
-	 * @param block
-	 * @return 
-	 */
-	public static boolean isObstacle(int block) {
-		return isObstacle((byte)(block&255), (byte)((block>>8)&255));
-	}
-	
-	/**
-	 * When it is possible to see though the sides.
-	 * @param spriteId
-	 * @param spriteValue
-	 * @return 
-	 */
-	public static boolean isTransparent(byte spriteId, byte spriteValue) {
-		if (spriteId==0 || spriteId == 9 || spriteId == 4) {
-			return true;
-		}
-		
-		if (spriteId > 9 && customBlocks != null) {
-			return customBlocks.isTransparent(spriteId, spriteValue);
-		}
-		return false;
-	}
-	
 	/**
 	 * 
 	 * @param spriteIdValue id and value in one int
 	 * @return 
 	 */
 	public static boolean isTransparent(int spriteIdValue) {
-		return isTransparent((byte)(spriteIdValue&255), (byte)((spriteIdValue>>8)&255));
+		return Map.getBlockConfig().isTransparent((byte)(spriteIdValue&255), (byte)((spriteIdValue>>8)&255));
 	}
 
-	/**
-	 * Check if the block is liquid.
-	 *
-	 * @param id
-	 * @param value
-	 * @return true if liquid, false if not
-	 */
-	public static boolean isLiquid(byte id, byte value) {
-		if (id > 9 && customBlocks != null) {
-			return customBlocks.isLiquid(id, value);
-		}
-		return id == 9;
-	}
 	
-		/**
+	/**
 	 * Check if the block is liquid.
 	 *
 	 * @param block first byte id, second value, third health
 	 * @return true if liquid, false if not
 	 */
 	public static boolean isLiquid(int block) {
-		return isLiquid((byte)(block&255), (byte)((block>>8)&255));
-	}
-	
-	/**
-	 *
-	 * @param id
-	 * @param value
-	 * @return
-	 */
-	public static boolean isIndestructible(byte id, byte value) {
-		if (customBlocks != null) {
-			return customBlocks.isIndestructible(id, value);
-		}
-		return false;
+		return Map.getBlockConfig().isLiquid((byte)(block&255), (byte)((block>>8)&255));
 	}
 
 	/**
@@ -344,31 +249,10 @@ public class RenderCell extends AbstractGameObject {
 					return "undefined";
 			}
 		} else {
-			if (customBlocks != null) {
-				return customBlocks.getName(id, value);
-			} else {
-				return "undefined";
-			}
+			return Map.getBlockConfig().getName(id, value);
 		}
 	}
 
-	/**
-	 *
-	 * @param spriteId
-	 * @param spriteValue
-	 * @return
-	 */
-	public static boolean hasSides(byte spriteId, byte spriteValue) {
-		if (spriteId == 0 || spriteId == 4) {
-			return false;
-		}
-		
-		if (spriteId > 9 && customBlocks != null) {
-			return customBlocks.hasSides(spriteId, spriteValue);
-		}
-		return true;
-	}
-	
 	/**
 	 * Indicate whether the blocks should get shaded independent of the light engine by default.
 	 * @param shade 
@@ -420,7 +304,7 @@ public class RenderCell extends AbstractGameObject {
 	public static boolean isSpriteDefined(byte spriteId, byte spriteValue) {
 		return spriteId != 0
 			&& getSpritesheet() != null
-			&& getSpritesheet().findRegion('b' + Byte.toString(spriteId) + "-" + spriteValue + "-0" + (RenderCell.hasSides(spriteId, spriteValue) ? "-0" : "")) != null;
+			&& getSpritesheet().findRegion('b' + Byte.toString(spriteId) + "-" + spriteValue + "-0" + (Map.getBlockConfig().hasSides(spriteId, spriteValue) ? "-0" : "")) != null;
 	}
 	
    /**
@@ -434,7 +318,7 @@ public class RenderCell extends AbstractGameObject {
             COLORLIST[id][value] = new Color();
             int colorInt;
             
-            if (RenderCell.hasSides(id, value)){//if has sides, take top block    
+            if (Map.getBlockConfig().hasSides(id, value)){//if has sides, take top block    
                 AtlasRegion texture = getBlockSprite(id, value, Side.TOP);
                 if (texture == null) return new Color();
                 colorInt = getPixmap().getPixel(
@@ -560,7 +444,7 @@ public class RenderCell extends AbstractGameObject {
 	 * @return
 	 */
 	public boolean isObstacle() {
-		return RenderCell.isObstacle(id, value);
+		return Map.getBlockConfig().isObstacle(id, value);
 	}
 
     @Override
@@ -949,7 +833,7 @@ public class RenderCell extends AbstractGameObject {
 	 */
 	public boolean isTransparent() {
 		if (id==0) return true;
-		return RenderCell.isTransparent(getSpriteId(),getSpriteValue());//sprite id because view related
+		return Map.getBlockConfig().isTransparent(getSpriteId(),getSpriteValue());//sprite id because view related
 	}
 	
 	/**
@@ -957,7 +841,7 @@ public class RenderCell extends AbstractGameObject {
 	 * @return
 	 */
 	public boolean isIndestructible() {
-		return RenderCell.isIndestructible(id,value);//game logic related
+		return Map.getBlockConfig().isIndestructible(id,value);//game logic related
 	}
 	
 	/**
@@ -973,7 +857,7 @@ public class RenderCell extends AbstractGameObject {
 		if (id == 0) {
 			return false;
 		}
-		return RenderCell.hasSides(getSpriteId(),getSpriteValue());
+		return Map.getBlockConfig().hasSides(getSpriteId(),getSpriteValue());
 	}
 
 	/**
@@ -984,7 +868,7 @@ public class RenderCell extends AbstractGameObject {
 		if (id == 0) {
 			return false;
 		}
-		return RenderCell.isLiquid(id,value);
+		return Map.getBlockConfig().isLiquid(id,value);
 	}
 
 	@Override

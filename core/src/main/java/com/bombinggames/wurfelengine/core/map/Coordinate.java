@@ -613,7 +613,7 @@ public class Coordinate implements Position {
 		if (block != 0 && amount > 0) {
 			int newhealth = Math.max(getHealth() - amount,0);
 			Controller.getMap().setHealth(this, (byte) (newhealth));
-			if (newhealth <= 0 && !RenderCell.isIndestructible(block, (byte)0)) {
+			if (newhealth <= 0 && !Map.getBlockConfig().isIndestructible(block, (byte)0)) {
 				MessageManager.getInstance().dispatchMessage(Events.blockDestroyed.getId(), this);
 				setBlock(0);
 			}

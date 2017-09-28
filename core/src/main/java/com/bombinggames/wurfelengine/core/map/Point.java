@@ -904,7 +904,7 @@ public class Point extends Vector3 implements Position {
 			vecToTarget,
 			maxdistance,
 			null,
-			(Byte t) -> !RenderCell.isTransparent(t,(byte)0)
+			(Byte t) -> !Map.getBlockConfig().isTransparent(t,(byte)0)
 		);
 		return !(intersect != null
 			&& distanceTo(intersect.getPoint()) < distanceTo(p)//check if point is before
@@ -960,7 +960,7 @@ public class Point extends Vector3 implements Position {
 	 * @return
 	 */
 	public boolean isObstacle() {
-		return RenderCell.isObstacle(getBlockId());
+		return Map.getBlockConfig().isObstacle(getBlockId());
 	}
 
 }

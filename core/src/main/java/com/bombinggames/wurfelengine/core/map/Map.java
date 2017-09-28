@@ -135,6 +135,16 @@ public class Map implements IndexedGraph<PfNode> {
 		}
 		return i;
 	}
+	
+	private static CustomBlocks blockConfig = new CustomBlocks();
+		
+	public static CustomBlocks getBlockConfig(){
+		return blockConfig;
+	}
+
+	public static void setBlockConfig(CustomBlocks blockConfig) {
+		Map.blockConfig = blockConfig;
+	}
 
 	/**
 	 * every entity on the map is stored in this field

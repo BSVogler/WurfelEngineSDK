@@ -7,6 +7,7 @@ import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Coordinate;
 import com.bombinggames.wurfelengine.core.map.Intersection;
+import com.bombinggames.wurfelengine.core.map.Map;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
@@ -123,7 +124,7 @@ public class PointLightSource extends AbstractEntity {
 						Intersection inters = origin.raycast(dir,
 							floatradius * 2,
 							null,
-							(Byte t) -> !RenderCell.isTransparent(t, (byte) 0)
+							(Byte t) -> !Map.getBlockConfig().isTransparent(t, (byte) 0)
 						);
 						//check if intersected
 						if (inters != null && inters.getPoint() != null) {
