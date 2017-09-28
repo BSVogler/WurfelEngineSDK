@@ -940,7 +940,7 @@ public class GameSpaceSprite extends TextureRegion {
 
 	/**
 	 * The origin influences
-	 * {@link #setPosition(float, float)}, {@link #setRotation(float)} and the
+	 * {@link #setPosition(float, float, float)}, {@link #setRotation(float)} and the
 	 * expansion direction of scaling {@link #setScale(float, float)}
 	 *
 	 * @return
