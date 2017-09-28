@@ -9,6 +9,7 @@ com.bombinggames.wurfelengine.core.map
 com.bombinggames.wurfelengine.core.map.Generators
 com.bombinggames.wurfelengine.core.map.Iterators
 com.bombinggames.wurfelengine.core.map.rendering
+com.bombinggames.wurfelengine.core.sorting
 com.bombinggames.wurfelengine.extension
 com.bombinggames.wurfelengine.extension.basicmainmenu
 com.bombinggames.wurfelengine.extension.shooting
