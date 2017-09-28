@@ -54,7 +54,7 @@ public class DesktopLauncher {
 		};
 
 		WE.setMainMenu(new BasicMainMenu(menuItems));
-		WE.launch("Wurfelengine V" + WE.VERSION, args);
+		WE.launch("Wurfel Engine V" + WE.VERSION, args);
 	}
 
 }
