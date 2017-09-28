@@ -16,10 +16,7 @@ public class CustomBlocks {
 	 * @return
 	 */
 	public boolean isTransparent(byte spriteId, byte spriteValue){
-		if (spriteId==0 || spriteId == 9 || spriteId == 4) {
-			return true;
-		}
-		return false;
+		return spriteId==0 || spriteId == 9 || spriteId == 4;
 	}
 
 	/**
