@@ -173,7 +173,7 @@ public class TopoGraphNode {
 	 * @param cameraId camera cameraId
 	 * @return
 	 * @see
-	 * com.bombinggames.wurfelengine.core.sorting.TopologicalSort#visit(RenderCell)
+	 * com.bombinggames.wurfelengine.core.sorting.TopologicalSort#visit(TopoGraphNode)
 	 */
 	public final boolean isMarkedDS(final int cameraId) {
 		return ((marked >> cameraId) & 1) == ((currentMarkedFlag >> cameraId) & 1);
@@ -184,7 +184,7 @@ public class TopoGraphNode {
 	 *
 	 * @param id camera id
 	 * @see
-	 * com.bombinggames.wurfelengine.core.sorting.TopologicalSort#visit(RenderCell)
+	 * com.bombinggames.wurfelengine.core.sorting.TopologicalSort#visit(TopoGraphNode)
 	 */
 	public void markAsVisitedDS(final int id) {
 		marked ^= (-((currentMarkedFlag >> id) & 1) ^ marked) & (1 << id);

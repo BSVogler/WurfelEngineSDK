@@ -720,7 +720,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	 * Check if it is marked in this frame. Used for depth sorting.
 	 * @param id camera id
 	 * @return 
-	 * @see com.bombinggames.wurfelengine.core.sorting.TopologicalSort#visit(RenderCell) 
+	 * @see com.bombinggames.wurfelengine.core.sorting.TopologicalSort#visit(TopoGraphNode) 
 	 */
 	public final boolean isMarkedDS(final int id) {
 		return ((marked>>id)&1) == ((TopoGraphNode.currentMarkedFlag >> id) & 1);
@@ -729,7 +729,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	/**
 	 * Marks as visited in the depth sorting algorithm.
 	 * @param id camera id
-	 * @see com.bombinggames.wurfelengine.core.sorting.TopologicalSort#visit(RenderCell) 
+	 * @see com.bombinggames.wurfelengine.core.sorting.TopologicalSort#visit(TopoGraphNode) 
 	 */
 	public void markAsVisitedDS(final int id) {
 		marked ^= (-((TopoGraphNode.currentMarkedFlag >> id) & 1) ^ marked) & (1 << id);

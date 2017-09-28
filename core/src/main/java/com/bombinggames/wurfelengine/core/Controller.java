@@ -50,7 +50,7 @@ import java.util.ArrayList;
 /**
  * A controller manages the map and the game data.
  * 
- * Before this is used {@link #init() } or {@link #init(int, java.lang.String) } must be called.
+ * Before this is used {@link #init() } or {@link #init(java.lang.String, int)} must be called.
  *
  * @author Benedikt Vogler
  */
@@ -257,7 +257,7 @@ public class Controller implements GameManager {
 	 * method, because chunk loading is started by calling this method.
 	 * Uses last set saveslot and mapName. Set before calling this.
 	 * 
-	 * @see #init(int, java.lang.String) 
+	 * @see #init(java.lang.String, int) 
 	 */
 	public void init() {
 		init(mapName, saveSlot);
