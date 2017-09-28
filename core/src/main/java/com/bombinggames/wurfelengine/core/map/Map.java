@@ -58,7 +58,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * A map stores nine chunks as part of a bigger map. It also contains the
+ * A map stores many chunks in a hash map. It also contains the
  * entities.
  *
  * @author Benedikt Vogler
@@ -139,10 +139,19 @@ public class Map implements IndexedGraph<PfNode> {
 	private static CustomBlocks blockConfig = new CustomBlocks();
 		
 	public static CustomBlocks getBlockConfig(){
+	
+	/**
+	 * Get the currently set block config.
+	 * @return 
+	 */	
 		return blockConfig;
 	}
 
 	public static void setBlockConfig(CustomBlocks blockConfig) {
+	/**
+	 * Set the currently set block config.
+	 * @param blockConfig 
+	 */
 		Map.blockConfig = blockConfig;
 	}
 
