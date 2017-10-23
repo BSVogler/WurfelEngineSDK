@@ -185,12 +185,12 @@ public class DevTools {
             
             //render steps
             shr.setColor(Color.GRAY);
-            shr.line(xPos, yPos-maxHeight, xPos+getWidth(), yPos-maxHeight);
-            shr.line(xPos, yPos-maxHeight+0.0166f*3000, xPos+getWidth(), yPos-maxHeight+0.0166f*3000);
-            shr.line(xPos, yPos-maxHeight+0.0333f*3000, xPos+getWidth(), yPos-maxHeight+0.0333f*3000);
-            shr.line(xPos, yPos-maxHeight+0.0666f*3000, xPos+getWidth(), yPos-maxHeight+0.0666f*3000);
+			shr.line(xPos, yPos - maxHeight, xPos + getWidth(), yPos - maxHeight);
+			shr.line(xPos, yPos - maxHeight + 0.0166f * 3000, xPos + getWidth(), yPos - maxHeight + 0.0166f * 3000);
+			shr.line(xPos, yPos - maxHeight + 0.0333f * 3000, xPos + getWidth(), yPos - maxHeight + 0.0333f * 3000);
+			shr.line(xPos, yPos - maxHeight + 0.0666f * 3000, xPos + getWidth(), yPos - maxHeight + 0.0666f * 3000);
 			//render each delta field in memory
-			int from = Math.max((field /maxStepsVisualized-1)*maxStepsVisualized,0);
+			int from = Math.max((field / maxStepsVisualized - 1) * maxStepsVisualized, 0);
 //			int to = ((field /maxStepsVisualized+1)*maxStepsVisualized)%(data.length);
 			int to = (field+maxStepsVisualized)%(data.length);
 			
@@ -201,8 +201,8 @@ public class DevTools {
 						yPos + getSavedDelta(i) * 3000 - maxHeight,
 						xPos + WIDTH * (i + 1.5f) % (WIDTH * maxStepsVisualized),
 						yPos + getSavedDelta(i + 1) * 3000 - maxHeight,
-						new Color(getSavedDelta(i)/0.0333f-0.5f, 1f-getSavedDelta(i)/0.0333f, 0, 0.9f),
-						new Color(getSavedDelta(i+1)/0.0333f-0.5f, 1f-getSavedDelta(i+1)/0.0333f, 0, 0.9f)
+						new Color(getSavedDelta(i) / 0.0333f - 0.5f, 1f - getSavedDelta(i) / 0.0333f, 0, 0.9f),
+						new Color(getSavedDelta(i + 1) / 0.0333f - 0.5f, 1f - getSavedDelta(i + 1) / 0.0333f, 0, 0.9f)
 					);
 				}
 			}
