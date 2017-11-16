@@ -13,6 +13,7 @@
 * modern 3d rendering (nomal map) and lighting with isometric sprites
 * destructable environment
 * in-game map editor
+* split screen support
 
 
 Wurfel Engine uses Maven for dependency managment. Built on top of libGDX.
