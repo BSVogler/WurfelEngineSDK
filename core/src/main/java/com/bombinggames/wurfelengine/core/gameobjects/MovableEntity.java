@@ -51,10 +51,10 @@ public class MovableEntity extends AbstractEntity  {
 	private transient static String waterSound = "splash";
      	
 	   /**
-     * Set the value of waterSound
+     * Set the name of the sound which is played when entering water.
      * @param waterSound new value of waterSound
      */
-    public static void setWaterSound(String waterSound) {
+    public static void setWaterSplashSound(String waterSound) {
         MovableEntity.waterSound = waterSound;
     }
 	
@@ -838,7 +838,7 @@ public class MovableEntity extends AbstractEntity  {
 	}
 	
 	/**
-	 * performs a step. Plays a sound.
+	 * An event when a step is performed. Plays a sound.
 	 */
 	public void step() {
 		WE.SOUND.play(soundStep,

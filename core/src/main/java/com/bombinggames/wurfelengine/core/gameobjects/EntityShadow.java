@@ -33,7 +33,7 @@ import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 
 /**
- *
+ * A simple drop shadow which drops straight to the ground.
  * @author Benedikt Vogler
  */
 public class EntityShadow extends AbstractEntity implements Component {
