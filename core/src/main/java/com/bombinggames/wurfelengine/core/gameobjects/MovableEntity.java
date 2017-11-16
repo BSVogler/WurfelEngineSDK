@@ -80,7 +80,7 @@ public class MovableEntity extends AbstractEntity  {
 	 */
 	private boolean floating;
 	
-	private transient String stepSound1Grass;
+	private transient String soundStep;
 	private transient boolean stepSoundPlayedInCiclePhase;
 	private transient String fallingSound = "wind";
 	private transient long fallingSoundInstance;
@@ -349,13 +349,13 @@ public class MovableEntity extends AbstractEntity  {
 				if (floating || isOnGround()) {
 					//play sound twice a cicle
 					if (walkingCycle < 250) {
-						if (stepSound1Grass != null && !stepSoundPlayedInCiclePhase && isOnGround()) {
+						if (soundStep != null && !stepSoundPlayedInCiclePhase && isOnGround()) {
 							step();
 						}
 					} else if (walkingCycle < 500) {
 						stepSoundPlayedInCiclePhase = false;
 					} else if (walkingCycle > 500) {
-						if (stepSound1Grass != null && !stepSoundPlayedInCiclePhase && isOnGround()) {
+						if (soundStep != null && !stepSoundPlayedInCiclePhase && isOnGround()) {
 							step();
 						}
 					}
@@ -600,11 +600,11 @@ public class MovableEntity extends AbstractEntity  {
 	}
 
 	/**
-	 *
+	 * Sets the sound which is played when entity is doing a step.
 	 * @param sound
 	 */
-	public void setStepSound1Grass(String sound) {
-		stepSound1Grass = sound;
+	public void setSoundGrass(String sound) {
+		soundStep = sound;
 	}
 
 	/**
@@ -841,8 +841,7 @@ public class MovableEntity extends AbstractEntity  {
 	 * performs a step. Plays a sound.
 	 */
 	public void step() {
-		WE.SOUND.play(
-			stepSound1Grass,
+		WE.SOUND.play(soundStep,
 			0.3f,
 			(float) (0.9f+Math.random()/5f),
 			(float) (Math.random()-1/2f)
