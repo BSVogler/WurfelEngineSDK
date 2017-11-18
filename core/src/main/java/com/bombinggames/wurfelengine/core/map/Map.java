@@ -1006,6 +1006,11 @@ public class Map implements IndexedGraph<PfNode> {
 		disposeEntities();
 	}
 
+	@Override
+	public int getIndex(PfNode n) {
+		return 0;
+	}
+
 	private static class ManhattanDistanceHeuristic implements Heuristic<PfNode> {
 
 		@Override

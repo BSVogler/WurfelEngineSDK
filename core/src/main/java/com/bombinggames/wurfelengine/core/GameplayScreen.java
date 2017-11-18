@@ -117,7 +117,7 @@ public class GameplayScreen extends WEScreen {
 					//apply game world speed
 					float dt = avgDt * WE.getCVars().getValueF("timespeed");
 					//update data
-					MessageManager.getInstance().update(delta);
+					MessageManager.getInstance().update();
 					view.preUpdate(dt);
 					controller.update(dt);
 					Controller.staticUpdate(dt);
@@ -143,7 +143,7 @@ public class GameplayScreen extends WEScreen {
 			float dt = avgDt * WE.getCVars().getValueF("timespeed");
 
 			//update data
-			MessageManager.getInstance().update(delta);
+			MessageManager.getInstance().update();
 			view.preUpdate(dt);
 			controller.update(dt);
 			Controller.staticUpdate(dt);

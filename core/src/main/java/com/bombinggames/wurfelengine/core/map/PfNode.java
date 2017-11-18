@@ -31,14 +31,13 @@
 package com.bombinggames.wurfelengine.core.map;
 
 import com.badlogic.gdx.ai.pfa.Connection;
-import com.badlogic.gdx.ai.pfa.indexed.IndexedNode;
 import com.badlogic.gdx.utils.Array;
 
 /**
  *
  * @author Benedikt Vogler
  */
-public class PfNode extends Coordinate implements IndexedNode<PfNode> {
+public class PfNode extends Coordinate {
 
 	private static final long serialVersionUID = 1L;
 
@@ -73,12 +72,10 @@ public class PfNode extends Coordinate implements IndexedNode<PfNode> {
 	}
 
 	
-	@Override
 	public int getIndex() {
 		return index;
 	}
 
-	@Override
 	public Array<Connection<PfNode>> getConnections() {
 		Array<Connection<PfNode>> a = new Array<>(4);
 		PfNode neigh = new PfNode(cpy().add(-1, 0, 0));
