@@ -1,3 +1,5 @@
+#version 120
+
 //attributes from tint shader
 varying vec4 v_color;
 varying vec2 v_texCoords;
@@ -26,14 +28,14 @@ void main() {
 	
     //RGBA of our diffuse color
     vec4 DiffuseColor = texture2D(u_texture, v_texCoords);
-//discard if nearer pr equal then previous layer, little delta to prevent rounding erros
+	//discard if nearer or equal then previous layer, little delta to prevent rounding erros
 	if (DiffuseColor.a <= 0.1 || gl_FragCoord.z-0.00008 <= texture2D(u_depth , gl_FragCoord.xy/u_resBuffer).r){
 	//if (DiffuseColor.a <= 0.1){
 	 	discard;
 	 }
 	gl_FragDepth = gl_FragCoord.z;
 	
-	vec3 ambient = u_ambientColor.rgb*DiffuseColor.rgb;
+
 
 	vec3 normalColor = texture2D(u_normals, v_texCoords).rgb;
 	vec3 N = normalize((normalColor*2.0- 1.0));//-0.058)*1.25 to normalize because normals are not 100% correct
@@ -48,11 +50,12 @@ void main() {
 	
 	vec3 l = -normalize(v_pos.xyz-(u_localLightPos.xyz));
 
-	vec3 viewDir = normalize(vec3(0.0,0.5,1.0));
+	const vec3 viewDir = normalize(vec3(0.0,0.5,1.0));
 
-	vec3 sunLight = vec3(u_sunColor) * max(dot(N, u_sunNormal), 0.0);
+	//clamp sunLight at white, so during day the sunlight appears white not yellow
+	vec3 sunLight = min(vec3(u_sunColor)*2,1) * max(dot(N, u_sunNormal), 0.0);
 
-	DiffuseColor.rgb*= max(sunLight*4.0,1.0);
+	DiffuseColor.rgb*= max(sunLight*3.5,1.0);//allow very bright light
 
 	vec3 moonLight = vec3(u_moonColor)*2.0 * max(dot(N, u_moonNormal), 0.0);
 	DiffuseColor.rgb*= max(moonLight,1.0);	
@@ -93,6 +96,7 @@ void main() {
 	//		DiffuseColor.a*v_color.a
 	//	);
 
+	vec3 ambient = u_ambientColor.rgb*DiffuseColor.rgb*1.0;
 	//tint changes material color but also is added
 	gl_FragColor = v_color*vec4(fog+ DiffuseColor.rgb+ ambient+ localLight,DiffuseColor.a);	
 //gl_FragColor = v_color*vec4(80000.0*vec3(texture2D(u_depth , gl_FragCoord.xy/vec2(1920,1080)).r-gl_FragCoord.z),DiffuseColor.a);
