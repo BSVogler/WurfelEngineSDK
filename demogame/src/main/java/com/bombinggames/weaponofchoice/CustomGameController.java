@@ -41,7 +41,7 @@ public class CustomGameController extends Controller {
 		super.init();
 
 		gameOver = false;
-		WE.SOUND.setMusic("com/bombinggames/WeaponOfChoice/Sounds/music.ogg");
+		WE.SOUND.setMusic("com/bombinggames/weaponofchoice/sounds/music.ogg");
 
 		player = (Player) new Player(1, RenderCell.GAME_EDGELENGTH)
 			.spawn(new Coordinate(0, 0, 8).toPoint());
@@ -123,7 +123,9 @@ public class CustomGameController extends Controller {
 						(int) (Chunk.getGameDepth() * Math.random()) - Chunk.getGameDepth() / 2,
 						Chunk.getGameHeight()
 					);
-					Enemy enemy = (Enemy) new Enemy((MovableEntity) getPlayer()).spawn(randomPlace);
+					Enemy enemy = new Enemy();
+					enemy.setTarget((MovableEntity) getPlayer());
+					enemy.spawn(randomPlace);
 				}
 
 			}
@@ -147,7 +149,7 @@ public class CustomGameController extends Controller {
 	public void gameOver() {
 		try {
 			gameOver = true;
-			((Sound) WE.getAsset("com/bombinggames/WeaponOfChoice/Sounds/dead.ogg")).play();
+			((Sound) WE.getAsset("com/bombinggames/weaponofchoice/sounds/dead.ogg")).play();
 			survivedSeconds = (int) ((System.currentTimeMillis() - startingTime) / 1000);
 			Gdx.app.error("Game over:", "Time:" + survivedSeconds);
 

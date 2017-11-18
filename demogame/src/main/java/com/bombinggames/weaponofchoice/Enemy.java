@@ -11,6 +11,7 @@ public class Enemy extends MovableEntity {
 
 	private static final long serialVersionUID = 1L;
 	private static int killcounter = 0;
+	private final EnemyAI ai;
 
 	public void init() {
 		killcounter = 0;
@@ -18,15 +19,21 @@ public class Enemy extends MovableEntity {
 
 	/**
 	 * Zombie constructor.
+
+	 */
+	public Enemy() {
+		super((byte) 44, 2);
+		setDamageSounds(new String[]{"impactFlesh"});
+		ai = new EnemyAI();
+		
+		addComponent(ai);
+	}
+	
+	/**
 	 * @param target
 	 */
-	public Enemy(MovableEntity target) {
-		super((byte) 44, 2);
-		setObstacle(true);
-		setDamageSounds(new String[]{"impactFlesh"});
-		EnemyAI ai = new EnemyAI();
+	public void setTarget(MovableEntity target){
 		ai.setTarget(target);
-		addComponent(ai);
 	}
 
 	@Override

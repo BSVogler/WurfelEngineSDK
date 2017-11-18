@@ -48,32 +48,32 @@ public class CustomWeapon extends Weapon {
                 
             case 2:
                 setFireSound("punch", false);
-                //setReload((Sound) WEMain.getInstance().manager.get("com/bombinggames/WeaponOfChoice/Sounds/melee.wav")); 
+                //setReload((Sound) WEMain.getInstance().manager.get("com/bombinggames/weaponofchoice/sounds/melee.wav")); 
             break;
                 
             case 3:
                 setFireSound("shotgun", false);
-                //setReload((Sound) WE.getAsset("com/bombinggames/WeaponOfChoice/Sounds/reload.wav")); 
+                //setReload((Sound) WE.getAsset("com/bombinggames/weaponofchoice/sounds/reload.wav")); 
             break;    
 
             case 4:
                 setFireSound("bust", true);
-                //setReload((Sound) WE.getAsset("com/bombinggames/WeaponOfChoice/Sounds/reload.wav")); 
+                //setReload((Sound) WE.getAsset("com/bombinggames/weaponofchoice/sounds/reload.wav")); 
             break;
                                  
             case 5:
                 setFireSound("poop", false);
-                //setReload((Sound) WEMain.getInstance().manager.get("com/bombinggames/WeaponOfChoice/Sounds/reload.wav")); 
+                //setReload((Sound) WEMain.getInstance().manager.get("com/bombinggames/weaponofchoice/sounds/reload.wav")); 
             break;
                 
             case 6:
                 setFireSound("thump", false);
-                //setReload((Sound) WE.getAsset("com/bombinggames/WeaponOfChoice/Sounds/reload.wav")); 
+                //setReload((Sound) WE.getAsset("com/bombinggames/weaponofchoice/sounds/reload.wav")); 
             break;
                 
             case 7:                
                 setFireSound("fire", true);
-                //setReload((Sound) WE.getAsset("com/bombinggames/WeaponOfChoice/Sounds/reload.wav")); 
+                //setReload((Sound) WE.getAsset("com/bombinggames/weaponofchoice/sounds/reload.wav")); 
             break;     
         }
     }
@@ -85,6 +85,6 @@ public class CustomWeapon extends Weapon {
 		sprite.setX(Gdx.graphics.getWidth() / 2 - sprite.getWidth() / 2);
 		sprite.setY(Gdx.graphics.getHeight() / 2 - 30);
 		//sprite.scale(CustomWeapon.getScaling());
-		sprite.draw(view.getSpriteBatch());
+		sprite.draw(view.getProjectionSpaceSpriteBatch());
 	}
 }

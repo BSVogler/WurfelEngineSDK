@@ -34,16 +34,16 @@ public class CustomGameView extends GameView {
 	public void init(Controller controller, GameView oldView) {
 		super.init(controller, oldView);
 		
-		WE.SOUND.register("dudeldi", "com/bombinggames/WeaponOfChoice/Sounds/dudeldi.ogg");
-		WE.SOUND.register("reload", "com/bombinggames/WeaponOfChoice/Sounds/reload.wav");
-		WE.SOUND.register("shot", "com/bombinggames/WeaponOfChoice/Sounds/shot.wav");
-		WE.SOUND.register("melee", "com/bombinggames/WeaponOfChoice/Sounds/melee.wav");
-		WE.SOUND.register("punch", "com/bombinggames/WeaponOfChoice/Sounds/punch.wav");
-		WE.SOUND.register("shotgun", "com/bombinggames/WeaponOfChoice/Sounds/shotgun.wav");
-		WE.SOUND.register("wiz", "com/bombinggames/WeaponOfChoice/Sounds/wiz.wav");
-		WE.SOUND.register("poop", "com/bombinggames/WeaponOfChoice/Sounds/poop.wav");
-		WE.SOUND.register("thump", "com/bombinggames/WeaponOfChoice/Sounds/thump.wav");
-		WE.SOUND.register("fire", "com/bombinggames/WeaponOfChoice/Sounds/fire.wav");
+		WE.SOUND.register("dudeldi", "com/bombinggames/weaponofchoice/sounds/dudeldi.ogg");
+		WE.SOUND.register("reload", "com/bombinggames/weaponofchoice/sounds/reload.wav");
+		WE.SOUND.register("shot", "com/bombinggames/weaponofchoice/sounds/shot.wav");
+		WE.SOUND.register("melee", "com/bombinggames/weaponofchoice/sounds/melee.wav");
+		WE.SOUND.register("punch", "com/bombinggames/weaponofchoice/sounds/punch.wav");
+		WE.SOUND.register("shotgun", "com/bombinggames/weaponofchoice/sounds/shotgun.wav");
+		WE.SOUND.register("wiz", "com/bombinggames/weaponofchoice/sounds/wiz.wav");
+		WE.SOUND.register("poop", "com/bombinggames/weaponofchoice/sounds/poop.wav");
+		WE.SOUND.register("thump", "com/bombinggames/weaponofchoice/sounds/thump.wav");
+		WE.SOUND.register("fire", "com/bombinggames/weaponofchoice/sounds/fire.wav");
 		
 		WE.getEngineView().addInputProcessor(new InputListener());
 		Camera camera = new Camera(
@@ -63,7 +63,7 @@ public class CustomGameView extends GameView {
 	public void render() {
 		super.render();
 
-		getSpriteBatch().begin();
+		getProjectionSpaceSpriteBatch().begin();
 			controller.getSpinningWheel().render(this);
 
 			Weapon weapon = controller.getPlayer().getWeapon();
@@ -80,8 +80,8 @@ public class CustomGameView extends GameView {
 			sprite.setX(Gdx.graphics.getWidth() - 200);
 			sprite.setY(150);
 			//sprite.scale(CustomWeapon.getScaling());
-			sprite.draw(getSpriteBatch());
-		getSpriteBatch().end();
+			sprite.draw(getProjectionSpaceSpriteBatch());
+		getProjectionSpaceSpriteBatch().end();
 		
 		ShapeRenderer sh = WE.getEngineView().getShapeRenderer();
 		//health
@@ -135,6 +135,7 @@ public class CustomGameView extends GameView {
 				"Game Over",
 				Gdx.graphics.getWidth() / 2 - 30,
 				Gdx.graphics.getHeight() / 2 - 170,
+				Color.WHITE,
 				true
 			);
 
@@ -142,12 +143,14 @@ public class CustomGameView extends GameView {
 				"Kills:" + Enemy.getKillcounter(),
 				Gdx.graphics.getWidth() / 2,
 				Gdx.graphics.getHeight() / 2,
+				Color.WHITE,
 				true
 			);
 			drawString(
 				"You survived " + controller.getSurvivedSeconds() + " seconds.",
 				Gdx.graphics.getWidth() / 2,
 				Gdx.graphics.getHeight() / 2 + 20,
+				Color.WHITE,
 				true
 			);
 		}

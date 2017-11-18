@@ -81,7 +81,7 @@ public class SpinningWheel extends ArrayList<CustomWeapon> {
 			sprite.setX(Gdx.graphics.getWidth() / 2 - sprite.getWidth() / 2);
 			sprite.setY(Gdx.graphics.getHeight() / 2 - 30);
 			//sprite.scale(CustomWeapon.getScaling());
-			sprite.draw(view.getSpriteBatch());
+			sprite.draw(view.getProjectionSpaceSpriteBatch());
 
 			if (controller.getRound() == 1) {
 				sprite = new Sprite(AbstractGameObject.getSprite('i', (byte) 13, (byte) 0));//warmup
@@ -92,7 +92,7 @@ public class SpinningWheel extends ArrayList<CustomWeapon> {
 			sprite.setY(Gdx.graphics.getHeight() / 2 - 200);
 			// sprite.scale(CustomWeapon.getScaling());
 			sprite.flip(false, true);
-			sprite.draw(view.getSpriteBatch());
+			sprite.draw(view.getProjectionSpaceSpriteBatch());
 
 			get(currentRandom).renderHUD(
 				view,
