@@ -38,6 +38,7 @@ import com.badlogic.gdx.Graphics.DisplayMode;
 import com.badlogic.gdx.assets.AssetManager;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
+import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.bombinggames.wurfelengine.core.AbstractMainMenu;
 import com.bombinggames.wurfelengine.core.Controller;
@@ -600,54 +601,76 @@ public class WE {
 	
 	/**
 	 * may return null, if three is an error throws exception
-	 * @param internal
-	 * @param fragmentPath
-	 * @param vertexPath
+	 *
+	 * @param depthPeeling when laoding depth peeling shader
 	 * @return
-	 * @throws Exception 
+	 * @throws Exception when compilation fails
 	 */
-	public static ShaderProgram loadShader(boolean internal, String fragmentPath, String vertexPath) throws Exception {
-		if (!Gdx.files.internal(fragmentPath).exists()){
-			Gdx.app.debug("Shader", "shader file not found at: "+fragmentPath);
-			return null;
-		}
-		
+	public static ShaderProgram loadShader(boolean depthPeeling) throws Exception {
 		Gdx.app.debug("Shader", "loading");
 		//shaders are very fast to load and the asset loader does not support text files out of the box
-		String fragmentShader = internal ? Gdx.files.internal(fragmentPath).readString() : Gdx.files.absolute(fragmentPath).readString();
-		String vertexShader;
-		if (vertexPath==null){
-			vertexShader = "attribute vec4 a_position;    \n" + 
-                      "attribute vec4 a_color;\n" +
-                      "attribute vec2 a_texCoord0;\n" + 
-                      "uniform mat4 u_projTrans;\n" + 
-                      "varying vec4 v_color;" + 
-                      "varying vec2 v_texCoords;" + 
-                      "void main()                  \n" + 
-                      "{                            \n" + 
-                      "   v_color = vec4(1, 1, 1, 1); \n" + 
-                      "   v_texCoords = a_texCoord0; \n" + 
-                      "   gl_Position =  u_projTrans * a_position;  \n"      + 
-                      "}                            \n";
-		
+		String fragmentShader;
+
+		//try loading external shader
+		String filename = "fragment.fs";
+		if (WE.getCVars().getValueB("LEnormalMapRendering"))
+			filename="fragment_NM.fs";
+		if (depthPeeling)
+			filename="fragment_DP.fs";
+			
+		String fragPath = WE.getWorkingDirectory().getAbsolutePath().concat(filename);
+
+		File f = new File(fragPath);
+		if (f.exists() && !f.isDirectory()) {
+			fragmentShader = Gdx.files.absolute(fragPath).readString();
 		} else {
-			vertexShader = internal ? Gdx.files.internal(vertexPath).readString() : Gdx.files.absolute(vertexPath).readString();
+			//could not load initial external shader->loading internal
+			fragPath = "com/bombinggames/wurfelengine/core/".concat(filename);
+			fragmentShader = Gdx.files.internal(fragPath).readString();
 		}
+
+		String vertPath = WE.getWorkingDirectory().getAbsolutePath() + "/vertex.vs";
+
+		String vertexShader;
+		f = new File(vertPath);
+		if (f.exists() && !f.isDirectory()) {
+			vertexShader = Gdx.files.absolute(vertPath).readString();
+		} else {
+			vertPath = "com/bombinggames/wurfelengine/core/vertex.vs";
+			FileHandle path = Gdx.files.internal(vertPath);
+			if (path.exists()) {
+				vertexShader = path.readString();
+			} else {
+				vertexShader = "attribute vec4 a_position;    \n"
+					+ "attribute vec4 a_color;\n"
+					+ "attribute vec2 a_texCoord0;\n"
+					+ "uniform mat4 u_projTrans;\n"
+					+ "varying vec4 v_color;"
+					+ "varying vec2 v_texCoords;"
+					+ "void main()                  \n"
+					+ "{                            \n"
+					+ "   v_color = vec4(1, 1, 1, 1); \n"
+					+ "   v_texCoords = a_texCoord0; \n"
+					+ "   gl_Position =  u_projTrans * a_position;  \n"
+					+ "}                            \n";
+			}
+		}
+
 		//Setup shader
 		ShaderProgram.pedantic = false;
 
 		ShaderProgram shader = new ShaderProgram(vertexShader, fragmentShader);
 		if (shader.isCompiled()) {
-			
 			//print any warnings
 			if (!shader.getLog().isEmpty()) {
-				Gdx.app.debug("shaderloading", shader.getLog());
+				Gdx.app.debug("shader compile warnings", shader.getLog());
 			}
 			return shader;
 		} else {
-			throw new Exception("Could not compile shader "+fragmentPath+"\n"+vertexPath+"\n" + shader.getLog());
+			throw new Exception("Could not compile shader " + fragPath + "\n" + vertPath + "\n" + shader.getLog());
 		}
 	}
+	
 
 	private static class WEGame extends Game {
 

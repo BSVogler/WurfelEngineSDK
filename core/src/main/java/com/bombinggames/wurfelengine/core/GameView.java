@@ -97,7 +97,7 @@ public class GameView implements GameManager {
 	 */
     private final ArrayList<Camera> cameras = new ArrayList<>(6);//max 6 cameras
     
-    private ShaderProgram shader;
+    
     private ShapeRenderer shRenderer;
     
     private Controller controller;
@@ -135,7 +135,8 @@ public class GameView implements GameManager {
 	private int depthTexture;
 	private int depthTexture1;
 	private FrameBuffer[] fbo;
-	private ShaderProgram depthShader;
+	private ShaderProgram shader;
+	private boolean depthShaderLoaded = false;
 	private MiniMapChunkDebug minimap;
     
 	/**
@@ -191,16 +192,10 @@ public class GameView implements GameManager {
 	 */
 	public void loadShaders() {
 		Gdx.app.debug("Shader", "loading");
-		
-		//try loading external shader
-		String fragment = WE.getWorkingDirectory().getAbsolutePath() + "/fragment"
-			+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "_NM": "")
-			+ ".fs";
-		String vertex = WE.getWorkingDirectory().getAbsolutePath() + "/vertex.vs";
 
 		ShaderProgram newshader = null;
 		try {
-			newshader = WE.loadShader(false, fragment, vertex);
+			newshader = WE.loadShader(false);
 			for (Camera camera : cameras) {
 				camera.loadShader();
 			}
@@ -209,22 +204,15 @@ public class GameView implements GameManager {
 			Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
 		}
 
-		//could not load initial external shader, so try loading internal
-		if (newshader == null) {
-			fragment = "com/bombinggames/wurfelengine/core/fragment"
-				+ (WE.getCVars().getValueB("LEnormalMapRendering") ? "_NM" : "")
-				+ ".fs";
-			vertex = "com/bombinggames/wurfelengine/core/vertex.vs";
+		if (WE.getCVars().getValueI("depthbuffer") == 2) {
+			//try loading external
 			try {
-				newshader = WE.loadShader(true, fragment, vertex);
+				newshader = WE.loadShader(true);
 			} catch (Exception ex) {
 				WE.getConsole().add(ex.getLocalizedMessage());
-				if (newshader == null) {
-					Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
-				}
+				Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
 			}
 		}
-
 		if (newshader != null) {
 			shader = newshader;
 			//setup default uniforms
@@ -233,23 +221,11 @@ public class GameView implements GameManager {
 			shader.setUniformi("u_normals", 1); //GL_TEXTURE1
 			if (WE.getCVars().getValueI("depthbuffer") == 2) {
 				shader.setUniformi("u_depth", 2); //GL_TEXTURE2
+				depthShaderLoaded = true;
+			} else {
+				depthShaderLoaded = false;
 			}
-			shader.end();	
-		}
-		
-		if (WE.getCVars().getValueI("depthbuffer") == 2){
-			try {
-				String frag = WE.getWorkingDirectory().getAbsolutePath() + "/fragment_DP.fs";
-				String vert = WE.getWorkingDirectory().getAbsolutePath() + "/vertex.vs";
-				depthShader = WE.loadShader(false, frag, vert);
-				depthShader.begin();
-				//our normal map
-				depthShader.setUniformi("u_normals", 1); //GL_TEXTURE1
-				depthShader.setUniformi("u_depth", 2); //GL_TEXTURE2
-				depthShader.end();
-			} catch (Exception ex) {
-				Logger.getLogger(GameView.class.getName()).log(Level.SEVERE, null, ex);
-			}
+			shader.end();
 		}
 	}
 
@@ -382,7 +358,10 @@ public class GameView implements GameManager {
 			if (WE.getCVars().getValueI("depthbuffer") == 2) {
 				depthPeelingRendering();
 			} else {//simple depth buffer or no depth buffers
-				setShader(getShader());
+				if (depthShaderLoaded){
+					loadShaders();
+				}
+				setShader(getShader());//this allows to overwirte the get method
 				if (WE.getCVars().getValueB("LEnormalMapRendering")) {
 					AbstractGameObject.getTextureNormal().bind(1);
 				}
@@ -741,11 +720,9 @@ public class GameView implements GameManager {
 	private void depthPeelingRendering() {
 		int bufResX = Gdx.graphics.getBackBufferWidth();
 		int bufRefY = Gdx.graphics.getBackBufferHeight();		
-		ShaderProgram regularShader = shader;
-		if (depthShader == null) {
+		if (!depthShaderLoaded) {
 			loadShaders();
 		}
-		shader = depthShader;
 		
 		int numDPLayers = 2;
 		boolean madenewTexture = false;//if depth texture must be rebound because back buffer size changed
@@ -754,11 +731,11 @@ public class GameView implements GameManager {
 		}
 		if (fbo[0] == null || fbo[0].getWidth() != bufResX || fbo[0].getHeight() != bufRefY) {
 			fbo[0] = new FrameBuffer(Pixmap.Format.RGBA8888, bufResX, bufRefY, true);
-			madenewTexture=true;
+			madenewTexture = true;
 		}
-		if (numDPLayers>1 &&(fbo[1] == null  || fbo[0].getWidth() != bufResX || fbo[0].getHeight() != bufRefY)) {
+		if (numDPLayers > 1 && (fbo[1] == null || fbo[0].getWidth() != bufResX || fbo[0].getHeight() != bufRefY)) {
 			fbo[1] = new FrameBuffer(Pixmap.Format.RGBA8888, bufResX, bufRefY, false);
-			madenewTexture=true;
+			madenewTexture = true;
 		}
 		
 		//create new depthtexture if needed
@@ -864,8 +841,6 @@ public class GameView implements GameManager {
 //				projectionSpaceSpriteBatch.draw(fbo[1].getColorBufferTexture(), 0, bufRefY, bufResX, -bufRefY);
 			projectionSpaceSpriteBatch.draw(fbo[0].getColorBufferTexture(), 0, Gdx.graphics.getHeight(), Gdx.graphics.getWidth(), -Gdx.graphics.getHeight());
 			projectionSpaceSpriteBatch.end();
-
-			shader = regularShader;
 		}
 	}
 
