@@ -1259,4 +1259,18 @@ public class SpriteBatchWithZAxis implements Batch {
 	public int getRenderedSprites() {
 		return spritesRendered;
 	}
+
+	@Override
+	public void setBlendFunctionSeparate(int i, int i1, int i2, int i3) {
+	}
+
+	@Override
+	public int getBlendSrcFuncAlpha() {
+		return 0;
+	}
+
+	@Override
+	public int getBlendDstFuncAlpha() {
+		return 0;
+	}
 }
