@@ -7,6 +7,7 @@
 ![Screenshot 1](http://wurfelengine.net/screenshots/2017_1.jpg)
 
 ## Features in a nutshell
+* cross plattform
 * map loading and saving
 * open world map streaming
 * day-night cycle
@@ -14,7 +15,6 @@
 * destructable environment
 * in-game map editor
 * split screen support
-
 
 Wurfel Engine uses Maven for dependency managment. Built on top of libGDX.
 
