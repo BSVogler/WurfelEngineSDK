@@ -112,8 +112,8 @@ public class GameView implements GameManager {
      * game related stage. e.g. holds hud and gui
      */
     private Stage stage;
-    private final SpriteBatchWithZAxis gameSpaceSpriteBatch = new SpriteBatchWithZAxis(WE.getCVars().getValueI("MaxSprites"));
-	private final SpriteBatch projectionSpaceSpriteBatch = new SpriteBatch(1000);
+    private SpriteBatchWithZAxis gameSpaceSpriteBatch;
+	private SpriteBatch projectionSpaceSpriteBatch;
     
     private LoadMenu loadMenu;
     
@@ -150,6 +150,8 @@ public class GameView implements GameManager {
 	 */
 	public void init(final Controller controller, final GameView oldView) {
 		Gdx.app.debug("GameView", "Initializing");
+		gameSpaceSpriteBatch = new SpriteBatchWithZAxis(WE.getCVars().getValueI("MaxSprites"));
+		projectionSpaceSpriteBatch = new SpriteBatch(1000);
 		loadShaders();
 
 		this.controller = controller;
