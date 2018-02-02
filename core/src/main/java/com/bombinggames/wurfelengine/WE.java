@@ -143,14 +143,14 @@ public class WE {
 	}
 
 	/**
-	 * Start the engine. You should have passed a main menu first.<br> Until the
+	 * Start the engine. You should have passed a main menu first.<br>This line blocks until the app is closed.<br> Until the
 	 * engine is launched it can take a while. Code that can only be run after
-	 * the engine has openend should be run in the screen class or as postlaunchCommand.
+	 * the engine has openend should be run in the screen class set by {@link #initAndStartGame(LoadingScreen, Controller, GameView) } or as postlaunchCommand.
 	 *
 	 * @param title The title, which is displayed in the window.
 	 * @param args Wurfel Engine launch parameters. For a list look in the wiki.
-	 * @see #setMainMenu(com.bombinggames.wurfelengine.core.AbstractMainMenu)
-	 * @see #addPostLaunchCommands(com.bombinggames.wurfelengine.LaunchCommand) 
+	 * @see #setMainMenu(AbstractMainMenu)
+	 * @see #addPostLaunchCommands(LaunchCommand) 
 	 */
 	public static void launch(final String title, final String[] args) {
 		CONFIG.setResizable(false);
