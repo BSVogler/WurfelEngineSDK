@@ -699,6 +699,17 @@ public class WE {
 		@Override
 		public void create() {
 			Gdx.app.setLogLevel(Application.LOG_DEBUG);
+			if (!headless){
+				engineView = EngineView.getInstance();
+				WE.console = new Console(
+					engineView.getSkin(),
+					50,
+					Gdx.graphics.getHeight() - 700
+				);
+			} else {
+				WE.console = new Console();
+			}
+			
 			if (!skipintro && !headless) {
 				GAME.setScreen(new WurfelEngineIntro());
 			}
@@ -708,17 +719,6 @@ public class WE {
 				Gdx.app.error("WEMain", "Using a predefined BasicMainMenu.");
 				mainMenu = new BasicMainMenu();
 			}
-			if (!headless){
-				engineView = EngineView.getInstance();
-				WE.console = new Console(
-				engineView.getSkin(),
-				50,
-				Gdx.graphics.getHeight() - 700
-			);
-			} else {
-				WE.console = new Console();
-			}
-
 			Gdx.app.debug("WE", "Initializing main menu...");
 			mainMenu.init();
 
