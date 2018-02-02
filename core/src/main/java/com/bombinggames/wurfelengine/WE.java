@@ -197,7 +197,8 @@ public class WE {
 						skipintro = true;
 						break;
 					case "-v":
-					case "-version":
+					case "-V":
+					case "--version":
 						System.out.println(WE.VERSION);
 						System.exit(0);
 						return;
