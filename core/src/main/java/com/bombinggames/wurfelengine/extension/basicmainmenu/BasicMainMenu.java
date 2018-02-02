@@ -30,6 +30,7 @@
  */
 package com.bombinggames.wurfelengine.extension.basicmainmenu;
 
+import com.bombinggames.wurfelengine.WE;
 import com.bombinggames.wurfelengine.core.AbstractMainMenu;
 import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.core.GameView;
@@ -72,7 +73,7 @@ public class BasicMainMenu extends AbstractMainMenu {
 	@Override
 	public void init() {
 		controller = new MenuController(menuItems);
-		view = new MenuView(controller);
+		if (!WE.isHeadless())view = new MenuView(controller);
 	}
 
 	@Override

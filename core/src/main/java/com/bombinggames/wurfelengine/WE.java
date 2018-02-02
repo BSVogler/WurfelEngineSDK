@@ -36,6 +36,8 @@ import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics.DisplayMode;
 import com.badlogic.gdx.assets.AssetManager;
+import com.badlogic.gdx.backends.headless.HeadlessApplication;
+import com.badlogic.gdx.backends.headless.HeadlessApplicationConfiguration;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.files.FileHandle;
@@ -87,6 +89,10 @@ public class WE {
 	private static GameplayScreen gameplayScreen;
 	private static AbstractMainMenu mainMenu;
 	private static Console console;
+	/**
+	 * can be null if headless
+	 * @see #headless
+	 */
 	private static EngineView engineView;
 	private static Lwjgl3Application application;
 	private static boolean skipintro = false;
@@ -97,6 +103,7 @@ public class WE {
 	private static boolean inGame = false;
 	private static boolean inEditor = false;
 	private static LoadingScreen customLoadingScreen;
+	private static boolean headless = false;
 
 	/**
 	 * Pass the mainMenu which gets displayed when you call launch().
@@ -202,6 +209,9 @@ public class WE {
 						System.out.println("--height");
 						System.out.println("--skipintro");
 						break;
+					case "--headless":
+						headless = true;
+						break;
 					default:
 						System.out.println("Unknown launch parameter " + args[i]);
 				}
@@ -259,15 +269,18 @@ public class WE {
 //			CONFIG.height = dpms.height;
 //		}
 		CONFIG.setTitle(title + " " + width + "x" + height);
-
 		//register entitys
 		AbstractEntity.registerEngineEntities();
 
 		CONFIG.setPreferencesConfig(VERSION, Files.FileType.Internal);
 		System.out.println("Fire Engine…");
-		application = new Lwjgl3Application(GAME, CONFIG);
-		//code is not executed below this line
-		application.setLogLevel(Application.LOG_DEBUG);
+		if (headless){
+			HeadlessApplication headlessApplication = new HeadlessApplication(GAME, new HeadlessApplicationConfiguration());
+		} else {
+			application = new Lwjgl3Application(GAME, CONFIG);
+			//code is not executed below this line
+			application.setLogLevel(Application.LOG_DEBUG);
+		}
 	}
 
 	/**
@@ -670,6 +683,14 @@ public class WE {
 			throw new Exception("Could not compile shader " + fragPath + "\n" + vertPath + "\n" + shader.getLog());
 		}
 	}
+
+	/**
+	 * If the engine is launched without graphics access. Can be used for unit tests. To launch in headless mode call {@link #launch(String, String[]) } with launch parameter "--headless".
+	 * @return 
+	 */
+	public static boolean isHeadless() {
+		return headless;
+	}
 	
 
 	private static class WEGame extends Game {
@@ -677,7 +698,7 @@ public class WE {
 		@Override
 		public void create() {
 			Gdx.app.setLogLevel(Application.LOG_DEBUG);
-			if (!skipintro) {
+			if (!skipintro && !headless) {
 				GAME.setScreen(new WurfelEngineIntro());
 			}
 
@@ -686,13 +707,16 @@ public class WE {
 				Gdx.app.error("WEMain", "Using a predefined BasicMainMenu.");
 				mainMenu = new BasicMainMenu();
 			}
-			engineView = EngineView.getInstance();
-
-			WE.console = new Console(
+			if (!headless){
+				engineView = EngineView.getInstance();
+				WE.console = new Console(
 				engineView.getSkin(),
 				50,
 				Gdx.graphics.getHeight() - 700
 			);
+			} else {
+				WE.console = new Console();
+			}
 
 			Gdx.app.debug("WE", "Initializing main menu...");
 			mainMenu.init();

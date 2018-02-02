@@ -49,20 +49,25 @@ import java.util.Stack;
 import java.util.StringTokenizer;
 
 /**
- * The message system can manage &amp; show messages (Line).
+ * The message system manages and can show messages.
  *
  * @author Benedikt
  */
 public class Console {
 	
-    private int timelastupdate = 0;
-    private GameplayScreen gameplayRef;//the reference to the associated gameplay
     private final TextField textinput;
-    private final Stack<Line> messages; 
-    private boolean keyConsoleDown;
-    private StageInputProcessor inputprocessor;
+    private final Stack<Line> messages = new Stack<>(); 
+	/**
+	 * display old messages
+	 */
 	private final TextArea log;
 	private final ArrayList<ConsoleCommand> registeredCommands = new ArrayList<>(10);
+	
+	private boolean headless = true;
+    private int timelastupdate = 0;
+    private GameplayScreen gameplayRef;//the reference to the associated gameplay
+    private boolean keyConsoleDown;
+    private StageInputProcessor inputprocessor;
 	
 	/**
 	 * suggestions stuff
@@ -123,6 +128,14 @@ public class Console {
         }
     }
 
+	/*
+		Console without rendering.
+	*/
+	public Console() {
+		textinput = null;
+		log = null;
+	}
+
     /**
      * 
      * @param skin
@@ -130,7 +143,7 @@ public class Console {
      * @param yPos
      */
     public Console(Skin skin, final int xPos, final int yPos) {
-        this.messages = new Stack<>();
+		headless = false;
 		messages.add(new Line(WE.getCVars().getValueS("lastConsoleCommand"), "Console", 100));
 		
 		//register engine commands
