@@ -541,7 +541,8 @@ public class Camera{
 			view.getGameSpaceSpriteBatch().setProjectionMatrix(combined);
 			view.getGameSpaceSpriteBatch().setShader(shader);
 			//set up the viewport, yIndex-up
-			HdpiUtils.glViewport(screenPosX,
+			HdpiUtils.glViewport(
+				screenPosX,
 				Gdx.graphics.getHeight() - getHeightScreenSpc() - screenPosY,
 				getWidthScreenSpc(),
 				getHeightScreenSpc()
