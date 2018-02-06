@@ -104,6 +104,7 @@ public class WE {
 	private static boolean inEditor = false;
 	private static LoadingScreen customLoadingScreen;
 	private static boolean headless = false;
+	private static boolean skipmenu = false;
 
 	/**
 	 * Pass the mainMenu which gets displayed when you call launch().
@@ -196,6 +197,9 @@ public class WE {
 					case "--skipintro":
 						skipintro = true;
 						break;
+					case "--skipmenu":
+						skipmenu = true;
+						break;	
 					case "-v":
 					case "-V":
 					case "--version":
@@ -324,7 +328,8 @@ public class WE {
 			Gdx.input.setInputProcessor(null);//why is this line needed? removes old input processors
 			WE.setScreen(customLoadingScreen);
 			getConsole().setGameplayRef(gameplayScreen);
-			mainMenu.dispose();
+			if (mainMenu != null)
+				mainMenu.dispose();
 		} else {
 			Gdx.app.error("Wurfel Engine", "You must construct a WE instance first before calling initGame.");
 		}
@@ -714,16 +719,18 @@ public class WE {
 				GAME.setScreen(new WurfelEngineIntro());
 			}
 
-			if (mainMenu == null) {
-				Gdx.app.error("WEMain", "No main menu object could be found. Pass one with 'setMainMenu()' before launching.");
-				Gdx.app.error("WEMain", "Using a predefined BasicMainMenu.");
-				mainMenu = new BasicMainMenu();
-			}
-			Gdx.app.debug("WE", "Initializing main menu...");
-			mainMenu.init();
+			if (!skipmenu){
+				if (mainMenu == null) {
+					Gdx.app.error("WEMain", "No main menu object set. Pass one with 'setMainMenu()' before launching.");
+					Gdx.app.error("WEMain", "Using a predefined BasicMainMenu.");
+					mainMenu = new BasicMainMenu();
+				}
+				Gdx.app.debug("WE", "Initializing main menu...");
+				mainMenu.init();
 
-			if (skipintro) {
-				setScreen(mainMenu);
+				if (skipintro) {
+					setScreen(mainMenu);
+				}
 			}
 
 			POSTLAUNCHCOMMANDS.forEach(a -> {
