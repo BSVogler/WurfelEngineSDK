@@ -312,7 +312,8 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 
 	/**
-	 * loads a chunk from disk if not already loaded.
+	 * Starts loading of a chunk from disk if not already loaded. Non-blocking
+	 * method. Loading is performed in another thread.
 	 *
 	 * @param chunkX
 	 * @param chunkY
@@ -322,23 +323,66 @@ public class Map implements IndexedGraph<PfNode> {
 			if (!isLoading(chunkX, chunkY)) {
 				ChunkLoader cl = new ChunkLoader(this, getPath(), chunkX, chunkY, getGenerator());
 				loadingRunnables.add(cl);
-				Thread thread = new Thread(cl, "loadChunk "+chunkX+","+chunkY);
+				Thread thread = new Thread(cl, "loadChunk " + chunkX + "," + chunkY);
 				thread.start();
 			}
 		}
 	}
 
 	/**
-	 * loads a chunk from disk if not already loaded.
+	 * Loads a chunk from disk.Blocking method. CAnn
+	 *
+	 * @param chunkX
+	 * @param chunkY
+	 * @return null if there is an error during loading
+	 * @see #loadChunk(int, int) : non-blocking variant
+	 * @since v.1.8.1
+	 */
+	public Chunk loadChunkBlocking(int chunkX, int chunkY) {
+		if (loadedChunks.size() < maxChunks && getChunk(chunkX, chunkY) == null) {
+			if (!isLoading(chunkX, chunkY)) {
+				Chunk loaddedChunk = new Chunk(this, getPath(), chunkX, chunkY, getGenerator());
+				if (loadedChunks.size() < maxChunks) {
+					loadedChunks.add(loaddedChunk);
+					data.put(chunkX * chunkDim + chunkY, loaddedChunk);
+					addEntities(loaddedChunk.retrieveEntities());
+					setModified();
+					return loaddedChunk;
+				} else {
+					Gdx.app.error("Map", "Chunk failed to load. Maxmimum chunks loaded: " + maxChunks);
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Loads a chunk from disk if not already loaded.
 	 *
 	 * @param coord
+	 * @see #loadChunk(int, int) 
+	 * @see #loadChunkBlocking(Coordinate) 
 	 */
 	public void loadChunk(Coordinate coord) {
 		loadChunk(coord.getChunkX(), coord.getChunkY());
 	}
+	
 	/**
-	 * Get the data of the map.
-	 * From range in X [-chunkDim/2,chunkDim/2]
+	 * Loads a chunk from disk if not already loaded.Blocking method.
+	 *
+	 * @param coord
+	 * @return 
+	 * @see #loadChunkBlocking(int, int) : using chunk coordinates
+	 * @see #loadChunk(Coordinate) : non-blocking variant
+	 * @since v.1.8.1
+	 */
+	public Chunk loadChunkBlocking(Coordinate coord) {
+		return loadChunkBlocking(coord.getChunkX(), coord.getChunkY());
+	}
+
+	/**
+	 * Get the data of the map. From range in X [-chunkDim/2,chunkDim/2]
+	 *
 	 * @return
 	 */
 	public HashMap<Integer, Chunk> getData() {
@@ -444,17 +488,22 @@ public class Map implements IndexedGraph<PfNode> {
 			chunk.setBlock(coord, id);
 		}
 	}
-	
+
 	/**
 	 * Set id, value and health at a coordinate in the map. This creates a
 	 * {@link AbstractBlockLogicExtension} instance if the block has logic.
+	 *
+	 * Will load the chunk if is not loaded.
 	 *
 	 * @param coord
 	 * @param block id (bit 0-7), value (bit 8-15) and health (bit 16-23)
 	 */
 	public void setBlock(Coordinate coord, int block) {
 		Chunk chunk = getChunkContaining(coord);
-		if (chunk != null && coord.getZ()>= 0 && coord.getZ() < Chunk.getBlocksZ()) {
+		if (chunk == null) {
+			chunk = loadChunkBlocking(coord);
+		}
+		if (chunk != null && coord.getZ() >= 0 && coord.getZ() < Chunk.getBlocksZ()) {
 			chunk.setBlock(coord, (byte) (block & 255), (byte) ((block >> 8) & 255), (byte) ((block >> 16) & 255));
 		}
 	}
@@ -463,12 +512,16 @@ public class Map implements IndexedGraph<PfNode> {
 	 * Set id and value at a coordinate in the map. This creates a
 	 * {@link AbstractBlockLogicExtension} instance if the block has logic.
 	 *
+	 * Will load the chunk if is not loaded.
 	 * @param coord
 	 * @param id
 	 * @param value
 	 */
 	public void setBlock(Coordinate coord, byte id, byte value) {
 		Chunk chunk = getChunkContaining(coord);
+		if (chunk == null) {
+			chunk = loadChunkBlocking(coord);
+		}
 		if (chunk != null) {
 			chunk.setBlock(coord, id, value);
 		}
