@@ -172,7 +172,13 @@ public class Chunk implements Telegraph {
 	 * contains the entities on this chunk
 	 */
 	private ArrayList<AbstractEntity> entitiesinSaveFile;
+	/**
+	 * top left block coordinate component
+	 */
 	private int topleftX;
+	/**
+	 * top left block coordinate component
+	 */
 	private int topleftY;
 
     /**
@@ -755,8 +761,8 @@ public class Chunk implements Telegraph {
 	}
 
 	/**
-	 * Almost lowest level method to set a block in the map. If the block has
-	 * logic a new logicinstance will be created.
+	 * Lowest level method to set a block in the map. If the block has logic a
+	 * new logicinstance ({@link AbstractBlockLogicExtension}) will be created.
 	 *
 	 * @param coord The position where you insert the block. Must be inside the
 	 * bounds of the chunk.
