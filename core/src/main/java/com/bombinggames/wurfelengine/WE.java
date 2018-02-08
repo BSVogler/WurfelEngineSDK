@@ -75,9 +75,10 @@ public class WE {
 	public static final String VERSION = "1.8.0";
 
 	/**
-	 * The CVar system used by the engine. Uses the working dir as a root. WOrkdir must be set before intializing WE.
+	 * The CVar system used by the engine. Uses the working dir as a root.
+	 * WOrkdir must be set before intializing WE.
 	 */
-	private final static CVarSystemRoot CVARS = new CVarSystemRoot(new File( WorkingDirectory.getWorkingDirectory() + "/engine.wecvars"));
+	private final static CVarSystemRoot CVARS = new CVarSystemRoot(new File(WorkingDirectory.getWorkingDirectory() + "/engine.wecvars"));
 	/**
 	 * The sound engine managing the sfx.
 	 */
@@ -91,6 +92,7 @@ public class WE {
 	private static Console console;
 	/**
 	 * can be null if headless
+	 *
 	 * @see #headless
 	 */
 	private static EngineView engineView;
@@ -144,14 +146,16 @@ public class WE {
 	}
 
 	/**
-	 * Start the engine. You should have passed a main menu first.<br>This line blocks until the app is closed.<br> Until the
-	 * engine is launched it can take a while. Code that can only be run after
-	 * the engine has openend should be run in the screen class set by {@link #initAndStartGame(LoadingScreen, Controller, GameView) } or as postlaunchCommand.
+	 * Start the engine. You should have passed a main menu first.<br>This line
+	 * blocks until the app is closed.<br> Until the engine is launched it can
+	 * take a while. Code that can only be run after the engine has openend
+	 * should be run in the screen class set by {@link #initAndStartGame(LoadingScreen, Controller, GameView)
+	 * } or as postlaunchCommand.
 	 *
 	 * @param title The title, which is displayed in the window.
 	 * @param args Wurfel Engine launch parameters. For a list look in the wiki.
 	 * @see #setMainMenu(AbstractMainMenu)
-	 * @see #addPostLaunchCommands(LaunchCommand) 
+	 * @see #addPostLaunchCommands(LaunchCommand)
 	 */
 	public static void launch(final String title, final String[] args) {
 		CONFIG.setResizable(false);
@@ -177,7 +181,7 @@ public class WE {
 						break;
 					case "--width":
 						i++;
-						if (i < args.length){
+						if (i < args.length) {
 							//set the width
 							width = Integer.parseInt(args[i]);
 						} else {
@@ -187,7 +191,7 @@ public class WE {
 					case "--height":
 					case "-h":
 						i++;
-						if (i < args.length){
+						if (i < args.length) {
 							//set the height
 							height = Integer.parseInt(args[i]);
 						} else {
@@ -199,7 +203,7 @@ public class WE {
 						break;
 					case "--skipmenu":
 						skipmenu = true;
-						break;	
+						break;
 					case "-v":
 					case "-V":
 					case "--version":
@@ -207,7 +211,7 @@ public class WE {
 						System.exit(0);
 						return;
 					case "--help":
-						System.out.println("available commands in WE "+ WE.VERSION);
+						System.out.println("available commands in WE " + WE.VERSION);
 						System.out.println("--fullscreen");
 						System.out.println("--windowed");
 						System.out.println("--width");
@@ -279,7 +283,7 @@ public class WE {
 
 		CONFIG.setPreferencesConfig(VERSION, Files.FileType.Internal);
 		System.out.println("Fire Engine…");
-		if (headless){
+		if (headless) {
 			HeadlessApplication headlessApplication = new HeadlessApplication(GAME, new HeadlessApplicationConfiguration());
 		} else {
 			application = new Lwjgl3Application(GAME, CONFIG);
@@ -316,7 +320,7 @@ public class WE {
 
 			//start the gameplay with the loading
 			WE.customLoadingScreen = customLoadingScreen;
-			
+
 			//remove gameplayscreen if it already exists
 			if (gameplayScreen != null) {
 				gameplayScreen.dispose();
@@ -328,8 +332,9 @@ public class WE {
 			Gdx.input.setInputProcessor(null);//why is this line needed? removes old input processors
 			WE.setScreen(customLoadingScreen);
 			getConsole().setGameplayRef(gameplayScreen);
-			if (mainMenu != null)
+			if (mainMenu != null) {
 				mainMenu.dispose();
+			}
 		} else {
 			Gdx.app.error("Wurfel Engine", "You must construct a WE instance first before calling initGame.");
 		}
@@ -478,7 +483,7 @@ public class WE {
 	 * after the loading screen.
 	 */
 	public static void showMainMenu() {
-		if (customLoadingScreen != null){
+		if (customLoadingScreen != null) {
 			customLoadingScreen.dispose();
 		}
 		if (gameplayScreen != null) {
@@ -512,7 +517,7 @@ public class WE {
 	 * @return a folder
 	 */
 	public static File getWorkingDirectory() {
-		return  WorkingDirectory.getWorkingDirectory();
+		return WorkingDirectory.getWorkingDirectory();
 	}
 
 	/**
@@ -528,7 +533,7 @@ public class WE {
 		} else {
 			Gdx.graphics.setWindowedMode(currentMode.width, currentMode.height);
 		}
-		Gdx.app.debug("Wurfel Engine", "Set to fullscreen:" + fullscreen + "It " + ((Gdx.graphics.isFullscreen()) ? "worked.":"failed."));
+		Gdx.app.debug("Wurfel Engine", "Set to fullscreen:" + fullscreen + "It " + ((Gdx.graphics.isFullscreen()) ? "worked." : "failed."));
 	}
 
 	/**
@@ -617,7 +622,7 @@ public class WE {
 	public static CVarSystemRoot getCVars() {
 		return CVARS;
 	}
-	
+
 	/**
 	 * may return null, if three is an error throws exception
 	 *
@@ -632,11 +637,13 @@ public class WE {
 
 		//try loading external shader
 		String filename = "fragment.fs";
-		if (WE.getCVars().getValueB("LEnormalMapRendering"))
-			filename="fragment_NM.fs";
-		if (depthPeeling)
-			filename="fragment_DP.fs";
-			
+		if (WE.getCVars().getValueB("LEnormalMapRendering")) {
+			filename = "fragment_NM.fs";
+		}
+		if (depthPeeling) {
+			filename = "fragment_DP.fs";
+		}
+
 		String fragPath = WE.getWorkingDirectory().getAbsolutePath().concat(filename);
 
 		File f = new File(fragPath);
@@ -691,20 +698,22 @@ public class WE {
 	}
 
 	/**
-	 * If the engine is launched without graphics access. Can be used for unit tests. To launch in headless mode call {@link #launch(String, String[]) } with launch parameter "--headless".
-	 * @return 
+	 * If the engine is launched without graphics access. Can be used for unit
+	 * tests. To launch in headless mode call {@link #launch(String, String[]) }
+	 * with launch parameter "--headless".
+	 *
+	 * @return
 	 */
 	public static boolean isHeadless() {
 		return headless;
 	}
-	
 
 	private static class WEGame extends Game {
 
 		@Override
 		public void create() {
 			Gdx.app.setLogLevel(Application.LOG_DEBUG);
-			if (!headless){
+			if (!headless) {
 				engineView = EngineView.getInstance();
 				WE.console = new Console(
 					engineView.getSkin(),
@@ -714,12 +723,12 @@ public class WE {
 			} else {
 				WE.console = new Console();
 			}
-			
+
 			if (!skipintro && !headless) {
 				GAME.setScreen(new WurfelEngineIntro());
 			}
 
-			if (!skipmenu){
+			if (!skipmenu) {
 				if (mainMenu == null) {
 					Gdx.app.error("WEMain", "No main menu object set. Pass one with 'setMainMenu()' before launching.");
 					Gdx.app.error("WEMain", "Using a predefined BasicMainMenu.");

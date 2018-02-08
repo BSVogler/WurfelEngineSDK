@@ -73,7 +73,7 @@ public class Map implements IndexedGraph<PfNode> {
 	public final static Integer MAPVERSION = 4;
 
 	/**
-	 *
+	 * Set the generator used for every new instance.
 	 * @param generator
 	 */
 	public static void setDefaultGenerator(Generator generator) {
