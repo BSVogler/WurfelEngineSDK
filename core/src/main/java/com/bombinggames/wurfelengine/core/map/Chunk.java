@@ -292,7 +292,7 @@ public class Chunk implements Telegraph {
 					);
 					data[x][y][z] = (byte) (generated&255);
 					data[x][y][z + 1] = (byte) ((generated>>8)&255);
-					data[x][y][z + 2] = 100;//health
+					data[x][y][z + 2] = 0;//damage
 					if (data[x][y][z] != 0) {
 						AbstractBlockLogicExtension logic = AbstractBlockLogicExtension.newLogicInstance(
 							data[x][y][z],
@@ -366,7 +366,7 @@ public class Chunk implements Telegraph {
 							for (y = 0; y < blocksY; y++) {
 								data[x][y][z * 3] = 0;//id
 								data[x][y][z * 3 + 1] = 0;//value
-								data[x][y][z * 3 + 2] = 100;//health
+								data[x][y][z * 3 + 2] = 0;//damage
 							}
 						}
 						skip = true;
@@ -386,7 +386,7 @@ public class Chunk implements Telegraph {
 							if (id == 0) {
 								data[x][y][z * 3] = id;
 								data[x][y][z * 3 + 1] = 0;//value
-								data[x][y][z * 3 + 2] = 100;//health
+								data[x][y][z * 3 + 2] = 0;//damage
 								id = -1;
 								x++;
 								if (x == blocksX) {
@@ -402,7 +402,7 @@ public class Chunk implements Telegraph {
 						} else {
 							data[x][y][z * 3] = id;
 							data[x][y][z * 3 + 1] = bChar;
-							data[x][y][z * 3 + 2] = 100;//health
+							data[x][y][z * 3 + 2] = 0;//damage
 							//if has logicblock then add logicblock
 							if (id != 0) {
 								if (AbstractBlockLogicExtension.isRegistered(id)) {
@@ -611,7 +611,7 @@ public class Chunk implements Telegraph {
     }
 
 	/**
-     * Returns the data of the chunk. each block uses three bytes, id, value and health
+     * Returns the data of the chunk. each block uses three bytes, id, value and damage
      * @return
      */
     public byte[][][] getData() {
@@ -777,7 +777,7 @@ public class Chunk implements Telegraph {
 		if (z >= 0) {
 			data[xIndex][yIndex][z] = id;
 			data[xIndex][yIndex][z + 1] = value;
-			data[xIndex][yIndex][z + 2] = health;
+			data[xIndex][yIndex][z + 2] = (byte) (100-health);
 			modified = true;
 
 			//get corresponding logic and update
@@ -823,8 +823,8 @@ public class Chunk implements Telegraph {
 		int yIndex = coord.getY() - topleftY;
 		int z = coord.getZ()*3;
 		if (z >= 0) {
-			if (data[xIndex][yIndex][z+2] != health) {
-				data[xIndex][yIndex][z+2] = health;
+			if (data[xIndex][yIndex][z+2] != 100-health) {
+				data[xIndex][yIndex][z+2] = (byte) (100-health);
 				modified = true;
 			}
 		}
@@ -946,7 +946,7 @@ public class Chunk implements Telegraph {
 	 * @param x global coordinates
 	 * @param y global coordinates
 	 * @param z global coordinates
-	 * @return first byte id, second value, third is health.
+	 * @return first byte id, second value, third is damage.
 	 */
 	public int getBlock(int x, int y, int z) {
 		if (z >= Chunk.blocksZ) {
@@ -962,7 +962,7 @@ public class Chunk implements Telegraph {
 	 * @param x only valid index
 	 * @param y only valid index
 	 * @param z only valid index
-	 * @return first byte id, second value, third is health.
+	 * @return first byte id, second value, third is damage.
 	 */
 	public int getBlockByIndex(int x, int y, int z) {
 		if (z >= Chunk.blocksZ) {

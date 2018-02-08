@@ -429,7 +429,7 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 	
 	/**
-	 * id, value and health
+	 * id, value and damage
 	 *
 	 * @param coord
 	 * @return first byte id, second value, third is health.
@@ -471,7 +471,7 @@ public class Map implements IndexedGraph<PfNode> {
 	 * @return
 	 */
 	public byte getHealth(Coordinate coord) {
-		return (byte) ((getBlock(coord) >> 16) & 255);
+		return (byte) (100-(getBlock(coord) >> 16) & 255);
 	}
 
 	/**
