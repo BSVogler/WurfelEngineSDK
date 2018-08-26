@@ -4,7 +4,6 @@
 [Javadoc](http://bsvogler.github.io/WurfelEngineSDK/)
 
 ![Screenshot 1](http://wurfelengine.net/screenshots/2017_0.jpg)
-![Screenshot 1](http://wurfelengine.net/screenshots/2017_1.jpg)
 
 ## Features in a nutshell
 * cross plattform
@@ -16,8 +15,8 @@
 * in-game map editor
 * split screen support
 
-Wurfel Engine uses [Maven](https://maven.apache.org) for dependency managment. It isb uilt on top of [libGDX](https://github.com/libgdx/libgdx).
+Wurfel Engine uses [Maven](https://maven.apache.org) for dependency management. It is built on top of [libGDX](https://github.com/libgdx/libgdx).
 
-WurfelEngine.jar is not intended to work as a stand-alone application like the industry game engines (i.e. Unity). The engine is designed to be configured and programmed via source code in the programming language Java. This could be extended in the future.
+WurfelEngine.jar is not intended to work as a stand-alone application like the industry game engines (i.e. Unity). The engine is designed to be configured and programmed via source code in the programming language Java.
 
 A game engine is a huge collection of algorithms. Therefore there are many parts which can be further improved. Some wanted improvements can be found under [Issues](https://github.com/BSVogler/WurfelEngineSDK/issues).
