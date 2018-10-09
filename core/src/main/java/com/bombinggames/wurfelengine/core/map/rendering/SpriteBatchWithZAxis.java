@@ -32,7 +32,7 @@ import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.utils.NumberUtils;
 
 /**
- * Draws batched quads using indices.
+ * Draws batched quads using indices. This class is extended to support uploading the z-value to the GPU.
  *
  * @see Batch
  * @author mzechner

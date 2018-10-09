@@ -381,6 +381,9 @@ public class Camera{
 		}
 	}
 	
+	/**
+	 * Initializes the sorter used for depth sorting.
+	 */
 	public void initSorter() {
 		int currentSorterId = WE.getCVars().getValueI("depthSorter");
 		if (currentSorterId != sorterId || sorter==null) {
@@ -538,6 +541,7 @@ public class Camera{
 				return;
 			}
 			
+			//we use the 
 			view.getGameSpaceSpriteBatch().setProjectionMatrix(combined);
 			view.getGameSpaceSpriteBatch().setShader(shader);
 			//set up the viewport, yIndex-up
@@ -652,10 +656,10 @@ public class Camera{
 	}
 
 	/**
-	 * checks if the projected position is inside the viewMat Frustum
+	 * checks if the projected position is inside the view frustum (the area which is visible by the camera).
 	 *
 	 * @param pos
-	 * @return
+	 * @return true if in visible area
 	 */
 	public boolean inViewFrustum(Position pos){
 		int vspY = pos.getViewSpcY();

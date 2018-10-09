@@ -112,6 +112,7 @@ public class GameView implements GameManager {
      * game related stage. e.g. holds hud and gui
      */
     private Stage stage;
+	//sprite batches are used to render content in batched form for increased performance
     private SpriteBatchWithZAxis gameSpaceSpriteBatch;
 	private SpriteBatch projectionSpaceSpriteBatch;
     
@@ -637,7 +638,7 @@ public class GameView implements GameManager {
     }
 
     /**
-     * Game view dependent spriteBatch
+     * This spritebatch is used to render game content.
      * @return 
      */
     public SpriteBatchWithZAxis getGameSpaceSpriteBatch() {
@@ -646,7 +647,7 @@ public class GameView implements GameManager {
 	
 
 	/**
-	 * Get the value of projectionSpaceSpriteBatch
+	 * This spritebatch is used to render interface content in projection space.
 	 *
 	 * @return the value of projectionSpaceSpriteBatch
 	 */
@@ -664,7 +665,7 @@ public class GameView implements GameManager {
     }
 	
 	/**
-	 *
+	 * Uses the default libGDX shader.
 	 */
 	public void useDefaultShader(){
 		gameSpaceSpriteBatch.setShader(null);
@@ -672,7 +673,7 @@ public class GameView implements GameManager {
 	}
 
 	/**
-	 *
+	 * Either a custom shader is used or the default libGDX shader.
 	 * @return
 	 */
 	public boolean isUsingDefaultShader() {
@@ -680,7 +681,7 @@ public class GameView implements GameManager {
 	}
 	
 	/**
-	 * 
+	 * Use a custom shader program.
 	 * @param shader 
 	 */
 	public void setShader(ShaderProgram shader){
