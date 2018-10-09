@@ -254,8 +254,8 @@ public class RenderCell extends AbstractGameObject {
 	}
 
 	/**
-	 * Indicate whether the blocks should get shaded independent of the light engine by default.
-	 * @param shade 
+	 * Set whether the blocks should get shaded independent of the light engine by default.
+	 * @param shade when true the sides have different brightness and ignore the light engine
 	 */
 	public static void setStaticShade(boolean shade){
 		staticShade = shade;
@@ -581,7 +581,7 @@ public class RenderCell extends AbstractGameObject {
      * Render a side of a block at the position of the internal coordinates.
 	 * @param view
      * @param side The number identifying the side. 0=left, 1=top, 2=right
-	 * @param staticShade
+	 * @param staticShade when true the sides have different brightness and ignore the light engine
      */
     public void renderSide(
 		final GameView view,
