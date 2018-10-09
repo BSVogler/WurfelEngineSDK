@@ -51,6 +51,7 @@ import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.GameSpaceSprite;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis;
 import com.bombinggames.wurfelengine.core.sorting.AbstractSorter;
 import com.bombinggames.wurfelengine.core.sorting.DepthValueSort;
 import com.bombinggames.wurfelengine.core.sorting.NoSort;
@@ -541,9 +542,11 @@ public class Camera{
 				return;
 			}
 			
-			//we use the 
-			view.getSpriteBatchWorld().setProjectionMatrix(combined);
-			view.getSpriteBatchWorld().setShader(shader);
+			//update projection matrix on spritebatch
+			SpriteBatchWithZAxis spritebatchWorld = view.getSpriteBatchWorld();
+			spritebatchWorld.setProjectionMatrix(combined);
+			spritebatchWorld.setShader(shader);
+			
 			//set up the viewport, yIndex-up
 			HdpiUtils.glViewport(
 				screenPosX,
@@ -553,11 +556,11 @@ public class Camera{
 			);
 			
 
-			//settings for this frame
+			//update settings for this frame from cvars
 			RenderCell.setStaticShade(WE.getCVars().getValueB("enableAutoShade"));
 			GameSpaceSprite.setAO(WE.getCVars().getValueF("ambientOcclusion"));
 			
-			view.getSpriteBatchWorld().begin();
+			spritebatchWorld.begin();
 			//upload uniforms
 			shader.setUniformf("u_cameraPos",getCenter());
 			shader.setUniformf("u_fogColor",
@@ -570,9 +573,10 @@ public class Camera{
 				shader.setUniformf("u_playerpos", focusEntity.getPoint());
 				shader.setUniformf("u_localLightPos", focusEntity.getPoint());
 			}
-			//send a Vector4f to GLSL
+			
 			if (WE.getCVars().getValueB("enablelightengine")) {
 				LightEngine le = Controller.getLightEngine();
+				//send a Vector4f to GLSL
 				shader.setUniformf(
 					"u_sunNormal",
 					le.getSun(getCenter()).getNormal()
@@ -596,7 +600,7 @@ public class Camera{
 			//render vom bottom to top
 			if (!multiRendering || (WE.getCVars().getValueB("singleBatchRendering") && multiPassLastIdx == 0)){
 				sorter.renderSorted();
-				multiPassLastIdx = view.getSpriteBatchWorld().getIdx();
+				multiPassLastIdx = spritebatchWorld.getIdx();
 			} else {
 				if (WE.getCVars().getValueB("singleBatchRendering")){
 					//render same batch data again
@@ -609,11 +613,11 @@ public class Camera{
 					for (AbstractGameObject abstractGameObject : depthlist) {
 						abstractGameObject.render(view);
 					}
-					multiPassLastIdx = view.getSpriteBatchWorld().getIdx();
+					multiPassLastIdx = spritebatchWorld.getIdx();
 				}
 			}
 			
-			view.getSpriteBatchWorld().end();
+			spritebatchWorld.end();
 			
 			//debug rendering
 			if (WE.getCVars().getValueB("DevDebugRendering")) {
