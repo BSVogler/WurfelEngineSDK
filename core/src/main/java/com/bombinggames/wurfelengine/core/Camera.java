@@ -83,9 +83,9 @@ public class Camera{
 	 */
 	private final Matrix4 viewMat = new Matrix4();
 	/**
-	 * the combined projection and viewMat matrix
+	 * the viewprojection projection and viewMat matrix
 	 */
-	private final Matrix4 combined = new Matrix4();
+	private final Matrix4 viewprojection = new Matrix4();
 
 	/**
 	 * the viewport size
@@ -334,7 +334,7 @@ public class Camera{
 				);
 
 				//set up projection matrices
-				combined.set(projection);
+				viewprojection.set(projection);
 			
 				//move camera to the position
 				viewMat.setToLookAt(
@@ -343,15 +343,15 @@ public class Camera{
 					new Vector3(0,-1,0)
 				);
 
-				Matrix4.mul(combined.val, viewMat.val);
+				Matrix4.mul(viewprojection.val, viewMat.val);
 
 				//wurfel engine viewport matrix
 				//there is some scaling in M11, keep it
-				combined.val[Matrix4.M12] = combined.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
-				combined.val[Matrix4.M11] *= -0.5f;
+				viewprojection.val[Matrix4.M12] = viewprojection.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
+				viewprojection.val[Matrix4.M11] *= -0.5f;
 
 				//combined.val[Matrix4.M22] *= -1.0f; // keep z for clip space
-				combined.val[Matrix4.M23] *= -1f; // reverse z for better fit with near and far plance
+				viewprojection.val[Matrix4.M23] *= -1f; // reverse z for better fit with near and far plance
 			} else {
 				//orthographic camera
 				projection.setToOrtho(
@@ -362,7 +362,7 @@ public class Camera{
 					-100,
 					1020
 				);
-				combined.set(projection);
+				viewprojection.set(projection);
 				
 				//move camera to the position
 				viewMat.setToLookAt(
@@ -373,7 +373,7 @@ public class Camera{
 
 				viewMat.rotate(1, 0.00f, 0.0f, 60);
 
-				Matrix4.mul(combined.val, viewMat.val);
+				Matrix4.mul(viewprojection.val, viewMat.val);
 			}
 			
 			//recalculate the center position
@@ -533,7 +533,7 @@ public class Camera{
 //			fbo.begin();
 			
 		//view.getSpriteBatchWorld().setTransformMatrix(new Matrix4().idt());
-		//	view.getSpriteBatchWorld().setProjectionMatrix(combined);//game space
+		//	view.getSpriteBatchWorld().setProjectionMatrix(viewprojection);//game space
 			
 			ShaderProgram shader = view.getShader();
 			if (shader==null) {
@@ -544,7 +544,7 @@ public class Camera{
 			
 			//update projection matrix on spritebatch
 			SpriteBatchWithZAxis spritebatchWorld = view.getSpriteBatchWorld();
-			spritebatchWorld.setProjectionMatrix(combined);
+			spritebatchWorld.setProjectionMatrix(viewprojection);
 			spritebatchWorld.setShader(shader);
 			
 			//set up the viewport, yIndex-up
@@ -629,7 +629,7 @@ public class Camera{
 //			OrthographicCamera cam = new OrthographicCamera(Gdx.graphics.getWidth(),
 //				Gdx.graphics.getHeight());
 //			cam.setToOrtho(false, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-//			view.getSpriteBatchProjection().setProjectionMatrix(cam.combined);
+//			view.getSpriteBatchProjection().setProjectionMatrix(cam.viewprojection);
 //			view.getSpriteBatchProjection().setShader(postprocessshader);
 //			//fboRegion.getTexture().bind();
 //			Gdx.gl.glClearColor(0f, 0f, 0f, 0f);
@@ -1017,7 +1017,7 @@ public class Camera{
 	private void drawDebug(GameView view, Camera camera) {
 		//outline 3x3 chunks
 		ShapeRenderer sh = view.getShapeRenderer();
-		sh.setProjectionMatrix(combined);//draw in game space
+		sh.setProjectionMatrix(viewprojection);//draw in game space
 		sh.setColor(Color.RED.cpy());
 		sh.begin(ShapeRenderer.ShapeType.Line);
 		sh.rect(-Chunk.getGameWidth(),//one chunk to the left
