@@ -353,7 +353,7 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 
 			sprite.setColor(getColor());
 
-			sprite.draw(view.getGameSpaceSpriteBatch());
+			sprite.draw(view.getSpriteBatchWorld());
 		}
 	}
 	
@@ -391,7 +391,7 @@ public abstract class AbstractGameObject extends Renderable implements Serializa
 
 			sprite.setColor(getColor());
 
-			sprite.draw(view.getProjectionSpaceSpriteBatch());
+			sprite.draw(view.getSpriteBatchProjection());
 		}
 	}
 

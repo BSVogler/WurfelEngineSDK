@@ -303,7 +303,7 @@ public class TopologicalSort extends AbstractSorter {
 				);
 
 				objectsToBeRendered++;
-				sprite.draw(gameView.getGameSpaceSpriteBatch());
+				sprite.draw(gameView.getSpriteBatchWorld());
 			}
 		}
 	}

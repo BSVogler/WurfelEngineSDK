@@ -274,9 +274,9 @@ public class Minimap implements Telegraph {
         if (visible) {
             //this needs offscreen rendering for a single call with a recalc
 			if (fboRegion!=null){
-				view.getProjectionSpaceSpriteBatch().begin();
-				view.getProjectionSpaceSpriteBatch().draw(fboRegion, posX, posY);
-				view.getProjectionSpaceSpriteBatch().end();
+				view.getSpriteBatchProjection().begin();
+				view.getSpriteBatchProjection().draw(fboRegion, posX, posY);
+				view.getSpriteBatchProjection().end();
 			}
 			
 			ShapeRenderer sh = view.getShapeRenderer();

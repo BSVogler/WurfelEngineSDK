@@ -531,8 +531,8 @@ public class Camera{
 //			Gdx.gl20.glViewport(0, 0, fbo.getWidth(), fbo.getHeight());
 //			fbo.begin();
 			
-		//view.getGameSpaceSpriteBatch().setTransformMatrix(new Matrix4().idt());
-		//	view.getGameSpaceSpriteBatch().setProjectionMatrix(combined);//game space
+		//view.getSpriteBatchWorld().setTransformMatrix(new Matrix4().idt());
+		//	view.getSpriteBatchWorld().setProjectionMatrix(combined);//game space
 			
 			ShaderProgram shader = view.getShader();
 			if (shader==null) {
@@ -542,8 +542,8 @@ public class Camera{
 			}
 			
 			//we use the 
-			view.getGameSpaceSpriteBatch().setProjectionMatrix(combined);
-			view.getGameSpaceSpriteBatch().setShader(shader);
+			view.getSpriteBatchWorld().setProjectionMatrix(combined);
+			view.getSpriteBatchWorld().setShader(shader);
 			//set up the viewport, yIndex-up
 			HdpiUtils.glViewport(
 				screenPosX,
@@ -557,7 +557,7 @@ public class Camera{
 			RenderCell.setStaticShade(WE.getCVars().getValueB("enableAutoShade"));
 			GameSpaceSprite.setAO(WE.getCVars().getValueF("ambientOcclusion"));
 			
-			view.getGameSpaceSpriteBatch().begin();
+			view.getSpriteBatchWorld().begin();
 			//upload uniforms
 			shader.setUniformf("u_cameraPos",getCenter());
 			shader.setUniformf("u_fogColor",
@@ -596,11 +596,11 @@ public class Camera{
 			//render vom bottom to top
 			if (!multiRendering || (WE.getCVars().getValueB("singleBatchRendering") && multiPassLastIdx == 0)){
 				sorter.renderSorted();
-				multiPassLastIdx = view.getGameSpaceSpriteBatch().getIdx();
+				multiPassLastIdx = view.getSpriteBatchWorld().getIdx();
 			} else {
 				if (WE.getCVars().getValueB("singleBatchRendering")){
 					//render same batch data again
-					view.getGameSpaceSpriteBatch().setIdx(multiPassLastIdx);
+					view.getSpriteBatchWorld().setIdx(multiPassLastIdx);
 				} else {
 					if (multiPassLastIdx == 0) {
 						sorter.createDepthList(depthlist);
@@ -609,11 +609,11 @@ public class Camera{
 					for (AbstractGameObject abstractGameObject : depthlist) {
 						abstractGameObject.render(view);
 					}
-					multiPassLastIdx = view.getGameSpaceSpriteBatch().getIdx();
+					multiPassLastIdx = view.getSpriteBatchWorld().getIdx();
 				}
 			}
 			
-			view.getGameSpaceSpriteBatch().end();
+			view.getSpriteBatchWorld().end();
 			
 			//debug rendering
 			if (WE.getCVars().getValueB("DevDebugRendering")) {
@@ -625,14 +625,14 @@ public class Camera{
 //			OrthographicCamera cam = new OrthographicCamera(Gdx.graphics.getWidth(),
 //				Gdx.graphics.getHeight());
 //			cam.setToOrtho(false, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-//			view.getProjectionSpaceSpriteBatch().setProjectionMatrix(cam.combined);
-//			view.getProjectionSpaceSpriteBatch().setShader(postprocessshader);
+//			view.getSpriteBatchProjection().setProjectionMatrix(cam.combined);
+//			view.getSpriteBatchProjection().setShader(postprocessshader);
 //			//fboRegion.getTexture().bind();
 //			Gdx.gl.glClearColor(0f, 0f, 0f, 0f);
 //			Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
-//			view.getProjectionSpaceSpriteBatch().begin();
-			//view.getProjectionSpaceSpriteBatch().draw(fboRegion, 0, 0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());
-//			view.getProjectionSpaceSpriteBatch().end();
+//			view.getSpriteBatchProjection().begin();
+			//view.getSpriteBatchProjection().draw(fboRegion, 0, 0,Gdx.graphics.getWidth(),Gdx.graphics.getHeight());
+//			view.getSpriteBatchProjection().end();
 		}
 	}
 	

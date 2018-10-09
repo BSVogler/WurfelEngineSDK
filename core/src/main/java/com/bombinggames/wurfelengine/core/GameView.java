@@ -113,8 +113,8 @@ public class GameView implements GameManager {
      */
     private Stage stage;
 	//sprite batches are used to render content in batched form for increased performance
-    private SpriteBatchWithZAxis gameSpaceSpriteBatch;
-	private SpriteBatch projectionSpaceSpriteBatch;
+    private SpriteBatchWithZAxis spriteBatchWorld;
+	private SpriteBatch SpriteBatchProjection;
     
     private LoadMenu loadMenu;
     
@@ -151,8 +151,8 @@ public class GameView implements GameManager {
 	 */
 	public void init(final Controller controller, final GameView oldView) {
 		Gdx.app.debug("GameView", "Initializing");
-		gameSpaceSpriteBatch = new SpriteBatchWithZAxis(WE.getCVars().getValueI("MaxSprites"));
-		projectionSpaceSpriteBatch = new SpriteBatch(1000);
+		spriteBatchWorld = new SpriteBatchWithZAxis(WE.getCVars().getValueI("MaxSprites"));
+		SpriteBatchProjection = new SpriteBatch(1000);
 		loadShaders();
 
 		this.controller = controller;
@@ -171,7 +171,7 @@ public class GameView implements GameManager {
 				Gdx.graphics.getWidth(),
 				Gdx.graphics.getHeight()
 			),
-			projectionSpaceSpriteBatch
+			SpriteBatchProjection
 		);//spawn at fullscreen
 
 		useDefaultShader();//set default shader
@@ -349,7 +349,7 @@ public class GameView implements GameManager {
 			}
 		}
 	   
-	   int spritesStart = gameSpaceSpriteBatch.getRenderedSprites();
+	   int spritesStart = spriteBatchWorld.getRenderedSprites();
 
         //render every camera
         if (cameras.isEmpty()){
@@ -380,7 +380,7 @@ public class GameView implements GameManager {
         //render HUD and GUI
 		useDefaultShader();
 		//to screen space?
-		gameSpaceSpriteBatch.setProjectionMatrix(libGDXcamera.combined);
+		spriteBatchWorld.setProjectionMatrix(libGDXcamera.combined);
 		shRenderer.setProjectionMatrix(libGDXcamera.combined);
 
 		Gdx.gl20.glLineWidth(1);
@@ -406,14 +406,14 @@ public class GameView implements GameManager {
 			
 		//render buttons
 		stage.draw();
-		numSpritesThisFrame = gameSpaceSpriteBatch.getRenderedSprites()-spritesStart;
+		numSpritesThisFrame = spriteBatchWorld.getRenderedSprites()-spritesStart;
 	}
 	
 	/**
 	 * sets matrix to render in screen space coordinates
 	 */
 	public void resetProjectionMatrix(){
-		gameSpaceSpriteBatch.setProjectionMatrix(libGDXcamera.combined);
+		spriteBatchWorld.setProjectionMatrix(libGDXcamera.combined);
 		shRenderer.setProjectionMatrix(libGDXcamera.combined);
 	}
 
@@ -544,13 +544,13 @@ public class GameView implements GameManager {
 	 */
 	public void drawString(final String msg, final int xPos, final int yPos,final Color color, boolean openbatch) {
 		if (openbatch) {
-			projectionSpaceSpriteBatch.setProjectionMatrix(libGDXcamera.combined);
-			projectionSpaceSpriteBatch.begin();
+			SpriteBatchProjection.setProjectionMatrix(libGDXcamera.combined);
+			SpriteBatchProjection.begin();
 		}
 		WE.getEngineView().getFont().setColor(color);
-		WE.getEngineView().getFont().draw(projectionSpaceSpriteBatch, msg, xPos, yPos);
+		WE.getEngineView().getFont().draw(SpriteBatchProjection, msg, xPos, yPos);
 		if (openbatch) {
-			projectionSpaceSpriteBatch.end();
+			SpriteBatchProjection.end();
 		}
 	}
     
@@ -562,9 +562,9 @@ public class GameView implements GameManager {
      * @param color
      */
     public void drawString(final String msg, final int xPos, final int yPos, final Color color) {
-        projectionSpaceSpriteBatch.setColor(Color.WHITE.cpy());
+        SpriteBatchProjection.setColor(Color.WHITE.cpy());
 		WE.getEngineView().getFont().setColor(color);
-		WE.getEngineView().getFont().draw(projectionSpaceSpriteBatch, msg, xPos, yPos);
+		WE.getEngineView().getFont().draw(SpriteBatchProjection, msg, xPos, yPos);
     }
 
     /**
@@ -638,21 +638,21 @@ public class GameView implements GameManager {
     }
 
     /**
-     * This spritebatch is used to render game content.
+     * This spritebatch is used to render game content in world space.
      * @return 
      */
-    public SpriteBatchWithZAxis getGameSpaceSpriteBatch() {
-        return gameSpaceSpriteBatch;
+    public SpriteBatchWithZAxis getSpriteBatchWorld() {
+        return spriteBatchWorld;
     }
 	
 
 	/**
 	 * This spritebatch is used to render interface content in projection space.
 	 *
-	 * @return the value of projectionSpaceSpriteBatch
+	 * @return the value of SpriteBatchProjection
 	 */
-	public SpriteBatch getProjectionSpaceSpriteBatch() {
-		return projectionSpaceSpriteBatch;
+	public SpriteBatch getSpriteBatchProjection() {
+		return SpriteBatchProjection;
 	}
 
     /**
@@ -668,7 +668,7 @@ public class GameView implements GameManager {
 	 * Uses the default libGDX shader.
 	 */
 	public void useDefaultShader(){
-		gameSpaceSpriteBatch.setShader(null);
+		spriteBatchWorld.setShader(null);
 		useDefaultShader = true;
 	}
 
@@ -685,7 +685,7 @@ public class GameView implements GameManager {
 	 * @param shader 
 	 */
 	public void setShader(ShaderProgram shader){
-		gameSpaceSpriteBatch.setShader(shader);
+		spriteBatchWorld.setShader(shader);
 		useDefaultShader = false;
 	}
 
@@ -707,7 +707,7 @@ public class GameView implements GameManager {
 			MessageManager.getInstance().removeListener(this.renderstorage, Events.mapChanged.getId());	
 		renderstorage.dispose();
 		shRenderer.dispose();
-		gameSpaceSpriteBatch.dispose();
+		spriteBatchWorld.dispose();
 		stage.dispose();
 		
 		cameraIdCounter=0;
@@ -777,10 +777,10 @@ public class GameView implements GameManager {
 			for (int i = 0; i < numDPLayers; i++) {
 				//render to fbo
 				if (i == 0) {
-					gameSpaceSpriteBatch.disableBlending();
+					spriteBatchWorld.disableBlending();
 					fbo[i].begin();//same as Gdx.gl.glBindFramebuffer(GL20.GL_FRAMEBUFFER, fbo[0].getFramebufferHandle());
 				} else if (i == numDPLayers-1) {
-					gameSpaceSpriteBatch.enableBlending();
+					spriteBatchWorld.enableBlending();
 				}
 				//active framebuffer, attach this texture as your depth buffer from now on
 				//Owrites to both frame buffers after second run
@@ -826,11 +826,11 @@ public class GameView implements GameManager {
 //				Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
 //				Gdx.gl.glBlendEquation(GL20.GL_FUNC_ADD);
 //                Gdx.gl.glBlendFuncSeparate(GL20.GL_DST_COLOR, GL20.GL_ONE, GL20.GL_ZERO, GL20.GL_ONE_MINUS_SRC_ALPHA);
-//				projectionSpaceSpriteBatch.begin();
+//				SpriteBatchProjection.begin();
 //				//draw flipped
-////				projectionSpaceSpriteBatch.draw(fbo[1].getColorBufferTexture(), 0, bufRefY, bufResX, -bufRefY);
-//				projectionSpaceSpriteBatch.draw(fbo[0].getColorBufferTexture(), 0, bufRefY, bufResX, -bufRefY);
-// 				projectionSpaceSpriteBatch.end();
+////				SpriteBatchProjection.draw(fbo[1].getColorBufferTexture(), 0, bufRefY, bufResX, -bufRefY);
+//				SpriteBatchProjection.draw(fbo[0].getColorBufferTexture(), 0, bufRefY, bufResX, -bufRefY);
+// 				SpriteBatchProjection.end();
 //					}
 			}
 			camera.endMultiRendering();
@@ -839,11 +839,11 @@ public class GameView implements GameManager {
 			Gdx.gl20.glDisable(GL20.GL_DEPTH_TEST);
 			Gdx.gl.glBlendEquation(GL20.GL_FUNC_ADD);
 			Gdx.gl.glBlendFuncSeparate(GL20.GL_DST_COLOR, GL20.GL_ONE, GL20.GL_ZERO, GL20.GL_ONE_MINUS_SRC_ALPHA);
-			projectionSpaceSpriteBatch.begin();
+			SpriteBatchProjection.begin();
 			//draw flipped
-//				projectionSpaceSpriteBatch.draw(fbo[1].getColorBufferTexture(), 0, bufRefY, bufResX, -bufRefY);
-			projectionSpaceSpriteBatch.draw(fbo[0].getColorBufferTexture(), 0, Gdx.graphics.getHeight(), Gdx.graphics.getWidth(), -Gdx.graphics.getHeight());
-			projectionSpaceSpriteBatch.end();
+//				SpriteBatchProjection.draw(fbo[1].getColorBufferTexture(), 0, bufRefY, bufResX, -bufRefY);
+			SpriteBatchProjection.draw(fbo[0].getColorBufferTexture(), 0, Gdx.graphics.getHeight(), Gdx.graphics.getWidth(), -Gdx.graphics.getHeight());
+			SpriteBatchProjection.end();
 		}
 	}
 

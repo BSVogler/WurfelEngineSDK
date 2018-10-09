@@ -701,7 +701,7 @@ public class RenderCell extends AbstractGameObject {
 		//		color.b = 1;
 		//	}
 		sprite.setColor(color);
-		sprite.draw(view.getProjectionSpaceSpriteBatch());
+		sprite.draw(view.getSpriteBatchProjection());
 	}
 	
 	/**
@@ -782,7 +782,7 @@ public class RenderCell extends AbstractGameObject {
 			((vertexcolor[sidecode+3] >> (20 - 10 * Channel.Green.id)) & 0x3FF) / 1023f,
 			((vertexcolor[sidecode+3] >> (20 - 10 * Channel.Blue.id)) & 0x3FF) / 1023f
 		);
-		sprite.draw(view.getGameSpaceSpriteBatch());
+		sprite.draw(view.getSpriteBatchWorld());
     }
 
 	/**
