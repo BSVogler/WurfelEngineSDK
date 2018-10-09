@@ -332,7 +332,9 @@ public class Camera{
 					1,
 					2200
 				);
-
+				
+				projection.val[Matrix4.M23] *= -1f; // reverse z for better fit with near and far plance
+								
 				//set up projection matrices
 				viewprojection.set(projection);
 			
@@ -345,13 +347,13 @@ public class Camera{
 
 				Matrix4.mul(viewprojection.val, viewMat.val);
 
-				//wurfel engine viewport matrix
+				//
+				viewprojection.val[Matrix4.M12] = viewprojection.val[Matrix4.M11  ]
+					*RenderCell.PROJECTIONFACTORZ;//use the z projection factor in y direction
 				//there is some scaling in M11, keep it
-				viewprojection.val[Matrix4.M12] = viewprojection.val[Matrix4.M11]*RenderCell.PROJECTIONFACTORZ;
-				viewprojection.val[Matrix4.M11] *= -0.5f;
-
+				viewprojection.val[Matrix4.M11] *= -RenderCell.PROJECTIONFACTORY;//game y is projected down
 				//combined.val[Matrix4.M22] *= -1.0f; // keep z for clip space
-				viewprojection.val[Matrix4.M23] *= -1f; // reverse z for better fit with near and far plance
+
 			} else {
 				//orthographic camera
 				projection.setToOrtho(
