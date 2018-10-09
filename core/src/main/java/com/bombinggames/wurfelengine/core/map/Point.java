@@ -649,10 +649,10 @@ public class Point extends Vector3 implements Position {
 	 * 
 	 * @param dir
 	 * @param maxDistance game space in meters
-	 * @param rS used when regarding clipping information
-	 * @param hitCondition can be null
+	 * @param rS used when considering clipping information
+	 * @param hitCondition can be null, trigger when a block counts as a hit
 	 * @return intersection point
-	 * @see #raycast(com.badlogic.gdx.math.Vector3, float, com.bombinggames.wurfelengine.core.map.rendering.RenderStorage, java.util.function.Predicate) 
+	 * @see #raycast(com.badlogic.gdx.math.Vector3,float, com.bombinggames.wurfelengine.core.map.rendering.RenderStorage, java.util.function.Predicate) 
 	 */
 	public Intersection rayMarching(
 		final Vector3 dir,
