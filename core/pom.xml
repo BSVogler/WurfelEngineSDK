@@ -36,8 +36,8 @@
 	</developers>
 	<scm>
 		<url>https://github.com/BSVogler/WurfelEngineSDK</url>
-		<connection>scm:git:git://github.com/BSVogler/WurfelEngineSDK.git</connection>
-		<developerConnection>scm:git:git://github.com/BSVogler/WurfelEngineSDK.git</developerConnection>
+		<connection>scm:git://github.com/BSVogler/WurfelEngineSDK.git</connection>
+		<developerConnection>scm:git://github.com/BSVogler/WurfelEngineSDK.git</developerConnection>
 		<tag>HEAD</tag>
 	</scm>
 
