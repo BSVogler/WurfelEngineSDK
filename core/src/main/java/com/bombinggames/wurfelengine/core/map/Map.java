@@ -189,7 +189,7 @@ public class Map implements IndexedGraph<PfNode> {
 	/**
 	 * Loads a map using the default generator.
 	 *
-	 * @param name if available on disk it will be load
+	 * @param name if available on storage it will be load
 	 * @param saveslot
 	 * @throws java.io.IOException thrown if there is no full read/write access
 	 * to the map file
@@ -201,7 +201,7 @@ public class Map implements IndexedGraph<PfNode> {
 	/**
 	 * Loads a map. Loads map and save cVars.
 	 *
-	 * @param name if available on disk it will load the meta file
+	 * @param name if available on storage it will load the meta file
 	 * @param generator the generator used for generating new chunks
 	 * @param saveSlot
 	 * @throws java.io.IOException thrown if there is no full read/write access
@@ -312,7 +312,7 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 
 	/**
-	 * Starts loading of a chunk from disk if not already loaded. Non-blocking
+	 * Starts loading of a chunk from storage if not already loaded. Non-blocking
 	 * method. Loading is performed in another thread.
 	 *
 	 * @param chunkX
@@ -330,7 +330,7 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 
 	/**
-	 * Loads a chunk from disk.Blocking method. CAnn
+	 * Loads a chunk from storage. Blocking method.
 	 *
 	 * @param chunkX
 	 * @param chunkY
@@ -357,7 +357,7 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 
 	/**
-	 * Loads a chunk from disk if not already loaded.
+	 * Loads a chunk from storage if not already loaded.
 	 *
 	 * @param coord
 	 * @see #loadChunk(int, int) 
@@ -368,7 +368,7 @@ public class Map implements IndexedGraph<PfNode> {
 	}
 	
 	/**
-	 * Loads a chunk from disk if not already loaded.Blocking method.
+	 * Loads a chunk from storage if not already loaded.Blocking method.
 	 *
 	 * @param coord
 	 * @return 

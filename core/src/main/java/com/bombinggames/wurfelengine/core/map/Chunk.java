@@ -494,7 +494,7 @@ public class Chunk implements Telegraph {
 	}
 
     /**
-     * Tries to load a chunk from disk.
+     * Tries to load a chunk from storage.
      */
     private boolean load(final File path, int saveSlot, int coordX, int coordY) {
 
@@ -522,7 +522,7 @@ public class Chunk implements Telegraph {
 				Gdx.app.error("Chunk","Loading of chunk "+coordX+","+coordY + " failed. Chunk or meta file corrupt: "+ex);
 			}
 		} else {
-			Gdx.app.log("Chunk", coordX+","+coordY + " could not be found on disk. Trying to load from root next.");
+			Gdx.app.log("Chunk", coordX+","+coordY + " could not be found on storage. Trying to load from root next.");
 			if (restoreFromRoot(path, saveSlot, coordX, coordY))
 				load(path, saveSlot, coordX, coordY);
 		}

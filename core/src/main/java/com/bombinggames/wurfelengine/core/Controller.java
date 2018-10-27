@@ -268,7 +268,7 @@ public class Controller implements GameManager {
 	 * Set your custom map generator optionally, before calling this
 	 * method.
 	 *
-	 * @param mapName name on disk
+	 * @param mapName name on storage
 	 * @param saveslot
 	 * 
 	 * @see #init() 

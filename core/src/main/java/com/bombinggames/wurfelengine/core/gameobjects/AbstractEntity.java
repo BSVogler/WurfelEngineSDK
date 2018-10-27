@@ -308,7 +308,7 @@ public abstract class AbstractEntity extends AbstractGameObject implements Teleg
 	}
 
 	/**
-	 * Mark objects to not be saved in disk. Gets passed to the children. Temp
+	 * Mark objects to not be saved on storage. Gets passed to the children. Temp
 	 * objects should not be saved.
 	 *
 	 * @param persisent new value of persisent
