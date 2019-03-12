@@ -35,7 +35,7 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.bombinggames.wurfelengine.WE;
-import com.bombinggames.wurfelengine.mapeditor.EditorView;
+import editor.EditorView;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 

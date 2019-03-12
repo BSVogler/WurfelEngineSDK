@@ -43,7 +43,7 @@ import com.bombinggames.wurfelengine.core.gameobjects.ParticleType;
 import com.bombinggames.wurfelengine.core.gameobjects.PointLightSource;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
-import com.bombinggames.wurfelengine.extension.AimBand;
+import com.bombinggames.wurfelengine.utilities.AimBand;
 
 /**
  *

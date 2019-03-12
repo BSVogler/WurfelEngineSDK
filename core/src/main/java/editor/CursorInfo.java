@@ -28,89 +28,83 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-package com.bombinggames.wurfelengine.mapeditor;
+package editor;
 
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.scenes.scene2d.Actor;
-import com.badlogic.gdx.scenes.scene2d.ui.Table;
-import com.bombinggames.wurfelengine.core.GameView;
+import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.ui.Label;
+import com.badlogic.gdx.scenes.scene2d.ui.WidgetGroup;
+import com.bombinggames.wurfelengine.WE;
+import com.bombinggames.wurfelengine.core.gameobjects.Cursor;
+import com.bombinggames.wurfelengine.core.map.Coordinate;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 
 /**
- * A table containing all blocks where you can choose your block.
+ * Saves the current "color"(block) selection in the editor.
  *
  * @author Benedikt Vogler
  */
-public abstract class AbstractPlacableTable extends Table {
+public class CursorInfo extends WidgetGroup {
 
+	private final Label label;
 	/**
-	 * list position
+	 * parent stage
 	 */
-	private byte selected = 1;
-	/**
-	 * game data
-	 */
-	private byte value;
+	private final Stage stage;
+	private final Cursor cursor;
 
 	/**
 	 *
+	 * @param stage parent stage
+	 * @param cursor the selection-Entity where the block comes from
 	 */
-	public AbstractPlacableTable() {
-		setWidth(400);
-		setHeight(Gdx.graphics.getHeight() * 0.80f);
-		setY(10);
-		setX(20);
+	public CursorInfo(Stage stage, Cursor cursor) {
+		this.stage = stage;
+		this.cursor = cursor;
+		label = new Label("nothing selected", WE.getEngineView().getSkin());
+		addActor(label);
+
+		setPosition(stage.getWidth() * 0.8f, stage.getHeight() * 0.02f);
 	}
 
 	/**
 	 *
-	 * @param view used for rendering
+	 * @param block
+	 * @param coord
 	 */
-	public abstract void show(GameView view);
-
-	/**
-	 *
-	 */
-	public void hide() {
-		if (hasChildren()) {
-			clear();
-		}
-
-		if (isVisible()) {
-			setVisible(false);
-		}
+	public void updateFrom(int block, Coordinate coord) {
+		byte id = (byte) (block & 255);
+		byte value = (byte) ((block >> 8) & 255);
+		label.setText(RenderCell.getName(id, value) + " " + id + " - " + value + "@" + cursor.getPosition().toCoord().toString());
 	}
 
 	/**
-	 * selects the item and sets value to 0.
+	 * Relative movement.
 	 *
-	 * @param pos the pos of the listener
+	 * @param amount
 	 */
-	void selectItem(byte pos) {
-		if (pos <= getChildren().size) {
-			selected = pos;
-			for (Actor c : getChildren()) {
-				c.setScale(0.35f);
-			}
-			getChildren().get(selected).setScale(0.4f);
-			value = 0;
+	void moveToCenter(float amount) {
+		if (getX() < stage.getWidth() / 2) {
+			setX(getX() + amount);
+		} else {
+			setX(getX() - amount);
 		}
 	}
 
 	/**
-	 * sets the value of the selected
+	 * Absolute position.
 	 *
-	 * @param value
+	 * @param amount
 	 */
-	void setValue(byte value) {
-		this.value = value;
+	void moveToBorder(float amount) {
+		if (getX() < stage.getWidth() / 2) {
+			setX(amount);
+		} else {
+			setX(stage.getWidth() - amount);
+		}
 	}
 
-	/**
-	 *
-	 * @return
-	 */
-	public byte getValue() {
-		return value;
+	void hide() {
+		setVisible(false);
 	}
 
 }

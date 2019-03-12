@@ -1,7 +1,7 @@
 /*
  * If this software is used for a game the official „Wurfel Engine“ logo or its name must be visible in an intro screen or main menu.
  *
- * Copyright 2014 Benedikt Vogler.
+ * Copyright 2016 Benedikt Vogler.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,64 +28,74 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-package com.bombinggames.wurfelengine.mapeditor;
+package com.bombinggames.wurfelengine.utilities;
 
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.graphics.Color;
-import com.badlogic.gdx.graphics.GL20;
+import java.util.LinkedList;
+
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
-import com.bombinggames.wurfelengine.WE;
+import com.bombinggames.wurfelengine.core.Controller;
+import com.bombinggames.wurfelengine.core.GameView;
 import com.bombinggames.wurfelengine.core.map.Chunk;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
+import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 
 /**
- * A bar which schows the current fitlering level.
  *
  * @author Benedikt Vogler
  */
-public class Navigation {
+public class MiniMapChunkDebug {
+	private boolean visible = true;
+	
+	    /**
+	 * distance from left
+	 */
+	private final int posX;
+	/**
+	 * distance from bottom
+	 */
+	private final int posY;
 
 	/**
 	 *
-	 * @param view
+	 * @param posX
+	 * @param posY
 	 */
-	protected void render(EditorView view) {
-		//draw layer navigation  on right side
-		ShapeRenderer sh = WE.getEngineView().getShapeRenderer();
-		Gdx.gl.glEnable(GL20.GL_BLEND);
-		Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-		Gdx.gl.glLineWidth(3);
-
-		sh.begin(ShapeRenderer.ShapeType.Line);
-
-		int rightborder = Gdx.graphics.getWidth();
-		int topBorder = Gdx.graphics.getHeight();
-		int stepSize = topBorder / (Chunk.getBlocksZ() + 1);
-
-		for (int i = 1; i < Chunk.getBlocksZ() + 1; i++) {
-			sh.setColor(Color.GRAY.cpy().sub(0, 0, 0, 0.5f));
-			sh.line(rightborder,
-				i * stepSize,
-				rightborder - 50,
-				i * stepSize
-			);
-
-			//"shadow"
-			sh.setColor(Color.DARK_GRAY.cpy().sub(0, 0, 0, 0.5f));
-			sh.line(rightborder,
-				i * stepSize + 3,
-				rightborder - 50,
-				i * stepSize + 3
-			);
-		}
-		sh.line(
-			rightborder,
-			view.getRenderStorage().getZRenderingLimit() * stepSize/RenderCell.GAME_EDGELENGTH,
-			rightborder - 50,
-			view.getRenderStorage().getZRenderingLimit() * stepSize/RenderCell.GAME_EDGELENGTH
-		);
-		sh.end();
-		Gdx.gl.glLineWidth(1);
-		Gdx.gl.glDisable(GL20.GL_BLEND);
+	public MiniMapChunkDebug(int posX, int posY) {
+		this.posX = posX;
+		this.posY = posY;
 	}
+	   
+	
+	/**
+     * Renders the Minimap.
+     * @param view the view using this render method 
+     */
+    public void render(final GameView view) {
+        if (visible) {
+			ShapeRenderer sh = view.getShapeRenderer();
+			sh.begin(ShapeRenderer.ShapeType.Filled);
+			sh.setColor(0, 1, 0, 1);
+			LinkedList<Chunk> mapdata = Controller.getMap().getLoadedChunks();
+			for (Chunk chunk : mapdata) {
+				if (chunk != null) {
+					sh.rect(posX + chunk.getChunkX() * 10, posY - chunk.getChunkY() * 10, 9, 9);
+				}
+			}
+			sh.setColor(1, 1, 0, 0.1f);
+			LinkedList<RenderChunk> rS = view.getRenderStorage().getData();
+			for (RenderChunk chunk : rS) {
+				sh.rect(posX+chunk.getChunkX()*10, posY-chunk.getChunkY()*10, 9, 9);
+			}
+			sh.end();
+			
+//				//camera position
+//				view.drawString(
+//					camera.getViewSpaceX() +" | "+ camera.getViewSpaceY(),
+//					posX,
+//					(int) (posY- 3*Chunk.getBlocksY()*scaleY + 15),
+//					Color.WHITE
+//				);
+//			}
+        }
+    }
+	
 }

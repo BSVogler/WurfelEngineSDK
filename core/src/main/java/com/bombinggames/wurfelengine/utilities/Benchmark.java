@@ -1,4 +1,4 @@
-package com.bombinggames.wurfelengine.extension;
+package com.bombinggames.wurfelengine.utilities;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ai.msg.Telegram;

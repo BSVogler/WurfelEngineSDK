@@ -34,7 +34,7 @@ import com.bombinggames.wurfelengine.core.Controller;
 import com.bombinggames.wurfelengine.extension.basicmainmenu.BasicMainMenu;
 import com.bombinggames.wurfelengine.extension.basicmainmenu.BasicMenuItem;
 import com.bombinggames.wurfelengine.extension.basicmainmenu.GameViewWithCamera;
-import com.bombinggames.wurfelengine.mapeditor.EditorView;
+import editor.EditorView;
 
 /**
  * A test class for starting the engine.

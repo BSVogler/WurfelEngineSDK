@@ -39,8 +39,8 @@ import com.bombinggames.wurfelengine.core.map.Intersection;
 import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.Position;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
-import com.bombinggames.wurfelengine.mapeditor.CursorInfo;
-import com.bombinggames.wurfelengine.mapeditor.Tool;
+import editor.CursorInfo;
+import editor.Tool;
 
 /**
  *The seletion indicator in the level editor.

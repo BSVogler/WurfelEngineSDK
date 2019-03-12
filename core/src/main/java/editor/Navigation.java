@@ -28,83 +28,64 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-package com.bombinggames.wurfelengine.mapeditor;
+package editor;
 
-import com.badlogic.gdx.scenes.scene2d.Stage;
-import com.badlogic.gdx.scenes.scene2d.ui.Label;
-import com.badlogic.gdx.scenes.scene2d.ui.WidgetGroup;
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.bombinggames.wurfelengine.WE;
-import com.bombinggames.wurfelengine.core.gameobjects.Cursor;
-import com.bombinggames.wurfelengine.core.map.Coordinate;
+import com.bombinggames.wurfelengine.core.map.Chunk;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 
 /**
- * Saves the current "color"(block) selection in the editor.
+ * A bar which schows the current fitlering level.
  *
  * @author Benedikt Vogler
  */
-public class CursorInfo extends WidgetGroup {
-
-	private final Label label;
-	/**
-	 * parent stage
-	 */
-	private final Stage stage;
-	private final Cursor cursor;
+public class Navigation {
 
 	/**
 	 *
-	 * @param stage parent stage
-	 * @param cursor the selection-Entity where the block comes from
+	 * @param view
 	 */
-	public CursorInfo(Stage stage, Cursor cursor) {
-		this.stage = stage;
-		this.cursor = cursor;
-		label = new Label("nothing selected", WE.getEngineView().getSkin());
-		addActor(label);
+	protected void render(EditorView view) {
+		//draw layer navigation  on right side
+		ShapeRenderer sh = WE.getEngineView().getShapeRenderer();
+		Gdx.gl.glEnable(GL20.GL_BLEND);
+		Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+		Gdx.gl.glLineWidth(3);
 
-		setPosition(stage.getWidth() * 0.8f, stage.getHeight() * 0.02f);
-	}
+		sh.begin(ShapeRenderer.ShapeType.Line);
 
-	/**
-	 *
-	 * @param block
-	 * @param coord
-	 */
-	public void updateFrom(int block, Coordinate coord) {
-		byte id = (byte) (block & 255);
-		byte value = (byte) ((block >> 8) & 255);
-		label.setText(RenderCell.getName(id, value) + " " + id + " - " + value + "@" + cursor.getPosition().toCoord().toString());
-	}
+		int rightborder = Gdx.graphics.getWidth();
+		int topBorder = Gdx.graphics.getHeight();
+		int stepSize = topBorder / (Chunk.getBlocksZ() + 1);
 
-	/**
-	 * Relative movement.
-	 *
-	 * @param amount
-	 */
-	void moveToCenter(float amount) {
-		if (getX() < stage.getWidth() / 2) {
-			setX(getX() + amount);
-		} else {
-			setX(getX() - amount);
+		for (int i = 1; i < Chunk.getBlocksZ() + 1; i++) {
+			sh.setColor(Color.GRAY.cpy().sub(0, 0, 0, 0.5f));
+			sh.line(rightborder,
+				i * stepSize,
+				rightborder - 50,
+				i * stepSize
+			);
+
+			//"shadow"
+			sh.setColor(Color.DARK_GRAY.cpy().sub(0, 0, 0, 0.5f));
+			sh.line(rightborder,
+				i * stepSize + 3,
+				rightborder - 50,
+				i * stepSize + 3
+			);
 		}
+		sh.line(
+			rightborder,
+			view.getRenderStorage().getZRenderingLimit() * stepSize/RenderCell.GAME_EDGELENGTH,
+			rightborder - 50,
+			view.getRenderStorage().getZRenderingLimit() * stepSize/RenderCell.GAME_EDGELENGTH
+		);
+		sh.end();
+		Gdx.gl.glLineWidth(1);
+		Gdx.gl.glDisable(GL20.GL_BLEND);
 	}
-
-	/**
-	 * Absolute position.
-	 *
-	 * @param amount
-	 */
-	void moveToBorder(float amount) {
-		if (getX() < stage.getWidth() / 2) {
-			setX(amount);
-		} else {
-			setX(stage.getWidth() - amount);
-		}
-	}
-
-	void hide() {
-		setVisible(false);
-	}
-
 }

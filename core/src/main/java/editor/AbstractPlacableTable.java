@@ -1,7 +1,7 @@
 /*
  * If this software is used for a game the official „Wurfel Engine“ logo or its name must be visible in an intro screen or main menu.
  *
- * Copyright 2016 Benedikt Vogler.
+ * Copyright 2014 Benedikt Vogler.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,74 +28,89 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-package com.bombinggames.wurfelengine.extension;
+package editor;
 
-import java.util.LinkedList;
-
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
-import com.bombinggames.wurfelengine.core.Controller;
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.scenes.scene2d.Actor;
+import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.bombinggames.wurfelengine.core.GameView;
-import com.bombinggames.wurfelengine.core.map.Chunk;
-import com.bombinggames.wurfelengine.core.map.rendering.RenderChunk;
 
 /**
+ * A table containing all blocks where you can choose your block.
  *
  * @author Benedikt Vogler
  */
-public class MiniMapChunkDebug {
-	private boolean visible = true;
-	
-	    /**
-	 * distance from left
-	 */
-	private final int posX;
+public abstract class AbstractPlacableTable extends Table {
+
 	/**
-	 * distance from bottom
+	 * list position
 	 */
-	private final int posY;
+	private byte selected = 1;
+	/**
+	 * game data
+	 */
+	private byte value;
 
 	/**
 	 *
-	 * @param posX
-	 * @param posY
 	 */
-	public MiniMapChunkDebug(int posX, int posY) {
-		this.posX = posX;
-		this.posY = posY;
+	public AbstractPlacableTable() {
+		setWidth(400);
+		setHeight(Gdx.graphics.getHeight() * 0.80f);
+		setY(10);
+		setX(20);
 	}
-	   
-	
+
 	/**
-     * Renders the Minimap.
-     * @param view the view using this render method 
-     */
-    public void render(final GameView view) {
-        if (visible) {
-			ShapeRenderer sh = view.getShapeRenderer();
-			sh.begin(ShapeRenderer.ShapeType.Filled);
-			sh.setColor(0, 1, 0, 1);
-			LinkedList<Chunk> mapdata = Controller.getMap().getLoadedChunks();
-			for (Chunk chunk : mapdata) {
-				if (chunk != null) {
-					sh.rect(posX + chunk.getChunkX() * 10, posY - chunk.getChunkY() * 10, 9, 9);
-				}
+	 *
+	 * @param view used for rendering
+	 */
+	public abstract void show(GameView view);
+
+	/**
+	 *
+	 */
+	public void hide() {
+		if (hasChildren()) {
+			clear();
+		}
+
+		if (isVisible()) {
+			setVisible(false);
+		}
+	}
+
+	/**
+	 * selects the item and sets value to 0.
+	 *
+	 * @param pos the pos of the listener
+	 */
+	void selectItem(byte pos) {
+		if (pos <= getChildren().size) {
+			selected = pos;
+			for (Actor c : getChildren()) {
+				c.setScale(0.35f);
 			}
-			sh.setColor(1, 1, 0, 0.1f);
-			LinkedList<RenderChunk> rS = view.getRenderStorage().getData();
-			for (RenderChunk chunk : rS) {
-				sh.rect(posX+chunk.getChunkX()*10, posY-chunk.getChunkY()*10, 9, 9);
-			}
-			sh.end();
-			
-//				//camera position
-//				view.drawString(
-//					camera.getViewSpaceX() +" | "+ camera.getViewSpaceY(),
-//					posX,
-//					(int) (posY- 3*Chunk.getBlocksY()*scaleY + 15),
-//					Color.WHITE
-//				);
-//			}
-        }
-    }
-	
+			getChildren().get(selected).setScale(0.4f);
+			value = 0;
+		}
+	}
+
+	/**
+	 * sets the value of the selected
+	 *
+	 * @param value
+	 */
+	void setValue(byte value) {
+		this.value = value;
+	}
+
+	/**
+	 *
+	 * @return
+	 */
+	public byte getValue() {
+		return value;
+	}
+
 }

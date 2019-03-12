@@ -54,7 +54,7 @@ import com.bombinggames.wurfelengine.core.map.Point;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderCell;
 import com.bombinggames.wurfelengine.core.map.rendering.RenderStorage;
 import com.bombinggames.wurfelengine.core.map.rendering.SpriteBatchWithZAxis;
-import com.bombinggames.wurfelengine.extension.MiniMapChunkDebug;
+import com.bombinggames.wurfelengine.utilities.MiniMapChunkDebug;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.logging.Level;

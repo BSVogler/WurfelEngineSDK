@@ -1,16 +1,18 @@
 /*
- * Copyright 2014 Benedikt Vogler.
+ * Copyright 2015 Benedikt Vogler.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
+ * * If this software is used for a game the official „Wurfel Engine“ logo or its name must be
+ *   visible in an intro screen or main menu.
  * * Redistributions of source code must retain the above copyright notice, 
  *   this list of conditions and the following disclaimer.
  * * Redistributions in binary form must reproduce the above copyright notice, 
  *   this list of conditions and the following disclaimer in the documentation 
  *   and/or other materials provided with the distribution.
- * * Neither the name of Bombing Games nor Benedikt Vogler nor the names of its contributors 
+ * * Neither the name of Benedikt Vogler nor the names of its contributors 
  *   may be used to endorse or promote products derived from this software without specific
  *   prior written permission.
  *
@@ -26,9 +28,38 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+package com.bombinggames.wurfelengine.sound;
+
+import com.badlogic.gdx.audio.Sound;
+import com.bombinggames.wurfelengine.core.map.Position;
 
 /**
- * This package includes various extensions and tools to the engine.
- *
+ * An object which saves a playing sound.
+ * @author Benedikt Vogler
  */
-package com.bombinggames.wurfelengine.extension;
+class SoundInstance {
+	private final SoundEngine engine;
+	private final Position pos;
+	protected final Sound sound;
+	protected final long id;
+
+	protected SoundInstance(SoundEngine engine, Sound sound, long id, Position pos) {
+		this.id = id;
+		this.sound = sound;
+		this.pos = pos;
+		this.engine = engine;
+	}
+
+	protected void update(){
+		float pan =0;
+		if (engine.getView().getCameras().size() > 0) {
+			pan = pos.getViewSpcX() - engine.getView().getCameras().get(0).getViewSpaceX();
+			pan /= 500;//arbitrary chosen
+			if (pan > 1) pan = 1;
+			if (pan < -1) pan = -1;
+		}
+		sound.setPan(id, pan, engine.getVolume(pos));
+	}
+
+	
+}

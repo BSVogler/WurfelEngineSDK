@@ -54,7 +54,7 @@ import com.bombinggames.wurfelengine.core.cvar.CVarSystemRoot;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractEntity;
 import com.bombinggames.wurfelengine.core.loading.LoadingScreen;
 import com.bombinggames.wurfelengine.extension.basicmainmenu.BasicMainMenu;
-import com.bombinggames.wurfelengine.soundengine.SoundEngine;
+import com.bombinggames.wurfelengine.sound.SoundEngine;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
@@ -65,14 +65,14 @@ import java.util.ArrayList;
  * and the API libGDX v1.8.0 (may work with older versions).
  *
  * @author Benedikt S. Vogler
- * @version 1.8.0
+ * @version 1.9.0
  */
 public class WE {
 
 	/**
 	 * The version of the Engine
 	 */
-	public static final String VERSION = "1.8.0";
+	public static final String VERSION = "1.9.0";
 
 	/**
 	 * The CVar system used by the engine. Uses the working dir as a root.

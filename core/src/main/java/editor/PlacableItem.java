@@ -1,4 +1,4 @@
-package com.bombinggames.wurfelengine.mapeditor;
+package editor;
 
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.scenes.scene2d.ui.Stack;
@@ -7,7 +7,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.bombinggames.wurfelengine.core.gameobjects.AbstractGameObject;
 
 /**
- * An item for the {@link com.bombinggames.wurfelengine.mapeditor.AbstractPlacableTable}
+ * An item for the {@link editor.AbstractPlacableTable}
  *
  * @author Benedikt Vogler
  */

@@ -43,7 +43,7 @@ import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.utils.viewport.StretchViewport;
 import com.bombinggames.wurfelengine.WE;
-import com.bombinggames.wurfelengine.mapeditor.EditorToggler;
+import editor.EditorToggler;
 
 /**
  * A view which is not dependend on the currently active game. It can therefore be used to render in screen space and in the menus. Only one instance

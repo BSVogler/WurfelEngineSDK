@@ -3,7 +3,7 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package com.bombinggames.wurfelengine.mapeditor;
+package editor;
 
 import com.bombinggames.wurfelengine.Command;
 import com.bombinggames.wurfelengine.core.Controller;
