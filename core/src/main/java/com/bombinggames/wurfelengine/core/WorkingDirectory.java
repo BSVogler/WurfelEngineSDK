@@ -30,6 +30,7 @@
  */
 package com.bombinggames.wurfelengine.core;
 
+import com.badlogic.gdx.Gdx;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -39,79 +40,89 @@ import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-import com.badlogic.gdx.Gdx;
-
 /**
  * A class which helps getting OS specific information.
+ *
  * @author Martin Brunokowsky, Benedikt S. Vogler
  */
 public class WorkingDirectory {
+
 	private static String applicationName = "Wurfel Engine";
 
 	/**
 	 * set a custom name, should be the name of the game
+	 *
 	 * @param applicationName the name of the folder
 	 */
 	public static void setApplicationName(String applicationName) {
 		WorkingDirectory.applicationName = applicationName;
 	}
-	
-	
-    /**
-     * Creates the folder.
-     * @return Get the folder where the data is stored.
-     */
-    public static File getWorkingDirectory() {
-        String userHome = System.getProperty("user.home", ".");
-        File workingDirectory;
-        switch (getPlatform()) {
-        case LINUX:
-        case SOLARIS:
-			workingDirectory = new File(userHome, '.' + applicationName + '/');
-			break;
-        case WINDOWS:
-			String applicationData = System.getenv("APPDATA");
-			if (applicationData != null)
-				workingDirectory = new File(applicationData, applicationName + '/');
-			else
-				workingDirectory = new File(userHome, '.' + applicationName + '/');
-			break;
-        case MAC:
-			workingDirectory = new File(userHome, "Library/Application Support/" + applicationName);
-			break;
-        case ANDROID:
-            workingDirectory = new File(System.getenv("EXTERNAL_STORAGE"), applicationName + '/');
-            break;
-        default:
-            workingDirectory = new File(userHome, applicationName + '/');
-        }
-        if ((!workingDirectory.exists()) && (!workingDirectory.mkdirs()))
-			throw new RuntimeException("The working directory could not be created: " + workingDirectory);
-        return workingDirectory;
-    }
 
-    /**
-     * 
-     * @return the os
-     */
-    public static OS getPlatform() {
+	/**
+	 * Creates the folder.
+	 *
+	 * @return Get the folder where the data is stored.
+	 */
+	public static File getWorkingDirectory() {
+		String userHome = System.getProperty("user.home", ".");
+		File workingDirectory;
+		switch (getPlatform()) {
+			case LINUX:
+			case SOLARIS:
+				workingDirectory = new File(userHome, '.' + applicationName + '/');
+				break;
+			case WINDOWS:
+				String applicationData = System.getenv("APPDATA");
+				if (applicationData != null) {
+					workingDirectory = new File(applicationData, applicationName + '/');
+				} else {
+					workingDirectory = new File(userHome, '.' + applicationName + '/');
+				}
+				break;
+			case MAC:
+				workingDirectory = new File(userHome, "Library/Application Support/" + applicationName);
+				break;
+			case ANDROID:
+				workingDirectory = new File(System.getenv("EXTERNAL_STORAGE"), applicationName + '/');
+				break;
+			default:
+				workingDirectory = new File(userHome, applicationName + '/');
+		}
+		if ((!workingDirectory.exists()) && (!workingDirectory.mkdirs())) {
+			throw new RuntimeException("The working directory could not be created: " + workingDirectory);
+		}
+		return workingDirectory;
+	}
+
+	/**
+	 *
+	 * @return the os
+	 */
+	public static OS getPlatform() {
 		String osName = System.getProperty("os.name").toLowerCase();
-		if (osName.contains("win"))
+		if (osName.contains("win")) {
 			return OS.WINDOWS;
-		if (osName.contains("mac"))
+		}
+		if (osName.contains("mac")) {
 			return OS.MAC;
-		if (osName.contains("solaris"))
+		}
+		if (osName.contains("solaris")) {
 			return OS.SOLARIS;
-		if (osName.contains("sunos"))
+		}
+		if (osName.contains("sunos")) {
 			return OS.SOLARIS;
-		if (System.getProperty("java.vm.name").equalsIgnoreCase("Dalvik"))
+		}
+		if (System.getProperty("java.vm.name").equalsIgnoreCase("Dalvik")) {
 			return OS.ANDROID;
-		if (osName.contains("linux"))
+		}
+		if (osName.contains("linux")) {
 			return OS.LINUX;
-		if (osName.contains("unix"))
+		}
+		if (osName.contains("unix")) {
 			return OS.LINUX;
+		}
 		return OS.UNKNOWN;
-    }
+	}
 
 	/**
 	 *
@@ -122,55 +133,52 @@ public class WorkingDirectory {
 		 *
 		 */
 		LINUX,
-
 		/**
 		 *
 		 */
 		SOLARIS,
-
 		/**
 		 *
 		 */
 		WINDOWS,
-
 		/**
 		 *
 		 */
 		MAC,
-
 		/**
 		 *
 		 */
 		ANDROID,
-
 		/**
 		 *
 		 */
 		UNKNOWN;
-    }
-    
-    /**
-     * 
-     * @return Get the folder where the maps are stored.
-     * @since 1.2.X
-     */
-    public static File getMapsFolder(){
-        return new File(getWorkingDirectory(),"maps");
-    }
-	
+	}
+
+	/**
+	 *
+	 * @return Get the subfolder where the maps are stored.
+	 * @since 1.2.X
+	 */
+	public static File getMapsFolder() {
+		return new File(getWorkingDirectory(), "maps");
+	}
+
 	/**
 	 * unpacks a map to working directory
-	 * @param foldername the name of the map folder. Will be created if non existend.
+	 *
+	 * @param foldername the name of the map folder. Will be created if non
+	 * existend.
 	 * @param source msut be a zip file without ".foldername" files
-	 * @return trlue if everything went okay
+	 * @return true if everything went okay
 	 * @since 1.3.13
 	 */
 	public static boolean unpackMap(String foldername, InputStream source) {
-		File dest = new File(getMapsFolder().getAbsolutePath()+"/"+foldername+"/");
+		File dest = new File(getMapsFolder().getAbsolutePath() + "/" + foldername + "/");
 		//if directory not exists, create it
-		if(!dest.exists()){
-		   dest.mkdirs();
-		   Gdx.app.log("WorkingDirectoy", "created map at "+ dest);
+		if (!dest.exists()) {
+			dest.mkdirs();
+			Gdx.app.log("WorkingDirectoy", "created map at " + dest);
 		}
 
 		//Gdx.app.log("WorkingDirectoy", "coping chunks into "+ dest);
@@ -178,10 +186,10 @@ public class WorkingDirectory {
 		byte[] buffer = new byte[1024];
 		try (ZipInputStream zis = new ZipInputStream(source)) {
 			ZipEntry ze = zis.getNextEntry();
-			while(ze != null){
+			while (ze != null) {
 				String file = ze.getName();
 				File newFile = new File(dest.getParent() + File.separator + file);
-				System.out.println("Unzipping to "+newFile.getAbsolutePath());
+				System.out.println("Unzipping to " + newFile.getAbsolutePath());
 
 				if (newFile.isDirectory()) {
 					//ingore directorys in zip
@@ -205,35 +213,36 @@ public class WorkingDirectory {
 		}
 		return true;
 	}
-	
+
 	/**
 	 * Delete the working directory. Game should be restarted after that.
+	 *
 	 * @since WE v1.6.4
 	 */
-	public static void delete(){
+	public static void delete() {
 		deleteDirectory(getWorkingDirectory());
 	}
-	
+
 	/**
 	 * Deletes a directory and all its subfolders.
+	 *
 	 * @param directory
 	 * @return
 	 * @since WE v1.6.4
 	 */
 	public static boolean deleteDirectory(File directory) {
-		if(directory.exists()){
+		if (directory.exists()) {
 			File[] files = directory.listFiles();
-			if(null!=files){
-				for(int i=0; i<files.length; i++) {
-					if(files[i].isDirectory()) {
+			if (null != files) {
+				for (int i = 0; i < files.length; i++) {
+					if (files[i].isDirectory()) {
 						deleteDirectory(files[i]);
-					}
-					else {
+					} else {
 						files[i].delete();
 					}
 				}
 			}
 		}
-		return(directory.delete());
+		return (directory.delete());
 	}
 }
