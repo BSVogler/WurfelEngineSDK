@@ -62,17 +62,17 @@ import java.util.ArrayList;
 /**
  * The main class of the engine. To create a new engine use
  * {@link WE#launch(String, String[])} The Wurfel Engine needs Java &gt;= v1.8
- * and the API libGDX v1.8.0 (may work with older versions).
+ * and the API libGDX v1.9.10 (may work with older versions).
  *
  * @author Benedikt S. Vogler
- * @version 1.9.0
+ * @version 1.9.1
  */
 public class WE {
 
 	/**
 	 * The version of the Engine
 	 */
-	public static final String VERSION = "1.9.0";
+	public static final String VERSION = "1.9.1";
 
 	/**
 	 * The CVar system used by the engine. Uses the working dir as a root.

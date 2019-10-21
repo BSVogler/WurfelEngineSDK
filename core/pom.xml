@@ -5,7 +5,7 @@
 	<name>Wurfel Engine</name>
 	<groupId>com.bombinggames.wurfelengine</groupId>
 	<artifactId>wurfelengine-core</artifactId>
-	<version>1.8.0</version>
+	<version>1.9.1</version>
 	<packaging>jar</packaging>
 	<description>Wurfel Engine is an open source 2.5D isometric Java game engine.</description>
 
