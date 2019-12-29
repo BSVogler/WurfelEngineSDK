@@ -219,8 +219,8 @@ public class WorkingDirectory {
 	 *
 	 * @since WE v1.6.4
 	 */
-	public static void delete() {
-		deleteDirectory(getWorkingDirectory());
+	public static boolean delete() {
+		return deleteDirectory(getWorkingDirectory());
 	}
 
 	/**
