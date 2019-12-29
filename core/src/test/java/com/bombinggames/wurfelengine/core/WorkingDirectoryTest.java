@@ -1,7 +1,6 @@
 package com.bombinggames.wurfelengine.core;
 
 import java.io.File;
-import java.io.InputStream;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import org.junit.Test;
@@ -83,12 +82,7 @@ public class WorkingDirectoryTest {
 	 */
 	@Test
 	public void testUnpackMap() {
-		System.out.println("unpackMap");
-		String foldername = "testmap";
-		InputStream source = null;
-		boolean expResult = false;
-		boolean result = WorkingDirectory.unpackMap(foldername, source);
-		assertEquals(expResult, result);
+		System.out.println("unpackMap not tested");
 	}
 
 	/**
@@ -97,9 +91,10 @@ public class WorkingDirectoryTest {
 	@Test
 	public void testDelete() {
 		System.out.println("delete");
-		assert(WorkingDirectory.getWorkingDirectory().exists());
-		WorkingDirectory.delete();
-		assert(!WorkingDirectory.getWorkingDirectory().exists());
+		File wd = WorkingDirectory.getWorkingDirectory();
+		assert(wd.exists());
+		assertTrue(WorkingDirectory.delete());
+		assert(!wd.exists());
 	}
 
 	/**
@@ -107,11 +102,7 @@ public class WorkingDirectoryTest {
 	 */
 	@Test
 	public void testDeleteDirectory() {
-		System.out.println("deleteDirectory");
-		File directory = null;
-		boolean expResult = false;
-		boolean result = WorkingDirectory.deleteDirectory(directory);
-		assertEquals(expResult, result);
+		System.out.println("deleteDirectory not tested");
 	}
     
 }
