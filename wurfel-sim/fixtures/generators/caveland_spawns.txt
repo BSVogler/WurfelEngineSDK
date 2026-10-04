@@ -1,0 +1,12 @@
+ExitPortal at -6 1212 4 target -43 1277 4 enemy_spawner true
+ExitPortal at -6 1266 4 target -43 1277 4 enemy_spawner true
+ExitPortal at 21 1212 4 target 0 0 5 enemy_spawner true
+ExitPortal at 21 1266 4 target 0 0 5 enemy_spawner true
+ExitPortal at 48 1212 4 target 11 1277 4 enemy_spawner true
+ExitPortal at 48 1266 4 target 11 1277 4 enemy_spawner true
+ExitPortal at 75 1212 4 target 38 1277 4 enemy_spawner true
+ExitPortal at 75 1266 4 target 38 1277 4 enemy_spawner true
+ExitPortal at 102 1212 4 target 65 1277 4 enemy_spawner true
+ExitPortal at 102 1266 4 target 65 1277 4 enemy_spawner true
+ExitPortal at 129 1212 4 target 92 1277 4 enemy_spawner true
+ExitPortal at 129 1266 4 target 92 1277 4 enemy_spawner true

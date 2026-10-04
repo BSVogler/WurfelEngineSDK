@@ -1,0 +1,11 @@
+[workspace]
+members = ["wurfel-sim", "caveland-sim", "wurfel-web", "wurfel-server"]
+resolver = "2"
+
+# Fast iteration: dependencies are optimised (wgpu is unusable at opt-level 0), our own code is
+# lightly optimised so world generation and meshing do not dominate rebuild-and-reload cycles.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2

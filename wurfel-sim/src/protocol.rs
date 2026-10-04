@@ -1,0 +1,517 @@
+//! Messages exchanged between the browser and the server. JSON for now: readable in the browser's
+//! network tab while the protocol is still changing. Swap for a binary format once it settles.
+
+use serde::{Deserialize, Serialize};
+
+use crate::chunk::Chunk;
+use crate::{Block, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z};
+
+pub use crate::player::PlayerInput;
+
+/// How a message wants to travel. Today everything goes over one WebSocket (TCP, so everything is
+/// reliable and ordered). The split is here so that a second, unreliable transport can carry the
+/// real-time traffic later without changing the messages: a WebRTC data channel or WebTransport
+/// datagrams in browsers (raw UDP is not available there), plain UDP for native clients.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Channel {
+    /// Must arrive, in order: joining, chunks, block changes, lobby and map operations.
+    Reliable,
+    /// Only the newest matters and a lost one is harmless: positions, input state, pings, statistics.
+    /// A sender must repeat state instead of relying on a single message getting through.
+    Unreliable,
+}
+
+/// A block that differs from what the generator would produce.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Edit {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+    /// Raw packed block, see [`crate::Block::raw`]. 0 is air.
+    pub block: u16,
+}
+
+/// Where a player is and how it moves, in blocks and blocks per second (see
+/// [`crate::entity::physics`] for the frame).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct PlayerState {
+    pub id: u32,
+    pub pos: [f32; 3],
+    pub vel: [f32; 3],
+}
+
+/// Server health, sent about once a second.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ServerStats {
+    pub players: u32,
+    pub entities: u32,
+    pub loaded_chunks: u32,
+    /// Time spent simulating one tick: average and worst over the last second, in milliseconds.
+    pub tick_ms_avg: f32,
+    pub tick_ms_max: f32,
+    /// Bytes the server sent / received in total since it started.
+    pub bytes_out: u64,
+    pub bytes_in: u64,
+    pub uptime_s: u32,
+}
+
+/// Who a player is, as chosen in the menu.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlayerInfo {
+    pub id: u32,
+    pub name: String,
+    /// Display colour, red green blue.
+    pub color: [u8; 3],
+}
+
+pub const MAX_NAME_CHARS: usize = 16;
+
+/// A name the server is willing to show to others: no control characters, trimmed, at most
+/// [`MAX_NAME_CHARS`] characters. Empty after cleaning means the caller should pick a default.
+pub fn clean_name(name: &str) -> String {
+    let filtered: String = name.chars().filter(|c| !c.is_control()).collect();
+    filtered.trim().chars().take(MAX_NAME_CHARS).collect::<String>().trim().to_string()
+}
+
+fn default_color() -> [u8; 3] {
+    [230, 190, 50]
+}
+
+/// The world the server has loaded, as the lobby shows it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorldInfo {
+    /// Display name of the map.
+    pub map: String,
+    /// The map's folder name, what `LoadMap` takes.
+    pub map_id: String,
+    pub slot: u32,
+    pub generator: String,
+    pub seed: u64,
+    /// Players that have joined (connections that are only looking at the lobby do not count).
+    pub players: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SaveSummary {
+    pub slot: u32,
+    /// ISO 8601 time of the newest change, if the save has data.
+    pub modified: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MapSummary {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub generator: String,
+    pub seed: u64,
+    pub saves: Vec<SaveSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GeneratorSummary {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub uses_seed: bool,
+}
+
+/// Which save slot `LoadMap` means: an existing one by number, or `"new"` to start a fresh one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "RawSlot", into = "RawSlot")]
+pub enum SlotChoice {
+    Existing(u32),
+    New,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum RawSlot {
+    Number(u32),
+    Word(String),
+}
+
+impl From<RawSlot> for SlotChoice {
+    fn from(raw: RawSlot) -> Self {
+        match raw {
+            RawSlot::Number(n) => SlotChoice::Existing(n),
+            // Anything that is not a number counts as "new": the only word the protocol defines.
+            RawSlot::Word(_) => SlotChoice::New,
+        }
+    }
+}
+
+impl From<SlotChoice> for RawSlot {
+    fn from(slot: SlotChoice) -> Self {
+        match slot {
+            SlotChoice::Existing(n) => RawSlot::Number(n),
+            SlotChoice::New => RawSlot::Word("new".to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ClientMsg {
+    // ----- lobby: allowed before joining
+    /// Ask for the maps on the server (answered with `Maps`).
+    ListMaps,
+    /// Ask for the loaded world again (answered with `Lobby`).
+    GetWorld,
+    /// Load a save of a map into the server. Refused while players are in the world.
+    LoadMap { map: String, slot: SlotChoice },
+    CreateMap { id: String, name: String, description: String, generator: String, seed: u64 },
+    /// Enter the loaded world as a player: answered with `Welcome`, then chunks start to flow.
+    Join {
+        #[serde(default)]
+        name: String,
+        #[serde(default = "default_color")]
+        color: [u8; 3],
+    },
+    // ----- in the world
+    /// What the player is pressing. Sent whenever it changes; the server keeps applying it.
+    Input(PlayerInput),
+    /// Place a block, or remove it with `block == 0`.
+    SetBlock { x: i32, y: i32, z: i32, block: u16 },
+    /// Latency probe: the server answers with [`ServerMsg::Pong`] carrying the same `client_time`.
+    Ping { client_time: f64 },
+}
+
+impl ClientMsg {
+    pub fn channel(&self) -> Channel {
+        match self {
+            ClientMsg::Input(_) | ClientMsg::Ping { .. } => Channel::Unreliable,
+            ClientMsg::SetBlock { .. }
+            | ClientMsg::ListMaps
+            | ClientMsg::GetWorld
+            | ClientMsg::LoadMap { .. }
+            | ClientMsg::CreateMap { .. }
+            | ClientMsg::Join { .. } => Channel::Reliable,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ServerMsg {
+    // ----- lobby
+    /// First message on every connection: what is running, and the generators a new map can use.
+    Lobby { world: WorldInfo, generators: Vec<GeneratorSummary> },
+    Maps { maps: Vec<MapSummary> },
+    /// A save was loaded: sent to every connection that is still in the lobby.
+    WorldChanged { world: WorldInfo },
+    MapCreated { map: MapSummary },
+    /// A lobby request was refused. `request` is the type of the message it answers.
+    Failed { request: String, message: String },
+    // ----- in the world
+    /// First message after connecting: everything needed to rebuild the world locally.
+    Welcome {
+        your_id: u32,
+        /// Display name of the map the server has loaded.
+        map: String,
+        /// The save slot of that map.
+        slot: u32,
+        /// Generator id (informational: the client receives chunks, it does not generate them).
+        generator: String,
+        seed: u64,
+        tick_rate: u32,
+        players: Vec<PlayerState>,
+        /// Name and colour of everybody in the world, you included.
+        roster: Vec<PlayerInfo>,
+    },
+    /// Somebody joined (also sent for yourself, right after the welcome).
+    PlayerJoined { player: PlayerInfo },
+    /// State of all players, sent several times per second. `tick` counts server physics steps.
+    Snapshot { tick: u64, players: Vec<PlayerState> },
+    BlockSet(Edit),
+    PlayerLeft { id: u32 },
+    /// The server stopped sending this chunk because the player moved away: forget it.
+    ChunkUnload { cx: i32, cy: i32 },
+    /// Reply to [`ClientMsg::Ping`], to the sender only.
+    Pong { client_time: f64, tick: u64 },
+    Stats(ServerStats),
+}
+
+impl ServerMsg {
+    pub fn channel(&self) -> Channel {
+        match self {
+            ServerMsg::Snapshot { .. } | ServerMsg::Pong { .. } | ServerMsg::Stats(_) => Channel::Unreliable,
+            ServerMsg::Welcome { .. }
+            | ServerMsg::BlockSet(_)
+            | ServerMsg::PlayerLeft { .. }
+            | ServerMsg::PlayerJoined { .. }
+            | ServerMsg::ChunkUnload { .. }
+            | ServerMsg::Lobby { .. }
+            | ServerMsg::Maps { .. }
+            | ServerMsg::WorldChanged { .. }
+            | ServerMsg::MapCreated { .. }
+            | ServerMsg::Failed { .. } => Channel::Reliable,
+        }
+    }
+}
+
+// ------------------------------------------------------------------------------- chunk stream
+
+/// First byte of a binary message that carries a chunk.
+pub const CHUNK_MESSAGE: u8 = 1;
+const CELLS: usize = (CHUNK_SIZE_X * CHUNK_SIZE_Y * CHUNK_SIZE_Z) as usize;
+/// Binary header: kind, then the chunk x and y as little-endian `i32`.
+const HEADER: usize = 1 + 4 + 4;
+
+/// A chunk as sent over the network: run-length encoded `(id, value, health)` cells in storage
+/// layer order. Lossless for every block (unlike the `.wec` file format, which cannot store a `~` byte),
+/// and a typical chunk of mostly air or water is a few hundred bytes.
+pub fn encode_chunk(chunk: &Chunk) -> Vec<u8> {
+    let (cx, cy) = chunk.pos();
+    let mut out = Vec::with_capacity(HEADER + 64);
+    out.push(CHUNK_MESSAGE);
+    out.extend_from_slice(&cx.to_le_bytes());
+    out.extend_from_slice(&cy.to_le_bytes());
+
+    let mut run: Option<([u8; 3], u16)> = None;
+    // Layer by layer (z outermost), like the `.wec` format: terrain is made of flat layers, so the
+    // runs are long.
+    for z in 0..CHUNK_SIZE_Z {
+        for lx in 0..CHUNK_SIZE_X {
+            for ly in 0..CHUNK_SIZE_Y {
+                let block = chunk.get(lx, ly, z);
+                let cell = [block.id(), block.value(), chunk.health(lx, ly, z)];
+                run = match run {
+                    Some((current, n)) if current == cell && n < u16::MAX => Some((current, n + 1)),
+                    Some((current, n)) => {
+                        push_run(&mut out, current, n);
+                        Some((cell, 1))
+                    }
+                    None => Some((cell, 1)),
+                };
+            }
+        }
+    }
+    if let Some((cell, n)) = run {
+        push_run(&mut out, cell, n);
+    }
+    out
+}
+
+fn push_run(out: &mut Vec<u8>, cell: [u8; 3], n: u16) {
+    out.extend_from_slice(&n.to_le_bytes());
+    out.extend_from_slice(&cell);
+}
+
+/// Reverse of [`encode_chunk`]. Anything malformed is an error, never a panic or a half chunk.
+pub fn decode_chunk(bytes: &[u8]) -> Result<Chunk, String> {
+    if bytes.len() < HEADER || bytes[0] != CHUNK_MESSAGE {
+        return Err("not a chunk message".to_string());
+    }
+    let cx = i32::from_le_bytes(bytes[1..5].try_into().expect("4 bytes"));
+    let cy = i32::from_le_bytes(bytes[5..9].try_into().expect("4 bytes"));
+    let mut chunk = Chunk::new((cx, cy));
+
+    let runs = &bytes[HEADER..];
+    if runs.len() % 5 != 0 {
+        return Err("chunk data is cut off".to_string());
+    }
+    let mut index = 0usize;
+    for run in runs.chunks_exact(5) {
+        let n = u16::from_le_bytes([run[0], run[1]]) as usize;
+        if n == 0 || index + n > CELLS {
+            return Err("chunk run is out of range".to_string());
+        }
+        let (block, health) = (Block::new(run[2], run[3]), run[4]);
+        for cell in index..index + n {
+            let layer = (CHUNK_SIZE_X * CHUNK_SIZE_Y) as usize;
+            let z = (cell / layer) as i32;
+            let lx = (cell % layer / CHUNK_SIZE_Y as usize) as i32;
+            let ly = (cell % CHUNK_SIZE_Y as usize) as i32;
+            chunk.set(lx, ly, z, block);
+            if health != 0 {
+                chunk.set_health(lx, ly, z, health);
+            }
+        }
+        index += n;
+    }
+    if index != CELLS {
+        return Err(format!("chunk has {index} cells, expected {CELLS}"));
+    }
+    chunk.mark_saved(); // freshly received, not a local modification
+    Ok(chunk)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lobby_messages_round_trip_and_slots_accept_a_number_or_new() {
+        let world = WorldInfo { map: "Island".into(), map_id: "island".into(), slot: 1, generator: "island".into(), seed: 4, players: 0 };
+        let messages = [
+            ServerMsg::Lobby { world: world.clone(), generators: vec![GeneratorSummary { id: "island".into(), name: "Island".into(), description: "d".into(), uses_seed: true }] },
+            ServerMsg::Maps { maps: vec![MapSummary { id: "a".into(), name: "A".into(), description: "".into(), generator: "air".into(), seed: 1, saves: vec![SaveSummary { slot: 0, modified: None }] }] },
+            ServerMsg::WorldChanged { world },
+            ServerMsg::Failed { request: "LoadMap".into(), message: "nope".into() },
+        ];
+        for msg in messages {
+            let json = serde_json::to_string(&msg).unwrap();
+            assert_eq!(serde_json::from_str::<ServerMsg>(&json).unwrap(), msg, "{json}");
+        }
+        let load = |json: &str| serde_json::from_str::<ClientMsg>(json).unwrap();
+        assert_eq!(load(r#"{"type":"LoadMap","map":"a","slot":3}"#), ClientMsg::LoadMap { map: "a".into(), slot: SlotChoice::Existing(3) });
+        assert_eq!(load(r#"{"type":"LoadMap","map":"a","slot":"new"}"#), ClientMsg::LoadMap { map: "a".into(), slot: SlotChoice::New });
+        assert_eq!(load(r#"{"type":"Join"}"#), ClientMsg::Join { name: String::new(), color: [230, 190, 50] }, "name and colour are optional");
+        assert_eq!(load(r#"{"type":"Join","name":"Ann","color":[1,2,3]}"#), ClientMsg::Join { name: "Ann".into(), color: [1, 2, 3] });
+        assert_eq!(load(r#"{"type":"ListMaps"}"#), ClientMsg::ListMaps);
+        let create = ClientMsg::CreateMap { id: "x".into(), name: "X".into(), description: "".into(), generator: "island".into(), seed: 2 };
+        assert_eq!(load(&serde_json::to_string(&create).unwrap()), create);
+        assert!(serde_json::from_str::<ClientMsg>(r#"{"type":"LoadMap","map":"a","slot":-1}"#).is_err(), "a negative slot is rejected, not guessed");
+        assert!(serde_json::from_str::<ClientMsg>(r#"{"type":"LoadMap","map":"a","slot":null}"#).is_err());
+    }
+
+    #[test]
+    fn names_are_cleaned_for_display() {
+        assert_eq!(clean_name("  Ann  "), "Ann");
+        assert_eq!(clean_name("A\nn\u{7}"), "An");
+        assert_eq!(clean_name(&"x".repeat(40)).chars().count(), MAX_NAME_CHARS);
+        assert_eq!(clean_name("   \t "), "");
+        assert_eq!(clean_name("Zoë 🙂"), "Zoë 🙂");
+    }
+
+    #[test]
+    fn messages_say_which_channel_they_belong_on() {
+        assert_eq!(ClientMsg::Input(PlayerInput::default()).channel(), Channel::Unreliable);
+        assert_eq!(ClientMsg::Ping { client_time: 0.0 }.channel(), Channel::Unreliable);
+        assert_eq!(ClientMsg::SetBlock { x: 0, y: 0, z: 0, block: 0 }.channel(), Channel::Reliable);
+        assert_eq!(ServerMsg::Snapshot { tick: 0, players: vec![] }.channel(), Channel::Unreliable);
+        assert_eq!(ServerMsg::PlayerLeft { id: 1 }.channel(), Channel::Reliable);
+        assert_eq!(ServerMsg::BlockSet(Edit { x: 0, y: 0, z: 0, block: 0 }).channel(), Channel::Reliable);
+    }
+
+    #[test]
+    fn messages_round_trip_through_json() {
+        let messages = [
+            ClientMsg::SetBlock { x: -3, y: 7, z: 2, block: 3 },
+            ClientMsg::Input(PlayerInput { up: true, jump: true, ..Default::default() }),
+            ClientMsg::Ping { client_time: 1234.5 },
+        ];
+        for msg in messages {
+            let json = serde_json::to_string(&msg).unwrap();
+            assert_eq!(serde_json::from_str::<ClientMsg>(&json).unwrap(), msg, "{json}");
+        }
+
+        let player = PlayerState { id: 4, pos: [1.5, -2.0, 3.0], vel: [0.0, 1.0, -9.8] };
+        let messages = [
+            ServerMsg::Welcome {
+                your_id: 4,
+                map: "Island".to_string(),
+                slot: 2,
+                generator: "island".to_string(),
+                seed: 1,
+                tick_rate: 60,
+                players: vec![player],
+                roster: vec![PlayerInfo { id: 4, name: "Ann".into(), color: [1, 2, 3] }],
+            },
+            ServerMsg::PlayerJoined { player: PlayerInfo { id: 5, name: "Bo".into(), color: [9, 9, 9] } },
+            ServerMsg::ChunkUnload { cx: -3, cy: 7 },
+            ServerMsg::Snapshot { tick: 99, players: vec![player] },
+            ServerMsg::BlockSet(Edit { x: 0, y: 0, z: 1, block: 3 }),
+            ServerMsg::PlayerLeft { id: 2 },
+            ServerMsg::Pong { client_time: 1234.5, tick: 7 },
+            ServerMsg::Stats(ServerStats {
+                players: 2,
+                entities: 2,
+                loaded_chunks: 9,
+                tick_ms_avg: 0.2,
+                tick_ms_max: 1.5,
+                bytes_out: 10,
+                bytes_in: 5,
+                uptime_s: 60,
+            }),
+        ];
+        for msg in messages {
+            let json = serde_json::to_string(&msg).unwrap();
+            assert_eq!(serde_json::from_str::<ServerMsg>(&json).unwrap(), msg, "{json}");
+        }
+    }
+
+    #[test]
+    fn input_missing_fields_are_rejected_not_defaulted_silently() {
+        // A typo'd key name must not turn into "no keys pressed" by accident.
+        let parsed = serde_json::from_str::<ClientMsg>(r#"{"type":"Input","upp":true}"#);
+        assert!(parsed.is_err());
+    }
+
+    // ----- chunk stream
+
+    use crate::generator::create_generator;
+    use crate::World;
+
+    fn world_chunk(generator: &str, seed: u64, pos: (i32, i32)) -> Chunk {
+        let mut world = World::new(create_generator(generator, seed).unwrap());
+        world.load_chunk(pos.0, pos.1);
+        world.chunk(pos.0, pos.1).unwrap().clone()
+    }
+
+    #[test]
+    fn every_generator_survives_the_trip() {
+        for info in crate::generator::generators() {
+            for pos in [(0, 0), (-1, 2), (30, 31)] {
+                let chunk = world_chunk(info.id, 7, pos);
+                let bytes = encode_chunk(&chunk);
+                let back = decode_chunk(&bytes).unwrap_or_else(|e| panic!("{} {pos:?}: {e}", info.id));
+                assert_eq!(back.pos(), pos);
+                for lx in 0..CHUNK_SIZE_X {
+                    for ly in 0..CHUNK_SIZE_Y {
+                        for z in 0..CHUNK_SIZE_Z {
+                            assert_eq!(back.get(lx, ly, z), chunk.get(lx, ly, z), "{} {pos:?} at {lx},{ly},{z}", info.id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn blocks_the_wec_file_format_cannot_store_are_fine_on_the_wire() {
+        let mut chunk = Chunk::new((4, -4));
+        chunk.set(1, 2, 3, Block::new(126, 126)); // '~' is the .wec marker byte
+        chunk.set(9, 39, 9, Block::new(255, 255));
+        chunk.set_health(1, 2, 3, 42);
+        let back = decode_chunk(&encode_chunk(&chunk)).unwrap();
+        assert_eq!(back.get(1, 2, 3), Block::new(126, 126));
+        assert_eq!(back.get(9, 39, 9), Block::new(255, 255));
+        assert_eq!(back.health(1, 2, 3), 42);
+        assert!(!back.is_modified(), "a received chunk is not a local modification");
+    }
+
+    #[test]
+    fn chunks_are_small_on_the_wire() {
+        let island = encode_chunk(&world_chunk("island", 1, (5, 5)));
+        assert!(island.len() < 200, "a plain sea chunk should be tiny, got {} bytes", island.len());
+        let air = encode_chunk(&Chunk::new((0, 0)));
+        assert_eq!(air.len(), HEADER + 5, "all air is one run");
+        // The worst case is bounded by the cell count.
+        let noisy = encode_chunk(&world_chunk("blocktest", 1, (0, 0)));
+        assert!(noisy.len() <= HEADER + 5 * CELLS);
+    }
+
+    #[test]
+    fn malformed_chunk_messages_are_errors() {
+        let good = encode_chunk(&world_chunk("island", 1, (0, 0)));
+        assert!(decode_chunk(&[]).is_err());
+        assert!(decode_chunk(&good[..4]).is_err(), "cut inside the header");
+        assert!(decode_chunk(&good[..good.len() - 1]).is_err(), "cut inside a run");
+        assert!(decode_chunk(&good[..good.len() - 5]).is_err(), "missing the last run: too few cells");
+        let mut wrong_kind = good.clone();
+        wrong_kind[0] = 9;
+        assert!(decode_chunk(&wrong_kind).is_err());
+        let mut too_many = good.clone();
+        too_many.extend_from_slice(&[1, 0, 0, 0, 0]);
+        assert!(decode_chunk(&too_many).is_err(), "more cells than a chunk has");
+        let mut empty_run = good.clone();
+        empty_run[HEADER] = 0;
+        empty_run[HEADER + 1] = 0;
+        assert!(decode_chunk(&empty_run).is_err(), "a run of zero cells");
+        let mut huge = good[..HEADER].to_vec();
+        huge.extend_from_slice(&[0xFF, 0xFF, 1, 0, 0]);
+        assert!(decode_chunk(&huge).is_err(), "a run longer than the chunk");
+    }
+}
