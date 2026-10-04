@@ -1,0 +1,23 @@
+[package]
+name = "wurfel-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Rust port of the Wurfel Engine - A 2.5D isometric game engine"
+license = "BSD-3-Clause"
+
+[dependencies]
+wgpu = { workspace = true }
+winit = { workspace = true }
+pollster = { workspace = true }
+bytemuck = { workspace = true }
+glam = { workspace = true }
+image = { workspace = true }
+futures = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = "1.0"
+
+[features]
+default = []
+web = []

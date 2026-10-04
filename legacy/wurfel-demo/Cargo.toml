@@ -1,0 +1,16 @@
+[package]
+name = "wurfel-demo"
+version = "0.1.0"
+edition = "2021"
+description = "Demo application for the Wurfel Engine"
+license = "BSD-3-Clause"
+
+[dependencies]
+wurfel-engine = { path = "../wurfel-engine" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+env_logger = { workspace = true }
+log = { workspace = true }
+winit = { workspace = true }
+wgpu = { workspace = true }
+glam = { workspace = true }
+pollster = { workspace = true }

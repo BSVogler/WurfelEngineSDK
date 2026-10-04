@@ -1,0 +1,31 @@
+[package]
+name = "wurfel-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "WASM bindings for the Wurfel Engine"
+license = "BSD-3-Clause"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wurfel-engine = { path = "../wurfel-engine", features = ["web"] }
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+js-sys = { workspace = true }
+console_error_panic_hook = { workspace = true }
+log = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
+
+[dependencies.web-sys]
+workspace = true
+features = [
+  "console",
+  "Document",
+  "Element",
+  "HtmlCanvasElement",
+  "Window",
+  "CanvasRenderingContext2d",
+  "ImageData",
+]

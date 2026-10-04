@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Wurfel Engine WASM Demo</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: #ffffff;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #2d2d2d;
+            border-radius: 5px;
+        }
+        
+        .control-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        button:disabled {
+            background-color: #666666;
+            cursor: not-allowed;
+        }
+        
+        input[type="range"] {
+            width: 100px;
+        }
+        
+        label {
+            font-size: 12px;
+            color: #cccccc;
+        }
+        
+        #canvas {
+            border: 1px solid #444444;
+            border-radius: 5px;
+            display: block;
+            margin: 0 auto;
+            background-color: #000000;
+        }
+        
+        .info {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #2d2d2d;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            font-size: 18px;
+        }
+        
+        .error {
+            color: #ff6b6b;
+            background-color: #2d1515;
+            border: 1px solid #ff6b6b;
+        }
+        
+        .log {
+            max-height: 200px;
+            overflow-y: auto;
+            background-color: #1a1a1a;
+            padding: 10px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Wurfel Engine - Rust/WASM Demo</h1>
+            <p>2.5D Isometric Game Engine ported from Java to Rust with WebAssembly</p>
+        </div>
+        
+        <div class="controls">
+            <div class="control-group">
+                <button id="init-btn">Initialize Engine</button>
+                <button id="generate-btn" disabled>Generate Chunk</button>
+                <button id="reset-camera-btn" disabled>Reset Camera</button>
+            </div>
+            
+            <div class="control-group">
+                <label for="zoom-slider">Zoom:</label>
+                <input type="range" id="zoom-slider" min="0.1" max="3.0" step="0.1" value="1.0" disabled>
+            </div>
+            
+            <div class="control-group">
+                <label for="seed-input">Seed:</label>
+                <input type="number" id="seed-input" value="12345" min="0" max="999999">
+            </div>
+        </div>
+        
+        <canvas id="canvas" width="1024" height="768"></canvas>
+        
+        <div class="info">
+            <h3>Controls:</h3>
+            <ul>
+                <li><strong>WASD / Arrow Keys:</strong> Move camera</li>
+                <li><strong>Q/E:</strong> Zoom in/out</li>
+                <li><strong>Mouse Wheel:</strong> Zoom</li>
+                <li><strong>Mouse Drag:</strong> Pan camera</li>
+            </ul>
+            
+            <h3>Features Demonstrated:</h3>
+            <ul>
+                <li>Chunk-based world generation</li>
+                <li>Isometric 2.5D rendering</li>
+                <li>Block-based voxel world</li>
+                <li>Camera controls and navigation</li>
+                <li>Rust code running in the browser via WebAssembly</li>
+            </ul>
+            
+            <div id="engine-info">
+                <strong>Engine Status:</strong> <span id="status">Not initialized</span><br>
+                <strong>Version:</strong> <span id="version">Unknown</span><br>
+                <strong>Performance:</strong> <span id="fps">0 FPS</span>
+            </div>
+        </div>
+        
+        <div class="info">
+            <h3>Console Log:</h3>
+            <div id="log" class="log"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        let wasm;
+        let engine = null;
+        let canvas;
+        let animationId = null;
+        let lastTime = 0;
+        let frameCount = 0;
+        let fpsUpdateTime = 0;
+        
+        // Key state tracking
+        const keys = {};
+        let mouseDown = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+        
+        // Logging function
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('log');
+            logElement.textContent += `[${timestamp}] ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(message);
+        }
+        
+        // Initialize the engine
+        async function init() {
+            try {
+                log('Loading WebAssembly module...');
+                wasm = await import('./pkg/wurfel_wasm.js');
+                await wasm.default();
+                
+                canvas = document.getElementById('canvas');
+                const width = canvas.width;
+                const height = canvas.height;
+                
+                log(`Creating engine instance (${width}x${height})...`);
+                engine = new wasm.WurfelEngine(width, height);
+                
+                log('Initializing engine...');
+                await engine.initialize();
+                
+                log('Engine initialized successfully!');
+                document.getElementById('status').textContent = 'Initialized';
+                document.getElementById('version').textContent = engine.version;
+                
+                // Enable controls
+                document.getElementById('generate-btn').disabled = false;
+                document.getElementById('reset-camera-btn').disabled = false;
+                document.getElementById('zoom-slider').disabled = false;
+                document.getElementById('init-btn').textContent = 'Restart Engine';
+                
+                // Set up initial camera position
+                engine.set_camera_position(10.0, 10.0, 15.0);
+                engine.set_camera_target(5.0, 5.0, 0.0);
+                
+                // Start render loop
+                startRenderLoop();
+                
+                log('Ready! Use controls to interact with the engine.');
+                
+            } catch (error) {
+                log(`Error initializing engine: ${error}`);
+                document.getElementById('status').textContent = 'Error: ' + error.message;
+                document.getElementById('status').parentElement.classList.add('error');
+            }
+        }
+        
+        // Generate a chunk
+        function generateChunk() {
+            if (!engine) return;
+            
+            const seed = parseInt(document.getElementById('seed-input').value) || 12345;
+            log(`Generating chunk with seed: ${seed}`);
+            
+            try {
+                engine.generate_chunk(0, 0, seed);
+                log('Chunk generated successfully!');
+            } catch (error) {
+                log(`Error generating chunk: ${error}`);
+            }
+        }
+        
+        // Reset camera to default position
+        function resetCamera() {
+            if (!engine) return;
+            
+            log('Resetting camera position');
+            engine.set_camera_position(10.0, 10.0, 15.0);
+            engine.set_camera_target(5.0, 5.0, 0.0);
+            
+            document.getElementById('zoom-slider').value = 1.0;
+        }
+        
+        // Handle zoom slider
+        function handleZoom(event) {
+            if (!engine) return;
+            
+            const zoomValue = parseFloat(event.target.value);
+            // Convert zoom value to engine zoom factor (inverse relationship)
+            engine.zoom_camera(1.0 / zoomValue);
+        }
+        
+        // Render loop
+        function startRenderLoop() {
+            function render(currentTime) {
+                if (!engine) return;
+                
+                const deltaTime = (currentTime - lastTime) / 1000.0;
+                lastTime = currentTime;
+                
+                // Update FPS counter
+                frameCount++;
+                fpsUpdateTime += deltaTime;
+                if (fpsUpdateTime >= 1.0) {
+                    document.getElementById('fps').textContent = `${Math.round(frameCount / fpsUpdateTime)} FPS`;
+                    frameCount = 0;
+                    fpsUpdateTime = 0;
+                }
+                
+                // Handle input
+                handleInput(deltaTime);
+                
+                // Render (the actual rendering would happen here)
+                // For now, we just update the engine state
+                
+                animationId = requestAnimationFrame(render);
+            }
+            
+            animationId = requestAnimationFrame(render);
+        }
+        
+        // Handle keyboard and mouse input
+        function handleInput(deltaTime) {
+            if (!engine) return;
+            
+            const moveSpeed = 5.0 * deltaTime;
+            let moved = false;
+            
+            if (keys['KeyW'] || keys['ArrowUp']) {
+                engine.move_camera(0.0, 0.0, -moveSpeed);
+                moved = true;
+            }
+            if (keys['KeyS'] || keys['ArrowDown']) {
+                engine.move_camera(0.0, 0.0, moveSpeed);
+                moved = true;
+            }
+            if (keys['KeyA'] || keys['ArrowLeft']) {
+                engine.move_camera(-moveSpeed, 0.0, 0.0);
+                moved = true;
+            }
+            if (keys['KeyD'] || keys['ArrowRight']) {
+                engine.move_camera(moveSpeed, 0.0, 0.0);
+                moved = true;
+            }
+            if (keys['KeyQ']) {
+                engine.zoom_camera(0.99);
+                moved = true;
+            }
+            if (keys['KeyE']) {
+                engine.zoom_camera(1.01);
+                moved = true;
+            }
+        }
+        
+        // Event listeners
+        document.getElementById('init-btn').addEventListener('click', init);
+        document.getElementById('generate-btn').addEventListener('click', generateChunk);
+        document.getElementById('reset-camera-btn').addEventListener('click', resetCamera);
+        document.getElementById('zoom-slider').addEventListener('input', handleZoom);
+        
+        // Keyboard events
+        document.addEventListener('keydown', (event) => {
+            keys[event.code] = true;
+            event.preventDefault();
+        });
+        
+        document.addEventListener('keyup', (event) => {
+            keys[event.code] = false;
+            event.preventDefault();
+        });
+        
+        // Mouse events for camera control
+        canvas.addEventListener('mousedown', (event) => {
+            mouseDown = true;
+            lastMouseX = event.clientX;
+            lastMouseY = event.clientY;
+            canvas.style.cursor = 'grabbing';
+        });
+        
+        document.addEventListener('mousemove', (event) => {
+            if (mouseDown && engine) {
+                const deltaX = (event.clientX - lastMouseX) * 0.01;
+                const deltaY = (event.clientY - lastMouseY) * 0.01;
+                
+                engine.move_camera(deltaX, 0.0, deltaY);
+                
+                lastMouseX = event.clientX;
+                lastMouseY = event.clientY;
+            }
+        });
+        
+        document.addEventListener('mouseup', () => {
+            mouseDown = false;
+            canvas.style.cursor = 'grab';
+        });
+        
+        // Mouse wheel for zooming
+        canvas.addEventListener('wheel', (event) => {
+            if (!engine) return;
+            
+            const zoomFactor = event.deltaY > 0 ? 1.1 : 0.9;
+            engine.zoom_camera(zoomFactor);
+            
+            event.preventDefault();
+        });
+        
+        // Set initial cursor
+        canvas.style.cursor = 'grab';
+        
+        log('Wurfel Engine WASM Demo loaded. Click "Initialize Engine" to start.');
+    </script>
+</body>
+</html>
