@@ -1,0 +1,21 @@
+[build]
+target = "index.html"
+dist = "dist"
+
+[watch]
+# Rebuild when the simulation crate changes too, and when the menu, console or other page files
+# change (without these, edits to menu.js or menu.css would not reach the browser).
+watch = [
+  "src", "../wurfel-sim/src", "assets",
+  "index.html", "menu.js", "menu.css", "console.js", "console.css", "console-mock.js",
+]
+
+[serve]
+address = "127.0.0.1"
+port = 8080
+
+# The client always connects to /ws on its own origin. In development that origin is this server,
+# so forward the WebSocket to the game server (start it with ./dev.sh, see README).
+[[proxy]]
+backend = "ws://127.0.0.1:3000/ws"
+ws = true

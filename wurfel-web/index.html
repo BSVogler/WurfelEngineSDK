@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark light" />
+  <title>Wurfel Engine</title>
+  <link data-trunk rel="rust" data-wasm-opt="z" />
+  <link data-trunk rel="css" href="menu.css" />
+  <link data-trunk rel="copy-file" href="menu.js" />
+  <link data-trunk rel="css" href="console.css" />
+  <link data-trunk rel="copy-file" href="console.js" />
+  <link data-trunk rel="copy-file" href="console-mock.js" />
+  <link data-trunk rel="copy-dir" href="assets" />
+</head>
+<body>
+  <!-- The game. The wasm client draws into #canvas and writes its help/status text into #info. -->
+  <canvas id="canvas"></canvas>
+  <div id="info">loading…</div>
+
+  <!-- HUD shown while playing -->
+  <div id="fps" class="hud hud-fps" hidden></div>
+  <div id="netpill" class="hud hud-net" hidden></div>
+  <button id="menubtn" class="hud hud-menubtn" type="button" aria-label="Open pause menu" hidden>
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+  </button>
+
+  <!-- Menu: covers the game while open; the game keeps rendering underneath as the backdrop. -->
+  <div id="menu" class="menu" role="dialog" aria-modal="true" aria-labelledby="menu-title" hidden>
+    <div class="panel">
+      <header class="brand">
+        <svg class="logo" viewBox="0 0 64 64" width="56" height="56" aria-hidden="true">
+          <polygon points="32,6 58,20 32,34 6,20" fill="#5ba33f"/>
+          <polygon points="6,20 32,34 32,60 6,46" fill="#47802f"/>
+          <polygon points="58,20 32,34 32,60 58,46" fill="#356023"/>
+        </svg>
+        <div>
+          <h1 id="menu-title">Wurfel Engine</h1>
+          <p class="tag">Isometric block world · browser prototype</p>
+        </div>
+      </header>
+
+      <p id="menu-status" class="status" role="status" aria-live="polite"></p>
+
+      <!-- MAIN -->
+      <section class="screen" data-screen="main" aria-label="Main menu" hidden>
+        <div class="items">
+          <button class="item" type="button" data-nav data-action="goto" data-target="worlds"><span class="label">Multiplayer</span><span class="hint">Pick a game server, then join its world or load a save</span></button>
+          <button class="item" type="button" data-nav data-action="goto" data-target="options"><span class="label">Options</span><span class="hint">Sound, graphics, interface</span></button>
+          <button class="item" type="button" data-nav data-action="goto" data-target="controls"><span class="label">Controls</span><span class="hint">Keys, mouse and gamepad</span></button>
+          <button class="item" type="button" data-nav data-action="goto" data-target="credits"><span class="label">Credits</span><span class="hint">Who made this</span></button>
+        </div>
+      </section>
+
+      <!-- PAUSE -->
+      <section class="screen" data-screen="pause" aria-label="Paused" hidden>
+        <h2 class="screen-title">Paused</h2>
+        <div class="items">
+          <button class="item" type="button" data-nav data-action="resume"><span class="label">Resume</span></button>
+          <button class="item" type="button" data-nav data-action="goto" data-target="options"><span class="label">Options</span></button>
+          <button class="item" type="button" data-nav data-action="goto" data-target="controls"><span class="label">Controls</span></button>
+          <button class="item danger" type="button" data-nav data-action="leave"><span class="label">Leave game</span><span class="hint">Back to the main menu</span></button>
+        </div>
+      </section>
+
+      <!-- SERVER WORLD: the world the server is running, and the maps it can load -->
+      <section class="screen" data-screen="worlds" aria-label="Server world" hidden>
+        <h2 class="screen-title">Server world</h2>
+
+        <form class="server-picker" id="server-form" novalidate aria-labelledby="picker-title">
+          <p class="picker-title" id="picker-title">Game server</p>
+          <div class="inline">
+            <input type="text" id="server-input" data-nav inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="server-help server-error" />
+            <button class="item compact primary" type="submit" id="server-connect" data-nav><span class="label">Connect</span></button>
+          </div>
+          <p class="help" id="server-help">A name like <kbd>localhost</kbd> or <kbd>myserver.example.org</kbd>, optionally with a port. Without a port, game servers use 3000. Leave it empty for the server this page came from.</p>
+          <p id="server-error" class="error" role="alert" hidden></p>
+          <p class="server-state" id="server-state" role="status" aria-live="polite"></p>
+          <div id="server-list" class="chips" role="list" aria-label="Remembered servers"></div>
+        </form>
+
+        <p class="note">A game server is already running and holds one world. Your browser only shows the game and sends your keys. Loading a save here switches what that server is running. Nothing here starts or hosts a server.</p>
+        <p id="worlds-status" class="note" role="status" aria-live="polite"></p>
+
+        <div class="world-card" id="world-card" role="group" aria-labelledby="card-title">
+          <p class="card-kicker" id="card-title">Running on this server</p>
+          <p class="card-server" id="card-server"></p>
+          <p class="card-map" id="card-map"></p>
+          <p class="card-detail" id="card-detail"></p>
+          <p class="card-players" id="card-players"></p>
+          <div class="buttons">
+            <button class="item compact primary big" type="button" id="join-btn" data-nav data-action="join-world" disabled><span class="label">Join</span></button>
+            <button class="item compact" type="button" id="refresh-btn" data-nav data-action="worlds-refresh"><span class="label">Refresh</span></button>
+          </div>
+        </div>
+
+        <h3 class="sub-title" id="maps-title">Maps on this server</h3>
+        <p id="maps-status" class="note" role="status" aria-live="polite"></p>
+        <p id="maps-blocked" class="note blocked" role="note" hidden>Someone is playing on this server. You can load another save when it is empty.</p>
+        <p id="maps-error" class="error" role="alert" hidden></p>
+        <div id="map-list" class="maps" role="list" aria-labelledby="maps-title"></div>
+        <div class="buttons">
+          <button class="item compact" type="button" data-nav data-action="goto" data-target="newmap"><span class="label">Create map…</span></button>
+          <button class="item compact" type="button" data-nav data-action="back"><span class="label">Back</span></button>
+        </div>
+      </section>
+
+      <!-- CREATE MAP -->
+      <section class="screen" data-screen="newmap" aria-label="Create map" hidden>
+        <h2 class="screen-title">Create map</h2>
+        <p class="note">A map is a folder on the game server with a generator and a seed. Creating one does not change the world that is running now; load it from the list afterwards.</p>
+        <form class="form" id="map-form" novalidate>
+          <label class="field"><span>Id</span>
+            <input type="text" id="map-id" data-nav maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="map-id-help" />
+            <small class="help" id="map-id-help">The folder name: 1 to 32 characters, lowercase letters, digits, - and _.</small>
+          </label>
+          <label class="field"><span>Name</span>
+            <input type="text" id="map-name" data-nav maxlength="60" autocomplete="off" spellcheck="false" />
+            <small class="help">Shown in the list. Defaults to the id.</small>
+          </label>
+          <label class="field"><span>Description <small>(optional)</small></span>
+            <input type="text" id="map-desc" data-nav maxlength="200" autocomplete="off" />
+          </label>
+          <label class="field"><span>Generator</span>
+            <select id="gen-select" data-nav></select>
+            <small class="help" id="gen-desc" aria-live="polite"></small>
+          </label>
+          <div class="field"><span id="seed-label">Seed</span>
+            <div class="inline">
+              <input type="text" id="seed-input" data-nav inputmode="numeric" autocomplete="off" aria-labelledby="seed-label" aria-describedby="seed-help" />
+              <button class="item compact" type="button" data-nav data-action="seed-random" id="seed-random"><span class="label">Random</span></button>
+            </div>
+            <small class="help" id="seed-help"></small>
+          </div>
+          <p id="newmap-error" class="error" role="alert" hidden></p>
+          <div class="buttons">
+            <button class="item compact primary" type="submit" id="map-submit" data-nav><span class="label">Create map</span></button>
+            <button class="item compact" type="button" data-nav data-action="back"><span class="label">Back</span></button>
+          </div>
+        </form>
+      </section>
+
+      <!-- OPTIONS -->
+      <section class="screen" data-screen="options" aria-label="Options" hidden>
+        <h2 class="screen-title">Options</h2>
+        <div class="form">
+          <fieldset>
+            <legend>Player</legend>
+            <label class="field"><span>Name</span>
+              <input type="text" data-nav data-setting="playerName" maxlength="16" autocomplete="nickname" spellcheck="false" />
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Audio</legend>
+            <label class="row"><span>Master volume</span><input type="range" data-nav data-setting="masterVolume" data-scale="100" min="0" max="100" step="5" /><output></output></label>
+            <label class="row"><span>Music volume</span><input type="range" data-nav data-setting="musicVolume" data-scale="100" min="0" max="100" step="5" /><output></output></label>
+            <label class="row"><span>Sound effects volume</span><input type="range" data-nav data-setting="effectsVolume" data-scale="100" min="0" max="100" step="5" /><output></output></label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Graphics</legend>
+            <label class="row"><span>Render scale</span><input type="range" data-nav data-setting="renderScale" data-scale="100" min="50" max="100" step="5" /><output></output></label>
+            <label class="row check"><input type="checkbox" data-nav data-setting="limitFps" /><span>Limit FPS to 60 (recommended)</span></label>
+            <label class="row check"><input type="checkbox" data-nav data-setting="ambientOcclusion" /><span>Ambient occlusion <small>(used once lighting is ported)</small></span></label>
+            <div class="row check"><button class="item compact" type="button" data-nav data-action="fullscreen" id="fullscreen-btn"><span class="label">Enter fullscreen</span></button></div>
+            <p class="note" id="backend-note">V-Sync is controlled by the browser. The graphics backend (WebGPU or WebGL2) is picked automatically.</p>
+          </fieldset>
+
+          <fieldset>
+            <legend>Interface</legend>
+            <label class="row"><span>Default zoom</span><input type="range" data-nav data-setting="zoom" data-scale="100" min="20" max="200" step="5" /><output></output></label>
+            <label class="row check"><input type="checkbox" data-nav data-setting="showHelp" /><span>Show help overlay</span></label>
+            <label class="row check"><input type="checkbox" data-nav data-setting="showFps" /><span>Show FPS</span></label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Data</legend>
+            <div class="row check"><button class="item compact danger" type="button" data-nav data-action="reset"><span class="label">Reset all settings</span></button></div>
+            <p class="note" id="storage-note" hidden>Settings cannot be saved in this browser mode (private window or blocked site data). They apply until you reload.</p>
+          </fieldset>
+
+          <div class="buttons">
+            <button class="item compact" type="button" data-nav data-action="back"><span class="label">Back</span></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- CONTROLS -->
+      <section class="screen" data-screen="controls" aria-label="Controls" hidden>
+        <h2 class="screen-title">Controls</h2>
+        <div class="form">
+          <p class="note">Select a slot, then press a key or mouse button. <kbd>Esc</kbd> cancels, <kbd>Backspace</kbd> clears the slot.</p>
+          <div class="bindings" id="bindings" role="table" aria-label="Key bindings"></div>
+          <p class="note">The number keys <kbd>1</kbd>–<kbd>4</kbd> pick the block to place and cannot be changed.</p>
+          <p class="note" id="gamepad-note" role="status" aria-live="polite">Gamepad: none detected. Press a button on it to wake it up.</p>
+          <div class="buttons">
+            <button class="item compact" type="button" data-nav data-action="reset-keys"><span class="label">Restore default keys</span></button>
+            <button class="item compact" type="button" data-nav data-action="back"><span class="label">Back</span></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- CREDITS -->
+      <section class="screen" data-screen="credits" aria-label="Credits" hidden>
+        <h2 class="screen-title">Credits</h2>
+        <div class="tabs" role="tablist" aria-label="Credits">
+          <button class="tab" type="button" role="tab" id="tab-engine" aria-controls="credits-engine" aria-selected="true" data-nav data-action="credits-tab" data-tab="engine">Wurfel Engine</button>
+          <button class="tab" type="button" role="tab" id="tab-game" aria-controls="credits-game" aria-selected="false" tabindex="-1" data-nav data-action="credits-tab" data-tab="game">Caveland</button>
+        </div>
+        <div class="credits" id="credits-engine" role="tabpanel" aria-labelledby="tab-engine">
+          <p class="credit-head">Created by</p>
+          <p>Benedikt S. Vogler</p>
+          <p class="credit-head">Thanks to</p>
+          <p>Thomas Vogt</p>
+          <p class="credit-head">Built with</p>
+          <p>Rust, wgpu and WebAssembly in this browser version. The original engine is written in Java with libGDX.</p>
+          <p class="fine">Wurfel Engine © Benedikt S. Vogler, BSD 3-Clause license.</p>
+        </div>
+        <div class="credits" id="credits-game" role="tabpanel" aria-labelledby="tab-game" hidden>
+          <p class="credit-head">Caveland</p>
+          <p>The game that required the development of Wurfel Engine.</p>
+          <p class="credit-head">Created by</p>
+          <p>Benedikt S. Vogler</p>
+        </div>
+        <div class="buttons">
+          <button class="item compact" type="button" data-nav data-action="back"><span class="label">Back</span></button>
+        </div>
+      </section>
+
+      <footer class="keys" aria-hidden="true">
+        <span><kbd>↑</kbd><kbd>↓</kbd> select</span>
+        <span><kbd>Enter</kbd> confirm</span>
+        <span><kbd>Esc</kbd> back</span>
+      </footer>
+    </div>
+
+    <!-- Player configuration: beside the main panel on desktop, stacked below it (collapsible) on phones -->
+    <aside class="panel player-panel" id="player-panel" aria-label="Player">
+      <button class="player-toggle" type="button" id="player-toggle" aria-expanded="false" aria-controls="player-body">
+        <span class="player-toggle-dot" id="player-toggle-dot" aria-hidden="true"></span>
+        <span class="player-toggle-text" id="player-toggle-text">Player</span>
+        <span class="player-toggle-caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="player-body" id="player-body">
+        <h2 class="player-title">Player</h2>
+        <svg class="preview" id="player-preview" viewBox="0 0 96 110" width="96" height="110" role="img" aria-label="Preview of your player in the chosen colour">
+          <ellipse cx="48" cy="98" rx="30" ry="9" fill="#000" opacity="0.18"/>
+          <polygon id="pv-left" points="26,50 48,61 48,95 26,84"/>
+          <polygon id="pv-right" points="70,50 48,61 48,95 70,84"/>
+          <polygon id="pv-top" points="48,39 70,50 48,61 26,50"/>
+        </svg>
+        <label class="field"><span>Name</span>
+          <input type="text" id="player-name" data-nav data-setting="playerName" maxlength="16" autocomplete="nickname" spellcheck="false" aria-describedby="name-error" />
+        </label>
+        <p id="name-error" class="error" role="alert" hidden></p>
+        <div class="field">
+          <span id="color-label">Colour</span>
+          <div class="swatches" id="swatches" role="radiogroup" aria-labelledby="color-label"></div>
+          <label class="custom-color"><span>Custom</span>
+            <input type="color" id="color-input" data-nav aria-label="Custom colour" />
+          </label>
+        </div>
+        <p class="help">Other players see you in this colour.</p>
+      </div>
+    </aside>
+
+    <!-- Confirmation dialog (reset) -->
+    <div class="modal" id="confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-text" hidden>
+      <div class="modal-box">
+        <h2 id="confirm-title">Reset all settings?</h2>
+        <p id="confirm-text">Volumes, keys, name and server address go back to their defaults.</p>
+        <div class="buttons">
+          <button class="item compact danger" type="button" data-action="confirm-yes"><span class="label">Reset</span></button>
+          <button class="item compact" type="button" data-action="confirm-no"><span class="label">Cancel</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="console.js"></script>
+  <script src="menu.js"></script>
+</body>
+</html>

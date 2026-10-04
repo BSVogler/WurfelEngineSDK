@@ -1,0 +1,176 @@
+/* Drop-down console overlay (console.js). Colours are tokens so light and dark share one layout. */
+
+:root {
+  --con-bg: rgba(10, 14, 22, 0.93);
+  --con-text: #dbe3f0;
+  --con-muted: #8896ad;
+  --con-echo: #8fd67a;
+  --con-warn: #ffc857;
+  --con-error: #ff8a7a;
+  --con-border: rgba(255, 255, 255, 0.14);
+  --con-field: rgba(255, 255, 255, 0.06);
+  --con-focus: #ffe45c;
+  --con-selection: rgba(111, 207, 79, 0.35);
+  --con-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  --con-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --con-bg: rgba(247, 249, 253, 0.95);
+    --con-text: #1b2432;
+    --con-muted: #5b6980;
+    --con-echo: #2a7a18;
+    --con-warn: #8a5a00;
+    --con-error: #b3261a;
+    --con-border: rgba(20, 30, 50, 0.18);
+    --con-field: rgba(20, 30, 50, 0.06);
+    --con-focus: #1a5fd0;
+    --con-selection: rgba(47, 138, 29, 0.28);
+    --con-shadow: 0 14px 40px rgba(30, 45, 80, 0.28);
+  }
+}
+
+:root[data-theme="light"] {
+  --con-bg: rgba(247, 249, 253, 0.95);
+  --con-text: #1b2432;
+  --con-muted: #5b6980;
+  --con-echo: #2a7a18;
+  --con-warn: #8a5a00;
+  --con-error: #b3261a;
+  --con-border: rgba(20, 30, 50, 0.18);
+  --con-field: rgba(20, 30, 50, 0.06);
+  --con-focus: #1a5fd0;
+  --con-selection: rgba(47, 138, 29, 0.28);
+  --con-shadow: 0 14px 40px rgba(30, 45, 80, 0.28);
+}
+
+.wconsole {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 8; /* over the HUD (5-6), under the menu (10+) */
+  display: flex;
+  flex-direction: column;
+  height: clamp(220px, 46vh, 560px);
+  padding-top: env(safe-area-inset-top, 0);
+  box-sizing: border-box;
+  background: var(--con-bg);
+  /* the HUD (loading text, menu button) sits underneath: blur it instead of letting it ghost through */
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: var(--con-text);
+  border-bottom: 2px solid var(--con-border);
+  box-shadow: var(--con-shadow);
+  font: 13px/1.45 var(--con-mono);
+  transform: translateY(-105%);
+  visibility: hidden;
+  transition: transform 0.18s ease-out, visibility 0s linear 0.18s;
+}
+
+.wconsole.open {
+  transform: none;
+  visibility: visible;
+  transition: transform 0.18s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wconsole, .wconsole.open { transition: none; }
+}
+
+.wc-log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 14px 4px;
+  /* selectable and copyable, unlike most game UI */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+  scrollbar-width: thin;
+  scrollbar-color: var(--con-muted) transparent;
+}
+
+.wc-log ::selection, .wc-input::selection { background: var(--con-selection); }
+
+.wc-line {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 0 0 1px;
+}
+.wc-info { color: var(--con-text); }
+.wc-echo { color: var(--con-echo); font-weight: 600; }
+.wc-warn { color: var(--con-warn); }
+.wc-error { color: var(--con-error); }
+.wc-cands { color: var(--con-muted); }
+
+.wc-form {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 14px;
+  border-top: 1px solid var(--con-border);
+  background: var(--con-field);
+}
+
+.wc-prompt {
+  flex: 0 0 auto;
+  color: var(--con-echo);
+  font-weight: 600;
+  white-space: pre;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Scoped under .wconsole on purpose: menu.css styles every input[type="text"] with a border, padding
+   and width: 100%, which has a higher specificity than a bare class. */
+.wconsole .wc-input {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  box-sizing: border-box;
+  background: transparent;
+  color: var(--con-text);
+  border: 0;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: inherit;
+  caret-color: var(--con-echo);
+}
+.wconsole .wc-input:focus-visible { outline: 2px solid var(--con-focus); outline-offset: 1px; }
+
+.wc-hint {
+  flex: 0 0 auto;
+  padding: 0 14px 6px;
+  color: var(--con-muted);
+  font-size: 11px;
+  background: var(--con-field);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* A command is waiting for the server. */
+.wconsole.busy .wc-prompt::after { content: " …"; color: var(--con-muted); }
+.wconsole .wc-form.wc-bad .wc-input { outline: 2px solid var(--con-error); outline-offset: 1px; }
+
+.wc-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .wconsole { height: clamp(200px, 55dvh, 520px); font-size: 12px; }
+  .wc-log, .wc-form { padding-left: 10px; padding-right: 10px; }
+  /* 16px stops iOS from zooming into the field */
+  .wconsole .wc-input { font-size: 16px; }
+  .wc-hint { display: none; }
+}
