@@ -5,10 +5,15 @@
 //! server, the client keeps the engine out of Caveland's way: this file is the only place in the
 //! client that knows about the mode.
 
+use std::collections::{HashMap, HashSet};
+
+use caveland_sim::blocks::ids;
 use caveland_sim::{Caveland, Controls, Tuning};
 use glam::Vec3;
 use serde_json::Value;
 use wurfel_sim::entity::Entities;
+use wurfel_sim::grid::to_iso;
+use wurfel_sim::light::PointLight;
 use wurfel_sim::player::{PlayerInput, TICK_DT};
 use wurfel_sim::protocol::ThingState;
 use wurfel_sim::World;
@@ -75,6 +80,16 @@ pub fn thing_style(kind: &str) -> ThingStyle {
         "friendly_robot" => ThingStyle { color: [0.2, 0.7, 0.75], half: 0.25, height: 1.1 },
         "money" => ThingStyle { color: [0.95, 0.8, 0.15], half: 0.1, height: 0.2 },
         "minecart" => ThingStyle { color: [0.45, 0.45, 0.5], half: 0.35, height: 0.5 },
+        "spider_robot" => ThingStyle { color: [0.7, 0.2, 0.2], half: 0.3, height: 0.6 },
+        "friendly_spider_robot" => ThingStyle { color: [0.2, 0.6, 0.65], half: 0.3, height: 0.6 },
+        "drone" => ThingStyle { color: [0.75, 0.3, 0.3], half: 0.2, height: 0.3 },
+        "friendly_drone" => ThingStyle { color: [0.3, 0.7, 0.75], half: 0.2, height: 0.3 },
+        "vanya" => ThingStyle { color: [0.9, 0.55, 0.75], half: 0.25, height: 1.2 },
+        "shopkeeper" => ThingStyle { color: [0.85, 0.7, 0.3], half: 0.25, height: 1.2 },
+        "bird" => ThingStyle { color: [0.4, 0.55, 0.9], half: 0.12, height: 0.25 },
+        "flag" | "flag_robots" | "flag_player" | "drop_space_flag" => ThingStyle { color: [0.9, 0.9, 0.9], half: 0.08, height: 1.2 },
+        "lift_basket" => ThingStyle { color: [0.5, 0.35, 0.2], half: 0.4, height: 0.5 },
+        "spaceship" => ThingStyle { color: [0.6, 0.65, 0.75], half: 0.9, height: 1.4 },
         "Wood" => item([0.55, 0.36, 0.18]),
         "Coal" => item([0.12, 0.12, 0.14]),
         "Torch" => item([1.0, 0.6, 0.1]),
@@ -105,6 +120,8 @@ pub struct Hud {
     pub jetpack: f32,
     pub items: Vec<String>,
     pub recipes: Vec<(String, bool)>,
+    /// What the shop takes; the money is the party's, not a player's.
+    pub money: u32,
 }
 
 /// Our entry of a `state` message: `{"<id>": {health, jetpack, items, recipes}, ...}`.
@@ -122,7 +139,60 @@ pub fn parse_state(data: &Value, my_id: u32) -> Option<Hud> {
         jetpack: mine.get("jetpack")?.as_f64()? as f32,
         items,
         recipes,
+        money: mine.get("money").and_then(Value::as_u64).unwrap_or(0) as u32,
     })
+}
+
+/// What the server says about how a player is moved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PlayerFlags {
+    /// Not drawn: inside the spaceship.
+    pub hidden: bool,
+    /// Carried by a vehicle or ship: the server moves them, the client must not predict.
+    pub riding: bool,
+}
+
+/// `hidden` and `riding` of every player in a `state` message.
+pub fn parse_flags(data: &Value) -> HashMap<u32, PlayerFlags> {
+    let mut out = HashMap::new();
+    for (id, entry) in data.as_object().into_iter().flatten() {
+        let Ok(id) = id.parse::<u32>() else { continue };
+        let flag = |key: &str| entry.get(key).and_then(Value::as_bool).unwrap_or(false);
+        out.insert(id, PlayerFlags { hidden: flag("hidden"), riding: flag("riding") });
+    }
+    out
+}
+
+/// Was a `Rules` message meant for us? (The server has one broadcast; private news names its
+/// receiver in `to`.)
+pub fn addressed_to(data: &Value, me: u32) -> bool {
+    data.get("to").and_then(Value::as_u64) == Some(u64::from(me))
+}
+
+/// The cells of a `power` message.
+pub fn parse_power(data: &Value) -> HashSet<(i32, i32, i32)> {
+    let cell = |v: &Value| {
+        let a = v.as_array()?;
+        Some((a.first()?.as_i64()? as i32, a.get(1)?.as_i64()? as i32, a.get(2)?.as_i64()? as i32))
+    };
+    data.get("cells").and_then(Value::as_array).into_iter().flatten().filter_map(cell).collect()
+}
+
+/// The lights of the world that are not the sun: torches that have power (`PowerTorch` only
+/// shines when a station feeds it) and the lamps of the carts.
+pub fn lamps(world: &World, powered: &HashSet<(i32, i32, i32)>, things: &[ThingState]) -> Vec<PointLight> {
+    let mut lights: Vec<PointLight> = powered
+        .iter()
+        .filter(|&&(x, y, z)| world.get(x, y, z).id() == ids::TORCH)
+        .map(|&(x, y, z)| {
+            let (gx, gy) = to_iso(x, y);
+            PointLight::new(Vec3::new(gx, gy, z as f32 + 0.7), Vec3::new(1.0, 0.8, 0.45), 6.0, 2.0)
+        })
+        .collect();
+    lights.extend(things.iter().filter(|t| t.kind == "minecart").map(|t| {
+        PointLight::new(Vec3::from(t.pos) + Vec3::new(0.0, 0.0, 0.8), Vec3::new(1.0, 0.9, 0.6), 4.0, 1.0)
+    }));
+    lights
 }
 
 /// The HUD as the page's `wurfelHud.update` takes it.
@@ -132,6 +202,7 @@ pub fn hud_json(hud: &Hud) -> String {
         "jetpack": hud.jetpack,
         "items": hud.items,
         "recipes": hud.recipes.iter().map(|(name, ok)| serde_json::json!([name, ok])).collect::<Vec<_>>(),
+        "money": hud.money,
     })
     .to_string()
 }
@@ -146,6 +217,13 @@ pub enum Happening {
     Toast(String),
     /// We died and are back at the start.
     Died,
+    /// Something was moved (portal, lift, the console's `tpplayer`): the owner of a predicted
+    /// entity jumps there instead of blending.
+    Teleported { entity: u32, pos: Vec3 },
+    /// A sound that was started on something and ends now (a cart's rolling).
+    SoundStopped { name: String },
+    /// The intro ship came down: it burns.
+    ShipCrashed { pos: Vec3 },
 }
 
 fn position(v: &Value) -> Option<Vec3> {
@@ -168,6 +246,18 @@ pub fn parse_events(data: &Value, my_id: u32) -> Vec<Happening> {
             "crafted" if mine => Some(Happening::Toast(format!("Crafted {}", text("item")))),
             "money" if mine => Some(Happening::Toast(format!("Money: {}", event.get("total").and_then(Value::as_u64).unwrap_or(0)))),
             "died" if mine => Some(Happening::Died),
+            "built" => Some(Happening::Toast("Built".into())),
+            "bought" if mine => Some(Happening::Toast(format!("Bought {} for {}", text("item"), event.get("price").and_then(Value::as_u64).unwrap_or(0)))),
+            "flag" if event.get("team").and_then(Value::as_u64) == Some(2) => Some(Happening::Toast("Flag captured".into())),
+            "respawn_set" => Some(Happening::Toast("Respawn point set".into())),
+            "robot_built" => Some(Happening::Toast(format!("A {} was built", text("variant")))),
+            "end_fight" => Some(Happening::Toast("The robots are attacking!".into())),
+            "teleported" => match (event.get("entity").and_then(Value::as_u64), position(&event["pos"])) {
+                (Some(entity), Some(pos)) => Some(Happening::Teleported { entity: entity as u32, pos }),
+                _ => None,
+            },
+            "sound_stop" => Some(Happening::SoundStopped { name: text("name").to_string() }),
+            "ship_crashed" => position(&event["pos"]).map(|pos| Happening::ShipCrashed { pos }),
             _ => None,
         };
         out.extend(happening);
@@ -292,6 +382,110 @@ mod tests {
             ]
         );
         assert!(parse_events(&json!("not a list"), 4).is_empty());
+    }
+
+    #[test]
+    fn who_is_hidden_or_carried_comes_from_the_state_message() {
+        let data = json!({
+            "4": {"health": 80.0, "hidden": true, "riding": true},
+            "5": {"health": 80.0, "riding": true},
+            "6": {"health": 80.0},
+            "x": {"hidden": true},
+        });
+        let flags = parse_flags(&data);
+        assert_eq!(flags[&4], PlayerFlags { hidden: true, riding: true });
+        assert_eq!(flags[&5], PlayerFlags { hidden: false, riding: true });
+        assert_eq!(flags[&6], PlayerFlags::default(), "an older server says nothing: nobody is hidden");
+        assert_eq!(flags.len(), 3, "a key that is not a player id is skipped");
+    }
+
+    #[test]
+    fn private_messages_are_for_their_receiver_only() {
+        let data = json!({"to": 4, "title": "Hello"});
+        assert!(addressed_to(&data, 4));
+        assert!(!addressed_to(&data, 5));
+        assert!(!addressed_to(&json!({"title": "no receiver"}), 4), "no receiver: nobody acts on it");
+    }
+
+    #[test]
+    fn the_money_is_part_of_the_hud() {
+        let data = json!({"4": {"health": 1.0, "jetpack": 0.0, "items": [], "recipes": [], "money": 42}});
+        let hud = parse_state(&data, 4).unwrap();
+        assert_eq!(hud.money, 42);
+        let round: Value = serde_json::from_str(&hud_json(&hud)).unwrap();
+        assert_eq!(round["money"], 42);
+    }
+
+    #[test]
+    fn the_powered_cells_are_read_and_bad_entries_skipped() {
+        let cells = parse_power(&json!({"cells": [[1, 2, 3], [4, 5, 6], [7, 8], "no", [1, 2, 3]]}));
+        assert_eq!(cells, HashSet::from([(1, 2, 3), (4, 5, 6)]));
+        assert!(parse_power(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn only_powered_torches_and_carts_give_light() {
+        let mut world = floor();
+        for (x, y) in [(2, 3), (4, 3), (6, 3)] {
+            world.set(x, y, 1, Block::new(ids::TORCH, 0));
+        }
+        let powered = HashSet::from([(2, 3, 1), (6, 3, 1), (9, 9, 1)]); // (9,9,1) is a cable or turret: air here
+        let cart = ThingState { id: 1, kind: "minecart".into(), pos: [5.0, 5.0, 1.0] };
+        let rock = ThingState { id: 2, kind: "Wood".into(), pos: [1.0, 1.0, 1.0] };
+        let lights = lamps(&world, &powered, &[cart, rock]);
+        assert_eq!(lights.len(), 3, "two powered torches and one cart: {lights:?}");
+        let (gx, gy) = to_iso(2, 3);
+        assert!(lights.iter().any(|l| l.position == Vec3::new(gx, gy, 1.7)), "a torch lights from just above its block");
+        let unlit = lamps(&world, &HashSet::new(), &[]);
+        assert!(unlit.is_empty(), "a torch nobody feeds stays dark");
+    }
+
+    #[test]
+    fn the_rest_of_the_game_reports_through_events() {
+        let data = json!([
+            {"t": "teleported", "entity": 4, "pos": [1.0, 2.0, 3.0]},
+            {"t": "teleported", "entity": 4},
+            {"t": "sound_stop", "name": "wagon", "entity": 9},
+            {"t": "ship_crashed", "pos": [5.0, 6.0, 7.0]},
+            {"t": "built", "cell": [1, 2, 3], "block": 20},
+            {"t": "bought", "player": 4, "item": "Torch", "price": 3},
+            {"t": "bought", "player": 5, "item": "Coal", "price": 4},
+            {"t": "flag", "flag": 1, "team": 2},
+            {"t": "flag", "flag": 1, "team": 1},
+            {"t": "respawn_set", "cell": [0, 0, 5]},
+            {"t": "robot_built", "robot": 3, "variant": "spider"},
+            {"t": "end_fight"},
+        ]);
+        assert_eq!(
+            parse_events(&data, 4),
+            vec![
+                Happening::Teleported { entity: 4, pos: Vec3::new(1.0, 2.0, 3.0) },
+                Happening::SoundStopped { name: "wagon".into() },
+                Happening::ShipCrashed { pos: Vec3::new(5.0, 6.0, 7.0) },
+                Happening::Toast("Built".into()),
+                Happening::Toast("Bought Torch for 3".into()),
+                Happening::Toast("Flag captured".into()),
+                Happening::Toast("Respawn point set".into()),
+                Happening::Toast("A spider was built".into()),
+                Happening::Toast("The robots are attacking!".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn every_kind_of_the_game_has_a_fallback_box_of_its_own() {
+        use caveland_sim::{EntityKind, Team};
+        let mut seen = HashSet::new();
+        for kind in [
+            EntityKind::Robot(Team::Robots), EntityKind::SpiderRobot(Team::Robots), EntityKind::Drone(Team::Robots),
+            EntityKind::Vanya, EntityKind::Shopkeeper, EntityKind::Bird, EntityKind::Spaceship, EntityKind::LiftBasket,
+            EntityKind::MineCart, EntityKind::DropSpaceFlag,
+        ] {
+            let style = thing_style(&kind.name());
+            assert_ne!(style.color, [0.9, 0.5, 0.9], "{} falls through to the 'unknown' pink", kind.name());
+            seen.insert(style.color.map(f32::to_bits));
+        }
+        assert_eq!(seen.len(), 10, "and they can be told apart");
     }
 
     /// A stone floor, the surface at height 1.

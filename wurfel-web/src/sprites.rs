@@ -192,19 +192,58 @@ pub fn billboard(out: &mut Vec<Vertex>, atlas: &Atlas, region: &Region, anchor: 
 
 /// The sprite id of an entity kind of the Caveland game mode, the names the server sends in
 /// `ThingState::kind`, and whether it has facing directions and a walking cycle (the robots).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EntityArt {
     pub id: u8,
     pub walks: bool,
     /// Sprites per direction in the walking cycle.
     pub steps: u32,
+    /// The sprite value of something that does not walk (Java's `new Vanya()` passes 3 to `super`).
+    pub value: u32,
+    /// Multiplied into the picture: how a team shows on art that has no team versions.
+    pub tint: [f32; 3],
 }
 
+impl EntityArt {
+    const fn still(id: u8, value: u32) -> Self {
+        EntityArt { id, walks: false, steps: 1, value, tint: [1.0; 3] }
+    }
+
+    const fn walker(id: u8) -> Self {
+        EntityArt { id, walks: true, steps: 5, value: 0, tint: [1.0; 3] }
+    }
+
+    const fn tinted(self, tint: [f32; 3]) -> Self {
+        EntityArt { tint, ..self }
+    }
+}
+
+/// Kinds that are in the world but have nothing to look at: the portals are invisible.
+pub fn is_invisible(kind: &str) -> bool {
+    matches!(kind, "portal" | "exit_portal")
+}
+
+/// Pulled towards red: the robots' team on art that is only made once.
+const ROBOT_TEAM: [f32; 3] = [1.0, 0.75, 0.75];
+
 pub fn entity_art(kind: &str) -> Option<EntityArt> {
-    let item = |id| Some(EntityArt { id, walks: false, steps: 1 });
+    let item = |id| Some(EntityArt::still(id, 0));
     match kind {
-        "robot" => Some(EntityArt { id: 45, walks: true, steps: 5 }),
-        "friendly_robot" => Some(EntityArt { id: 58, walks: true, steps: 5 }),
+        "robot" => Some(EntityArt::walker(45)),
+        "friendly_robot" => Some(EntityArt::walker(58)),
+        // The gathering spider is the second look of `Robot` (`setType(1)`), the drone has its own.
+        "spider_robot" => Some(EntityArt::walker(58).tinted(ROBOT_TEAM)),
+        "friendly_spider_robot" => Some(EntityArt::walker(58)),
+        "drone" => Some(EntityArt::still(59, 1).tinted(ROBOT_TEAM)),
+        "friendly_drone" => Some(EntityArt::still(59, 1)),
+        // Vanya and the bird share the sprite in Java ("use vanya at the moment").
+        "vanya" | "bird" => Some(EntityArt::still(40, 3)),
+        "shopkeeper" => item(41),
+        "flag" | "flag_robots" => Some(EntityArt::still(21, 0)),
+        "flag_player" => Some(EntityArt::still(21, 1)),
+        "drop_space_flag" => item(24),
+        "lift_basket" => item(25),
+        "spaceship" => item(80),
         "money" => item(20),
         "minecart" => item(42),
         // The ids of `CollectibleType` in the Java game.
@@ -362,6 +401,37 @@ mod tests {
             assert!(sprites.entity(art.id, 0).is_some(), "{kind}: e{}-0", art.id);
         }
         assert_eq!(entity_art("something new"), None);
+    }
+
+    #[test]
+    fn every_kind_of_the_whole_game_has_art_or_is_meant_to_be_invisible() {
+        use caveland_sim::{EntityKind, Team};
+        let sprites = real();
+        let kinds = [
+            EntityKind::Robot(Team::Robots), EntityKind::Robot(Team::Player), EntityKind::MineCart, EntityKind::LiftBasket,
+            EntityKind::Portal, EntityKind::ExitPortal, EntityKind::Spaceship, EntityKind::SpiderRobot(Team::Robots),
+            EntityKind::SpiderRobot(Team::Player), EntityKind::Drone(Team::Robots), EntityKind::Drone(Team::Player),
+            EntityKind::Vanya, EntityKind::Shopkeeper, EntityKind::Bird, EntityKind::Flag(Team::Neutral),
+            EntityKind::Flag(Team::Player), EntityKind::Flag(Team::Robots), EntityKind::DropSpaceFlag, EntityKind::Money,
+        ];
+        for kind in kinds {
+            let name = kind.name();
+            if is_invisible(&name) {
+                assert_eq!(entity_art(&name), None, "{name} is drawn as nothing");
+                continue;
+            }
+            let art = entity_art(&name).unwrap_or_else(|| panic!("{name} has no art"));
+            let value = if art.walks { 0 } else { art.value };
+            assert!(sprites.entity(art.id, value).is_some(), "{name}: e{}-{value} is in the atlas", art.id);
+        }
+        assert!(is_invisible("portal") && is_invisible("exit_portal") && !is_invisible("minecart"));
+    }
+
+    #[test]
+    fn the_teams_look_different_where_the_art_is_shared() {
+        assert_ne!(entity_art("drone").unwrap().tint, entity_art("friendly_drone").unwrap().tint);
+        assert_ne!(entity_art("spider_robot").unwrap().tint, entity_art("friendly_spider_robot").unwrap().tint);
+        assert_ne!(entity_art("flag").unwrap().value, entity_art("flag_player").unwrap().value, "a captured flag has its own picture");
     }
 
     #[test]

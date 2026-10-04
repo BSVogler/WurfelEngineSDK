@@ -149,6 +149,73 @@ await sleep(800 + lag);
 check(f.ws.readyState === 1 && f.log.slice(before).some(m => m.type === 'Snapshot'), 'actions are accepted and the world keeps running');
 f.ws.close();
 
+// ---- the Caveland story map: intro, camp, dialogs, commands
+const cellOf = pos => { const gx = Math.round(pos[0]), gy = Math.round(pos[1]), y = gx + gy; return [(gx - gy - ((y % 2) + 2) % 2) / 2, y]; };
+lobby.send({ type: 'CreateMap', id: 'smoke-story', name: 'Smoke story', description: '', generator: 'caveland', seed: 1 });
+await sleep(500);
+check(lobby.last('MapCreated')?.map.id === 'smoke-story' && lobby.last('MapCreated').map.gamemode === 'caveland', 'the caveland generator plays by Caveland rules by default');
+lobby.send({ type: 'LoadMap', map: 'smoke-story', slot: 'new' });
+await sleep(800);
+const g = client(); await g.ready; await g.wait('Lobby'); g.send({ type: 'Join', name: 'Host', color: [9, 9, 9] });
+const gw = await g.wait('Welcome');
+const gid = gw?.your_id;
+const stateOf = c => c.log.filter(m => m.type === 'Rules' && m.kind === 'state').pop()?.data[gid];
+const events = c => c.log.filter(m => m.type === 'Rules' && m.kind === 'events').flatMap(m => m.data);
+await sleep(1200);
+const introOn = stateOf(g)?.hidden === true;
+if (introOn) {
+  check(stateOf(g).riding === true, 'on board the intro spaceship the player is carried by the server');
+  check(g.last('Things')?.things.some(t => t.kind === 'spaceship'), 'the spaceship is a thing');
+  for (let t = 0; t < 40000 && !events(g).some(e => e.t === 'ship_crashed'); t += 250) await sleep(250);
+  check(events(g).some(e => e.t === 'ship_crashed'), 'the ship crashes (everybody hears it)');
+  await sleep(1000);
+  check(stateOf(g)?.hidden === false && stateOf(g)?.riding === false, 'after the crash the player climbs out and is theirs again');
+} else {
+  console.log('(intro skipped on this server: --skip-intro)');
+}
+await sleep(500);
+const camp = g.last('Things')?.things ?? [];
+for (const kind of ['shopkeeper', 'flag', 'vanya']) check(camp.some(t => t.kind === kind), `the camp has a ${kind}`);
+
+// the host runs commands, a guest does not
+g.send({ type: 'Command', line: 'give Torch' });
+const h = client(); await h.ready; await h.wait('Lobby'); h.send({ type: 'Join', name: 'Guest', color: [1, 2, 3] });
+const hw = await h.wait('Welcome');
+await sleep(500);
+h.send({ type: 'Command', line: 'give Torch' });
+g.send({ type: 'Command', line: 'nonsense' });
+await sleep(700);
+const answerTo = (c, id) => c.log.filter(m => m.type === 'Rules' && m.kind === 'console' && m.data.to === id).map(m => m.data);
+check(answerTo(g, gid).some(a => a.ok && a.text === 'given') && stateOf(g)?.items.includes('Torch'), 'the host can give themselves an item through the console');
+check(answerTo(h, hw.your_id).some(a => !a.ok && a.text.includes('host')), 'a guest is told that commands are for the host');
+check(answerTo(g, gid).some(a => !a.ok && a.text.includes('unknown command')), 'unknown commands are explained');
+h.ws.close();
+
+// the shop: stand next to the shopkeeper and use it
+const shop = camp.find(t => t.kind === 'shopkeeper');
+const [sx, sy] = cellOf(shop.pos);
+g.send({ type: 'Command', line: `tpplayer ${sx} ${sy} ${Math.floor(shop.pos[2])} 0` });
+await sleep(500);
+g.send({ type: 'Action', name: 'interact' });
+const dialog = await (async () => { for (let t = 0; t < 2000; t += 50) { const m = g.log.find(x => x.type === 'Rules' && x.kind === 'dialog' && x.data.to === gid); if (m) return m.data; await sleep(50); } })();
+check(dialog && dialog.mode === 'selection' && dialog.options.length >= 3 && dialog.money === 0, 'using the shopkeeper opens a dialog for that player, with the stock');
+g.send({ type: 'Action', name: 'choose', arg: 0 });
+await sleep(400);
+check(!events(g).some(e => e.t === 'bought'), 'without money nothing is sold');
+g.send({ type: 'Action', name: 'cancel' });
+await sleep(400);
+check(g.log.some(m => m.type === 'Rules' && m.kind === 'dialog_closed' && m.data.to === gid), 'closing the dialog is confirmed');
+
+// the flag: using it sets the respawn point
+const flag = camp.find(t => t.kind === 'flag');
+const [fx, fy] = cellOf(flag.pos);
+g.send({ type: 'Command', line: `tpplayer ${fx} ${fy} ${Math.floor(flag.pos[2])} 0` });
+await sleep(500);
+g.send({ type: 'Action', name: 'interact' });
+await sleep(600);
+check(events(g).some(e => e.t === 'respawn_set'), 'using a flag sets the respawn point');
+g.ws.close();
+
 for (const c of [lobby, d]) c.ws.close();
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

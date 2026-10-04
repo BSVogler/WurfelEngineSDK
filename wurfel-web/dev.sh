@@ -9,6 +9,7 @@
 # lines here, or run ./check.sh for a summary of which part is broken.
 #
 # NO_OPEN=1 ./dev.sh  starts without opening a browser tab.
+# SKIP_INTRO=1 ./dev.sh  Caveland story maps start on the ground instead of in the crashing spaceship.
 cd "$(dirname "$0")"
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 
@@ -16,6 +17,6 @@ cd "$(dirname "$0")"
 echo
 
 trap 'kill 0 2>/dev/null' EXIT INT TERM
-(cd .. && cargo run -p wurfel-server -- --port 3000 2>&1 | sed -u 's/^/[server] /') &
+(cd .. && cargo run -p wurfel-server -- --port 3000 ${SKIP_INTRO:+--skip-intro} 2>&1 | sed -u 's/^/[server] /') &
 if [ -z "$NO_OPEN" ]; then OPEN=--open; fi
 trunk serve $OPEN "$@" 2>&1 | sed -u 's/^/[client] /'

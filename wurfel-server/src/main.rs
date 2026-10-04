@@ -1,7 +1,7 @@
 //! Authoritative multiplayer server. Also serves the built browser client, so one URL is enough.
 //!
 //!     wurfel-server [--port 3000] [--static ../wurfel-web/dist] [--seed 1] [--generator island]
-//!                   [--lag-ms 0] [--maps-dir ./maps]
+//!                   [--lag-ms 0] [--maps-dir ./maps] [--skip-intro]
 //!
 //! The server holds exactly one world in memory (a map and one of its save slots, like the Java
 //! engine's single `Map`). It streams the chunks around each player to their browser; the browser
@@ -92,6 +92,9 @@ async fn main() {
     let seed: u64 = arg("--seed").and_then(|s| s.parse().ok()).unwrap_or(1);
     let generator = arg("--generator").unwrap_or_else(|| "island".to_string());
     let lag = Duration::from_millis(arg("--lag-ms").and_then(|s| s.parse().ok()).unwrap_or(0));
+    if std::env::args().any(|a| a == "--skip-intro") {
+        caveland_mode::SKIP_INTRO.store(true, Ordering::Relaxed);
+    }
     let static_dir = arg("--static").unwrap_or_else(|| "../wurfel-web/dist".to_string());
 
     let maps_dir = arg("--maps-dir").unwrap_or_else(default_maps_dir);
@@ -432,7 +435,7 @@ async fn client(socket: WebSocket, shared: Shared) {
                             alive = send(Payload::Text(welcome));
                         }
                         ClientMsg::Join { .. } => {}
-                        ClientMsg::Input { .. } | ClientMsg::SetBlock { .. } | ClientMsg::Action { .. } => {
+                        ClientMsg::Input { .. } | ClientMsg::SetBlock { .. } | ClientMsg::Action { .. } | ClientMsg::Command { .. } => {
                             if let Some((id, _)) = &player {
                                 let broadcast = shared.game.lock().unwrap().handle(*id, msg);
                                 if let Some(msg) = broadcast {

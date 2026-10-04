@@ -25,7 +25,8 @@ impl ChunkStore {
         ChunkStore { dir: dir.into(), slot }
     }
 
-    fn slot_dir(&self) -> PathBuf {
+    /// The folder of the save slot (`<map>/save<N>`); a game mode may keep its own files in it.
+    pub fn slot_dir(&self) -> PathBuf {
         self.dir.join(format!("save{}", self.slot))
     }
 

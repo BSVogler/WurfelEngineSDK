@@ -72,6 +72,8 @@ pub struct Game {
     gamemode: String,
     /// Present in the Caveland game mode.
     mode: Option<CavelandMode>,
+    /// Where the game mode keeps its own files (the save slot's folder), if the world is a map.
+    slot_dir: Option<std::path::PathBuf>,
 }
 
 impl Game {
@@ -110,6 +112,7 @@ impl Game {
             tick: 0,
             gamemode: "engine".to_string(),
             mode: None,
+            slot_dir: None,
         }
     }
 
@@ -117,7 +120,9 @@ impl Game {
     /// plain engine.
     pub fn set_game_mode(&mut self, gamemode: &str) {
         if gamemode == "caveland" {
-            self.mode = Some(CavelandMode::new(&mut self.world, self.spec.seed));
+            let mut mode = CavelandMode::new(&mut self.world, self.spec.seed);
+            mode.configure(&self.spec.generator, self.spec.seed);
+            self.mode = Some(mode);
             self.gamemode = "caveland".to_string();
         } else {
             self.mode = None;
@@ -161,14 +166,24 @@ impl Game {
             seed: opened.map.seed,
         };
         let mut game = Self::with_generator(spec, Box::new(NoGenerator), spawn);
+        let slot_dir = opened.store.slot_dir();
         game.world = World::with_store(opened.generator, opened.store);
         game.world.load_area(chunk_of(spawn.0, spawn.1), 1);
         game.set_game_mode(&opened.map.gamemode);
+        if let Some(mode) = game.mode.as_mut() {
+            if let Err(e) = mode.load(&slot_dir, &game.entities) {
+                eprintln!("wurfel-server: the Caveland state of this save could not be read, starting fresh: {e}");
+            }
+        }
+        game.slot_dir = Some(slot_dir);
         game
     }
 
     /// Write the chunks that changed to disk. Returns how many were written.
     pub fn save(&mut self) -> std::io::Result<usize> {
+        if let (Some(mode), Some(dir)) = (self.mode.as_ref(), self.slot_dir.as_ref()) {
+            mode.save(dir, &self.entities)?;
+        }
         self.world.save_modified()
     }
 
@@ -189,6 +204,7 @@ impl Game {
     }
 
     /// Add a player standing near the mountain peak and return their id.
+    #[cfg(test)]
     pub fn add_player(&mut self) -> u32 {
         self.add_player_as("", [230, 190, 50])
     }
@@ -329,6 +345,14 @@ impl Game {
             // A game mode has its own rules for changing blocks (digging), so clients cannot edit.
             ClientMsg::SetBlock { x, y, z, block } if self.mode.is_none() => self.set_block(player, Edit { x, y, z, block }),
             ClientMsg::SetBlock { .. } => None,
+            ClientMsg::Command { line } => {
+                // Only the host (the lowest id still here) may use cheats.
+                let host = self.inputs.keys().min() == Some(&player);
+                if let Some(mode) = self.mode.as_mut() {
+                    mode.command(&mut self.entities, player, &line, host);
+                }
+                None
+            }
             ClientMsg::Action { name, arg } => {
                 if let Some(mode) = self.mode.as_mut() {
                     mode.act(&mut self.entities, &mut self.world, player, &name, arg);
@@ -714,6 +738,29 @@ mod game_mode_tests {
         assert_eq!(game.handle(me, ClientMsg::Action { name: "attack".into(), arg: 0 }), None);
         assert_eq!(game.handle(me, ClientMsg::Action { name: "nonsense".into(), arg: -5 }), None);
         run(&mut game, 30);
+    }
+
+    #[test]
+    fn only_the_host_may_run_caveland_commands() {
+        let mut game = caveland_game();
+        let (host, guest) = (game.add_player(), game.add_player());
+        for id in [guest, host] {
+            game.handle(id, ClientMsg::Command { line: "give Torch".into() });
+        }
+        let answers: Vec<(u64, bool)> = game
+            .drain_outbox()
+            .into_iter()
+            .filter_map(|m| match m {
+                ServerMsg::Rules { kind, data } if kind == "console" => Some((data["to"].as_u64().unwrap(), data["ok"].as_bool().unwrap())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(answers, vec![(guest as u64, false), (host as u64, true)]);
+        // The plain engine has no console.
+        let mut engine = Game::island(1);
+        let me = engine.add_player();
+        assert_eq!(engine.handle(me, ClientMsg::Command { line: "give Torch".into() }), None);
+        assert!(engine.drain_outbox().is_empty());
     }
 
     #[test]

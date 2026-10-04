@@ -218,6 +218,9 @@ pub enum ClientMsg {
         #[serde(default)]
         arg: i32,
     },
+    /// A console line for the game mode (Caveland: `give Torch`, `tpplayer 0 0 10`). Whether it is
+    /// allowed is up to the mode; the answer comes back as a `Rules` message of kind `console`.
+    Command { line: String },
     /// Latency probe: the server answers with [`ServerMsg::Pong`] carrying the same `client_time`.
     ///
     /// `rtt_ms` is the latest round trip this client measured; the server shares it with everybody
@@ -235,6 +238,7 @@ impl ClientMsg {
             ClientMsg::Input { .. } | ClientMsg::Ping { .. } => Channel::Unreliable,
             ClientMsg::SetBlock { .. }
             | ClientMsg::Action { .. }
+            | ClientMsg::Command { .. }
             | ClientMsg::ListMaps
             | ClientMsg::GetWorld
             | ClientMsg::LoadMap { .. }
@@ -639,6 +643,9 @@ mod game_mode_tests {
     #[test]
     fn game_mode_traffic_uses_the_right_channels() {
         assert_eq!(ClientMsg::Action { name: "x".into(), arg: 0 }.channel(), Channel::Reliable);
+        assert_eq!(ClientMsg::Command { line: "give Torch".into() }.channel(), Channel::Reliable);
+        let command: ClientMsg = serde_json::from_str(r#"{"type":"Command","line":"give Torch"}"#).unwrap();
+        assert_eq!(command, ClientMsg::Command { line: "give Torch".into() });
         assert_eq!(ServerMsg::Things { tick: 0, things: vec![] }.channel(), Channel::Unreliable);
         assert_eq!(ServerMsg::Rules { kind: "events".into(), data: serde_json::Value::Null }.channel(), Channel::Reliable);
     }

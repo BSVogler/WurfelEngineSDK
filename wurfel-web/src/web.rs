@@ -30,6 +30,8 @@ use crate::texture;
 
 /// Seed of the island shown behind the menu, before a world has been joined.
 const DEFAULT_SEED: u64 = 1;
+/// Most fires placed in the world at once (each costs a light and particles).
+const MAX_EMITTERS: usize = 8;
 /// Blocks selectable with the number keys.
 const HOTBAR: [(u8, &str); 4] =
     [(id::STONE, "stone"), (id::DIRT, "dirt"), (id::GRASS, "grass"), (id::SAND, "sand")];
@@ -112,6 +114,14 @@ struct State {
     caveland: Option<caveland_sim::Caveland>,
     /// Items, robots... of the game mode, as the server last said.
     things: Vec<ThingState>,
+    /// The server moves us (a cart, the intro ship): nothing of ours is predicted meanwhile.
+    riding: bool,
+    /// Players that are not drawn (inside the intro ship).
+    hidden: HashSet<u32>,
+    /// Cells of power blocks (torches, turrets, stations) that have power.
+    powered: HashSet<(i32, i32, i32)>,
+    /// Sounds of the game mode that go on until the server says they stop (a cart rolling), by name.
+    sound_loops: HashMap<String, crate::audio::LoopHandle>,
     /// Sprites for the players and the things, once the atlas has loaded (`?flat=1` never loads it).
     actors: Actors,
     /// The names above the other players' heads.
@@ -334,6 +344,10 @@ async fn run() -> Result<(), String> {
         emitters: Vec::new(),
         caveland: None,
         things: Vec::new(),
+        riding: false,
+        hidden: HashSet::new(),
+        powered: HashSet::new(),
+        sound_loops: HashMap::new(),
         actors: Actors::default(),
         name_tags: NameTags::new(&document),
         bind_group,
@@ -380,6 +394,7 @@ async fn run() -> Result<(), String> {
 
     install_input(&window, &state);
     install_menu_events(&window, &state);
+    install_net_bridge(&window, &state);
     if flat_look() {
         web_sys::console::log_1(&"sprites: ?flat=1, drawing flat colours".into());
     } else {
@@ -467,7 +482,7 @@ fn window_flag(key: &str) -> bool {
 
 /// Menu or console in front of the game: ignore gameplay input.
 fn input_blocked() -> bool {
-    window_flag("wurfelMenuOpen") || window_flag("wurfelConsoleOpen")
+    window_flag("wurfelMenuOpen") || window_flag("wurfelConsoleOpen") || window_flag("wurfelDialogOpen")
 }
 
 /// The player's name and colour from the menu (`window.wurfelSettings`), with defaults.
@@ -676,7 +691,9 @@ fn end_session(s: &mut State) {
     s.render_clock = RenderClock::default();
     s.caveland = None;
     s.things.clear();
+    reset_mode_state(s);
     hud("show", &JsValue::FALSE);
+    hud("closeDialog", &JsValue::UNDEFINED);
     s.world = World::new(IslandGenerator::new(DEFAULT_SEED));
     s.view_chunk = (0, 0);
     s.remesh = true;
@@ -798,6 +815,7 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
             // A game mode brings its own block rules and player: use the same ones as the server.
             s.caveland = (gamemode == caveland_client::MODE).then(|| caveland_client::start(&mut s.world));
             s.things.clear();
+            reset_mode_state(s);
             hud("show", &JsValue::from_bool(s.caveland.is_some()));
             s.remesh = true;
             s.terrain_version += 1;
@@ -871,15 +889,31 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
     }
 }
 
-/// Call a method of the page's HUD (`hud.js`), if the page has one.
-fn hud(method: &str, arg: &JsValue) {
+/// Call a method of a page object (`wurfelHud` from `hud.js`, `wurfelConsoleHost`...), if the page
+/// has one.
+fn call_js(object: &str, method: &str, arg: &JsValue) {
     let Some(window) = web_sys::window() else { return };
-    let hud = js_get(&window, "wurfelHud");
-    if !hud.is_object() {
+    let target = js_get(&window, object);
+    if !target.is_object() {
         return;
     }
-    if let Some(function) = js_get(&hud, method).dyn_ref::<js_sys::Function>() {
-        let _ = function.call1(&hud, arg);
+    if let Some(function) = js_get(&target, method).dyn_ref::<js_sys::Function>() {
+        let _ = function.call1(&target, arg);
+    }
+}
+
+fn hud(method: &str, arg: &JsValue) {
+    call_js("wurfelHud", method, arg);
+}
+
+/// What a game mode told us about the world and the people in it is only valid for one session.
+fn reset_mode_state(s: &mut State) {
+    s.riding = false;
+    s.hidden.clear();
+    s.powered.clear();
+    s.emitters.clear();
+    for (_, handle) in s.sound_loops.drain() {
+        s.audio.logic_mut().stop_loop(handle);
     }
 }
 
@@ -891,14 +925,57 @@ fn handle_rules(s: &mut State, kind: &str, data: &serde_json::Value) {
             if let Some(state) = caveland_client::parse_state(data, me) {
                 hud("update", &JsValue::from_str(&caveland_client::hud_json(&state)));
             }
+            let flags = caveland_client::parse_flags(data);
+            s.hidden = flags.iter().filter(|(_, f)| f.hidden).map(|(&id, _)| id).collect();
+            s.riding = flags.get(&me).is_some_and(|f| f.riding);
         }
+        // Private news (the broadcast reaches everybody; `to` names who it is for).
+        "dialog" if caveland_client::addressed_to(data, me) => hud("dialog", &JsValue::from_str(&data.to_string())),
+        "dialog_closed" if caveland_client::addressed_to(data, me) => hud("closeDialog", &JsValue::UNDEFINED),
+        "lift_offer" if caveland_client::addressed_to(data, me) => hud("liftOffer", &JsValue::from_str(&data.to_string())),
+        "console" if caveland_client::addressed_to(data, me) => call_js("wurfelConsoleHost", "reply", &JsValue::from_str(&data.to_string())),
+        "power" => s.powered = caveland_client::parse_power(data),
         "events" => {
             let ours = local_position(s).unwrap_or(Vec3::ZERO);
             for happening in caveland_client::parse_events(data, me) {
                 match happening {
                     // Our own jump already made its sound when we pressed the key.
                     Happening::Sound { name, pos } if name == "urfJump" && pos.distance(ours) < 2.0 => {}
+                    // The cart's rolling goes on until the server says it stops.
+                    Happening::Sound { name, pos } if name == "wagon" => match s.sound_loops.get(&name).copied() {
+                        Some(handle) => s.audio.logic_mut().set_loop_position(handle, pos.to_array()),
+                        None => {
+                            if let Some(handle) = s.audio.logic_mut().start_loop(&name, Some(pos.to_array()), 1.0) {
+                                s.sound_loops.insert(name, handle);
+                            }
+                        }
+                    },
                     Happening::Sound { name, pos } => s.audio.play(&name, Some(pos.to_array())),
+                    Happening::SoundStopped { name } => {
+                        if let Some(handle) = s.sound_loops.remove(&name) {
+                            s.audio.logic_mut().stop_loop(handle);
+                        }
+                    }
+                    Happening::Teleported { entity, pos } if entity == me => {
+                        if let Some(entity) = s.local_id.and_then(|id| s.entities.get_mut(id)) {
+                            entity.position = pos;
+                            if let Some(body) = entity.body.as_mut() {
+                                body.movement = Vec3::ZERO;
+                            }
+                        }
+                        s.visual_offset.clear();
+                    }
+                    Happening::Teleported { .. } => {} // others are interpolated, a big jump counts as a teleport there
+                    Happening::ShipCrashed { pos } => {
+                        // The wreck burns (`ParticleType.FIRE`) and lights its surroundings.
+                        let mut fire = wurfel_sim::particle::ParticleEmitter::new(pos + Vec3::Z * 0.5);
+                        fire.set_brightness(2.0);
+                        s.emitters.push(fire);
+                        if s.emitters.len() > MAX_EMITTERS {
+                            s.emitters.remove(0);
+                        }
+                        s.particles.block_break(pos, [1.0, 0.55, 0.1]);
+                    }
                     Happening::Dust { pos } => s.particles.block_break(pos, [0.6, 0.55, 0.5]),
                     Happening::Explosion { pos } => {
                         s.particles.block_break(pos, [1.0, 0.55, 0.1]);
@@ -937,6 +1014,17 @@ fn apply_snapshot(s: &mut State, tick: u64, players: &[PlayerState]) {
 /// left is the real prediction error: it is corrected in the simulation at once and faded out of
 /// the picture, and only a big one (we were blocked, pushed...) makes the player jump.
 fn reconcile(s: &mut State, server: &PlayerState) {
+    if s.riding {
+        // A vehicle or the ship moves us: take the server's word, there is nothing to predict.
+        if let Some(entity) = s.local_id.and_then(|id| s.entities.get_mut(id)) {
+            entity.position = Vec3::from(server.pos);
+            if let Some(body) = entity.body.as_mut() {
+                body.movement = Vec3::from(server.vel);
+            }
+        }
+        s.visual_offset.clear();
+        return;
+    }
     let Some(plan) = s.history.replay_plan(server.input_seq, server.input_ticks) else { return };
     let Some(id) = s.local_id else { return };
     let Some(entity) = s.entities.get_mut(id) else { return };
@@ -1001,6 +1089,25 @@ fn install_menu_events(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     listen(window, "wurfel:leave", move |_: web_sys::Event| end_session(&mut s.borrow_mut()));
     let s = state.clone();
     listen(window, "wurfel:pause", move |_: web_sys::Event| s.borrow_mut().keys.clear());
+}
+
+/// What the page's HUD and console send to the server: `wurfelNet.action(name, arg)` answers a
+/// dialog or offer, `wurfelNet.command(line)` is a console line of the game mode.
+fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
+    let net = js_sys::Object::new();
+    let s = state.clone();
+    let action = Closure::<dyn FnMut(String, i32)>::new(move |name: String, arg: i32| {
+        send(&mut s.borrow_mut(), &ClientMsg::Action { name, arg });
+    });
+    let _ = js_sys::Reflect::set(&net, &"action".into(), action.as_ref());
+    action.forget();
+    let s = state.clone();
+    let command = Closure::<dyn FnMut(String)>::new(move |line: String| {
+        send(&mut s.borrow_mut(), &ClientMsg::Command { line });
+    });
+    let _ = js_sys::Reflect::set(&net, &"command".into(), command.as_ref());
+    command.forget();
+    let _ = js_sys::Reflect::set(window, &"wurfelNet".into(), &net);
 }
 
 /// Join the world described by the menu's `wurfel:play` detail.
@@ -1226,7 +1333,9 @@ fn frame(s: &mut State, now_ms: f64) {
             }
         }
         let input = s.history.current();
-        if let (Some(caveland), Some(id)) = (s.caveland.as_mut(), s.local_id) {
+        if s.riding {
+            // Carried by the server: our player does not walk, fall or jump by itself.
+        } else if let (Some(caveland), Some(id)) = (s.caveland.as_mut(), s.local_id) {
             // Caveland's own walking, jump and jetpack rules, the same as the server runs.
             let was_on_ground = s.entities.get(id).is_some_and(|e| e.is_on_ground(&s.world));
             caveland.set_controls(&mut s.entities, &s.world, id, caveland_client::controls(input));
@@ -1246,6 +1355,7 @@ fn frame(s: &mut State, now_ms: f64) {
             s.audio.on_jump(id, position);
         }
         match s.caveland.as_mut() {
+            Some(_) if s.riding => {}
             Some(caveland) => {
                 // Only our own player lives here, so the rules have nothing to hit or pick up; the
                 // server decides all of that and tells us.
@@ -1275,7 +1385,8 @@ fn frame(s: &mut State, now_ms: f64) {
         emitter.update(dt, &mut s.particles);
     }
     let focus = local_position(s).unwrap_or(Vec3::ZERO);
-    s.lighting.set_dynamic_lights(s.emitters.iter().filter_map(|e| e.light()), focus);
+    let lamps = caveland_client::lamps(&s.world, &s.powered, &s.things);
+    s.lighting.set_dynamic_lights(s.emitters.iter().filter_map(|e| e.light()).chain(lamps), focus);
 
     // Everyone else is drawn slightly in the past, between two snapshots.
     s.render_clock.advance(dt as f64 * 1000.0);
@@ -1400,7 +1511,7 @@ fn update_name_tags(s: &mut State) {
     let Some(document) = layer.owner_document() else { return };
     let (width, height) = (s.config.width as f32, s.config.height as f32);
     let mut wanted: Vec<(u32, String, f32, f32)> = Vec::new();
-    for (&id, remote) in &s.remotes {
+    for (&id, remote) in s.remotes.iter().filter(|(id, _)| !s.hidden.contains(id)) {
         let Some(info) = s.roster.get(&id) else { continue };
         let head = (remote.pos.x, remote.pos.y, remote.pos.z + PLAYER_HEIGHT + 0.1);
         let screen = screen_position((head.0, head.1), head.2);
@@ -1444,19 +1555,19 @@ fn push_player(vertices: &mut Vec<Vertex>, color: [f32; 3], pos: Vec3) {
 /// Players and the hover marker change every frame, so they live in a small separate buffer.
 fn upload_dynamic_mesh(s: &mut State, target: Option<Pick>) {
     let mut vertices: Vec<Vertex> = Vec::new();
-    if let (Some(id), Some(pos)) = (s.my_id, local_position(s)) {
+    if let Some((id, pos)) = s.my_id.zip(local_position(s)).filter(|(id, _)| !s.hidden.contains(id)) {
         let color = player_color(&s.roster, id);
         if !s.actors.push_player(&mut vertices, id, pos, color) {
             push_player(&mut vertices, color, pos);
         }
     }
-    for (&id, remote) in &s.remotes {
+    for (&id, remote) in s.remotes.iter().filter(|(id, _)| !s.hidden.contains(id)) {
         let color = player_color(&s.roster, id);
         if !s.actors.push_player(&mut vertices, id, remote.pos, color) {
             push_player(&mut vertices, color, remote.pos);
         }
     }
-    for thing in &s.things {
+    for thing in s.things.iter().filter(|t| !crate::sprites::is_invisible(&t.kind)) {
         if !s.actors.push_thing(&mut vertices, thing) {
             caveland_client::push_thing(&mut vertices, thing);
         }
@@ -1528,10 +1639,12 @@ fn update_info(s: &mut State) {
         (true, None) => "connecting…".to_string(),
         (false, _) => "offline: showing a preview. Open the menu (Esc) to join a world".to_string(),
     };
-    let text = format!(
-        "Wurfel Engine · {:?} · {status}\nWASD walk · Space jump · left click place {} · right click break · 1-4 block · F3 network · F4 map",
-        s.backend, HOTBAR[s.selected].1,
-    );
+    let keys = if s.caveland.is_some() {
+        "WASD walk · Space jump · F swing · R talk/build/ride · 1-9 craft · Tab players · F3 network · F4 map".to_string()
+    } else {
+        format!("WASD walk · Space jump · left click place {} · right click break · 1-4 block · F3 network · F4 map", HOTBAR[s.selected].1)
+    };
+    let text = format!("Wurfel Engine · {:?} · {status}\n{keys}", s.backend);
     if text != s.info_text {
         set_info(&text);
         s.info_text = text;

@@ -90,9 +90,9 @@ impl Actors {
         let Some(sprites) = &self.sprites else { return false };
         let Some(art) = sprites::entity_art(&thing.kind) else { return false };
         let anim = self.things.get(&thing.id).map(|t| t.anim.clone()).unwrap_or_default();
-        let value = if art.walks { sprites::robot_value(anim.facing, anim.cycle, art.steps) } else { 0 };
+        let value = if art.walks { sprites::robot_value(anim.facing, anim.cycle, art.steps) } else { art.value };
         let Some(region) = sprites.entity(art.id, value).or_else(|| sprites.entity(art.id, 0)) else { return false };
-        sprites::billboard(out, &sprites.atlas, region, Vec3::from(thing.pos), sprites::FOOTPRINT_TIP, false, [1.0; 3]);
+        sprites::billboard(out, &sprites.atlas, region, Vec3::from(thing.pos), sprites::FOOTPRINT_TIP, false, art.tint);
         true
     }
 }
