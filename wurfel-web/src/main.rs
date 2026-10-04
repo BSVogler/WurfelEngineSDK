@@ -1,11 +1,14 @@
 mod audio;
 mod bindings;
+mod caveland_client;
+mod interp;
 mod lighting;
 mod mesh;
 mod minimap;
 mod netstats;
 mod pick;
 mod particles;
+mod prediction;
 mod render_storage;
 
 #[cfg(target_arch = "wasm32")]

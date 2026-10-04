@@ -11,13 +11,16 @@ use web_sys::{HtmlCanvasElement, KeyboardEvent, MessageEvent, MouseEvent, WebSoc
 use wurfel_sim::block::id;
 use wurfel_sim::entity::{Entities, EntityId};
 use wurfel_sim::grid::{chunk_of, from_iso, to_iso};
-use wurfel_sim::player::{apply_input, new_player, PlayerInput, PLAYER_HEIGHT, TICK_DT};
-use wurfel_sim::protocol::{decode_chunk, ClientMsg, PlayerInfo, PlayerState, ServerMsg};
+use wurfel_sim::player::{apply_input, new_player, PlayerInput, PLAYER_HEIGHT, TICK_DT, TICK_RATE};
+use wurfel_sim::protocol::{decode_chunk, ClientMsg, PlayerInfo, PlayerState, ServerMsg, ThingState};
 use wurfel_sim::{Block, IslandGenerator, World};
 
 use crate::audio::{Audio, EntityInfo};
 use crate::bindings::{parse_hex_color, Bindings};
+use crate::caveland_client::{self, Happening};
+use crate::interp::{RenderClock, Track};
 use crate::mesh::{self, Vertex};
+use crate::prediction::{classify, replay, Correction, InputHistory, VisualOffset};
 use crate::minimap::{CameraView, ChunkInfo, ChunkState, EntityDot, Minimap, MinimapData, Mode};
 use crate::netstats::{format_report, NetStats};
 use crate::pick::{pick, Pick};
@@ -46,8 +49,6 @@ const PING_EVERY_MS: f64 = 1000.0;
 const NET_OVERLAY_EVERY_MS: f64 = 250.0;
 const MINIMAP_EVERY_MS: f64 = 100.0;
 const STATUS_EVERY_MS: f64 = 500.0;
-/// Our predicted position is only corrected by the server when it differs by more than this.
-const SNAP_DISTANCE: f32 = 1.5;
 const MINIMAP_SIZE: (u32, u32) = (150, 300);
 /// Give up on a connection that has not delivered the world after this long.
 const CONNECT_TIMEOUT_MS: f64 = 8000.0;
@@ -85,8 +86,9 @@ struct Camera {
 
 /// Another player, smoothed between server snapshots.
 struct Remote {
+    /// Where it is drawn now: the snapshots interpolated at the render clock (see `interp`).
     pos: Vec3,
-    target: Vec3,
+    track: Track,
 }
 
 struct State {
@@ -104,6 +106,10 @@ struct State {
     particles: wurfel_sim::particle::Particles,
     /// Fires and the like placed in the world; their light goes to the light engine.
     emitters: Vec<wurfel_sim::particle::ParticleEmitter>,
+    /// The Caveland ruleset, when the world is played by it (the local player is predicted with it).
+    caveland: Option<caveland_sim::Caveland>,
+    /// Items, robots... of the game mode, as the server last said.
+    things: Vec<ThingState>,
     bind_group: wgpu::BindGroup,
     world_buffer: wgpu::Buffer,
     world_vertices: u32,
@@ -136,13 +142,21 @@ struct State {
     remotes: HashMap<u32, Remote>,
     /// Names and colours of everybody in the world.
     roster: HashMap<u32, PlayerInfo>,
+    /// Everybody's ping in ms as the server last told us (the Tab player list).
+    pings: HashMap<u32, u32>,
+    map_name: String,
     /// Real time not yet consumed by fixed physics steps.
     accumulator: f32,
+    /// Our inputs since the server's last acknowledgement, for reconciling the prediction.
+    history: InputHistory,
+    /// The part of the last server correction that is still being faded out of view.
+    visual_offset: VisualOffset,
+    /// Runs slightly behind the server so remote players can be interpolated.
+    render_clock: RenderClock,
 
     // --- input
     keys: HashSet<String>,
     bindings: Bindings,
-    input: PlayerInput,
     /// Pointer position in canvas pixels.
     pointer: Option<(f32, f32)>,
     selected: usize,
@@ -308,6 +322,8 @@ async fn run() -> Result<(), String> {
         audio: Audio::new(),
         particles: wurfel_sim::particle::Particles::default(),
         emitters: Vec::new(),
+        caveland: None,
+        things: Vec::new(),
         bind_group,
         world_buffer,
         world_vertices: world_vertices.len() as u32,
@@ -327,10 +343,14 @@ async fn run() -> Result<(), String> {
         local_id: None,
         remotes: HashMap::new(),
         roster: HashMap::new(),
+        pings: HashMap::new(),
+        map_name: String::new(),
         accumulator: 0.0,
+        history: InputHistory::new(),
+        visual_offset: VisualOffset::default(),
+        render_clock: RenderClock::default(),
         keys: HashSet::new(),
         bindings: read_bindings(),
-        input: PlayerInput::default(),
         pointer: None,
         selected: 0,
         net: NetStats::new(),
@@ -466,7 +486,32 @@ fn export_status(s: &mut State) {
     set("players", ((s.remotes.len() + usize::from(s.my_id.is_some())) as f64).into());
     set("fps", s.net.report(0.0).fps.round().into());
     set("backend", format!("{:?}", s.backend).into());
+    set("map", s.map_name.as_str().into());
     let _ = js_sys::Reflect::set(&window, &JsValue::from_str("wurfelStatus"), &status);
+    export_players(s, &window);
+}
+
+/// `window.wurfelPlayers` for the Tab player list (scoreboard.js): everybody in the roster with
+/// their ping in ms (`null` until known). Our own ping is the one we measure ourselves.
+fn export_players(s: &State, window: &web_sys::Window) {
+    let mut roster: Vec<&PlayerInfo> = s.roster.values().collect();
+    roster.sort_by_key(|p| p.id);
+    let players = js_sys::Array::new();
+    for p in roster {
+        let me = Some(p.id) == s.my_id;
+        let ping = if me { s.net.last_rtt().map(|rtt| rtt.round() as u32) } else { s.pings.get(&p.id).copied() };
+        let entry = js_sys::Object::new();
+        let set = |key: &str, value: JsValue| {
+            let _ = js_sys::Reflect::set(&entry, &JsValue::from_str(key), &value);
+        };
+        set("id", p.id.into());
+        set("name", p.name.as_str().into());
+        set("color", format!("#{:02x}{:02x}{:02x}", p.color[0], p.color[1], p.color[2]).into());
+        set("pingMs", ping.map_or(JsValue::NULL, JsValue::from));
+        set("me", me.into());
+        players.push(&entry);
+    }
+    let _ = js_sys::Reflect::set(window, &JsValue::from_str("wurfelPlayers"), &players);
 }
 
 // --------------------------------------------------------------------------------- status banner
@@ -580,7 +625,12 @@ fn end_session(s: &mut State) {
     s.entities = Entities::new();
     s.remotes.clear();
     s.roster.clear();
-    s.input = PlayerInput::default();
+    s.history = InputHistory::new();
+    s.visual_offset.clear();
+    s.render_clock = RenderClock::default();
+    s.caveland = None;
+    s.things.clear();
+    hud("show", &JsValue::FALSE);
     s.world = World::new(IslandGenerator::new(DEFAULT_SEED));
     s.view_chunk = (0, 0);
     s.remesh = true;
@@ -692,11 +742,17 @@ fn send(s: &mut State, msg: &ClientMsg) {
 
 fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
     match msg {
-        ServerMsg::Welcome { your_id, map, players, roster, .. } => {
+        ServerMsg::Welcome { your_id, map, players, roster, gamemode, .. } => {
             s.roster = roster.into_iter().map(|p| (p.id, p)).collect();
+            s.pings.clear();
+            s.map_name = map.clone();
             // The server sends the terrain as chunks: this world has no generator of its own and
             // fills up as they arrive.
             s.world = World::remote();
+            // A game mode brings its own block rules and player: use the same ones as the server.
+            s.caveland = (gamemode == caveland_client::MODE).then(|| caveland_client::start(&mut s.world));
+            s.things.clear();
+            hud("show", &JsValue::from_bool(s.caveland.is_some()));
             s.remesh = true;
             s.terrain_version += 1;
 
@@ -704,17 +760,23 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
             s.remotes.clear();
             s.entities = Entities::new();
             s.local_id = None;
+            s.history = InputHistory::new();
+            s.visual_offset.clear();
+            s.render_clock = RenderClock::default();
             for p in &players {
                 let pos = Vec3::from(p.pos);
                 if p.id == your_id {
-                    let mut entity = new_player(pos);
-                    entity.body.as_mut().expect("players move").movement = Vec3::from(p.vel);
-                    s.local_id = Some(s.entities.spawn(entity));
+                    let id = match s.caveland.as_mut() {
+                        Some(caveland) => caveland.spawn_player(&mut s.entities, 0, pos),
+                        None => s.entities.spawn(new_player(pos)),
+                    };
+                    s.entities.get_mut(id).and_then(|e| e.body.as_mut()).expect("players move").movement = Vec3::from(p.vel);
+                    s.local_id = Some(id);
                     s.camera.center = screen_position((pos.x, pos.y), pos.z + 0.7);
                     let (bx, by) = from_iso(pos.x, pos.y);
                     s.view_chunk = chunk_of(bx, by);
                 } else {
-                    s.remotes.insert(p.id, Remote { pos, target: pos });
+                    s.remotes.insert(p.id, Remote { pos, track: Track::new() });
                 }
             }
             s.connecting_since = None;
@@ -723,7 +785,7 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
         }
         ServerMsg::Snapshot { tick, players } => {
             s.net.on_snapshot(tick, now);
-            apply_snapshot(s, &players);
+            apply_snapshot(s, tick, &players);
         }
         ServerMsg::BlockSet(e) => {
             let old = s.world.get(e.x, e.y, e.z);
@@ -757,35 +819,110 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
         ServerMsg::Failed { message, .. } => report_error(&message),
         ServerMsg::Pong { client_time, .. } => s.net.on_pong(client_time, now),
         ServerMsg::Stats(stats) => s.net.on_server_stats(stats),
+        ServerMsg::Pings { list } => s.pings = list.into_iter().collect(),
+        ServerMsg::Things { things, .. } => s.things = things,
+        ServerMsg::Rules { kind, data } => handle_rules(s, &kind, &data),
     }
 }
 
-fn apply_snapshot(s: &mut State, players: &[PlayerState]) {
+/// Call a method of the page's HUD (`hud.js`), if the page has one.
+fn hud(method: &str, arg: &JsValue) {
+    let Some(window) = web_sys::window() else { return };
+    let hud = js_get(&window, "wurfelHud");
+    if !hud.is_object() {
+        return;
+    }
+    if let Some(function) = js_get(&hud, method).dyn_ref::<js_sys::Function>() {
+        let _ = function.call1(&hud, arg);
+    }
+}
+
+/// News of the game mode: our health and pack for the HUD, and what happened around us.
+fn handle_rules(s: &mut State, kind: &str, data: &serde_json::Value) {
+    let Some(me) = s.my_id else { return };
+    match kind {
+        "state" => {
+            if let Some(state) = caveland_client::parse_state(data, me) {
+                hud("update", &JsValue::from_str(&caveland_client::hud_json(&state)));
+            }
+        }
+        "events" => {
+            let ours = local_position(s).unwrap_or(Vec3::ZERO);
+            for happening in caveland_client::parse_events(data, me) {
+                match happening {
+                    // Our own jump already made its sound when we pressed the key.
+                    Happening::Sound { name, pos } if name == "urfJump" && pos.distance(ours) < 2.0 => {}
+                    Happening::Sound { name, pos } => s.audio.play(&name, Some(pos.to_array())),
+                    Happening::Dust { pos } => s.particles.block_break(pos, [0.6, 0.55, 0.5]),
+                    Happening::Explosion { pos } => {
+                        s.particles.block_break(pos, [1.0, 0.55, 0.1]);
+                        s.particles.block_break(pos + Vec3::Z * 0.5, [0.3, 0.3, 0.3]);
+                    }
+                    Happening::Toast(text) => hud("toast", &JsValue::from_str(&text)),
+                    Happening::Died => {
+                        show_banner("You died. Back at the start.", Tone::Error);
+                        s.visual_offset.clear();
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn apply_snapshot(s: &mut State, tick: u64, players: &[PlayerState]) {
+    let server_ms = tick as f64 * 1000.0 / TICK_RATE as f64;
+    s.render_clock.on_snapshot(server_ms);
     let present: HashSet<u32> = players.iter().map(|p| p.id).collect();
     s.remotes.retain(|id, _| present.contains(id));
     for p in players {
         let pos = Vec3::from(p.pos);
         if Some(p.id) == s.my_id {
-            reconcile(s, pos, Vec3::from(p.vel));
+            reconcile(s, p);
         } else {
-            s.remotes.entry(p.id).or_insert(Remote { pos, target: pos }).target = pos;
+            s.remotes.entry(p.id).or_insert_with(|| Remote { pos, track: Track::new() }).track.push(server_ms, pos, Vec3::from(p.vel));
         }
     }
 }
 
-/// Our own player runs ahead of the server by about one round trip, so the two never agree
-/// exactly. A big difference means the server saw something else (we were blocked, pushed or fell
-/// differently) and we jump to its state; while standing still any small drift is eased away.
-fn reconcile(s: &mut State, server_pos: Vec3, server_vel: Vec3) {
-    let Some(entity) = s.local_id.and_then(|id| s.entities.get_mut(id)) else { return };
-    let error = entity.position.distance(server_pos);
+/// Our own player runs ahead of the server, so the two never agree at the moment a snapshot
+/// arrives. The snapshot says where the server was after some number of ticks under one of our
+/// inputs; replay our inputs from there up to the present and compare with where we are. What is
+/// left is the real prediction error: it is corrected in the simulation at once and faded out of
+/// the picture, and only a big one (we were blocked, pushed...) makes the player jump.
+fn reconcile(s: &mut State, server: &PlayerState) {
+    let Some(plan) = s.history.replay_plan(server.input_seq, server.input_ticks) else { return };
+    let Some(id) = s.local_id else { return };
+    let Some(entity) = s.entities.get_mut(id) else { return };
+    let before = entity.position;
+    let before_velocity = entity.body.as_ref().expect("players move").movement;
+    // Only our player lives in `entities`, so stepping it steps nothing else. The events of the
+    // replayed steps already happened (and made their sounds) when we first ran them.
+    let replayed = if s.caveland.is_some() {
+        // Caveland's rules replay on a scratch player, so the live jetpack is not burned twice.
+        let result = caveland_client::replay(&mut s.world, Vec3::from(server.pos), Vec3::from(server.vel), &plan);
+        result.and_then(|(position, velocity)| {
+            let entity = s.entities.get_mut(id)?;
+            entity.position = position;
+            entity.body.as_mut()?.movement = velocity;
+            Some(())
+        })
+    } else {
+        replay(&mut s.entities, id, &s.world, Vec3::from(server.pos), Vec3::from(server.vel), &plan).map(|_| ())
+    };
+    if replayed.is_none() {
+        return;
+    }
+    let Some(entity) = s.entities.get_mut(id) else { return };
+    let error = entity.position.distance(before);
     s.net.on_prediction_error(error);
-    let body = entity.body.as_mut().expect("players move");
-    if error > SNAP_DISTANCE {
-        entity.position = server_pos;
-        body.movement = server_vel;
-    } else if s.input == PlayerInput::default() && body.speed() < 0.05 && server_vel.length() < 0.05 {
-        entity.position += (server_pos - entity.position) * 0.1;
+    match classify(error) {
+        Correction::Ignore => {
+            entity.position = before;
+            entity.body.as_mut().expect("players move").movement = before_velocity;
+        }
+        Correction::Blend => s.visual_offset.absorb(before, entity.position),
+        Correction::Snap => s.visual_offset.clear(),
     }
 }
 
@@ -838,6 +975,10 @@ fn start_from_menu(state: &Rc<RefCell<State>>, detail: &JsValue) {
 }
 
 fn place_block(s: &mut State) {
+    // In a game mode blocks change through its rules (digging), not by clicking.
+    if s.caveland.is_some() {
+        return;
+    }
     if let Some(Pick { place: (x, y, z), .. }) = hovered(s) {
         let block = Block::new(HOTBAR[s.selected].0, 0).raw();
         send(s, &ClientMsg::SetBlock { x, y, z, block });
@@ -845,6 +986,9 @@ fn place_block(s: &mut State) {
 }
 
 fn break_block(s: &mut State) {
+    if s.caveland.is_some() {
+        return;
+    }
     if let Some(Pick { hit: (x, y, z), .. }) = hovered(s) {
         send(s, &ClientMsg::SetBlock { x, y, z, block: 0 });
     }
@@ -874,6 +1018,11 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
             return;
         }
         s.keys.insert(format!("mouse{}", e.button()));
+        if s.caveland.is_some() {
+            if let Some((name, arg)) = caveland_client::mouse_action(e.button(), true) {
+                send(&mut s, &ClientMsg::Action { name: name.to_string(), arg });
+            }
+        }
         if s.bindings.matches_button("place", e.button()) {
             place_block(&mut s);
         } else if s.bindings.matches_button("break", e.button()) {
@@ -882,7 +1031,13 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     });
     let s = state.clone();
     listen(window, "mouseup", move |e: MouseEvent| {
-        s.borrow_mut().keys.remove(&format!("mouse{}", e.button()));
+        let mut s = s.borrow_mut();
+        s.keys.remove(&format!("mouse{}", e.button()));
+        if s.caveland.is_some() {
+            if let Some((name, arg)) = caveland_client::mouse_action(e.button(), false) {
+                send(&mut s, &ClientMsg::Action { name: name.to_string(), arg });
+            }
+        }
     });
     listen(window, "contextmenu", move |e: MouseEvent| {
         if !input_blocked() {
@@ -927,7 +1082,14 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         if input_blocked() {
             return;
         }
-        if let Some(n) = key.parse::<usize>().ok().filter(|n| (1..=HOTBAR.len()).contains(n)) {
+        if s.caveland.is_some() {
+            // Caveland keys: swing, throw, use, drop, craft...
+            if !e.repeat() {
+                if let Some((name, arg)) = caveland_client::key_action(&key, true) {
+                    send(&mut s, &ClientMsg::Action { name: name.to_string(), arg });
+                }
+            }
+        } else if let Some(n) = key.parse::<usize>().ok().filter(|n| (1..=HOTBAR.len()).contains(n)) {
             s.selected = n - 1;
         }
         if !e.repeat() {
@@ -941,7 +1103,14 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     });
     let s = state.clone();
     listen(window, "keyup", move |e: KeyboardEvent| {
-        s.borrow_mut().keys.remove(&e.key().to_lowercase());
+        let key = e.key().to_lowercase();
+        let mut s = s.borrow_mut();
+        if s.caveland.is_some() && s.keys.contains(&key) {
+            if let Some((name, arg)) = caveland_client::key_action(&key, false) {
+                send(&mut s, &ClientMsg::Action { name: name.to_string(), arg });
+            }
+        }
+        s.keys.remove(&key);
     });
     // Letting go of the window with keys held would otherwise leave the player running.
     let s = state.clone();
@@ -960,8 +1129,9 @@ fn screen_position((gx, gy): (f32, f32), z: f32) -> [f32; 2] {
     [(gx - gy) * 100.0, (gx + gy) * 50.0 - z * 122.0]
 }
 
+/// Where our player is drawn: the simulation plus the correction that is still fading out.
 fn local_position(s: &State) -> Option<Vec3> {
-    s.local_id.and_then(|id| s.entities.get(id)).map(|e| e.position)
+    s.local_id.and_then(|id| s.entities.get(id)).map(|e| e.position + s.visual_offset.value())
 }
 
 /// The block under the pointer, if any.
@@ -993,12 +1163,7 @@ fn frame(s: &mut State, now_ms: f64) {
     let ease = |rate: f32| 1.0 - (-rate * dt).exp();
     let blocked = input_blocked();
 
-    // Tell the server when the pressed keys change; the server keeps applying them.
-    let input = if blocked { PlayerInput::default() } else { read_input(s) };
-    if input != s.input {
-        s.input = input;
-        send(s, &ClientMsg::Input(input));
-    }
+    let wanted = if blocked { PlayerInput::default() } else { read_input(s) };
 
     // Our own player: the same fixed physics steps as the server, so movement is instant.
     s.accumulator = (s.accumulator + dt).min(0.25);
@@ -1006,9 +1171,27 @@ fn frame(s: &mut State, now_ms: f64) {
     while s.accumulator >= TICK_DT {
         s.accumulator -= TICK_DT;
         let mut jumped_from = None;
-        if let Some(entity) = s.local_id.and_then(|id| s.entities.get_mut(id)) {
+        let playing = s.local_id.is_some_and(|id| s.entities.get(id).is_some());
+        if playing {
+            // A change of keys starts a new numbered input at this step; the server applies the
+            // same input from the tick it arrives in and echoes the number back.
+            if let Some((seq, input)) = s.history.begin_step(wanted) {
+                send(s, &ClientMsg::Input { seq, input });
+            }
+        }
+        let input = s.history.current();
+        if let (Some(caveland), Some(id)) = (s.caveland.as_mut(), s.local_id) {
+            // Caveland's own walking, jump and jetpack rules, the same as the server runs.
+            let was_on_ground = s.entities.get(id).is_some_and(|e| e.is_on_ground(&s.world));
+            caveland.set_controls(&mut s.entities, &s.world, id, caveland_client::controls(input));
+            if let Some(entity) = s.entities.get(id) {
+                if was_on_ground && entity.body.as_ref().is_some_and(|b| b.movement.z > 1.0) {
+                    jumped_from = Some(entity.position.to_array());
+                }
+            }
+        } else if let Some(entity) = s.local_id.and_then(|id| s.entities.get_mut(id)) {
             let was_on_ground = entity.is_on_ground(&s.world);
-            apply_input(entity, s.input, &s.world);
+            apply_input(entity, input, &s.world);
             if was_on_ground && entity.body.as_ref().is_some_and(|b| b.movement.z > 1.0) {
                 jumped_from = Some(entity.position.to_array());
             }
@@ -1016,8 +1199,20 @@ fn frame(s: &mut State, now_ms: f64) {
         if let (Some(id), Some(position)) = (s.local_id, jumped_from) {
             s.audio.on_jump(id, position);
         }
-        events.extend(s.entities.update(&s.world, TICK_DT)); // landed, collided, splashed...
+        match s.caveland.as_mut() {
+            Some(caveland) => {
+                // Only our own player lives here, so the rules have nothing to hit or pick up; the
+                // server decides all of that and tells us.
+                caveland.tick(&mut s.entities, &mut s.world, TICK_DT);
+                events.extend_from_slice(caveland.engine_events());
+            }
+            None => events.extend(s.entities.update(&s.world, TICK_DT)), // landed, collided, splashed...
+        }
+        if playing {
+            s.history.end_step();
+        }
     }
+    s.visual_offset.decay(dt);
     // Sounds: what happened this frame, and the continuous ones (footsteps, wind) for our player.
     if let Some(id) = s.local_id {
         if let Some(entity) = s.entities.get(id) {
@@ -1036,10 +1231,13 @@ fn frame(s: &mut State, now_ms: f64) {
     let focus = local_position(s).unwrap_or(Vec3::ZERO);
     s.lighting.set_dynamic_lights(s.emitters.iter().filter_map(|e| e.light()), focus);
 
-    // Everyone else glides towards their last known position.
-    let k = ease(15.0);
+    // Everyone else is drawn slightly in the past, between two snapshots.
+    s.render_clock.advance(dt as f64 * 1000.0);
+    let render_ms = s.render_clock.now_ms();
     for remote in s.remotes.values_mut() {
-        remote.pos += (remote.target - remote.pos) * k;
+        if let Some(pos) = remote.track.sample(render_ms) {
+            remote.pos = pos;
+        }
     }
 
     // The camera follows us (or stays on the island while offline).
@@ -1071,7 +1269,8 @@ fn frame(s: &mut State, now_ms: f64) {
     // Latency probe.
     if s.connected && now_ms >= s.next_ping_ms {
         s.next_ping_ms = now_ms + PING_EVERY_MS;
-        send(s, &ClientMsg::Ping { client_time: now_ms });
+        let rtt_ms = s.net.last_rtt().map(|rtt| rtt as f32);
+        send(s, &ClientMsg::Ping { client_time: now_ms, rtt_ms });
     }
 
     // Keep the drawn window centred on the player; crossing a chunk border moves it.
@@ -1131,6 +1330,9 @@ fn upload_dynamic_mesh(s: &mut State, target: Option<Pick>) {
     }
     for (&id, remote) in &s.remotes {
         push_player(&mut vertices, player_color(&s.roster, id), remote.pos);
+    }
+    for thing in &s.things {
+        caveland_client::push_thing(&mut vertices, thing);
     }
     if let Some(Pick { hit: (x, y, z), .. }) = target {
         let (gx, gy) = to_iso(x, y);

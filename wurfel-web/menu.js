@@ -21,15 +21,15 @@
  *     ambientOcclusion bool     for the light engine, once it exists
  *     showFps, showHelp bool    (JS handles the FPS counter and hides #info itself)
  *     keys             { action: [primary, alternate] } with actions
- *                      up, down, left, right, jump, place, break, zoomIn, zoomOut.
+ *                      up, down, left, right, jump, place, break, zoomIn, zoomOut, players.
  *                      Values are KeyboardEvent.key lowercased (" " is space, "arrowup"...), or
  *                      "mouse0" / "mouse1" / "mouse2" for mouse buttons. An empty string means
  *                      unbound: ignore it. Number keys 1-4 (hotbar) are fixed and not listed.
  *
  * Events dispatched on window (CustomEvent):
  *     wurfel:play      detail { name, color, server, generator, seed, create }
- *                      The player joined the server's world, either the one already running or a save
- *                      they just loaded. name / color = the player's name and "#rrggbb" colour, server =
+ *                      The player joined the server's world: "Connect" joins the one already running, "Host a
+ *                      map" loads a save first. name / color = the player's name and "#rrggbb" colour, server =
  *                      ws(s):// URL to connect to (no
  *                      query string). generator / seed describe the world the server is running now (read
  *                      from the server, so the game can generate the same terrain). create is true when
@@ -39,8 +39,7 @@
  *     wurfel:resume    the pause overlay closed, back to the game.
  *     wurfel:leave     the player left the game; connection should be closed (menu shows main screen).
  *     wurfel:error     (game -> menu) detail { message }: joining or creating a world failed, or the
- *                      connection was lost. The menu shows the message and opens the Server world screen
- *                      (Escape / Back returns to the main menu).
+ *                      connection was lost. The menu shows the message on the main menu.
  *     window.wurfelPlayRequest   the detail of the last wurfel:play (null after leaving). A game that
  *                      was not listening yet when the event fired reads this at startup.
  *     wurfel:settings  detail = window.wurfelSettings; fired once at startup and after every change.
@@ -51,19 +50,22 @@
  *     https page), "" is the server this page came from, ws(s):// and http(s):// URLs are used as given
  *     (http -> ws). A path defaults to /ws. Everything below belongs to the selected server.
  *
- * Server world, maps and generators: the lobby WebSocket
+ * Connect, Host a map and the lobby WebSocket
+ *     The main menu has a "Connect" button and a small Server field (default localhost). Connect asks the
+ *     server's lobby for the running world, then joins it. "Host a map" lists all maps on the server's disk with generator, seed and saves;
+ *     loading one switches what the server runs, then joins it.
  *     The server holds exactly one (map, save slot) in memory, like the Java engine's single Map. It can
- *     only switch it while nobody is joined. The menu never starts or hosts a server.
- *     When the "Server world" screen opens, the menu opens its OWN short-lived WebSocket to the `server`
- *     URL (ws(s)://host/ws, no query string). It is closed when the player leaves the Server world
- *     screens or joins; the game then opens a separate socket and joins there (the menu never sends
+ *     only switch it while nobody is joined. The menu never starts a server process.
+ *     For both, the menu opens its OWN short-lived WebSocket to the `server`
+ *     URL (ws(s)://host/ws, no query string). It is closed when the player leaves the Host screens or
+ *     joins; the game then opens a separate socket and joins there (the menu never sends
  *     Join). Refresh reconnects. Frames are JSON text with a "type" field. The menu must be able to
  *     connect, and receive a Lobby, within 4 s, else it shows "couldn't reach a game server".
  *     server -> menu
- *       Lobby         { world: { map (display name), map_id, slot, generator, seed, players }, generators: [...] }
+ *       Lobby         { world: { map (display name), map_id, slot, generator, seed, players, gamemode }, generators: [...] }
  *                     sent right after connecting, and as the answer to GetWorld. `players` counts joined
  *                     players only. `generators` is [{ id, name, description, uses_seed }].
- *       Maps          { maps: [{ id, name, description, generator, seed, saves: [{ slot, modified|null }] }] }
+ *       Maps          { maps: [{ id, name, description, generator, seed, gamemode, saves: [{ slot, modified|null }] }] }
  *       WorldChanged  { world }   a LoadMap succeeded (sent to every lobby connection). This is how the menu
  *                     learns that its own LoadMap worked.
  *       MapCreated    { map }     a CreateMap succeeded.
@@ -71,7 +73,7 @@
  *                     The message is shown to the player as it is.
  *     menu -> server
  *       ListMaps, GetWorld, LoadMap { map, slot: <n> | "new" }, CreateMap { id, name, description,
- *       generator, seed } (id: 1-32 of [a-z0-9_-]). Frames must stay under 1 KB.
+ *       generator, seed, gamemode: "" | "engine" | "caveland" } (id: 1-32 of [a-z0-9_-]). Frames must stay under 1 KB.
  *     Requests that get no answer give up after 20 s (LoadMap) and 15 s (CreateMap); the maps list after 4 s.
  *     window.wurfelGenerators   optional fallback list of { id, name, description, uses_seed }, used when the
  *                      lobby cannot be reached or sends no generators. Without it a built-in list is used:
@@ -106,11 +108,11 @@
   const ACTIONS = [
     ['up', 'Walk up'], ['down', 'Walk down'], ['left', 'Walk left'], ['right', 'Walk right'],
     ['jump', 'Jump'], ['place', 'Place block'], ['break', 'Break block'],
-    ['zoomIn', 'Zoom in'], ['zoomOut', 'Zoom out'],
+    ['zoomIn', 'Zoom in'], ['zoomOut', 'Zoom out'], ['players', 'Player list'],
   ];
   const DEFAULT_KEYS = {
     up: ['w', 'arrowup'], down: ['s', 'arrowdown'], left: ['a', 'arrowleft'], right: ['d', 'arrowright'],
-    jump: [' ', ''], place: ['mouse0', ''], break: ['mouse2', ''], zoomIn: ['e', ''], zoomOut: ['q', ''],
+    jump: [' ', ''], place: ['mouse0', ''], break: ['mouse2', ''], zoomIn: ['e', ''], zoomOut: ['q', ''], players: ['tab', ''],
   };
   const RANGES = {
     masterVolume: [0, 1], musicVolume: [0, 1], effectsVolume: [0, 1], renderScale: [0.5, 1], zoom: [0.2, 2],
@@ -284,9 +286,9 @@
   const MAP_ID = /^[a-z0-9_-]{1,32}$/;
   const FRAME_LIMIT = 1000; // the server drops connections that send frames above 1 KB
   const TIMEOUTS = { ready: 4000, answer: 4000, load: 20000, create: 15000 };
-  const UNREACHABLE = "Couldn't reach a game server, so the running world and the maps can't be listed (preview only).";
-  const LOST = 'Lost the connection to the server. Press Refresh to reconnect.';
-  const MAPS_FAILED = "Couldn't load the list of maps.";
+  const UNREACHABLE = "Can't reach the server.";
+  const LOST = 'Connection lost. Press Refresh.';
+  const MAPS_FAILED = "Couldn't load the maps.";
 
   /** Keep only well-formed generator entries; the list comes from outside this file. */
   function cleanGenerators(given) {
@@ -319,6 +321,9 @@
   const asSeed = (v) => (Number.isSafeInteger(v) && v >= 0 ? v : null);
   const asCount = (v) => (Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
 
+  /** The rules a map is played by; older servers send none, which is the plain engine. */
+  const cleanMode = (v) => (v === 'caveland' ? 'caveland' : 'engine');
+
   /** The `world` of a Lobby or WorldChanged message: { map (display name), map_id, slot, generator, seed, players }. */
   function parseWorld(data) {
     if (!data || typeof data !== 'object' || typeof data.generator !== 'string' || !/^[\w-]{1,32}$/.test(data.generator)) throw new Error('bad world');
@@ -328,6 +333,7 @@
       slot: Number.isSafeInteger(data.slot) && data.slot >= 0 ? data.slot : null,
       generator: data.generator,
       seed: asSeed(data.seed),
+      gamemode: cleanMode(data.gamemode),
       players: asCount(data.players),
     };
   }
@@ -341,6 +347,7 @@
       description: typeof m.description === 'string' ? m.description.trim().slice(0, 200) : '',
       generator: typeof m.generator === 'string' ? m.generator.slice(0, 32) : '',
       seed: asSeed(m.seed),
+      gamemode: cleanMode(m.gamemode),
       saves: saves
         .filter((v) => v && Number.isSafeInteger(v.slot) && v.slot >= 0)
         .slice(0, 30)
@@ -362,113 +369,67 @@
     try { return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch (_) { return date.toISOString(); }
   }
 
-  const playersText = (n) => (n === 0 ? 'Nobody is playing' : `${n} player${n === 1 ? '' : 's'} connected`);
+  const playersText = (n) => (n === 0 ? 'Empty' : `${n} player${n === 1 ? '' : 's'}`);
   const mapTitle = (id, name) => (id ? `/${id}/ ${name || 'no map name set'}` : name || 'no map name set');
 
-  function generatorLine(generatorId, seed) {
+  function generatorLine(generatorId, seed, mode) {
     const gen = generatorById(generatorId);
     const parts = [gen ? gen.name : (generatorId || 'unknown generator')];
     if (seed !== null && (!gen || gen.uses_seed)) parts.push('seed ' + seed);
+    if (mode === 'caveland') parts.push('Caveland rules');
     return parts.join(' · ');
   }
 
 
-  // ------ server picker: the server is chosen first, everything below belongs to it
-  const PAGE_SERVER = "This page's server";
-  const DOT_TEXT = { ok: 'reachable', down: 'unreachable', checking: 'checking', unknown: 'not checked' };
+  // ------ server: a short field on the main menu; everything else belongs to the chosen server
   const sameServer = (a, b) => { const x = resolveServer(a); return !!x && x === resolveServer(b); };
 
-  /** Status of the ACTIVE server, from the lobby connection. Only the active one is ever measured. */
-  function activeDot() {
-    if (lobbyPhase === 'ready') return 'ok';
-    if (lobbyPhase === 'connecting') return 'checking';
-    if (lobbyPhase === 'failed' || lobbyPhase === 'closed') return 'down';
-    return 'unknown';
-  }
-
-  function makeDot(kind) {
-    const dot = el('span', 'dot ' + kind);
-    dot.setAttribute('aria-hidden', 'true');
-    return dot;
-  }
-
-  function showServerError(text) { const e = $('#server-error'); e.textContent = text; e.hidden = false; }
+  function showServerError(text) { const e = $('#server-error'); e.textContent = text; e.hidden = false; $('#server-state').textContent = ''; }
   function hideServerError() { $('#server-error').hidden = true; }
-
-  /** Remembered entries as shown: the page's own server first (if there is one), then the saved list. */
-  const serverEntries = () => (location.host ? [''] : []).concat(S.servers);
 
   function renderServerPicker() {
     const input = $('#server-input');
     if (document.activeElement !== input) input.value = S.serverUrl;
-    input.placeholder = location.host ? `empty = ${PAGE_SERVER.toLowerCase()} (${location.host})` : 'host or host:port';
-    const dot = activeDot();
-    const state = $('#server-state');
-    state.textContent = '';
-    const where = S.serverUrl === '' ? PAGE_SERVER : S.serverUrl;
-    if (dot !== 'unknown') {
-      state.append(makeDot(dot));
-      state.append(document.createTextNode({
-        ok: `Connected to ${where}`, down: `Can't reach ${where}`, checking: `Checking ${where}…`,
-      }[dot]));
-    }
-    const list = $('#server-list');
-    list.textContent = '';
-    serverEntries().forEach((entry, index) => {
-      const active = sameServer(entry, S.serverUrl);
-      const chip = el('div', active ? 'chip active' : 'chip');
-      chip.setAttribute('role', 'listitem');
-      const pick = el('button', '');
-      pick.type = 'button';
-      pick.dataset.nav = '';
-      pick.dataset.action = 'server-pick';
-      pick.dataset.index = String(index);
-      const kind = active ? dot : 'unknown';
-      // Visually: dot, name. For screen readers: name, then the status.
-      pick.append(makeDot(kind), document.createTextNode(entry === '' ? PAGE_SERVER : entry), el('span', 'sr', ' · ' + DOT_TEXT[kind]));
-      if (active) pick.setAttribute('aria-current', 'true');
-      chip.append(pick);
-      if (entry !== '') {
-        const forget = el('button', 'chip-forget', '✕');
-        forget.type = 'button';
-        forget.dataset.nav = '';
-        forget.dataset.action = 'server-forget';
-        forget.dataset.index = String(index);
-        forget.setAttribute('aria-label', `Forget ${entry}`);
-        chip.append(forget);
-      }
-      list.append(chip);
-    });
+    input.placeholder = location.host ? 'this server' : 'host or host:port';
+    const options = $('#server-options');
+    options.textContent = '';
+    for (const entry of S.servers) { const o = document.createElement('option'); o.value = entry; options.append(o); }
   }
 
-  /** Make `text` the active server and (re)open its lobby. */
-  function connectToServer(text) {
-    const value = text.trim().slice(0, 200);
-    if (!resolveServer(value)) {
-      showServerError(value ? "That doesn't look like a server address." : 'This page was opened from a file, so it has no server of its own. Enter an address.');
-      return;
-    }
-    hideServerError();
+  /** The field was edited: it is now the server, and anything open for the old one is dropped. */
+  function applyServerInput() {
+    const value = $('#server-input').value.trim().slice(0, 200);
+    if (value === S.serverUrl || (value && !resolveServer(value))) return; // an invalid address is never stored
     S.serverUrl = value;
+    closeLobby();
+    serverWorld = null;
+    maps = null;
     changed();
-    autoFocused = document.activeElement; // after Connect, focus may move on to Join once the lobby answered
-    openLobby();
+  }
+
+  /** Connect: ask the server what it is running, then join that. */
+  function connectToServer() {
+    hideServerError();
+    const typed = $('#server-input').value.trim();
+    if (typed && !resolveServer(typed)) { showServerError("That doesn't look like a server address."); return; }
+    applyServerInput();
+    if (!resolveServer(S.serverUrl)) { showServerError('Enter a server address.'); return; }
+    $('#server-state').textContent = 'Connecting…';
+    $('#connect-btn').disabled = true;
+    openLobby({ autoJoin: true });
+  }
+
+  /** The Connect attempt ended without joining. */
+  function connectEnded(message) {
+    $('#connect-btn').disabled = false;
+    $('#server-state').textContent = '';
+    if (message) showServerError(message);
   }
 
   /** Remember a server that answered, most recent first, without duplicates, at most MAX_SERVERS. */
   function rememberServer(entry) {
     const next = [entry, ...S.servers.filter((x) => !sameServer(x, entry))].slice(0, MAX_SERVERS);
     if (JSON.stringify(next) !== JSON.stringify(S.servers)) { S.servers = next; changed(); }
-  }
-
-  function forgetServer(index) {
-    const entry = serverEntries()[index];
-    if (entry === undefined || entry === '') return;
-    S.servers = S.servers.filter((x) => x !== entry);
-    changed();
-    renderServerPicker();
-    const buttons = $$('#server-list [data-action="server-pick"]');
-    (buttons[Math.min(index, buttons.length - 1)] || $('#server-input')).focus();
   }
 
   // ------ player panel: name and colour
@@ -581,7 +542,7 @@
     if (m.id === highlightMap) { row.classList.add('highlight'); row.setAttribute('aria-current', 'true'); }
     row.append(el('h4', 'map-title', mapTitle(m.id, m.name)));
     row.append(el('p', m.description ? 'map-desc' : 'map-desc fallback', m.description || 'no description found'));
-    row.append(el('p', 'map-meta', generatorLine(m.generator, m.seed)));
+    row.append(el('p', 'map-meta', generatorLine(m.generator, m.seed, m.gamemode)));
 
     const actions = el('div', 'map-actions');
     const title = m.name || m.id;
@@ -605,7 +566,7 @@
 
   function renderServerState() {
     renderServerPicker();
-    $('#card-server').textContent = serverLabel() ? 'Server: ' + serverLabel() : '';
+    $('#card-server').textContent = serverLabel();
     const mapEl = $('#card-map');
     if (lobbyPhase === 'connecting') {
       mapEl.textContent = 'Loading…';
@@ -614,7 +575,7 @@
     } else if (serverWorld) {
       const w = serverWorld;
       mapEl.textContent = mapTitle(w.id, w.name);
-      $('#card-detail').textContent = [w.slot === null ? null : `Save slot ${w.slot}`, generatorLine(w.generator, w.seed)].filter(Boolean).join(' · ');
+      $('#card-detail').textContent = [w.slot === null ? null : `Save slot ${w.slot}`, generatorLine(w.generator, w.seed, w.gamemode)].filter(Boolean).join(' · ');
       $('#card-players').textContent = playersText(w.players);
     } else {
       mapEl.textContent = 'Not available';
@@ -625,10 +586,9 @@
     const list = $('#map-list');
     list.textContent = '';
     let note;
-    if (lobbyPhase === 'connecting' || (mapsState === 'loading' && lobbyPhase !== 'failed')) note = 'Loading maps…';
+    if (lobbyPhase === 'connecting' || (mapsState === 'loading' && lobbyPhase !== 'failed')) note = 'Loading…';
     else if (mapsState === 'failed' || maps === null) note = mapsProblem || MAPS_FAILED;
-    else if (!maps.length) note = 'No maps on this server yet. Create one with “Create map…”.';
-    else note = `${maps.length} map${maps.length === 1 ? '' : 's'} on this server.`;
+    else note = maps.length ? '' : 'No maps yet.';
     $('#maps-status').textContent = note;
     if (maps && mapsState === 'ok') for (const m of maps) list.append(renderMapRow(m));
     updateWorldControls();
@@ -664,6 +624,7 @@
 
   /** The lobby could not be reached or does not speak the protocol. */
   function lobbyFailed(message = UNREACHABLE) {
+    const connecting = !!(lobby && lobby.autoJoin);
     closeLobby();
     lobbyPhase = 'failed';
     serverWorld = null;
@@ -672,6 +633,7 @@
     mapsProblem = '';
     lobbyGenerators = null;
     setWorldsStatus(message);
+    if (connecting) connectEnded(message);
     renderServerState();
     syncMapForm();
   }
@@ -682,7 +644,7 @@
     try { lobby.ws.send(JSON.stringify(message)); return true; } catch (_) { return false; }
   }
 
-  function openLobby() {
+  function openLobby({ autoJoin = false } = {}) {
     closeLobby();
     serverWorld = null;
     maps = null;
@@ -693,12 +655,12 @@
     setWorldsStatus('');
     const url = resolveServer(S.serverUrl);
     if (!url) {
-      lobbyFailed('This page was opened from a file, so there is no server to ask. Go back and enter a server address.');
+      lobbyFailed('No server address.');
       return;
     }
     let ws;
     try { ws = new WebSocket(url); } catch (_) { lobbyFailed(); return; } // e.g. ws:// from an https page
-    const mine = { ws, timers: [] };
+    const mine = { ws, timers: [], autoJoin };
     mine.timer = (ms, fn) => { mine.timers.push(setTimeout(() => { if (lobby === mine) fn(); }, ms)); };
     lobby = mine;
     lobbyPhase = 'connecting';
@@ -716,7 +678,9 @@
     const was = lobbyPhase;
     const hadPending = pending;
     if (was === 'connecting') return lobbyFailed(); // refused, or closed before the Lobby arrived
+    const connecting = !!(lobby && lobby.autoJoin);
     closeLobby();
+    if (connecting) connectEnded(LOST);
     lobbyPhase = 'closed';
     setWorldsStatus(LOST);
     if (hadPending && hadPending.type === 'LoadMap') showMapsError('The connection was lost before the server answered.');
@@ -738,6 +702,11 @@
         const first = lobbyPhase === 'connecting';
         lobbyPhase = 'ready';
         if (first && S.serverUrl !== '') rememberServer(S.serverUrl);
+        if (first && mine.autoJoin) {
+          startGame({ generator: serverWorld.generator, seed: serverWorld.seed ?? 0, create: false });
+          if (!playing) { closeLobby(); connectEnded(''); } // no name yet: stay on the menu
+          return;
+        }
         if (mapsState === 'loading') {
           mine.timer(TIMEOUTS.answer, () => {
             if (mapsState === 'loading') { mapsState = 'failed'; mapsProblem = 'The server did not send the list of maps.'; renderServerState(); }
@@ -827,7 +796,7 @@
     }
   }
 
-  /** Open the lobby for the Server world screens, unless a working one is already there. */
+  /** Open the lobby for the Host screens, unless a working one is already there. */
   function enterWorlds() {
     hideMapsError();
     if (lobby && (lobbyPhase === 'ready' || lobbyPhase === 'connecting')) renderServerState();
@@ -928,12 +897,12 @@
     }
     const name = $('#map-name').value.trim().slice(0, 60) || id;
     const description = $('#map-desc').value.trim().slice(0, 200);
-    const frame = { type: 'CreateMap', id, name, description, generator: gen.id, seed };
+    const frame = { type: 'CreateMap', id, name, description, generator: gen.id, seed, gamemode: $('#mode-select').value };
     if (new TextEncoder().encode(JSON.stringify(frame)).length > FRAME_LIMIT) return showMapError('The name and description are too long for the server. Please shorten them.');
     S.generator = gen.id;
     S.seed = seed;
     changed();
-    if (!lobbyOpen() || lobbyPhase !== 'ready') return showMapError('Not connected to the server. Go back to Server world and press Refresh.');
+    if (!lobbyOpen() || lobbyPhase !== 'ready') return showMapError('Not connected to the server. Press Refresh on the Host screen.');
 
     busy = true;
     pending = {
@@ -975,8 +944,9 @@
     capturing = null;
     renderBindings();
     syncControls();
+    renderServerPicker();
     refreshStatus();
-    // The lobby connection lives only while the Server world screens are open.
+    // The lobby connection lives only while the Host screens are open.
     if (name !== 'worlds' && name !== 'newmap') closeLobby();
     if (name !== 'worlds') highlightMap = null;
     if (name === 'worlds') enterWorlds();
@@ -1018,10 +988,11 @@
   function startGame({ generator, seed, create }) {
     const server = resolveServer(S.serverUrl);
     if (!server) { showServerError("That doesn't look like a server address."); return; }
+    connectEnded('');
     const name = cleanName(S.playerName);
     if (!name) {
       setPlayerPanelOpen(true);
-      showNameError('Enter a name (1 to 16 characters) before you join.');
+      showNameError('Enter a name (1 to 16 characters).');
       $('#player-name').focus();
       return;
     }
@@ -1168,14 +1139,13 @@
   function announce(text) { $('#menu-status').textContent = text; }
 
   // The game reports failures (could not create or join a world, connection lost): show them and go
-  // back to the worlds list so the player can pick again.
+  // back to the main menu so the player can try again.
   let menuError = '';
   window.addEventListener('wurfel:error', (e) => {
-    menuError = String((e.detail && e.detail.message) || 'Could not join the world.');
+    menuError = String((e.detail && e.detail.message) || 'Could not join.');
     playing = false;
     window.wurfelPlayRequest = null;
-    openMenu('worlds');
-    previous = ['main']; // openMenu clears the back-stack; without this Escape and Back would do nothing here
+    openMenu('main');
     blip(260);
   });
 
@@ -1188,7 +1158,7 @@
     if (playing && st) text = st.connected ? `Connected · ${st.players ?? 1} player${st.players === 1 ? '' : 's'}` : 'Connecting…';
     else if (playing) text = 'Playing';
     else if (st && st.connected) text = `Connected · ${st.players ?? 1} player${st.players === 1 ? '' : 's'}`;
-    else text = 'Offline preview. Choose Multiplayer to join a game.';
+    else text = 'Offline preview';
     $('#menu-status').textContent = text;
   }
 
@@ -1282,8 +1252,7 @@
     const action = target.dataset.action;
     switch (action) {
       case 'join-world': joinRunningWorld(); break;
-      case 'server-pick': { const entry = serverEntries()[Number(target.dataset.index)]; if (entry !== undefined) { blip(440); connectToServer(entry); } break; }
-      case 'server-forget': blip(300); forgetServer(Number(target.dataset.index)); break;
+      case 'connect': blip(440); connectToServer(); break;
       case 'swatch': selectColor(target.dataset.color); break;
       case 'map-load': loadMap(target.dataset.map, target.dataset.slot === 'new' ? 'new' : Number(target.dataset.slot)); break;
       case 'worlds-refresh': blip(440); openLobby(); break;
@@ -1330,8 +1299,9 @@
   $('#map-form').addEventListener('submit', submitMap);
   $('#gen-select').addEventListener('change', onGeneratorChange);
   $('#seed-input').addEventListener('input', onSeedInput);
-  $('#server-form').addEventListener('submit', (e) => { e.preventDefault(); connectToServer($('#server-input').value); });
+  $('#server-form').addEventListener('submit', (e) => { e.preventDefault(); connectToServer(); });
   $('#server-input').addEventListener('input', hideServerError);
+  $('#server-input').addEventListener('change', applyServerInput);
   $('#color-input').addEventListener('input', (e) => selectColor(e.target.value));
   $('#player-toggle').addEventListener('click', () => setPlayerPanelOpen(!$('#player-panel').classList.contains('open')));
   menu.addEventListener('click', onClick);

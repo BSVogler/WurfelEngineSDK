@@ -106,6 +106,11 @@ impl NetStats {
         self.incoming.record(now, bytes);
     }
 
+    /// The latest round trip in milliseconds, if a pong has arrived yet.
+    pub fn last_rtt(&self) -> Option<f64> {
+        self.rtt_last
+    }
+
     /// A pong arrived for the ping that was sent at `sent_at`.
     pub fn on_pong(&mut self, sent_at: f64, now: f64) {
         let rtt = (now - sent_at).max(0.0);
@@ -229,7 +234,12 @@ pub fn format_report(r: &NetReport, connected: bool) -> String {
         kb(r.total_in as f64),
         kb(r.total_out as f64),
     ));
-    lines.push(format!("prediction error {:.2} blocks (peak {:.2})", r.prediction_error, r.prediction_error_max));
+    lines.push(format!(
+        "prediction error {:.2} blocks (peak {:.2}), other players drawn {:.0} ms behind",
+        r.prediction_error,
+        r.prediction_error_max,
+        crate::interp::DELAY_MS
+    ));
     if let Some(s) = &r.server {
         lines.push(format!(
             "server: {} players, {} entities, {} chunks, tick {:.2} ms (worst {:.1}), up {}s",
@@ -242,6 +252,15 @@ pub fn format_report(r: &NetReport, connected: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn last_rtt_is_none_until_a_pong_and_then_the_newest_sample() {
+        let mut s = NetStats::new();
+        assert_eq!(s.last_rtt(), None);
+        s.on_pong(1000.0, 1040.0);
+        s.on_pong(2000.0, 2025.0);
+        assert_eq!(s.last_rtt(), Some(25.0));
+    }
 
     #[test]
     fn rtt_is_the_difference_between_send_and_receive() {

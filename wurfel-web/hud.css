@@ -1,0 +1,40 @@
+/* In-game HUD (hud.js). Sits above the canvas, below the menu and console. */
+.clhud { position: fixed; inset: 0; pointer-events: none; z-index: 8; font: 13px/1.3 system-ui, sans-serif; color: #f4f0e6; }
+.clhud[hidden] { display: none; }
+
+.clhud-bars { position: absolute; left: 16px; bottom: 16px; width: min(260px, 40vw); display: grid; gap: 6px; }
+.clhud-bar { position: relative; height: 16px; border-radius: 4px; background: rgba(0, 0, 0, 0.55); overflow: hidden; }
+.clhud-fill { height: 100%; width: 100%; transition: width 0.15s; }
+.clhud-health .clhud-fill { background: #d9453b; }
+.clhud-hurt .clhud-health .clhud-fill { background: #ff2a1a; animation: clhud-pulse 0.6s infinite alternate; }
+.clhud-jet { height: 8px; }
+.clhud-jet .clhud-fill { background: #4fb3ff; }
+.clhud-bar-text { position: absolute; inset: 0; text-align: center; line-height: 16px; font-size: 11px; text-shadow: 0 0 3px #000; }
+
+.clhud-pack { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 6px; }
+.clhud-slot { min-width: 84px; height: 40px; padding: 0 8px; display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; background: rgba(0, 0, 0, 0.55); border: 2px solid rgba(255, 255, 255, 0.2); }
+.clhud-slot.clhud-hand { border-color: #f2c14e; }
+.clhud-slot.clhud-empty { opacity: 0.45; }
+
+.clhud-craft { position: absolute; right: 16px; top: 16px; padding: 8px 10px; border-radius: 6px; background: rgba(0, 0, 0, 0.55); min-width: 150px; }
+.clhud-title { font-weight: 600; margin-bottom: 4px; }
+.clhud-recipes { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.clhud-recipes li { display: flex; gap: 6px; align-items: baseline; }
+.clhud-cannot { opacity: 0.4; }
+.clhud-can { color: #b9f5a8; }
+
+.clhud-hints { position: absolute; right: 16px; bottom: 16px; display: grid; gap: 1px; font-size: 11px; opacity: 0.75; text-align: right; }
+.clhud-hint { display: flex; gap: 6px; justify-content: flex-end; }
+.clhud kbd { font: inherit; font-size: 11px; padding: 0 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.18); }
+
+.clhud-toasts { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); display: grid; gap: 4px; justify-items: center; }
+.clhud-toast { padding: 4px 12px; border-radius: 14px; background: rgba(0, 0, 0, 0.65); animation: clhud-fade 2.6s forwards; }
+
+@keyframes clhud-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes clhud-pulse { from { opacity: 1; } to { opacity: 0.55; } }
+
+@media (max-width: 700px) {
+  .clhud-hints { display: none; }
+  .clhud-pack { bottom: 48px; }
+}

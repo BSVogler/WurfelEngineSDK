@@ -258,25 +258,11 @@ kbd {
 }
 
 
-/* ---- server picker */
-.server-picker { display: grid; gap: 6px; margin: 4px 0 12px; padding-bottom: 12px; border-bottom: 1px solid var(--panel-border); }
-.picker-title { margin: 0; color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; }
-.server-picker .help { margin: 0; }
-.server-state { margin: 0; min-height: 1.3em; display: flex; align-items: center; gap: 8px; font-size: 0.88rem; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { display: inline-flex; align-items: stretch; border-radius: 999px; background: var(--item); border: 1px solid var(--panel-border); }
-.chip.active { border-color: var(--accent); }
-.chip button {
-  display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 6px 12px;
-  font: 0.85rem var(--font); color: inherit; cursor: pointer; background: transparent; border: 0; border-radius: 999px;
-}
-.chip button:hover { background: var(--item-hover); }
-.chip .chip-forget { padding: 6px 11px 6px 8px; color: var(--muted); border-radius: 0 999px 999px 0; }
-.chip button:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
-.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: #8a94a6; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15) inset; }
-.dot.ok { background: #46c35a; }
-.dot.down { background: #e5554a; }
-.dot.checking { background: #e8b930; animation: pulse 900ms ease-in-out infinite; }
+/* ---- server line (main menu) */
+.server-line { display: flex; align-items: center; gap: 8px; margin: -2px 0 2px; color: var(--muted); font-size: 0.8rem; }
+.server-line input[type="text"] { flex: 1; min-width: 0; padding: 6px 8px; font-size: 0.85rem; background: transparent; }
+.server-state { margin: 0; min-height: 1.1em; font-size: 0.8rem; color: var(--muted); }
+.items > .error { font-size: 0.8rem; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ---- player panel */
@@ -316,4 +302,3 @@ kbd {
   .menu > .panel { max-height: none; }
   .menu > .panel:first-child, .menu > .player-panel { width: min(520px, 100%); }
 }
-@media (max-width: 520px) { .chips .chip { max-width: 100%; } }

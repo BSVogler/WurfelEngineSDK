@@ -69,6 +69,7 @@ pub struct MeshContext<'a> {
 }
 
 /// Colour of a block, for things that break off it.
+#[cfg(target_arch = "wasm32")]
 pub fn block_color(block: Block) -> [f32; 3] {
     base_color(block)
 }
