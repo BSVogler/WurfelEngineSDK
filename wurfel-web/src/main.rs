@@ -1,3 +1,5 @@
+mod actors;
+mod atlas;
 mod audio;
 mod bindings;
 mod caveland_client;
@@ -7,9 +9,11 @@ mod mesh;
 mod minimap;
 mod netstats;
 mod pick;
+mod sprites;
 mod particles;
 mod prediction;
 mod render_storage;
+mod texture;
 
 #[cfg(target_arch = "wasm32")]
 mod web;

@@ -1,6 +1,8 @@
 // Orthographic isometric projection done by hand so the constants match the Java engine
 // (VIEW_WIDTH 200, VIEW_DEPTH 100, VIEW_HEIGHT 122 pixels per block at zoom 1), plus the light
-// engine (see wurfel-sim/src/light.rs): every vertex is lit here, so no textures are needed.
+// engine (see wurfel-sim/src/light.rs): every vertex is lit here. The sprites of the sprite atlas
+// (a texture array, one layer per page) only multiply that light; a vertex without a sprite shows its
+// flat colour instead.
 //
 // All uniform structs use vec4 (or scalars) only. A WGSL vec3 has 16-byte alignment, which would
 // pad the structs differently from the plain f32 arrays on the Rust side (lighting.rs checks the
@@ -32,6 +34,8 @@ struct Lighting {
 
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(0) @binding(1) var<uniform> lighting: Lighting;
+@group(1) @binding(0) var atlas: texture_2d_array<f32>;
+@group(1) @binding(1) var atlas_sampler: sampler;
 
 const LUMA = vec3<f32>(0.222, 0.707, 0.071);
 // Per-side constants of the Java PointLightSource: 0.15 + k * 0.005 for k = 0.1, 0.2, 0.25.
@@ -42,20 +46,28 @@ struct VertexIn {
     @location(1) color: vec3<f32>,   // the block's flat colour
     @location(2) shade: vec2<f32>,   // x: face (0 left, 1 top, 2 right, 3 unlit), y: ambient occlusion 0..1
     @location(3) point: vec3<f32>,   // light baked from static point lights
+    @location(4) uv: vec2<f32>,      // atlas coordinates of the sprite
+    @location(5) layer: f32,         // atlas page, or -1: no sprite, show `color`
 };
 
 struct VertexOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) color: vec3<f32>,
+    @location(1) uv: vec2<f32>,
+    @location(2) @interpolate(flat) layer: f32,
 };
 
-// The left, top or right component of a vec4.
+// The left, top or right component of a vec4; face 4 (a sprite standing in the world) takes the
+// average of the three, since it has no particular orientation.
 fn pick3(v: vec4<f32>, face: i32) -> f32 {
     if (face == 0) {
         return v.x;
     }
     if (face == 1) {
         return v.y;
+    }
+    if (face == 4) {
+        return (v.x + v.y + v.z) / 3.0;
     }
     return v.z;
 }
@@ -95,7 +107,7 @@ fn dynamic_light(p: vec3<f32>, face: i32) -> vec3<f32> {
 // The final colour of a vertex. wurfel_sim::light::shade_vertex is the reference implementation.
 fn shade(v: VertexIn) -> vec3<f32> {
     let face = i32(v.shade.x + 0.5);
-    if (face >= 3) {
+    if (face == 3) {
         return v.color;  // not lit: markers
     }
     if (lighting.ambient.w < 0.5) {
@@ -147,10 +159,24 @@ fn vs_main(v: VertexIn) -> VertexOut {
         1.0,
     );
     out.color = shade(v);
+    out.uv = v.uv;
+    out.layer = v.layer;
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-    return vec4<f32>(in.color, 1.0);
+    // Sampled for every fragment (a level sample may sit in non-uniform control flow) and only used
+    // when the vertex has a sprite. The sprites are cut out: pixels that are nearly transparent are
+    // discarded, so the depth buffer still sorts everything.
+    let texel = textureSampleLevel(atlas, atlas_sampler, in.uv, i32(max(in.layer, 0.0) + 0.5), 0.0);
+    if (in.layer < -0.5) {
+        return vec4<f32>(in.color, 1.0);
+    }
+    // A low threshold keeps the anti-aliased edge pixels of the art, which closes the hairline gaps
+    // between neighbouring faces that a 0.5 cut would leave.
+    if (texel.a < 0.2) {
+        discard;
+    }
+    return vec4<f32>(texel.rgb * in.color, 1.0);
 }

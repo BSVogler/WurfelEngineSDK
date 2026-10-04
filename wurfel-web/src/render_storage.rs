@@ -16,6 +16,7 @@
 //! Java ambient occlusion pass is replaced by per-vertex occlusion computed while meshing (see `wurfel_sim::light`).
 
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use wurfel_sim::block::id;
 use wurfel_sim::grid::{chunk_of, lower_left, lower_right};
@@ -24,6 +25,7 @@ use wurfel_sim::{Block, World, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z};
 use wurfel_sim::light::PointLight;
 
 use crate::mesh::{self, MeshContext, Vertex};
+use crate::sprites::Sprites;
 
 pub const CLIP_LEFT: u8 = 1;
 pub const CLIP_TOP: u8 = 1 << 1;
@@ -150,6 +152,8 @@ pub struct RenderStorage {
     chunks: HashMap<(i32, i32), RenderChunk>,
     /// Point lights whose light is baked into the meshes (see `set_static_lights`).
     static_lights: Vec<PointLight>,
+    /// The sprite atlas the meshes are textured with, `None` for the flat colours.
+    sprites: Option<Rc<Sprites>>,
 }
 
 /// Chunks whose cells depend on the cells of chunk `(cx, cy)`: they have to be clipped and meshed
@@ -291,6 +295,16 @@ impl RenderStorage {
         }
     }
 
+    /// Texture the meshes with these sprites (or go back to flat colours with `None`). Every chunk
+    /// is meshed again.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // the browser build loads the atlas
+    pub fn set_sprites(&mut self, sprites: Option<Rc<Sprites>>) {
+        self.sprites = sprites;
+        for chunk in self.chunks.values_mut() {
+            chunk.mesh_dirty = true;
+        }
+    }
+
     /// Is the block at these block coordinates opaque? Cells outside the window count as open.
     fn is_opaque(&self, x: i32, y: i32, z: i32) -> bool {
         self.cell(x, y, z).is_some_and(|cell| cell.hides_past_block())
@@ -303,7 +317,8 @@ impl RenderStorage {
             let mesh = {
                 let this = &*self;
                 let opaque = |x: i32, y: i32, z: i32| this.is_opaque(x, y, z);
-                mesh::build_chunk(&this.chunks[&pos], &MeshContext { opaque: &opaque, lights: &this.static_lights })
+                let ctx = MeshContext { opaque: &opaque, lights: &this.static_lights, sprites: this.sprites.as_deref() };
+                mesh::build_chunk(&this.chunks[&pos], &ctx)
             };
             let chunk = self.chunks.get_mut(&pos).expect("listed above");
             chunk.mesh = mesh;

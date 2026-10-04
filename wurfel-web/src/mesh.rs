@@ -21,6 +21,7 @@ use wurfel_sim::light::{bake_point_lights_with, face_vertex_ao_with, Face, Point
 use wurfel_sim::{Block, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z};
 
 use crate::render_storage::{RenderChunk, CLIP_LEFT, CLIP_RIGHT, CLIP_TOP};
+use crate::sprites::{self, BlockLook, Sprites};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
@@ -33,7 +34,22 @@ pub struct Vertex {
     pub shade: [f32; 2],
     /// Light from static point lights, baked in while meshing, colour included.
     pub point: [f32; 3],
+    /// Texture coordinates in the sprite atlas (0..1 across a page).
+    pub uv: [f32; 2],
+    /// Atlas page (the layer of the texture array) the sprite is on, or [`NO_SPRITE`] for a
+    /// vertex that is shown in its flat `color`. With a sprite, `color` is a tint that multiplies it.
+    pub layer: f32,
 }
+
+impl Vertex {
+    /// A vertex without a sprite.
+    pub const fn flat(position: [f32; 3], color: [f32; 3], shade: [f32; 2], point: [f32; 3]) -> Self {
+        Vertex { position, color, shade, point, uv: [0.0; 2], layer: NO_SPRITE }
+    }
+}
+
+/// `Vertex::layer` of a vertex that has no sprite.
+pub const NO_SPRITE: f32 = -1.0;
 
 /// Values of `Vertex::shade[0]`, the same numbering as `wurfel_sim::light::Face::index`.
 pub const FACE_LEFT: f32 = 0.0;
@@ -41,16 +57,19 @@ pub const FACE_TOP: f32 = 1.0;
 pub const FACE_RIGHT: f32 = 2.0;
 /// Not lit by the light engine: shown in its own colour (the hover marker).
 pub const FACE_UNLIT: f32 = 3.0;
+/// A sprite standing in the world (entities, trees...): lit by the average of the three faces.
+pub const FACE_SPRITE: f32 = 4.0;
 
 /// Brightness per face of the old flat look, used when lighting is switched off (left, top, right).
 pub const FLAT_SHADES: [f32; 3] = [0.78, 1.0, 0.58];
 
 #[cfg(target_arch = "wasm32")]
 impl Vertex {
-    /// The vertex buffer layout matching `shader.wgsl` (`@location(0..=3)`).
+    /// The vertex buffer layout matching `shader.wgsl` (`@location(0..=5)`).
     pub fn layout() -> wgpu::VertexBufferLayout<'static> {
-        const ATTRIBUTES: [wgpu::VertexAttribute; 4] =
-            wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x3];
+        const ATTRIBUTES: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
+            0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x3, 4 => Float32x2, 5 => Float32
+        ];
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as u64,
             step_mode: wgpu::VertexStepMode::Vertex,
@@ -66,6 +85,9 @@ pub struct MeshContext<'a> {
     pub opaque: &'a dyn Fn(i32, i32, i32) -> bool,
     /// Lights whose contribution is baked into the vertices.
     pub lights: &'a [PointLight],
+    /// The sprite atlas, once loaded. Blocks without a sprite, and everything while this is `None`
+    /// (the flat look, `?flat=1`), show their flat colour.
+    pub sprites: Option<&'a Sprites>,
 }
 
 /// Colour of a block, for things that break off it.
@@ -142,22 +164,41 @@ pub fn build_chunk(chunk: &RenderChunk, ctx: &MeshContext) -> Vec<Vertex> {
                 if cell.block.is_air() || cell.is_fully_clipped() {
                     continue;
                 }
-                let color = base_color(cell.block);
+                let look = ctx.sprites.and_then(|s| s.block(cell.block.id(), cell.block.value()).map(|look| (s, look)));
                 let (z0, z1) = (z as f32, z as f32 + 1.0);
                 let at = (x, y, z);
+                if let Some((sprites, BlockLook::Single(index))) = look {
+                    // A single picture (a tree, a torch...) standing on the cell.
+                    let region = sprites.region(index);
+                    let anchor = Vec3::new(gx, gy, z0);
+                    sprites::billboard(&mut vertices, &sprites.atlas, region, anchor, sprites::FOOTPRINT_TIP, false, [cell.top_light; 3]);
+                    continue;
+                }
+                // With sprites the colour is a tint over the picture: white, so only the light shows.
+                let textured = matches!(look, Some((_, BlockLook::Sided { .. })));
+                let color = if textured { [1.0; 3] } else { base_color(cell.block) };
+                let sprite_of = |face: Face| -> Option<Sprite<'_>> {
+                    let (sprites, BlockLook::Sided { left, top, right }) = look? else { return None };
+                    let index = match face {
+                        Face::Left => left,
+                        Face::Top => top,
+                        Face::Right => right,
+                    };
+                    Some(Sprite { atlas: &sprites.atlas, region: sprites.region(index) })
+                };
                 if cell.clipping & CLIP_TOP == 0 {
                     // The Java cheap shadow under overhangs (`top_light`) stays part of the colour.
                     let shaded = color.map(|c| c * cell.top_light);
                     let corners = [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]];
-                    lit_quad(&mut vertices, ctx, at, Face::Top, shaded, corners);
+                    lit_quad(&mut vertices, ctx, at, Face::Top, shaded, corners, sprite_of(Face::Top));
                 }
                 if cell.clipping & CLIP_LEFT == 0 {
                     let corners = [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]];
-                    lit_quad(&mut vertices, ctx, at, Face::Left, color, corners);
+                    lit_quad(&mut vertices, ctx, at, Face::Left, color, corners, sprite_of(Face::Left));
                 }
                 if cell.clipping & CLIP_RIGHT == 0 {
                     let corners = [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]];
-                    lit_quad(&mut vertices, ctx, at, Face::Right, color, corners);
+                    lit_quad(&mut vertices, ctx, at, Face::Right, color, corners, sprite_of(Face::Right));
                 }
             }
         }
@@ -170,8 +211,23 @@ pub fn build_chunk(chunk: &RenderChunk, ctx: &MeshContext) -> Vec<Vertex> {
 /// `face_vertex_ao`.
 const CORNER_SIGNS: [(i32, i32); 4] = [(-1, -1), (1, -1), (1, 1), (-1, 1)];
 
+/// The sprite that textures a face.
+#[derive(Clone, Copy)]
+struct Sprite<'a> {
+    atlas: &'a crate::atlas::Atlas,
+    region: &'a crate::atlas::Region,
+}
+
 /// A face of the block at `cell` with ambient occlusion and baked lights per corner.
-fn lit_quad(out: &mut Vec<Vertex>, ctx: &MeshContext, cell: (i32, i32, i32), face: Face, color: [f32; 3], corners: [[f32; 3]; 4]) {
+fn lit_quad(
+    out: &mut Vec<Vertex>,
+    ctx: &MeshContext,
+    cell: (i32, i32, i32),
+    face: Face,
+    color: [f32; 3],
+    corners: [[f32; 3]; 4],
+    sprite: Option<Sprite>,
+) {
     let mut ao = [0.0f32; 4];
     let mut point = [[0.0f32; 3]; 4];
     for (i, &(du, dv)) in CORNER_SIGNS.iter().enumerate() {
@@ -180,7 +236,18 @@ fn lit_quad(out: &mut Vec<Vertex>, ctx: &MeshContext, cell: (i32, i32, i32), fac
             point[i] = bake_point_lights_with(ctx.opaque, ctx.lights, Vec3::from(corners[i]), face).to_array();
         }
     }
+    let first = out.len();
     quad(out, face_id(face), color, corners, ao, point);
+    if let Some(Sprite { atlas, region }) = sprite {
+        // `quad` chose the diagonal; its vertices are copies of the four corners, so find each
+        // one's atlas coordinates by position.
+        let uvs = sprites::face_uvs(atlas, region, corners);
+        for vertex in &mut out[first..] {
+            let corner = corners.iter().position(|c| *c == vertex.position).expect("a vertex is one of the corners");
+            vertex.uv = uvs[corner];
+            vertex.layer = region.page as f32;
+        }
+    }
 }
 
 fn face_id(face: Face) -> f32 {
@@ -221,7 +288,7 @@ pub fn cuboid(out: &mut Vec<Vertex>, color: [f32; 3], [x0, x1, y0, y1]: [f32; 4]
 /// Two triangles. The diagonal is chosen so that a single dark corner does not smear across the
 /// whole face: it goes between the corners 1 and 3 when 0 and 2 are the darker pair.
 fn quad(out: &mut Vec<Vertex>, face: f32, color: [f32; 3], corners: [[f32; 3]; 4], ao: [f32; 4], point: [[f32; 3]; 4]) {
-    let vertex = |i: usize| Vertex { position: corners[i], color, shade: [face, ao[i]], point: point[i] };
+    let vertex = |i: usize| Vertex::flat(corners[i], color, [face, ao[i]], point[i]);
     let order = if ao[0] + ao[2] > ao[1] + ao[3] { [1, 2, 3, 1, 3, 0] } else { [0, 1, 2, 0, 2, 3] };
     for i in order {
         out.push(vertex(i));
@@ -334,8 +401,10 @@ mod tests {
     }
 
     #[test]
-    fn a_vertex_is_44_bytes_with_the_fields_the_shader_reads_in_order() {
-        assert_eq!(std::mem::size_of::<Vertex>(), 44);
+    fn a_vertex_is_56_bytes_with_the_fields_the_shader_reads_in_order() {
+        assert_eq!(std::mem::size_of::<Vertex>(), 56);
+        assert_eq!(std::mem::offset_of!(Vertex, uv), 44);
+        assert_eq!(std::mem::offset_of!(Vertex, layer), 52);
         assert_eq!(std::mem::offset_of!(Vertex, position), 0);
         assert_eq!(std::mem::offset_of!(Vertex, color), 12);
         assert_eq!(std::mem::offset_of!(Vertex, shade), 24);

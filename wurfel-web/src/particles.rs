@@ -29,12 +29,12 @@ pub fn quad(p: &Particle) -> [Vertex; 6] {
     let corner = |u: f32, v: f32| {
         let (ru, rv) = (u * cos - v * sin, u * sin + v * cos);
         let k = ru * half;
-        Vertex {
-            position: [c.x + k, c.y - k, c.z + rv * half * BLOCK_WIDTH_PX / BLOCK_HEIGHT_PX],
-            color: [p.color()[0], p.color()[1], p.color()[2]],
-            shade: [FACE_UNLIT, 0.0],
-            point: [0.0; 3],
-        }
+        Vertex::flat(
+            [c.x + k, c.y - k, c.z + rv * half * BLOCK_WIDTH_PX / BLOCK_HEIGHT_PX],
+            [p.color()[0], p.color()[1], p.color()[2]],
+            [FACE_UNLIT, 0.0],
+            [0.0; 3],
+        )
     };
     let (a, b, cc, d) = (corner(-1.0, -1.0), corner(1.0, -1.0), corner(1.0, 1.0), corner(-1.0, 1.0));
     [a, b, cc, a, cc, d]

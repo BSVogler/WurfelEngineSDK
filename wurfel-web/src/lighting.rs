@@ -231,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn the_shader_binds_camera_and_lighting_in_group_zero() {
+    fn the_shader_binds_camera_and_lighting_in_group_zero_and_the_atlas_in_group_one() {
         let module = parse_shader();
         let mut bindings: Vec<(u32, u32, String)> = module
             .global_variables
@@ -242,7 +242,15 @@ mod tests {
             })
             .collect();
         bindings.sort();
-        assert_eq!(bindings, vec![(0, 0, "camera".to_string()), (0, 1, "lighting".to_string())]);
+        assert_eq!(
+            bindings,
+            vec![
+                (0, 0, "camera".to_string()),
+                (0, 1, "lighting".to_string()),
+                (1, 0, "atlas".to_string()),
+                (1, 1, "atlas_sampler".to_string()),
+            ]
+        );
     }
 
     /// The members of a struct in the shader: `(name, offset)` and its total size.
@@ -297,13 +305,14 @@ mod tests {
                 let Some(naga::Binding::Location { location, .. }) = m.binding else { panic!("member without a location") };
                 let components = match &module.types[m.ty].inner {
                     naga::TypeInner::Vector { size, .. } => *size as usize,
+                    naga::TypeInner::Scalar(_) => 1,
                     other => panic!("unexpected input type {other:?}"),
                 };
                 (location, components)
             })
             .collect();
-        // position (3 floats), colour (3), shade (2), baked point light (3)
-        assert_eq!(formats, vec![(0, 3), (1, 3), (2, 2), (3, 3)]);
+        // position (3 floats), colour (3), shade (2), baked point light (3), atlas uv (2), page (1)
+        assert_eq!(formats, vec![(0, 3), (1, 3), (2, 2), (3, 3), (4, 2), (5, 1)]);
         let floats: usize = formats.iter().map(|f| f.1).sum();
         assert_eq!(floats * 4, size_of::<Vertex>());
         assert_eq!(entry.function.arguments.len(), 1);

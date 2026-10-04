@@ -15,6 +15,7 @@ use wurfel_sim::player::{apply_input, new_player, PlayerInput, PLAYER_HEIGHT, TI
 use wurfel_sim::protocol::{decode_chunk, ClientMsg, PlayerInfo, PlayerState, ServerMsg, ThingState};
 use wurfel_sim::{Block, IslandGenerator, World};
 
+use crate::actors::Actors;
 use crate::audio::{Audio, EntityInfo};
 use crate::bindings::{parse_hex_color, Bindings};
 use crate::caveland_client::{self, Happening};
@@ -25,6 +26,7 @@ use crate::minimap::{CameraView, ChunkInfo, ChunkState, EntityDot, Minimap, Mini
 use crate::netstats::{format_report, NetStats};
 use crate::pick::{pick, Pick};
 use crate::render_storage::RenderStorage;
+use crate::texture;
 
 /// Seed of the island shown behind the menu, before a world has been joined.
 const DEFAULT_SEED: u64 = 1;
@@ -110,7 +112,13 @@ struct State {
     caveland: Option<caveland_sim::Caveland>,
     /// Items, robots... of the game mode, as the server last said.
     things: Vec<ThingState>,
+    /// Sprites for the players and the things, once the atlas has loaded (`?flat=1` never loads it).
+    actors: Actors,
+    /// The names above the other players' heads.
+    name_tags: NameTags,
     bind_group: wgpu::BindGroup,
+    /// The sprite atlas texture array (a 1 pixel placeholder until it has loaded).
+    atlas_bind_group: wgpu::BindGroup,
     world_buffer: wgpu::Buffer,
     world_vertices: u32,
     dynamic_buffer: wgpu::Buffer,
@@ -268,9 +276,11 @@ async fn run() -> Result<(), String> {
         label: Some("blocks"),
         source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
     });
+    let atlas_layout = texture::bind_group_layout(&device);
+    let atlas_bind_group = texture::placeholder(&device, &queue, &atlas_layout);
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("blocks"),
-        bind_group_layouts: &[Some(&bind_group_layout)],
+        bind_group_layouts: &[Some(&bind_group_layout), Some(&atlas_layout)],
         immediate_size: 0,
     });
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -324,7 +334,10 @@ async fn run() -> Result<(), String> {
         emitters: Vec::new(),
         caveland: None,
         things: Vec::new(),
+        actors: Actors::default(),
+        name_tags: NameTags::new(&document),
         bind_group,
+        atlas_bind_group,
         world_buffer,
         world_vertices: world_vertices.len() as u32,
         dynamic_buffer,
@@ -367,8 +380,41 @@ async fn run() -> Result<(), String> {
 
     install_input(&window, &state);
     install_menu_events(&window, &state);
+    if flat_look() {
+        web_sys::console::log_1(&"sprites: ?flat=1, drawing flat colours".into());
+    } else {
+        let (device, queue) = {
+            let s = state.borrow();
+            (s.device.clone(), s.queue.clone())
+        };
+        wasm_bindgen_futures::spawn_local(load_sprites(state.clone(), device, queue, atlas_layout));
+    }
     start_frame_loop(state);
     Ok(())
+}
+
+/// `?flat=1` in the page address keeps the old look: solid coloured blocks, no sprites.
+fn flat_look() -> bool {
+    let search = web_sys::window().and_then(|w| w.location().search().ok()).unwrap_or_default();
+    search.trim_start_matches('?').split('&').any(|part| part == "flat=1" || part == "flat")
+}
+
+/// Fetch the sprite atlas in the background; the world is meshed again with sprites when it is
+/// there, and the flat colours stay if it cannot be loaded.
+async fn load_sprites(state: Rc<RefCell<State>>, device: wgpu::Device, queue: wgpu::Queue, layout: wgpu::BindGroupLayout) {
+    let started = now_ms();
+    match texture::load(&device, &queue, &layout).await {
+        Ok((sprites, group)) => {
+            let sprites = Rc::new(sprites);
+            web_sys::console::log_1(&format!("sprites: {} sprites loaded in {:.0} ms", sprites.atlas.len(), now_ms() - started).into());
+            let mut s = state.borrow_mut();
+            s.atlas_bind_group = group;
+            s.actors.set_sprites(Some(sprites.clone()));
+            s.render.set_sprites(Some(sprites));
+            s.remesh = true;
+        }
+        Err(message) => web_sys::console::warn_1(&format!("sprites: {message}; keeping the flat colours").into()),
+    }
 }
 
 fn vertex_buffer_with(device: &wgpu::Device, vertices: &[Vertex]) -> wgpu::Buffer {
@@ -1239,6 +1285,13 @@ fn frame(s: &mut State, now_ms: f64) {
             remote.pos = pos;
         }
     }
+    let drawn: Vec<(u32, Vec3)> = s
+        .my_id
+        .zip(local_position(s))
+        .into_iter()
+        .chain(s.remotes.iter().map(|(&id, remote)| (id, remote.pos)))
+        .collect();
+    s.actors.update(dt, drawn, &s.things);
 
     // The camera follows us (or stays on the island while offline).
     if let Some(p) = local_position(s) {
@@ -1294,6 +1347,7 @@ fn frame(s: &mut State, now_ms: f64) {
     upload_dynamic_mesh(s, target);
     update_overlays(s, now_ms);
     update_info(s);
+    update_name_tags(s);
     render(s);
 }
 
@@ -1318,6 +1372,71 @@ fn loaded_area(world: &World) -> ((i32, i32), (i32, i32)) {
     area.unwrap_or(((0, 0), (0, 0)))
 }
 
+/// The names above the heads of the other players: small DOM labels that follow the players.
+struct NameTags {
+    layer: Option<web_sys::HtmlElement>,
+    tags: HashMap<u32, web_sys::HtmlElement>,
+}
+
+impl NameTags {
+    fn new(document: &web_sys::Document) -> Self {
+        let layer = document.create_element("div").ok().and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok());
+        if let Some(layer) = &layer {
+            layer.set_id("nametags");
+            let _ = layer.set_attribute("aria-hidden", "true");
+            // Under the HUD (8), the console and the menu, over the canvas.
+            let _ = layer.set_attribute("style", "position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:4");
+            if let Some(body) = document.body() {
+                let _ = body.append_child(layer);
+            }
+        }
+        NameTags { layer, tags: HashMap::new() }
+    }
+}
+
+/// Place one label per other player at the top of their head, and drop the labels of those gone.
+fn update_name_tags(s: &mut State) {
+    let Some(layer) = s.name_tags.layer.clone() else { return };
+    let Some(document) = layer.owner_document() else { return };
+    let (width, height) = (s.config.width as f32, s.config.height as f32);
+    let mut wanted: Vec<(u32, String, f32, f32)> = Vec::new();
+    for (&id, remote) in &s.remotes {
+        let Some(info) = s.roster.get(&id) else { continue };
+        let head = (remote.pos.x, remote.pos.y, remote.pos.z + PLAYER_HEIGHT + 0.1);
+        let screen = screen_position((head.0, head.1), head.2);
+        let x = ((screen[0] - s.camera.center[0]) * s.camera.zoom + width / 2.0) / s.dpr;
+        let y = ((screen[1] - s.camera.center[1]) * s.camera.zoom + height / 2.0) / s.dpr;
+        if x > -100.0 && y > -50.0 && x < width / s.dpr + 100.0 && y < height / s.dpr + 50.0 {
+            wanted.push((id, info.name.clone(), x, y));
+        }
+    }
+    s.name_tags.tags.retain(|id, element| {
+        let keep = wanted.iter().any(|(wanted_id, ..)| wanted_id == id);
+        if !keep {
+            element.remove();
+        }
+        keep
+    });
+    for (id, name, x, y) in wanted {
+        let element = s.name_tags.tags.entry(id).or_insert_with(|| {
+            let element: web_sys::HtmlElement = document.create_element("div").unwrap().unchecked_into();
+            let _ = element.set_attribute(
+                "style",
+                "position:absolute;left:0;top:0;padding:1px 6px;border-radius:4px;white-space:nowrap;\
+                 font:600 12px/1.3 system-ui,sans-serif;color:#fff;background:rgba(10,12,18,0.55);\
+                 text-shadow:0 1px 2px #000;will-change:transform",
+            );
+            element.set_text_content(Some(&name));
+            let _ = layer.append_child(&element);
+            element
+        });
+        if element.text_content().as_deref() != Some(name.as_str()) {
+            element.set_text_content(Some(&name));
+        }
+        let _ = element.style().set_property("transform", &format!("translate({x:.1}px, {y:.1}px) translate(-50%, -100%)"));
+    }
+}
+
 fn push_player(vertices: &mut Vec<Vertex>, color: [f32; 3], pos: Vec3) {
     mesh::cuboid(vertices, color, [pos.x - 0.22, pos.x + 0.22, pos.y - 0.22, pos.y + 0.22], [pos.z, pos.z + PLAYER_HEIGHT]);
 }
@@ -1326,13 +1445,21 @@ fn push_player(vertices: &mut Vec<Vertex>, color: [f32; 3], pos: Vec3) {
 fn upload_dynamic_mesh(s: &mut State, target: Option<Pick>) {
     let mut vertices: Vec<Vertex> = Vec::new();
     if let (Some(id), Some(pos)) = (s.my_id, local_position(s)) {
-        push_player(&mut vertices, player_color(&s.roster, id), pos);
+        let color = player_color(&s.roster, id);
+        if !s.actors.push_player(&mut vertices, id, pos, color) {
+            push_player(&mut vertices, color, pos);
+        }
     }
     for (&id, remote) in &s.remotes {
-        push_player(&mut vertices, player_color(&s.roster, id), remote.pos);
+        let color = player_color(&s.roster, id);
+        if !s.actors.push_player(&mut vertices, id, remote.pos, color) {
+            push_player(&mut vertices, color, remote.pos);
+        }
     }
     for thing in &s.things {
-        caveland_client::push_thing(&mut vertices, thing);
+        if !s.actors.push_thing(&mut vertices, thing) {
+            caveland_client::push_thing(&mut vertices, thing);
+        }
     }
     if let Some(Pick { hit: (x, y, z), .. }) = target {
         let (gx, gy) = to_iso(x, y);
@@ -1457,6 +1584,7 @@ fn render(s: &mut State) {
         });
         pass.set_pipeline(&s.pipeline);
         pass.set_bind_group(0, &s.bind_group, &[]);
+        pass.set_bind_group(1, &s.atlas_bind_group, &[]);
         if s.world_vertices > 0 {
             pass.set_vertex_buffer(0, s.world_buffer.slice(..));
             pass.draw(0..s.world_vertices, 0..1);

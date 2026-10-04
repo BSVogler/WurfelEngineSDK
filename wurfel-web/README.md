@@ -57,3 +57,13 @@ The contract with the game side (the full version is the comment at the top of `
 - `window.wurfelPlayRequest` is the detail of the last `wurfel:play` (null after leaving), for a game that was not listening yet.
 - `window.wurfelMenuOpen` is true while a menu is open; the game must ignore gameplay input then. The menu also swallows keyboard, mouse and wheel events in the capture phase and dispatches `blur` when it opens so held keys are released.
 - Optional, set by the game: `window.wurfelStatus = { connected, players, fps, backend }` (shown in the menu and HUD) and `window.wurfelGenerators = [{ id, name, description, uses_seed }]` (fallback when the lobby sends none or cannot be reached; otherwise a built-in list: island, air, blocktest, fullmap, arena, caveland).
+
+## Sprites
+
+The client draws the Java game's art: block faces, entities and the player come from a sprite atlas in
+`assets/sprites/` (see `assets/README.md`, which also records that the art licence is not cleared).
+`src/atlas.rs` reads the libGDX atlas format, `src/sprites.rs` decides which sprite shows what and builds
+the geometry, `src/actors.rs` animates players and things, `src/texture.rs` decodes and uploads the pages
+(a texture array, bind group 1 of `shader.wgsl`). While the atlas loads, or if it cannot be loaded, and
+for blocks without art, the old flat colours are shown; `?flat=1` in the address forces them. To rebuild
+the atlas from the Java sheets run `python3 tools/build_atlas.py`.
