@@ -14,9 +14,11 @@
 //! `--lag-ms` delays everything the server sends by that many milliseconds, to test how the client
 //! copes with a slow connection.
 
+mod caveland_mode;
 mod game;
 mod interest;
 mod maps;
+mod pings;
 
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -73,6 +75,8 @@ struct Shared {
     /// Messages for connections that are still in the lobby.
     lobby_tx: broadcast::Sender<Arc<str>>,
     net: Arc<NetCounters>,
+    /// Each player's own measurement of their round trip, for the Tab player list.
+    pings: Arc<Mutex<pings::Pings>>,
     lag: Duration,
     started: Instant,
 }
@@ -125,6 +129,7 @@ async fn main() {
         tx,
         lobby_tx,
         net: Arc::default(),
+        pings: Arc::default(),
         lag,
         started: Instant::now(),
     };
@@ -208,6 +213,7 @@ fn map_summary(map: &MapInfo) -> MapSummary {
         description: map.description.clone(),
         generator: map.generator.clone(),
         seed: map.seed,
+        gamemode: map.gamemode.clone(),
         saves: map.saves.iter().map(|s| SaveSummary { slot: s.slot, modified: s.modified.clone() }).collect(),
     }
 }
@@ -238,8 +244,8 @@ fn lobby_request(shared: &Shared, msg: ClientMsg) -> Option<Arc<str>> {
             Ok(maps) => encode(&ServerMsg::Maps { maps: maps.iter().map(map_summary).collect() }),
             Err(e) => failed("ListMaps", format!("cannot read the maps: {e}")),
         }),
-        ClientMsg::CreateMap { id, name, description, generator, seed } => {
-            Some(match shared.maps.create_map(&MapCreate { id, name, description, generator, seed }) {
+        ClientMsg::CreateMap { id, name, description, generator, seed, gamemode } => {
+            Some(match shared.maps.create_map(&MapCreate { id, name, description, generator, seed, gamemode }) {
                 Ok(map) => encode(&ServerMsg::MapCreated { map: map_summary(&map) }),
                 Err(e) => failed("CreateMap", e.to_string()),
             })
@@ -301,7 +307,7 @@ async fn tick_loop(shared: Shared) {
             save_world(&shared);
         }
         let started = Instant::now();
-        let (snapshot, tick, counts) = {
+        let (snapshot, outbox, tick, counts) = {
             let mut game = shared.game.lock().unwrap();
             if game.player_count() == 0 {
                 continue; // nobody is watching: do not simulate
@@ -309,8 +315,12 @@ async fn tick_loop(shared: Shared) {
             game.tick();
             let tick = game.tick_count();
             let snapshot = (tick % SNAPSHOT_EVERY == 0).then(|| game.snapshot());
-            (snapshot, tick, (game.player_count(), game.entity_count(), game.loaded_chunks()))
+            (snapshot, game.drain_outbox(), tick, (game.player_count(), game.entity_count(), game.loaded_chunks()))
         };
+        // What a game mode has to say (block changes, things, rule news) goes before the snapshot.
+        for msg in outbox {
+            let _ = shared.tx.send(encode(&msg));
+        }
         if let Some(snapshot) = snapshot {
             let _ = shared.tx.send(encode(&snapshot)); // no receivers is fine
         }
@@ -333,6 +343,10 @@ async fn tick_loop(shared: Shared) {
             };
             window = TickWindow::default();
             let _ = shared.tx.send(encode(&ServerMsg::Stats(stats)));
+            let list = shared.pings.lock().unwrap().list();
+            if !list.is_empty() {
+                let _ = shared.tx.send(encode(&ServerMsg::Pings { list }));
+            }
         }
     }
 }
@@ -393,7 +407,10 @@ async fn client(socket: WebSocket, shared: Shared) {
                     // Malformed messages are dropped, never fatal.
                     let Ok(msg) = serde_json::from_str::<ClientMsg>(&text) else { continue };
                     match msg {
-                        ClientMsg::Ping { client_time } => {
+                        ClientMsg::Ping { client_time, rtt_ms } => {
+                            if let (Some((id, _)), Some(rtt)) = (&player, rtt_ms) {
+                                shared.pings.lock().unwrap().set(*id, rtt);
+                            }
                             let tick = shared.game.lock().unwrap().tick_count();
                             alive = send(Payload::Text(encode(&ServerMsg::Pong { client_time, tick })));
                         }
@@ -415,7 +432,7 @@ async fn client(socket: WebSocket, shared: Shared) {
                             alive = send(Payload::Text(welcome));
                         }
                         ClientMsg::Join { .. } => {}
-                        ClientMsg::Input(_) | ClientMsg::SetBlock { .. } => {
+                        ClientMsg::Input { .. } | ClientMsg::SetBlock { .. } | ClientMsg::Action { .. } => {
                             if let Some((id, _)) = &player {
                                 let broadcast = shared.game.lock().unwrap().handle(*id, msg);
                                 if let Some(msg) = broadcast {
@@ -471,6 +488,7 @@ async fn client(socket: WebSocket, shared: Shared) {
     writer_task.abort();
     if let Some((id, _)) = player {
         shared.game.lock().unwrap().remove_player(id);
+        shared.pings.lock().unwrap().remove(id);
         let _ = shared.tx.send(encode(&ServerMsg::PlayerLeft { id }));
         eprintln!("player {id} left");
     }

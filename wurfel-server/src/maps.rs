@@ -84,7 +84,18 @@ pub struct MapInfo {
     pub description: String,
     pub generator: String,
     pub seed: u64,
+    /// The rules the map is played by, one of [`GAME_MODES`].
+    pub gamemode: String,
     pub saves: Vec<SaveInfo>,
+}
+
+/// The rules a map can be played by. `engine` is the plain engine; `caveland` adds the Caveland
+/// game on top of it (see the `caveland-sim` crate).
+pub const GAME_MODES: [&str; 2] = ["engine", "caveland"];
+
+/// The mode a map gets when it does not name one: the Caveland generator makes Caveland maps.
+pub fn default_game_mode(generator: &str) -> &'static str {
+    if generator == "caveland" { "caveland" } else { "engine" }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -96,6 +107,9 @@ pub struct MapCreate {
     pub generator: String,
     #[serde(default = "default_seed")]
     pub seed: u64,
+    /// One of [`GAME_MODES`]; empty takes the generator's usual one.
+    #[serde(default)]
+    pub gamemode: String,
 }
 
 fn default_seed() -> u64 {
@@ -243,6 +257,10 @@ impl MapStore {
         if !generators().iter().any(|g| g.id == request.generator) {
             return Err(MapError::UnknownGenerator(request.generator.clone()));
         }
+        let gamemode = if request.gamemode.is_empty() { default_game_mode(&request.generator) } else { request.gamemode.as_str() };
+        if !GAME_MODES.contains(&gamemode) {
+            return Err(MapError::Invalid(format!("unknown game mode '{}' (available: {})", request.gamemode, GAME_MODES.join(", "))));
+        }
         // The seed is stored in a signed 32 bit cvar (see `generator_from_cvars`).
         let seed = u32::try_from(request.seed)
             .map_err(|_| MapError::Invalid(format!("the seed must be a whole number from 0 to {}", u32::MAX)))?;
@@ -271,7 +289,7 @@ impl MapStore {
                     text.push('\n');
                 }
             }
-            text.push_str(&format!("generator {}\ngeneratorSeed {}\n", request.generator, seed as i32));
+            text.push_str(&format!("generator {}\ngeneratorSeed {}\ngamemode {gamemode}\n", request.generator, seed as i32));
             fs::write(dir.join(META_FILE), text)?;
             Ok(())
         })();
@@ -335,6 +353,7 @@ impl MapStore {
             description: "One mountain rising from a shallow sea.".into(),
             generator: "island".into(),
             seed: 1,
+            gamemode: String::new(),
         };
         match self.create_map(&request) {
             Ok(map) => Ok(Some(map)),
@@ -357,6 +376,15 @@ fn declares(meta: &str, name: &str) -> bool {
     })
 }
 
+/// The value the meta file gives `name`, if any (the cvar system does not know the game mode).
+fn declared_value(meta: &str, name: &str) -> Option<String> {
+    meta.lines().find_map(|line| {
+        let mut words = line.split_whitespace();
+        let first = words.next()?;
+        if first.eq_ignore_ascii_case(name) { words.next().map(str::to_string) } else { None }
+    })
+}
+
 fn describe(id: &str, dir: &Path) -> MapInfo {
     let meta = read_capped(&dir.join(META_FILE));
     let mut cvars = CVarSystem::map();
@@ -370,12 +398,18 @@ fn describe(id: &str, dir: &Path) -> MapInfo {
     // Java maps do not name a generator; Java then generates chunks without a file with its default
     // generator, which makes air.
     let generator = if meta.as_deref().is_some_and(|m| declares(m, "generator")) { text("generator", MAX_ID_LEN) } else { "air".to_string() };
+    let gamemode = meta
+        .as_deref()
+        .and_then(|m| declared_value(m, "gamemode"))
+        .filter(|mode| GAME_MODES.contains(&mode.as_str()))
+        .unwrap_or_else(|| default_game_mode(&generator).to_string());
     MapInfo {
         id: id.to_string(),
         name: if name.trim().is_empty() { NO_NAME.to_string() } else { name },
         description: text("description", MAX_DESCRIPTION_CHARS),
         generator,
         seed: cvars.get_i32("generatorSeed").unwrap_or(1) as u32 as u64,
+        gamemode,
         saves: scan_saves(dir),
     }
 }
@@ -505,7 +539,7 @@ mod tests {
     }
 
     fn request(id: &str) -> MapCreate {
-        MapCreate { id: id.into(), name: "My island".into(), description: "A test map".into(), generator: "island".into(), seed: 7 }
+        MapCreate { id: id.into(), name: "My island".into(), description: "A test map".into(), generator: "island".into(), seed: 7, gamemode: String::new() }
     }
 
     fn at(seconds: u64) -> SystemTime {
@@ -1031,5 +1065,38 @@ mod tests {
         world.load_chunk(0, 0);
         assert_eq!(world.take_warnings().len(), 1, "the world keeps going on generated terrain and reports the broken file");
         assert!(world.get(1, 1, 1).is_air());
+    }
+    #[test]
+    fn a_map_remembers_its_game_mode() {
+        let sandbox = Sandbox::new();
+        let store = sandbox.store();
+        let plain = store.create_map(&request("plain")).unwrap();
+        assert_eq!(plain.gamemode, "engine", "an island is played with the plain engine");
+        let cave = store.create_map(&MapCreate { generator: "caveland".into(), ..request("cave") }).unwrap();
+        assert_eq!(cave.gamemode, "caveland", "the Caveland generator makes a Caveland map");
+        let chosen = store.create_map(&MapCreate { gamemode: "caveland".into(), ..request("chosen") }).unwrap();
+        assert_eq!(chosen.gamemode, "caveland", "any generator can be played with Caveland rules");
+
+        let reread: Vec<(String, String)> = store.list().unwrap().into_iter().map(|m| (m.id, m.gamemode)).collect();
+        assert!(reread.contains(&("chosen".to_string(), "caveland".to_string())), "{reread:?}");
+        assert!(reread.contains(&("plain".to_string(), "engine".to_string())), "{reread:?}");
+        assert_eq!(store.open_world("chosen", store.new_save_slot("chosen").unwrap()).unwrap().map.gamemode, "caveland");
+    }
+
+    #[test]
+    fn an_unknown_game_mode_is_refused_and_a_java_map_is_plain_engine() {
+        let sandbox = Sandbox::new();
+        let store = sandbox.store();
+        match store.create_map(&MapCreate { gamemode: "chess".into(), ..request("x") }) {
+            Err(MapError::Invalid(message)) => assert!(message.contains("chess") && message.contains("caveland"), "{message}"),
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+        assert!(store.list().unwrap().is_empty(), "nothing is left behind");
+        // A hand-written meta file with a bad mode falls back instead of breaking the listing.
+        fs::create_dir_all(sandbox.root().join("odd")).unwrap();
+        fs::write(sandbox.root().join("odd").join(META_FILE), "generator island\ngamemode chess\n").unwrap();
+        assert_eq!(store.list().unwrap()[0].gamemode, "engine");
+        fs::write(sandbox.root().join("odd").join(META_FILE), "gamemode caveland\n").unwrap();
+        assert_eq!(store.list().unwrap()[0].gamemode, "caveland", "a Java map can be turned into a Caveland map by hand");
     }
 }

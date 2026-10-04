@@ -26,7 +26,8 @@ function client() {
   c.wait = async (type, ms = 1500) => { for (let t = 0; t < ms; t += 50) { const m = c.log.find(x => x.type === type); if (m) return m; await sleep(50); } };
   return c;
 }
-const keys = (o = {}) => ({ type: 'Input', up: false, down: false, left: false, right: false, jump: false, ...o });
+let inputSeq = 0;
+const keys = (o = {}) => ({ type: 'Input', seq: ++inputSeq, input: { up: false, down: false, left: false, right: false, jump: false, ...o } });
 
 // ---- lobby
 const lobby = client(); await lobby.ready;
@@ -35,13 +36,17 @@ check(hello && hello.world.players === 0 && hello.generators.some(g => g.id === 
 lobby.send({ type: 'ListMaps' });
 const maps = await lobby.wait('Maps');
 check(maps && maps.maps.length >= 1 && maps.maps.every(m => m.id && Array.isArray(m.saves)), 'ListMaps lists the maps with their saves');
-lobby.send({ type: 'CreateMap', id: 'smoke-map', name: 'Smoke map', description: 'test', generator: 'caveland', seed: 3 });
-check((await lobby.wait('MapCreated'))?.map.id === 'smoke-map', 'CreateMap makes a map');
+lobby.send({ type: 'CreateMap', id: 'smoke-map', name: 'Smoke map', description: 'test', generator: 'caveland', seed: 3, gamemode: 'engine' });
+const made = await lobby.wait('MapCreated');
+check(made?.map.id === 'smoke-map' && made.map.gamemode === 'engine', 'CreateMap makes a map and remembers the game mode');
 lobby.send({ type: 'CreateMap', id: '../evil', name: 'x', description: '', generator: 'island', seed: 1 });
 check((await lobby.wait('Failed'))?.request === 'CreateMap', 'a hostile map id is refused');
 lobby.send({ type: 'CreateMap', id: 'bad-gen', name: 'x', description: '', generator: 'nope', seed: 1 });
 await sleep(300);
 check(lobby.log.filter(m => m.type === 'Failed').length === 2, 'an unknown generator is refused');
+lobby.send({ type: 'CreateMap', id: 'bad-mode', name: 'x', description: '', generator: 'island', seed: 1, gamemode: 'chess' });
+await sleep(300);
+check(lobby.log.filter(m => m.type === 'Failed').length === 3 && lobby.last('Failed').message.includes('chess'), 'an unknown game mode is refused');
 
 // ---- load a map while the server is empty
 lobby.send({ type: 'LoadMap', map: 'smoke-map', slot: 'new' });
@@ -70,17 +75,20 @@ check((await b.wait('Failed'))?.message.includes('playing'), 'loading another sa
 check(!b.log.some(m => m.type === 'Snapshot'), 'a lobby connection does not receive world traffic');
 
 // ---- network debug messages
-a.send({ type: 'Ping', client_time: 4242.5 });
+a.send({ type: 'Ping', client_time: 4242.5, rtt_ms: 37.4 });
 const pong = await a.wait('Pong', 1000 + lag);
 check(pong && pong.client_time === 4242.5, 'Ping is answered with a Pong carrying the same client_time');
 await sleep(1200 + lag);
 const stats = a.find('Stats');
 check(stats && stats.players === 1 && stats.loaded_chunks >= 9, 'Stats arrive about once a second');
+const pings = a.find('Pings');
+check(pings && pings.list.some(([id, ms]) => id === a.find('Welcome').your_id && ms === 37), 'the ping a client reports is shared with everybody in a Pings list');
 
 // ---- movement, jumping, blocks
 const start = [...a.me().pos];
 a.send(keys({ right: true })); await sleep(700 + lag); a.send(keys()); await sleep(400 + lag);
 check(Math.hypot(...a.me().pos.map((v, i) => v - start[i])) > 1, 'the player walks on the generated terrain');
+check(a.me().input_seq >= 2 && typeof a.me().input_ticks === 'number', 'snapshots acknowledge the input sequence');
 a.send(keys({ jump: true })); await sleep(150 + lag); a.send(keys());
 check(a.me().pos[2] > start[2] + 0.1 || a.me().vel[2] > 0, 'jumping lifts the player');
 await sleep(1500 + lag);
@@ -93,7 +101,7 @@ a.send({ type: 'SetBlock', x, y, z: 9, block: 3 });
 check((await a.wait('BlockSet', 1000 + lag))?.x === x, 'a block placement is broadcast');
 
 // ---- robustness
-a.ws.send('not json'); a.ws.send('{"type":"Nonsense"}'); a.ws.send('{"type":"Input","upp":true}');
+a.ws.send('not json'); a.ws.send('{"type":"Nonsense"}'); a.ws.send('{"type":"Input","seq":99,"input":{"upp":true}}');
 await sleep(300);
 const d = client(); await d.ready;
 check(!!(await d.wait('Lobby')), 'the server still accepts connections after garbage input');
@@ -110,6 +118,36 @@ const cxy = [Math.floor(x / 10), Math.floor(y / 40)];
 const chunk = e.chunks.find(c => c.cx === cxy[0] && c.cy === cxy[1]);
 check(chunk && chunk.at(((x % 10) + 10) % 10, ((y % 40) + 40) % 40, 9)[0] === 3, 'a block placed earlier is still there after the save was reloaded');
 e.ws.close();
+
+// ---- the Caveland game mode
+await sleep(500 + lag);
+lobby.send({ type: 'CreateMap', id: 'smoke-cave', name: 'Smoke cave', description: '', generator: 'island', seed: 1, gamemode: 'caveland' });
+await sleep(400);
+const cave = lobby.last('MapCreated');
+check(cave?.map.id === 'smoke-cave' && cave.map.gamemode === 'caveland', 'a map can be created with Caveland rules');
+lobby.send({ type: 'LoadMap', map: 'smoke-cave', slot: 'new' });
+await sleep(600);
+check(lobby.last('WorldChanged')?.world.gamemode === 'caveland', 'loading it reports the game mode');
+const f = client(); await f.ready; await f.wait('Lobby'); f.send({ type: 'Join', name: 'Cave', color: [5, 6, 7] });
+const cw = await f.wait('Welcome');
+check(cw?.gamemode === 'caveland', 'Welcome tells the client the game mode');
+await sleep(1500);
+const things = f.last('Things');
+check(things && things.things.some(t => t.kind === 'Torch') && things.things.some(t => t.kind === 'robot'), 'the mode sends its things (items, an enemy)');
+const state = f.log.filter(m => m.type === 'Rules' && m.kind === 'state').pop();
+check(state && state.data[cw.your_id]?.health === 100 && Array.isArray(state.data[cw.your_id].items), 'Rules state carries our health and pack');
+check(f.last('Snapshot').players.length === 1, 'items and robots are not players in the snapshot');
+const me2 = f.me();
+const cgx = Math.round(me2.pos[0]) + 1, cgy = Math.round(me2.pos[1]), cy = cgx + cgy;
+f.send({ type: 'SetBlock', x: (cgx - cgy - ((cy % 2) + 2) % 2) / 2, y: cy, z: 9, block: 3 });
+await sleep(400 + lag);
+check(!f.log.some(m => m.type === 'BlockSet'), 'clients cannot place blocks directly in Caveland');
+const before = f.log.length;
+f.send({ type: 'Action', name: 'attack' }); await sleep(100); f.send({ type: 'Action', name: 'release_attack' });
+f.send({ type: 'Action', name: 'nonsense', arg: -3 });
+await sleep(800 + lag);
+check(f.ws.readyState === 1 && f.log.slice(before).some(m => m.type === 'Snapshot'), 'actions are accepted and the world keeps running');
+f.ws.close();
 
 for (const c of [lobby, d]) c.ws.close();
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');

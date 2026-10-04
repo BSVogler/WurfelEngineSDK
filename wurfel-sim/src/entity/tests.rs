@@ -453,3 +453,20 @@ fn occupied_cells_cover_the_whole_body() {
     let columns: std::collections::HashSet<_> = physics::occupied_cells(straddling, 1.0).into_iter().map(|c| (c.0, c.1)).collect();
     assert!(columns.len() >= 2, "{columns:?}");
 }
+
+#[test]
+fn an_entity_can_come_back_under_its_old_id() {
+    let mut entities = Entities::new();
+    let a = entities.spawn(Entity::new("a", 1));
+    let b = entities.spawn(Entity::new("b", 1));
+    let c = entities.spawn(Entity::new("c", 1));
+    entities.remove(b);
+    assert!(entities.spawn_as(b, Entity::new("b again", 1)));
+    assert_eq!(entities.get(b).map(|e| e.name.as_str()), Some("b again"));
+    assert_eq!(entities.iter().map(|e| e.id()).collect::<Vec<_>>(), vec![a, b, c], "the order by id is kept");
+    assert!(!entities.spawn_as(b, Entity::new("twice", 1)), "an id in use is refused");
+    assert!(!entities.spawn_as(0, Entity::new("zero", 1)));
+    assert_eq!(entities.len(), 3);
+    let fresh = entities.spawn(Entity::new("new", 1));
+    assert!(fresh > c, "new ids still grow");
+}

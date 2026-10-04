@@ -38,6 +38,13 @@ pub struct PlayerState {
     pub id: u32,
     pub pos: [f32; 3],
     pub vel: [f32; 3],
+    /// Sequence number of the last [`ClientMsg::Input`] the server applied for this player.
+    #[serde(default)]
+    pub input_seq: u32,
+    /// How many physics ticks the server has simulated under that input; `pos` and `vel` are the
+    /// state after exactly these ticks. The owner replays the rest of its own steps from there.
+    #[serde(default)]
+    pub input_ticks: u32,
 }
 
 /// Server health, sent about once a second.
@@ -89,6 +96,14 @@ pub struct WorldInfo {
     pub seed: u64,
     /// Players that have joined (connections that are only looking at the lobby do not count).
     pub players: u32,
+    /// The rules the world is played by, e.g. `engine` or `caveland`.
+    #[serde(default = "default_game_mode")]
+    pub gamemode: String,
+}
+
+/// The mode of a map that does not name one.
+pub fn default_game_mode() -> String {
+    "engine".to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -105,7 +120,18 @@ pub struct MapSummary {
     pub description: String,
     pub generator: String,
     pub seed: u64,
+    #[serde(default = "default_game_mode")]
+    pub gamemode: String,
     pub saves: Vec<SaveSummary>,
+}
+
+/// A non-player entity of a game mode (an item, a robot...), as the client draws it. The engine does
+/// not know what `kind` means: it is the mode's own name for it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ThingState {
+    pub id: u32,
+    pub kind: String,
+    pub pos: [f32; 3],
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -160,7 +186,16 @@ pub enum ClientMsg {
     GetWorld,
     /// Load a save of a map into the server. Refused while players are in the world.
     LoadMap { map: String, slot: SlotChoice },
-    CreateMap { id: String, name: String, description: String, generator: String, seed: u64 },
+    CreateMap {
+        id: String,
+        name: String,
+        description: String,
+        generator: String,
+        seed: u64,
+        /// Rules of the new map; empty picks the generator's usual one.
+        #[serde(default)]
+        gamemode: String,
+    },
     /// Enter the loaded world as a player: answered with `Welcome`, then chunks start to flow.
     Join {
         #[serde(default)]
@@ -170,18 +205,36 @@ pub enum ClientMsg {
     },
     // ----- in the world
     /// What the player is pressing. Sent whenever it changes; the server keeps applying it.
-    Input(PlayerInput),
+    /// `seq` counts the changes (the first one is 1); the server ignores a `seq` that is not newer
+    /// than the last one it applied, and echoes it in [`PlayerState::input_seq`]. A pressed jump is
+    /// never lost, even if the next change arrives before the next tick.
+    Input { seq: u32, input: PlayerInput },
     /// Place a block, or remove it with `block == 0`.
     SetBlock { x: i32, y: i32, z: i32, block: u16 },
+    /// A one-off action of the game mode (for Caveland: `attack`, `throw`, `craft`...). The engine
+    /// does not interpret it; unknown actions are ignored.
+    Action {
+        name: String,
+        #[serde(default)]
+        arg: i32,
+    },
     /// Latency probe: the server answers with [`ServerMsg::Pong`] carrying the same `client_time`.
-    Ping { client_time: f64 },
+    ///
+    /// `rtt_ms` is the latest round trip this client measured; the server shares it with everybody
+    /// for the player list ([`ServerMsg::Pings`]). Absent in older clients.
+    Ping {
+        client_time: f64,
+        #[serde(default)]
+        rtt_ms: Option<f32>,
+    },
 }
 
 impl ClientMsg {
     pub fn channel(&self) -> Channel {
         match self {
-            ClientMsg::Input(_) | ClientMsg::Ping { .. } => Channel::Unreliable,
+            ClientMsg::Input { .. } | ClientMsg::Ping { .. } => Channel::Unreliable,
             ClientMsg::SetBlock { .. }
+            | ClientMsg::Action { .. }
             | ClientMsg::ListMaps
             | ClientMsg::GetWorld
             | ClientMsg::LoadMap { .. }
@@ -218,6 +271,9 @@ pub enum ServerMsg {
         players: Vec<PlayerState>,
         /// Name and colour of everybody in the world, you included.
         roster: Vec<PlayerInfo>,
+        /// The rules this world is played by (`engine`, `caveland`).
+        #[serde(default = "default_game_mode")]
+        gamemode: String,
     },
     /// Somebody joined (also sent for yourself, right after the welcome).
     PlayerJoined { player: PlayerInfo },
@@ -230,12 +286,25 @@ pub enum ServerMsg {
     /// Reply to [`ClientMsg::Ping`], to the sender only.
     Pong { client_time: f64, tick: u64 },
     Stats(ServerStats),
+    /// Everybody's latest ping in milliseconds as `(player id, ms)`, about once a second. Players
+    /// who have not reported one yet are left out.
+    Pings { list: Vec<(u32, u32)> },
+    /// The non-player entities of a game mode, sent with the snapshots.
+    Things { tick: u64, things: Vec<ThingState> },
+    /// Rules-specific news of a game mode: `kind` says what `data` is (Caveland: `state` with
+    /// everybody's health and inventory, `events` with sounds and happenings). The engine only
+    /// carries it.
+    Rules { kind: String, data: serde_json::Value },
 }
 
 impl ServerMsg {
     pub fn channel(&self) -> Channel {
         match self {
-            ServerMsg::Snapshot { .. } | ServerMsg::Pong { .. } | ServerMsg::Stats(_) => Channel::Unreliable,
+            ServerMsg::Snapshot { .. }
+            | ServerMsg::Pong { .. }
+            | ServerMsg::Stats(_)
+            | ServerMsg::Pings { .. }
+            | ServerMsg::Things { .. } => Channel::Unreliable,
             ServerMsg::Welcome { .. }
             | ServerMsg::BlockSet(_)
             | ServerMsg::PlayerLeft { .. }
@@ -245,6 +314,7 @@ impl ServerMsg {
             | ServerMsg::Maps { .. }
             | ServerMsg::WorldChanged { .. }
             | ServerMsg::MapCreated { .. }
+            | ServerMsg::Rules { .. }
             | ServerMsg::Failed { .. } => Channel::Reliable,
         }
     }
@@ -343,10 +413,10 @@ mod tests {
 
     #[test]
     fn lobby_messages_round_trip_and_slots_accept_a_number_or_new() {
-        let world = WorldInfo { map: "Island".into(), map_id: "island".into(), slot: 1, generator: "island".into(), seed: 4, players: 0 };
+        let world = WorldInfo { map: "Island".into(), map_id: "island".into(), slot: 1, generator: "island".into(), seed: 4, players: 0, gamemode: "caveland".into() };
         let messages = [
             ServerMsg::Lobby { world: world.clone(), generators: vec![GeneratorSummary { id: "island".into(), name: "Island".into(), description: "d".into(), uses_seed: true }] },
-            ServerMsg::Maps { maps: vec![MapSummary { id: "a".into(), name: "A".into(), description: "".into(), generator: "air".into(), seed: 1, saves: vec![SaveSummary { slot: 0, modified: None }] }] },
+            ServerMsg::Maps { maps: vec![MapSummary { id: "a".into(), name: "A".into(), description: "".into(), generator: "air".into(), seed: 1, gamemode: "engine".into(), saves: vec![SaveSummary { slot: 0, modified: None }] }] },
             ServerMsg::WorldChanged { world },
             ServerMsg::Failed { request: "LoadMap".into(), message: "nope".into() },
         ];
@@ -360,7 +430,7 @@ mod tests {
         assert_eq!(load(r#"{"type":"Join"}"#), ClientMsg::Join { name: String::new(), color: [230, 190, 50] }, "name and colour are optional");
         assert_eq!(load(r#"{"type":"Join","name":"Ann","color":[1,2,3]}"#), ClientMsg::Join { name: "Ann".into(), color: [1, 2, 3] });
         assert_eq!(load(r#"{"type":"ListMaps"}"#), ClientMsg::ListMaps);
-        let create = ClientMsg::CreateMap { id: "x".into(), name: "X".into(), description: "".into(), generator: "island".into(), seed: 2 };
+        let create = ClientMsg::CreateMap { id: "x".into(), name: "X".into(), description: "".into(), generator: "island".into(), seed: 2, gamemode: "caveland".into() };
         assert_eq!(load(&serde_json::to_string(&create).unwrap()), create);
         assert!(serde_json::from_str::<ClientMsg>(r#"{"type":"LoadMap","map":"a","slot":-1}"#).is_err(), "a negative slot is rejected, not guessed");
         assert!(serde_json::from_str::<ClientMsg>(r#"{"type":"LoadMap","map":"a","slot":null}"#).is_err());
@@ -376,12 +446,21 @@ mod tests {
     }
 
     #[test]
+    fn a_ping_without_rtt_from_an_older_client_still_parses() {
+        let old: ClientMsg = serde_json::from_str(r#"{"type":"Ping","client_time":5.5}"#).unwrap();
+        assert_eq!(old, ClientMsg::Ping { client_time: 5.5, rtt_ms: None });
+        let new: ClientMsg = serde_json::from_str(r#"{"type":"Ping","client_time":5.5,"rtt_ms":12.5}"#).unwrap();
+        assert_eq!(new, ClientMsg::Ping { client_time: 5.5, rtt_ms: Some(12.5) });
+    }
+
+    #[test]
     fn messages_say_which_channel_they_belong_on() {
-        assert_eq!(ClientMsg::Input(PlayerInput::default()).channel(), Channel::Unreliable);
-        assert_eq!(ClientMsg::Ping { client_time: 0.0 }.channel(), Channel::Unreliable);
+        assert_eq!(ClientMsg::Input { seq: 1, input: PlayerInput::default() }.channel(), Channel::Unreliable);
+        assert_eq!(ClientMsg::Ping { client_time: 0.0, rtt_ms: None }.channel(), Channel::Unreliable);
         assert_eq!(ClientMsg::SetBlock { x: 0, y: 0, z: 0, block: 0 }.channel(), Channel::Reliable);
         assert_eq!(ServerMsg::Snapshot { tick: 0, players: vec![] }.channel(), Channel::Unreliable);
         assert_eq!(ServerMsg::PlayerLeft { id: 1 }.channel(), Channel::Reliable);
+        assert_eq!(ServerMsg::Pings { list: vec![] }.channel(), Channel::Unreliable);
         assert_eq!(ServerMsg::BlockSet(Edit { x: 0, y: 0, z: 0, block: 0 }).channel(), Channel::Reliable);
     }
 
@@ -389,15 +468,16 @@ mod tests {
     fn messages_round_trip_through_json() {
         let messages = [
             ClientMsg::SetBlock { x: -3, y: 7, z: 2, block: 3 },
-            ClientMsg::Input(PlayerInput { up: true, jump: true, ..Default::default() }),
-            ClientMsg::Ping { client_time: 1234.5 },
+            ClientMsg::Input { seq: 7, input: PlayerInput { up: true, jump: true, ..Default::default() } },
+            ClientMsg::Ping { client_time: 1234.5, rtt_ms: Some(31.5) },
+            ClientMsg::Ping { client_time: 1.0, rtt_ms: None },
         ];
         for msg in messages {
             let json = serde_json::to_string(&msg).unwrap();
             assert_eq!(serde_json::from_str::<ClientMsg>(&json).unwrap(), msg, "{json}");
         }
 
-        let player = PlayerState { id: 4, pos: [1.5, -2.0, 3.0], vel: [0.0, 1.0, -9.8] };
+        let player = PlayerState { id: 4, pos: [1.5, -2.0, 3.0], vel: [0.0, 1.0, -9.8], input_seq: 12, input_ticks: 3 };
         let messages = [
             ServerMsg::Welcome {
                 your_id: 4,
@@ -408,6 +488,7 @@ mod tests {
                 tick_rate: 60,
                 players: vec![player],
                 roster: vec![PlayerInfo { id: 4, name: "Ann".into(), color: [1, 2, 3] }],
+                gamemode: "caveland".to_string(),
             },
             ServerMsg::PlayerJoined { player: PlayerInfo { id: 5, name: "Bo".into(), color: [9, 9, 9] } },
             ServerMsg::ChunkUnload { cx: -3, cy: 7 },
@@ -415,6 +496,7 @@ mod tests {
             ServerMsg::BlockSet(Edit { x: 0, y: 0, z: 1, block: 3 }),
             ServerMsg::PlayerLeft { id: 2 },
             ServerMsg::Pong { client_time: 1234.5, tick: 7 },
+            ServerMsg::Pings { list: vec![(1, 20), (4, 135)] },
             ServerMsg::Stats(ServerStats {
                 players: 2,
                 entities: 2,
@@ -435,8 +517,19 @@ mod tests {
     #[test]
     fn input_missing_fields_are_rejected_not_defaulted_silently() {
         // A typo'd key name must not turn into "no keys pressed" by accident.
-        let parsed = serde_json::from_str::<ClientMsg>(r#"{"type":"Input","upp":true}"#);
+        let parsed = serde_json::from_str::<ClientMsg>(r#"{"type":"Input","seq":1,"input":{"upp":true}}"#);
         assert!(parsed.is_err());
+        // The sequence number is required too: without it the server could not order inputs.
+        let parsed = serde_json::from_str::<ClientMsg>(
+            r#"{"type":"Input","input":{"up":true,"down":false,"left":false,"right":false,"jump":false}}"#,
+        );
+        assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn player_state_without_input_ack_defaults_to_zero() {
+        let state: PlayerState = serde_json::from_str(r#"{"id":1,"pos":[0,0,0],"vel":[0,0,0]}"#).unwrap();
+        assert_eq!((state.input_seq, state.input_ticks), (0, 0));
     }
 
     // ----- chunk stream
@@ -513,5 +606,40 @@ mod tests {
         let mut huge = good[..HEADER].to_vec();
         huge.extend_from_slice(&[0xFF, 0xFF, 1, 0, 0]);
         assert!(decode_chunk(&huge).is_err(), "a run longer than the chunk");
+    }
+}
+
+#[cfg(test)]
+mod game_mode_tests {
+    use super::*;
+
+    #[test]
+    fn game_mode_messages_round_trip() {
+        let things = ServerMsg::Things { tick: 8, things: vec![ThingState { id: 3, kind: "torch".into(), pos: [1.0, 2.0, 3.0] }] };
+        let rules = ServerMsg::Rules { kind: "state".into(), data: serde_json::json!({ "4": { "health": 80.0, "items": ["torch"] } }) };
+        let action = ClientMsg::Action { name: "craft".into(), arg: 2 };
+        for msg in [things, rules] {
+            let json = serde_json::to_string(&msg).unwrap();
+            assert_eq!(serde_json::from_str::<ServerMsg>(&json).unwrap(), msg, "{json}");
+        }
+        let json = serde_json::to_string(&action).unwrap();
+        assert_eq!(serde_json::from_str::<ClientMsg>(&json).unwrap(), action, "{json}");
+    }
+
+    #[test]
+    fn the_game_mode_is_optional_and_defaults_to_the_engine() {
+        let create: ClientMsg = serde_json::from_str(r#"{"type":"CreateMap","id":"a","name":"A","description":"","generator":"air","seed":1}"#).unwrap();
+        assert!(matches!(create, ClientMsg::CreateMap { gamemode, .. } if gamemode.is_empty()), "empty: the server picks");
+        let action: ClientMsg = serde_json::from_str(r#"{"type":"Action","name":"attack"}"#).unwrap();
+        assert_eq!(action, ClientMsg::Action { name: "attack".into(), arg: 0 });
+        let world: WorldInfo = serde_json::from_str(r#"{"map":"m","map_id":"m","slot":0,"generator":"air","seed":1,"players":0}"#).unwrap();
+        assert_eq!(world.gamemode, "engine");
+    }
+
+    #[test]
+    fn game_mode_traffic_uses_the_right_channels() {
+        assert_eq!(ClientMsg::Action { name: "x".into(), arg: 0 }.channel(), Channel::Reliable);
+        assert_eq!(ServerMsg::Things { tick: 0, things: vec![] }.channel(), Channel::Unreliable);
+        assert_eq!(ServerMsg::Rules { kind: "events".into(), data: serde_json::Value::Null }.channel(), Channel::Reliable);
     }
 }

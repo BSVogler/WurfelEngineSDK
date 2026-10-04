@@ -13,7 +13,8 @@ use wurfel_sim::generator::{create_generator, generators, Generator};
 use wurfel_sim::grid::{chunk_of, from_iso};
 use wurfel_sim::protocol::{clean_name, encode_chunk, PlayerInfo, WorldInfo};
 
-use crate::maps::OpenedWorld;
+use crate::caveland_mode::CavelandMode;
+use crate::maps::{default_game_mode, OpenedWorld};
 
 /// Placeholder while a disk-backed world replaces the generator-only one in `from_opened`.
 struct NoGenerator;
@@ -44,16 +45,33 @@ pub struct WorldSpec {
     pub seed: u64,
 }
 
+/// What a player is pressing, and how far the server has got with the client's input stream.
+#[derive(Default)]
+struct InputSlot {
+    input: PlayerInput,
+    /// Sequence number of `input` (0 before the first message).
+    seq: u32,
+    /// Ticks simulated since `input` arrived.
+    ticks: u32,
+    /// A jump was pressed and no tick has seen it yet: the next tick jumps even if the key was
+    /// already released again, so a quick tap is never lost.
+    jump_pending: bool,
+}
+
 pub struct Game {
     spec: WorldSpec,
     peak: (i32, i32),
     world: World,
     /// Every player is an entity; the player id is the entity id.
     entities: Entities,
-    inputs: HashMap<EntityId, PlayerInput>,
+    inputs: HashMap<EntityId, InputSlot>,
     roster: HashMap<EntityId, PlayerInfo>,
     spawned: usize,
     tick: u64,
+    /// The rules the world is played by (`engine` or `caveland`).
+    gamemode: String,
+    /// Present in the Caveland game mode.
+    mode: Option<CavelandMode>,
 }
 
 impl Game {
@@ -64,7 +82,10 @@ impl Game {
             format!("unknown generator '{}' (available: {})", spec.generator, known.join(", "))
         })?;
         let spawn = generator.spawn_point();
-        Ok(Self::with_generator(spec, generator, spawn))
+        let mode = default_game_mode(&spec.generator);
+        let mut game = Self::with_generator(spec, generator, spawn);
+        game.set_game_mode(mode);
+        Ok(game)
     }
 
     /// Shorthand for tests.
@@ -87,7 +108,32 @@ impl Game {
             roster: HashMap::new(),
             spawned: 0,
             tick: 0,
+            gamemode: "engine".to_string(),
+            mode: None,
         }
+    }
+
+    /// Play by the rules of a game mode. Call before the first player joins; unknown names mean the
+    /// plain engine.
+    pub fn set_game_mode(&mut self, gamemode: &str) {
+        if gamemode == "caveland" {
+            self.mode = Some(CavelandMode::new(&mut self.world, self.spec.seed));
+            self.gamemode = "caveland".to_string();
+        } else {
+            self.mode = None;
+            self.gamemode = "engine".to_string();
+        }
+    }
+
+    #[cfg(test)]
+    pub fn game_mode(&self) -> &str {
+        &self.gamemode
+    }
+
+    /// Messages the game mode wants everybody to get (block changes, things, rule news). Empty in
+    /// the plain engine.
+    pub fn drain_outbox(&mut self) -> Vec<ServerMsg> {
+        self.mode.as_mut().map(CavelandMode::drain_outbox).unwrap_or_default()
     }
 
     /// The chunk the player stands in, if the player exists.
@@ -117,6 +163,7 @@ impl Game {
         let mut game = Self::with_generator(spec, Box::new(NoGenerator), spawn);
         game.world = World::with_store(opened.generator, opened.store);
         game.world.load_area(chunk_of(spawn.0, spawn.1), 1);
+        game.set_game_mode(&opened.map.gamemode);
         game
     }
 
@@ -133,6 +180,7 @@ impl Game {
             generator: self.spec.generator.clone(),
             seed: self.spec.seed,
             players: self.inputs.len() as u32,
+            gamemode: self.gamemode.clone(),
         }
     }
 
@@ -151,8 +199,11 @@ impl Game {
         let points = spawn_points(&self.world, self.peak);
         let spot = points[self.spawned % points.len()];
         self.spawned += 1;
-        let id = self.entities.spawn(new_player(spot));
-        self.inputs.insert(id, PlayerInput::default());
+        let id = match self.mode.as_mut() {
+            Some(mode) => mode.spawn_player(&mut self.entities, &self.world, spot),
+            None => self.entities.spawn(new_player(spot)),
+        };
+        self.inputs.insert(id, InputSlot::default());
         let name = clean_name(name);
         let name = if name.is_empty() { format!("Player {id}") } else { name };
         self.roster.insert(id, PlayerInfo { id, name, color });
@@ -167,6 +218,9 @@ impl Game {
         self.entities.remove(id);
         self.inputs.remove(&id);
         self.roster.remove(&id);
+        if let Some(mode) = self.mode.as_mut() {
+            mode.remove_player(id);
+        }
     }
 
     pub fn player_count(&self) -> usize {
@@ -196,6 +250,7 @@ impl Game {
             tick_rate: TICK_RATE,
             players: self.states(),
             roster: self.roster_list(),
+            gamemode: self.gamemode.clone(),
         }
     }
 
@@ -214,7 +269,15 @@ impl Game {
             .iter()
             .filter_map(|e| {
                 let body = e.body.as_ref()?;
-                Some(PlayerState { id: e.id(), pos: e.position.to_array(), vel: body.movement.to_array() })
+                // Items and robots of a game mode are not players: they come as `Things`.
+                let slot = Some(self.inputs.get(&e.id())?);
+                Some(PlayerState {
+                    id: e.id(),
+                    pos: e.position.to_array(),
+                    vel: body.movement.to_array(),
+                    input_seq: slot.map_or(0, |s| s.seq),
+                    input_ticks: slot.map_or(0, |s| s.ticks),
+                })
             })
             .collect()
     }
@@ -226,26 +289,52 @@ impl Game {
         for (x, y) in centres {
             self.world.load_area(chunk_of(x, y), 1);
         }
-        for (&id, &input) in &self.inputs {
-            if let Some(entity) = self.entities.get_mut(id) {
-                apply_input(entity, input, &self.world);
+        for (&id, slot) in &mut self.inputs {
+            if self.entities.get(id).is_some() {
+                let input = PlayerInput { jump: slot.input.jump || slot.jump_pending, ..slot.input };
+                match self.mode.as_mut() {
+                    Some(mode) => mode.controls(&mut self.entities, &self.world, id, input),
+                    None => apply_input(self.entities.get_mut(id).expect("checked above"), input, &self.world),
+                }
+                slot.jump_pending = false;
+                slot.ticks = slot.ticks.saturating_add(1);
             }
         }
         self.tick += 1;
-        self.entities.update(&self.world, TICK_DT)
+        match self.mode.as_mut() {
+            Some(mode) => {
+                mode.tick(&mut self.entities, &mut self.world, self.tick, TICK_DT);
+                Vec::new()
+            }
+            None => self.entities.update(&self.world, TICK_DT),
+        }
     }
 
     /// Apply a message from a client. Returns a message to broadcast to everyone, if any.
     /// Anything invalid is ignored: the client is not trusted.
     pub fn handle(&mut self, player: u32, msg: ClientMsg) -> Option<ServerMsg> {
         match msg {
-            ClientMsg::Input(input) => {
+            ClientMsg::Input { seq, input } => {
                 if let Some(slot) = self.inputs.get_mut(&player) {
-                    *slot = input;
+                    // Older or repeated messages (reordering, resends) change nothing.
+                    if seq > slot.seq {
+                        slot.jump_pending |= input.jump;
+                        slot.input = input;
+                        slot.seq = seq;
+                        slot.ticks = 0;
+                    }
                 }
                 None
             }
-            ClientMsg::SetBlock { x, y, z, block } => self.set_block(player, Edit { x, y, z, block }),
+            // A game mode has its own rules for changing blocks (digging), so clients cannot edit.
+            ClientMsg::SetBlock { x, y, z, block } if self.mode.is_none() => self.set_block(player, Edit { x, y, z, block }),
+            ClientMsg::SetBlock { .. } => None,
+            ClientMsg::Action { name, arg } => {
+                if let Some(mode) = self.mode.as_mut() {
+                    mode.act(&mut self.entities, &mut self.world, player, &name, arg);
+                }
+                None
+            }
             // Answered by the connection itself (pings, lobby requests, joining): no game state needed.
             ClientMsg::Ping { .. }
             | ClientMsg::ListMaps
@@ -326,29 +415,75 @@ mod tests {
         let id = game.add_player();
         let before = state(&game, id);
 
-        game.handle(id, ClientMsg::Input(PlayerInput { right: true, ..Default::default() }));
+        game.handle(id, ClientMsg::Input { seq: 1, input: PlayerInput { right: true, ..Default::default() } });
         run(&mut game, 20);
         let moved = state(&game, id);
         assert_ne!(moved.pos, before.pos);
 
-        game.handle(id, ClientMsg::Input(PlayerInput { jump: true, ..Default::default() }));
+        game.handle(id, ClientMsg::Input { seq: 2, input: PlayerInput { jump: true, ..Default::default() } });
         let mut peak = f32::MIN;
         let mut landed = false;
         for _ in 0..90 {
             let events = game.tick();
             landed |= events.contains(&Event::Landed(id));
             peak = peak.max(state(&game, id).pos[2]);
-            game.handle(id, ClientMsg::Input(PlayerInput::default()));
+            game.handle(id, ClientMsg::Input { seq: 3, input: PlayerInput::default() });
         }
         assert!(peak > moved.pos[2] + 0.5, "jumped: peak {peak}, was at {}", moved.pos[2]);
         assert!(landed, "and came back down");
+    }
+
+    fn press(game: &mut Game, id: u32, seq: u32, input: PlayerInput) {
+        game.handle(id, ClientMsg::Input { seq, input });
+    }
+
+    #[test]
+    fn snapshots_carry_the_input_ack_and_count_ticks_since_it() {
+        let mut game = Game::island(1);
+        let id = game.add_player();
+        assert_eq!((state(&game, id).input_seq, state(&game, id).input_ticks), (0, 0));
+        run(&mut game, 5);
+        assert_eq!((state(&game, id).input_seq, state(&game, id).input_ticks), (0, 5));
+
+        press(&mut game, id, 1, PlayerInput { right: true, ..Default::default() });
+        assert_eq!((state(&game, id).input_seq, state(&game, id).input_ticks), (1, 0), "a new input restarts the count");
+        run(&mut game, 7);
+        assert_eq!((state(&game, id).input_seq, state(&game, id).input_ticks), (1, 7));
+    }
+
+    #[test]
+    fn stale_and_repeated_inputs_are_ignored() {
+        let mut game = Game::island(1);
+        let id = game.add_player();
+        press(&mut game, id, 5, PlayerInput { right: true, ..Default::default() });
+        run(&mut game, 3);
+        let walking_at = state(&game, id).pos;
+        // An older message arriving late, and a resend of the current one.
+        press(&mut game, id, 4, PlayerInput::default());
+        press(&mut game, id, 5, PlayerInput::default());
+        run(&mut game, 3);
+        let s = state(&game, id);
+        assert_eq!((s.input_seq, s.input_ticks), (5, 6), "the count was not reset");
+        assert_ne!(s.pos, walking_at, "still walking");
+    }
+
+    #[test]
+    fn a_jump_tap_shorter_than_a_tick_still_jumps() {
+        let mut game = Game::island(1);
+        let id = game.add_player();
+        run(&mut game, 60); // settle on the ground
+        // Pressed and released again before the server ticks: the second message arrives first.
+        press(&mut game, id, 1, PlayerInput { jump: true, ..Default::default() });
+        press(&mut game, id, 2, PlayerInput::default());
+        game.tick();
+        assert!(state(&game, id).vel[2] > 0.0, "left the ground: vel {:?}", state(&game, id).vel);
     }
 
     #[test]
     fn hostile_input_is_harmless() {
         let mut game = Game::island(1);
         let id = game.add_player();
-        assert!(game.handle(99, ClientMsg::Input(PlayerInput { up: true, ..Default::default() })).is_none());
+        assert!(game.handle(99, ClientMsg::Input { seq: 1, input: PlayerInput { up: true, ..Default::default() } }).is_none());
         run(&mut game, 5);
         assert!(state(&game, id).pos.iter().all(|v| v.is_finite()));
     }
@@ -511,5 +646,81 @@ mod tests {
         }
         assert_eq!(game.tick_count(), 7);
         assert!(game.loaded_chunks() >= 9, "3 x 3 chunks around the spawn");
+    }
+}
+
+#[cfg(test)]
+mod game_mode_tests {
+    use super::*;
+    use wurfel_sim::protocol::ThingState;
+
+    fn caveland_game() -> Game {
+        Game::new(WorldSpec { map: "c".into(), map_id: "c".into(), slot: 0, generator: "caveland".into(), seed: 1 }).unwrap()
+    }
+
+    fn run(game: &mut Game, ticks: u32) -> Vec<ServerMsg> {
+        let mut out = Vec::new();
+        for _ in 0..ticks {
+            game.tick();
+            out.extend(game.drain_outbox());
+        }
+        out
+    }
+
+    #[test]
+    fn the_caveland_generator_is_played_with_caveland_rules_and_the_island_with_the_engine() {
+        let game = caveland_game();
+        assert_eq!(game.game_mode(), "caveland");
+        assert_eq!(game.info().gamemode, "caveland");
+        let id = game.player_info(0).map(|p| p.id).unwrap_or(0);
+        assert!(matches!(game.welcome(id), ServerMsg::Welcome { gamemode, .. } if gamemode == "caveland"));
+        let mut island = Game::island(1);
+        assert_eq!(island.game_mode(), "engine");
+        island.add_player();
+        assert!(run(&mut island, 10).is_empty(), "the plain engine has nothing extra to say");
+        let mut forced = Game::island(1);
+        forced.set_game_mode("caveland");
+        assert_eq!(forced.game_mode(), "caveland", "any map can be played with Caveland rules");
+        forced.set_game_mode("whatever");
+        assert_eq!(forced.game_mode(), "engine", "unknown modes are the engine");
+    }
+
+    #[test]
+    fn caveland_things_are_not_players_and_arrive_as_things() {
+        let mut game = caveland_game();
+        let me = game.add_player();
+        let msgs = run(&mut game, 4);
+        let ServerMsg::Snapshot { players, .. } = game.snapshot() else { unreachable!() };
+        assert_eq!(players.iter().map(|p| p.id).collect::<Vec<_>>(), vec![me], "items and the robot are not in the player list");
+        let things: Vec<ThingState> = msgs
+            .iter()
+            .filter_map(|m| if let ServerMsg::Things { things, .. } = m { Some(things.clone()) } else { None })
+            .next_back()
+            .expect("things were sent");
+        let kinds: Vec<&str> = things.iter().map(|t| t.kind.as_str()).collect();
+        assert!(kinds.contains(&"Torch") && kinds.contains(&"robot"), "{kinds:?}");
+    }
+
+    #[test]
+    fn caveland_clients_cannot_edit_blocks_directly_but_can_act() {
+        let mut game = caveland_game();
+        let me = game.add_player();
+        run(&mut game, 4);
+        let p = game.entities.get(me).unwrap().position;
+        let (x, y) = from_iso(p.x, p.y);
+        let edit = ClientMsg::SetBlock { x: x + 1, y, z: p.z as i32 + 1, block: Block::new(id::STONE, 0).raw() };
+        assert_eq!(game.handle(me, edit), None, "digging and building go through the rules");
+        // Actions are accepted and answered later by the tick; nonsense is ignored.
+        assert_eq!(game.handle(me, ClientMsg::Action { name: "attack".into(), arg: 0 }), None);
+        assert_eq!(game.handle(me, ClientMsg::Action { name: "nonsense".into(), arg: -5 }), None);
+        run(&mut game, 30);
+    }
+
+    #[test]
+    fn engine_games_ignore_actions() {
+        let mut game = Game::island(1);
+        let me = game.add_player();
+        assert_eq!(game.handle(me, ClientMsg::Action { name: "attack".into(), arg: 0 }), None);
+        assert!(game.drain_outbox().is_empty());
     }
 }

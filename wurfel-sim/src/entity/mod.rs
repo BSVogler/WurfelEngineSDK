@@ -323,6 +323,23 @@ impl Entities {
         id
     }
 
+    /// Add an entity under a chosen id, so something that was removed (a player who died) can come
+    /// back as the same one. Returns `false`, and adds nothing, if the id is in use or is 0.
+    pub fn spawn_as(&mut self, id: EntityId, mut entity: Entity) -> bool {
+        if id == 0 {
+            return false;
+        }
+        match self.entities.binary_search_by_key(&id, |e| e.id) {
+            Ok(_) => false,
+            Err(at) => {
+                entity.id = id;
+                self.entities.insert(at, entity);
+                self.next_id = self.next_id.max(id + 1);
+                true
+            }
+        }
+    }
+
     fn index_of(&self, id: EntityId) -> Option<usize> {
         // Ids only grow and removal keeps order, so the vector stays sorted by id.
         self.entities.binary_search_by_key(&id, |e| e.id).ok()

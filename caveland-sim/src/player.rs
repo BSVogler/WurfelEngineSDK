@@ -18,7 +18,7 @@ pub const REGEN_DELAY: f32 = 4.0;
 /// milliseconds, which is a few hundred points per second, i.e. an instant full heal; this is a
 /// deliberate, calmer value.
 pub const REGEN_PER_SECOND: f32 = 30.0;
-/// Height of the dash a normal attack gives on the ground, blocks per second.
+/// Speed of the dash a normal attack gives on the ground, blocks per second.
 pub const ATTACK_LUNGE: f32 = 13.0;
 /// The dash of a released power attack on the ground.
 pub const POWER_LUNGE: f32 = 40.0;

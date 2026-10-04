@@ -75,6 +75,49 @@ impl Block {
 mod tests {
     use super::*;
 
+    struct Soft;
+    impl BlockConfig for Soft {
+        fn is_obstacle(&self, block: Block) -> bool {
+            block.id() == 20 // only this; stone is walk-through here
+        }
+    }
+
+    #[test]
+    fn a_games_block_config_changes_what_physics_stands_on() {
+        use crate::entity::physics::{ground_height, is_on_ground};
+        use crate::{AirGenerator, World};
+        use glam::Vec3;
+
+        let mut world = World::new(AirGenerator);
+        world.set(0, 0, 0, Block::new(id::STONE, 0));
+        world.set(0, 0, 1, Block::new(20, 0));
+        let (gx, gy) = crate::grid::to_iso(0, 0);
+        let above_stone = Vec3::new(gx, gy, 1.0);
+        let above_custom = Vec3::new(gx, gy, 2.0);
+
+        // The engine's defaults: stone is solid, block 20 is solid too (everything but air and water).
+        assert!(is_on_ground(&world, above_stone, 1.0));
+        assert_eq!(ground_height(&world, 0, 0), 2.0);
+
+        world.set_block_config(std::sync::Arc::new(Soft));
+        assert!(!world.blocks().is_obstacle(Block::new(id::STONE, 0)));
+        assert!(!is_on_ground(&world, above_stone, 1.0), "stone no longer holds");
+        assert!(is_on_ground(&world, above_custom, 1.0), "block 20 does");
+        assert_eq!(ground_height(&world, 0, 0), 2.0);
+    }
+
+    #[test]
+    fn block_health_is_stored_per_block_in_loaded_chunks() {
+        use crate::{AirGenerator, World};
+        let mut world = World::new(AirGenerator);
+        assert_eq!(world.block_health(3, 4, 5), 0, "not loaded");
+        assert!(!world.set_block_health(3, 4, 5, 70));
+        world.set(3, 4, 5, Block::new(id::STONE, 0));
+        assert!(world.set_block_health(3, 4, 5, 70));
+        assert_eq!(world.block_health(3, 4, 5), 70);
+        assert_eq!(world.block_health(3, 4, 6), 0);
+    }
+
     #[test]
     fn packs_id_and_value() {
         let b = Block::new(9, 3);
