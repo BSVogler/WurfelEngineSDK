@@ -26,7 +26,7 @@ pub enum OvenEvent {
 }
 
 /// `OvenLogic`: feed it coal or wood to burn and iron ore to smelt.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OvenLogic {
     container: CollectibleContainer,
     burn_time: f32,

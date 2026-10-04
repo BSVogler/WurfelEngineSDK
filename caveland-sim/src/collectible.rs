@@ -108,11 +108,21 @@ pub struct Item {
     pub kind: CollectibleType,
     /// Seconds until the explosive goes off; `None` while unlit.
     pub fuse: Option<f32>,
+    /// Uses left of a rails or cable kit (`InstantConstructionKit.amountLeft`); 0 for everything else.
+    #[serde(default)]
+    pub charges: u8,
+    /// The side the last piece of a rails or cable kit continued towards (`lastDir`).
+    #[serde(default)]
+    pub last_dir: u8,
 }
+
+/// Pieces one rails or cable kit lays (`InstantConstructionKit.amountLeft`).
+pub const KIT_CHARGES: u8 = 3;
 
 impl Item {
     pub fn new(kind: CollectibleType) -> Self {
-        Item { kind, fuse: None }
+        let charges = if matches!(kind, CollectibleType::Rails | CollectibleType::Powercable) { KIT_CHARGES } else { 0 };
+        Item { kind, fuse: None, charges, last_dir: 0 }
     }
 
     pub fn is_lit(&self) -> bool {

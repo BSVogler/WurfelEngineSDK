@@ -69,6 +69,11 @@ pub enum Action {
     SwitchItems { left: bool },
     /// Craft the n-th recipe of [`crate::crafting::ordered_recipes`].
     Craft(usize),
+    /// Answer the open dialog (an NPC's line, a construction site, a shop...): the option's id. A
+    /// plain "next" or "yes" is 1, "no" is 0; see [`crate::dialog::Dialog`].
+    Choose(u8),
+    /// Close the open dialog without choosing.
+    Cancel,
 }
 
 /// Everything about a player that the engine's [`Entity`](wurfel_sim::entity::Entity) does not hold.

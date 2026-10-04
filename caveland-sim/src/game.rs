@@ -25,6 +25,8 @@ use crate::logic::{OvenEvent, OvenLogic};
 use crate::player::*;
 use crate::team::Team;
 use crate::tuning::Tuning;
+use crate::transport::{Interaction, Transport, TransportEvent};
+use crate::extras::{Extras, Other};
 
 /// A block cell `(x, y, z)`.
 pub type Cell = (i32, i32, i32);
@@ -59,6 +61,21 @@ pub enum EntityKind {
     Money,
     Robot(Team),
     MineCart,
+    LiftBasket,
+    /// An invisible portal.
+    Portal,
+    ExitPortal,
+    Spaceship,
+    /// The gathering robot (`SpiderRobot`).
+    SpiderRobot(Team),
+    /// The flying robot (`Quadrocopter`).
+    Drone(Team),
+    Vanya,
+    Shopkeeper,
+    Bird,
+    /// A flag of a team.
+    Flag(Team),
+    DropSpaceFlag,
 }
 
 impl EntityKind {
@@ -71,6 +88,21 @@ impl EntityKind {
             EntityKind::Robot(Team::Robots) => "robot".to_string(),
             EntityKind::Robot(_) => "friendly_robot".to_string(),
             EntityKind::MineCart => "minecart".to_string(),
+            EntityKind::LiftBasket => "lift_basket".to_string(),
+            EntityKind::Portal => "portal".to_string(),
+            EntityKind::ExitPortal => "exit_portal".to_string(),
+            EntityKind::Spaceship => "spaceship".to_string(),
+            EntityKind::SpiderRobot(Team::Robots) => "spider_robot".to_string(),
+            EntityKind::SpiderRobot(_) => "friendly_spider_robot".to_string(),
+            EntityKind::Drone(Team::Robots) => "drone".to_string(),
+            EntityKind::Drone(_) => "friendly_drone".to_string(),
+            EntityKind::Vanya => "vanya".to_string(),
+            EntityKind::Shopkeeper => "shopkeeper".to_string(),
+            EntityKind::Bird => "bird".to_string(),
+            EntityKind::Flag(Team::Neutral) => "flag".to_string(),
+            EntityKind::Flag(Team::Player) => "flag_player".to_string(),
+            EntityKind::Flag(Team::Robots) => "flag_robots".to_string(),
+            EntityKind::DropSpaceFlag => "drop_space_flag".to_string(),
         }
     }
 }
@@ -108,10 +140,10 @@ pub enum GameEvent {
     RobotDestroyed { robot: EntityId, position: Vec3 },
 }
 
-struct CollectibleState {
+pub(crate) struct CollectibleState {
     item: Item,
     /// Nobody can pick it up (it is being carried or held in a container).
-    no_pickup: bool,
+    pub(crate) no_pickup: bool,
     last_parent: Option<EntityId>,
     /// Seconds left of the pickup block for `last_parent`.
     blocked_for: f32,
@@ -128,8 +160,8 @@ impl CollectibleState {
     }
 }
 
-struct RobotState {
-    team: Team,
+pub(crate) struct RobotState {
+    pub(crate) team: Team,
     /// Charges to [`ROBOT_CHARGE_TIME`], then the robot can attack.
     charge: f32,
     attack_in_progress: f32,
@@ -138,24 +170,28 @@ struct RobotState {
     last_position: Vec3,
 }
 
-enum Kind {
+pub(crate) enum Kind {
     Player(Box<PlayerState>),
     Collectible(CollectibleState),
     Money,
     Robot(Box<RobotState>),
-    MineCart,
+    /// Characters, flags and other things of the second half of the rules, see [`crate::extras`].
+    Other(Box<Other>),
 }
 
 /// The ruleset and its state. One per world.
 pub struct Caveland {
     pub tuning: Tuning,
-    kinds: HashMap<EntityId, Kind>,
-    ovens: HashMap<Cell, OvenLogic>,
-    money: u32,
-    rng: JavaRandom,
-    events: Vec<GameEvent>,
+    pub(crate) kinds: HashMap<EntityId, Kind>,
+    pub(crate) ovens: HashMap<Cell, OvenLogic>,
+    pub(crate) money: u32,
+    pub(crate) rng: JavaRandom,
+    pub(crate) events: Vec<GameEvent>,
     explosions: Vec<Vec3>,
     engine_events: Vec<Event>,
+    transport: Transport,
+    /// Dialogs, construction sites, power, turrets, flags, spiders and the tutorial.
+    pub(crate) x: Extras,
 }
 
 fn cell_of(p: Vec3) -> Cell {
@@ -186,6 +222,8 @@ impl Caveland {
             events: Vec::new(),
             explosions: Vec::new(),
             engine_events: Vec::new(),
+            transport: Transport::new(seed),
+            x: Extras::default(),
         }
     }
 
@@ -204,12 +242,15 @@ impl Caveland {
 
     /// What an entity is, if Caveland made it.
     pub fn kind_of(&self, id: EntityId) -> Option<EntityKind> {
+        if let Some(kind) = self.transport.kind_of(id) {
+            return Some(kind);
+        }
         Some(match self.kinds.get(&id)? {
             Kind::Player(p) => EntityKind::Player { number: p.number },
             Kind::Collectible(c) => EntityKind::Collectible(c.item.kind),
             Kind::Money => EntityKind::Money,
-            Kind::Robot(r) => EntityKind::Robot(r.team),
-            Kind::MineCart => EntityKind::MineCart,
+            Kind::Robot(r) => self.robot_kind(id, r.team),
+            Kind::Other(o) => o.entity_kind(),
         })
     }
 
@@ -298,6 +339,7 @@ impl Caveland {
                 Some(kind) => Some((id, kind)),
             })
             .collect();
+        things.extend(self.transport.things());
         things.sort_unstable_by_key(|&(id, _)| id);
         things
     }
@@ -370,13 +412,9 @@ impl Caveland {
         id
     }
 
-    /// A minecart. Only the body exists so far: rails, passengers and cargo are not ported.
+    /// A minecart (`MineCart`): see [`crate::minecart`].
     pub fn spawn_minecart(&mut self, entities: &mut Entities, position: Vec3) -> EntityId {
-        let mut entity = Entity::new("Minecart", 42).movable().at(position);
-        entity.mass = 40.0;
-        let id = entities.spawn(entity);
-        self.kinds.insert(id, Kind::MineCart);
-        id
+        self.transport.spawn_minecart(entities, position)
     }
 
     // ---- damage ---------------------------------------------------------------------------
@@ -575,9 +613,11 @@ impl Caveland {
                     self.block_pickup(eid, id, DROP_PICKUP_BLOCK);
                 }
             }
-            Action::UseItem => self.use_item(world, state, position),
+            Action::UseItem => self.use_item(entities, world, id, state, position),
             Action::Interact => self.interact(entities, world, state, position),
             Action::SwitchItems { left } => state.inventory.switch_items(left),
+            Action::Choose(answer) => self.choose(entities, world, id, state, answer),
+            Action::Cancel => self.cancel(entities, world, id, state),
             Action::Craft(index) => {
                 let recipes = crafting::ordered_recipes(&state.inventory);
                 let Some(recipe) = recipes.get(index) else { return };
@@ -603,7 +643,7 @@ impl Caveland {
 
     /// Use the item in hand (`Inventory.action`): a torch is placed where the player stands, an
     /// explosive gets its fuse lit and stays in the pack. Other items do nothing.
-    fn use_item(&mut self, world: &mut World, state: &mut PlayerState, position: Vec3) {
+    fn use_item(&mut self, entities: &mut Entities, world: &mut World, id: EntityId, state: &mut PlayerState, position: Vec3) {
         let Some(mut item) = state.inventory.retrieve(0) else { return };
         match item.kind {
             CollectibleType::Torch => {
@@ -618,13 +658,17 @@ impl Caveland {
                 item.ignite();
                 self.events.push(GameEvent::Sound { name: "hiss", position });
             }
-            _ => {}
+            _ => {
+                if self.use_kit(entities, world, id, &item, position) {
+                    return; // used up
+                }
+            }
         }
         state.inventory.add_front(item);
     }
 
     /// Machines within reach, nearest first.
-    fn machines_near(&self, world: &World, position: Vec3) -> Vec<Cell> {
+    pub(crate) fn machines_near(&self, world: &World, position: Vec3) -> Vec<Cell> {
         let origin = cell_of(position);
         let mut found = Vec::new();
         for dx in -2..=2 {
@@ -649,14 +693,106 @@ impl Caveland {
         self.machines_near(world, position).into_iter().next()
     }
 
-    fn interact(&mut self, _entities: &mut Entities, world: &World, state: &mut PlayerState, position: Vec3) {
-        let Some(cell) = self.nearest_interactable(world, position) else { return };
+    fn interact(&mut self, entities: &mut Entities, world: &mut World, state: &mut PlayerState, position: Vec3) {
+        // Dialog characters, construction sites, factories and flags first: see `interact_extra`.
+        if self.interact_extra(entities, world, state.entity(), state, position) {
+            return;
+        }
+        // Carts, lifts and portals count with the machines: the nearest of them is used.
+        let oven = self.nearest_interactable(world, position);
+        let vehicle = self.transport.nearest_interactable(entities, world, position);
+        if let Some((distance, what)) = vehicle {
+            let oven_distance = oven.map(|cell| cell_center(cell).distance(position + Vec3::Z * 0.5));
+            if oven_distance.is_none_or(|d| distance < d) {
+                self.interact_transport(entities, world, state.entity(), what);
+                return;
+            }
+        }
+        let Some(cell) = oven else { return };
         let oven = self.ovens.entry(cell).or_default();
         if oven.interact(&mut state.inventory) {
             self.events.push(GameEvent::Sound { name: "metallic", position: cell_center(cell) });
         } else {
             self.events.push(GameEvent::Sound { name: "interactionFail", position: cell_center(cell) });
         }
+    }
+
+    /// Use a cart, lift or portal (`Interactable.interact`).
+    fn interact_transport(&mut self, entities: &mut Entities, world: &mut World, actor: EntityId, what: Interaction) {
+        // Only players act (the player's own state is out of the table while they do).
+        let mut transport = std::mem::take(&mut self.transport);
+        transport.interact(entities, world, actor, true, what);
+        self.transport = transport;
+    }
+
+    // ---- vehicles, lifts and portals ------------------------------------------------------
+
+    /// Carts, baskets, portals and the spaceship: the state behind [`EntityKind::MineCart`],
+    /// [`EntityKind::LiftBasket`], [`EntityKind::ExitPortal`] and [`EntityKind::Spaceship`].
+    pub fn transport(&self) -> &Transport {
+        &self.transport
+    }
+
+    /// Spawn vehicles and portals, or board and launch them.
+    pub fn transport_mut(&mut self) -> &mut Transport {
+        &mut self.transport
+    }
+
+    /// Take what vehicles and portals reported since the last call (teleports, boarding, the crash).
+    pub fn drain_transport_events(&mut self) -> Vec<TransportEvent> {
+        self.transport.take_notes()
+    }
+
+    /// Is the entity somewhere it cannot be seen (a passenger of the spaceship)?
+    pub fn is_hidden(&self, id: EntityId) -> bool {
+        self.transport.is_hidden(id)
+    }
+
+    /// A block was placed at `cell`: if it needs updating (a lift, a cave entry), start doing that.
+    /// Whatever sets blocks (a finished construction site) calls this.
+    pub fn block_changed(&mut self, world: &World, cell: Cell) {
+        self.transport.register(world, cell);
+    }
+
+    /// Create what the map generator asks for; `None` for entities that are not vehicles or portals.
+    pub fn spawn_from_generator(&mut self, entities: &mut Entities, spawn: &wurfel_sim::generator::EntitySpawn) -> Option<EntityId> {
+        self.transport.spawn_from_generator(entities, spawn)
+    }
+
+    fn update_transport(&mut self, entities: &mut Entities, world: &mut World, dt: f32) {
+        let mut transport = std::mem::take(&mut self.transport);
+        transport.update(self, entities, world, dt);
+        self.events.extend(transport.take_game_events());
+        self.transport = transport;
+    }
+
+    /// Collectibles within `radius` of `at` that are falling and that `parent` may take: what a
+    /// cart loads (`canBePickedByParent`).
+    pub(crate) fn collectibles_for(&self, entities: &Entities, parent: EntityId, at: Vec3, radius: f32) -> Vec<EntityId> {
+        let mut found: Vec<EntityId> = self
+            .kinds
+            .iter()
+            .filter_map(|(&id, kind)| match kind {
+                Kind::Collectible(c) if c.can_be_picked_by(parent) => Some(id),
+                _ => None,
+            })
+            .filter(|&id| {
+                entities
+                    .get(id)
+                    .is_some_and(|e| e.position.distance(at) < radius && e.body.as_ref().is_some_and(|b| b.movement.z < 0.0))
+            })
+            .collect();
+        found.sort_unstable();
+        found
+    }
+
+    /// Take a collectible out of the world, for a container (`dispose` after `add`).
+    pub(crate) fn take_collectible(&mut self, entities: &mut Entities, id: EntityId) -> Option<Item> {
+        let Some(Kind::Collectible(c)) = self.kinds.remove(&id) else { return None };
+        if let Some(e) = entities.get_mut(id) {
+            e.dispose();
+        }
+        Some(c.item)
     }
 
     // ---- attacks --------------------------------------------------------------------------
@@ -806,6 +942,8 @@ impl Caveland {
         }
 
         self.update_ovens(entities, world, dt);
+        self.update_transport(entities, world, dt);
+        self.update_extras(entities, world, dt);
 
         for position in std::mem::take(&mut self.explosions) {
             self.explode(world, entities, position, EXPLOSIVE_RADIUS, EXPLOSIVE_DAMAGE);
@@ -816,6 +954,9 @@ impl Caveland {
     fn handle_engine_events(&mut self, entities: &mut Entities, events: &[Event]) {
         for event in events {
             let Event::Disposed(id) = *event else { continue };
+            let mut transport = std::mem::take(&mut self.transport);
+            transport.on_disposed(self, entities, id);
+            self.transport = transport;
             match self.kinds.remove(&id) {
                 Some(Kind::Player(_)) => self.events.push(GameEvent::PlayerDied { player: id }),
                 Some(Kind::Robot(robot)) => {
@@ -1042,7 +1183,7 @@ impl Caveland {
             }
             robot.target = best.map(|(_, id)| id);
         }
-        if robot.target.is_none() {
+        if robot.target.is_none() && !self.x.robot_busy(id) {
             if let Some(entity) = entities.get_mut(id) {
                 robot.idle.step(entity, world, dt);
             }
