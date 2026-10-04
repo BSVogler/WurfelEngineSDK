@@ -1,0 +1,13 @@
+[package]
+name = "caveland-sim"
+version = "0.1.0"
+edition = "2021"
+description = "Caveland game rules on top of wurfel-sim: blocks, player, items, crafting, machines"
+license = "BSD-3-Clause"
+
+# Like the Java game, Caveland sits on top of the engine and the engine knows nothing about it:
+# this crate depends on wurfel-sim, never the other way round.
+[dependencies]
+wurfel-sim = { path = "../wurfel-sim" }
+glam = "0.34.0"
+serde = { version = "1", features = ["derive"] }
