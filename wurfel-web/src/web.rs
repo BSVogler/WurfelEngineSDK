@@ -20,6 +20,7 @@ use crate::bindings::{parse_hex_color, Bindings};
 use crate::caveland_client::{self, Happening};
 use crate::editor::{self, Button, Editor, Tool};
 use crate::interp::{RenderClock, Track};
+use crate::locator;
 use crate::mesh::{self, Vertex};
 use crate::prediction::{classify, replay, Correction, InputHistory, VisualOffset};
 use crate::minimap::{CameraView, ChunkInfo, ChunkState, EntityDot, Minimap, MinimapData, Mode};
@@ -126,6 +127,8 @@ struct State {
     actors: Actors,
     /// The names above the other players' heads.
     name_tags: NameTags,
+    /// Arrows at the screen edge towards friends who are out of view.
+    friend_markers: FriendMarkers,
     bind_group: wgpu::BindGroup,
     /// The sprite atlas texture array (a 1 pixel placeholder until it has loaded).
     atlas_bind_group: wgpu::BindGroup,
@@ -366,6 +369,7 @@ async fn run() -> Result<(), String> {
         sound_loops: HashMap::new(),
         actors: Actors::default(),
         name_tags: NameTags::new(&document),
+        friend_markers: FriendMarkers::new(&document),
         bind_group,
         atlas_bind_group,
         world_buffer,
@@ -1658,6 +1662,7 @@ fn frame(s: &mut State, now_ms: f64) {
     update_overlays(s, now_ms);
     update_info(s);
     update_name_tags(s);
+    update_friend_markers(s);
     render(s);
 }
 
@@ -1717,7 +1722,8 @@ fn update_name_tags(s: &mut State) {
         let x = ((screen[0] - s.camera.center[0]) * s.camera.zoom + width / 2.0) / s.dpr;
         let y = ((screen[1] - s.camera.center[1]) * s.camera.zoom + height / 2.0) / s.dpr;
         if x > -100.0 && y > -50.0 && x < width / s.dpr + 100.0 && y < height / s.dpr + 50.0 {
-            wanted.push((id, info.name.clone(), x, y));
+            let name = if s.friends.contains(&id) { format!("♥ {}", info.name) } else { info.name.clone() };
+            wanted.push((id, name, x, y));
         }
     }
     s.name_tags.tags.retain(|id, element| {
@@ -1744,6 +1750,95 @@ fn update_name_tags(s: &mut State) {
             element.set_text_content(Some(&name));
         }
         let _ = element.style().set_property("transform", &format!("translate({x:.1}px, {y:.1}px) translate(-50%, -100%)"));
+    }
+}
+
+/// One arrow with the friend's name and distance.
+struct FriendMarker {
+    root: web_sys::HtmlElement,
+    arrow: web_sys::HtmlElement,
+    label: web_sys::HtmlElement,
+}
+
+/// Arrows at the edge of the screen pointing to friends who are out of view, with their name and
+/// distance in blocks, and a hint when they are well above or below.
+struct FriendMarkers {
+    layer: Option<web_sys::HtmlElement>,
+    markers: HashMap<u32, FriendMarker>,
+}
+
+impl FriendMarkers {
+    fn new(document: &web_sys::Document) -> Self {
+        let layer = document.create_element("div").ok().and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok());
+        if let Some(layer) = &layer {
+            layer.set_id("friendmarkers");
+            let _ = layer.set_attribute("aria-hidden", "true");
+            let _ = layer.set_attribute("style", "position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:4");
+            if let Some(body) = document.body() {
+                let _ = body.append_child(layer);
+            }
+        }
+        FriendMarkers { layer, markers: HashMap::new() }
+    }
+}
+
+/// Keep one arrow per friend who is on the server but not on the screen.
+fn update_friend_markers(s: &mut State) {
+    let Some(layer) = s.friend_markers.layer.clone() else { return };
+    let Some(document) = layer.owner_document() else { return };
+    let (width, height) = (s.config.width as f32, s.config.height as f32);
+    let (css_width, css_height) = (width / s.dpr, height / s.dpr);
+    let mut wanted: Vec<(u32, String, [u8; 3], locator::Marker)> = Vec::new();
+    if let Some(me) = local_position(s) {
+        for &id in &s.friends {
+            let Some(remote) = s.remotes.get(&id).filter(|_| !s.hidden.contains(&id)) else { continue };
+            let Some(info) = s.roster.get(&id) else { continue };
+            let middle = remote.pos + Vec3::Z * (PLAYER_HEIGHT / 2.0);
+            let screen = screen_position((middle.x, middle.y), middle.z);
+            let x = ((screen[0] - s.camera.center[0]) * s.camera.zoom + width / 2.0) / s.dpr;
+            let y = ((screen[1] - s.camera.center[1]) * s.camera.zoom + height / 2.0) / s.dpr;
+            let Some(marker) = locator::edge_marker((x, y), (css_width, css_height), (70.0, 44.0)) else { continue };
+            let delta = remote.pos - me;
+            let mut label = format!("{} {}", info.name, locator::distance_label(delta.length()));
+            if let Some(hint) = locator::height_hint(delta.z) {
+                label.push(' ');
+                label.push(hint);
+            }
+            wanted.push((id, label, info.color, marker));
+        }
+    }
+    s.friend_markers.markers.retain(|id, m| {
+        let keep = wanted.iter().any(|(wanted_id, ..)| wanted_id == id);
+        if !keep {
+            m.root.remove();
+        }
+        keep
+    });
+    for (id, label, color, marker) in wanted {
+        let m = s.friend_markers.markers.entry(id).or_insert_with(|| {
+            let make = |style: &str| -> web_sys::HtmlElement {
+                let element: web_sys::HtmlElement = document.create_element("div").unwrap().unchecked_into();
+                let _ = element.set_attribute("style", style);
+                element
+            };
+            let root = make("position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:1px;will-change:transform");
+            let arrow = make("font:700 22px/1 system-ui,sans-serif;text-shadow:0 1px 3px #000;will-change:transform");
+            arrow.set_text_content(Some("➤"));
+            let label = make(
+                "padding:1px 6px;border-radius:4px;white-space:nowrap;font:600 12px/1.3 system-ui,sans-serif;\
+                 color:#fff;background:rgba(10,12,18,0.6);text-shadow:0 1px 2px #000",
+            );
+            let _ = root.append_child(&arrow);
+            let _ = root.append_child(&label);
+            let _ = layer.append_child(&root);
+            FriendMarker { root, arrow, label }
+        });
+        if m.label.text_content().as_deref() != Some(label.as_str()) {
+            m.label.set_text_content(Some(&label));
+        }
+        let _ = m.arrow.style().set_property("color", &format!("rgb({},{},{})", color[0], color[1], color[2]));
+        let _ = m.arrow.style().set_property("transform", &format!("rotate({:.1}deg)", marker.angle_deg));
+        let _ = m.root.style().set_property("transform", &format!("translate({:.1}px, {:.1}px) translate(-50%, -50%)", marker.x, marker.y));
     }
 }
 
