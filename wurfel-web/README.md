@@ -18,13 +18,20 @@ One-time setup: `rustup target add wasm32-unknown-unknown && cargo install trunk
 
 ## Controls
 
-WASD / arrows walk, left click places the selected block, right click breaks, `1`-`4` choose the
-block, wheel or Q/E zoom. Without a server the page shows a read-only preview of the island.
+WASD / arrows walk, Space jumps, wheel or Q/E zoom. Normal play never edits blocks with the mouse.
+`F2` (or the console command `editor`, `editor on|off`) switches the map editor on and off, like the
+Java engine's editor: a red EDITOR badge and a toolbar appear, and only then does the mouse edit
+blocks. In the editor the left button uses the toolbar's tool (draw: place next to the clicked block,
+replace, erase, pick), the right button erases, the middle button picks the clicked block's kind,
+`1`-`4` choose stone/dirt/grass/sand, and the bottom-left line shows the cursor's position and block.
+The editor needs a joined world (not the offline preview) and is not available in Caveland maps. The
+server only applies block edits from players who are in the editor (`ClientMsg::Editor`).
 
 ## Where things are
 
 - `src/web.rs`: canvas, wgpu setup, input, WebSocket, prediction/interpolation, frame loop. GPU errors are logged to the console.
 - `src/mesh.rs`: world to triangles; only camera-facing faces next to air. Also the box used for players.
+- `src/editor.rs`: the editor mode (tools, palette, what a click does). Pure, unit tested; `editor.js`/`editor.css` are its toolbar.
 - `src/pick.rs`: screen position to block (for placing/breaking). Pure, unit tested.
 - `src/shader.wgsl`: the isometric projection with the Java engine's constants. Depth is exact, so the depth buffer sorts everything.
 - To try another map, implement `wurfel_sim::Generator` and construct the world with it in `web.rs` and in the server's `Game::new`.
@@ -52,7 +59,7 @@ Plain HTML/CSS/JS, no framework. The game canvas keeps running behind the menu. 
 
 The contract with the game side (the full version is the comment at the top of `menu.js`):
 
-- `window.wurfelSettings`: live object with `playerName`, `playerColor` (`#rrggbb`), `serverUrl`, `servers`, `masterVolume`/`musicVolume`/`effectsVolume` (0..1), `renderScale` (0.5..1), `zoom` (0.2..2), `limitFps`, `ambientOcclusion`, `showFps`, `showHelp`, `generator`/`seed` (last used in the Create map form), and `keys`: `{ up, down, left, right, jump, place, break, zoomIn, zoomOut }`, each `[primary, alternate]` as lowercased `KeyboardEvent.key` or `"mouse0"`/`"mouse1"`/`"mouse2"`; an empty string means unbound.
+- `window.wurfelSettings`: live object with `playerName`, `playerColor` (`#rrggbb`), `serverUrl`, `servers`, `masterVolume`/`musicVolume`/`effectsVolume` (0..1), `renderScale` (0.5..1), `zoom` (0.2..2), `limitFps`, `ambientOcclusion`, `showFps`, `showHelp`, `generator`/`seed` (last used in the Create map form), and `keys`: `{ up, down, left, right, jump, zoomIn, zoomOut }`, each `[primary, alternate]` as lowercased `KeyboardEvent.key` or `"mouse0"`/`"mouse1"`/`"mouse2"`; an empty string means unbound.
 - Events on `window`: `wurfel:play` with `{ name, color, server, generator, seed, create }` (`server` is a full `ws(s)://` URL without a query string; `generator`/`seed` describe the world the server is running; `create` is true when a new save slot was created), `wurfel:pause`, `wurfel:resume`, `wurfel:leave`, `wurfel:settings` (detail is the settings object; fired at startup and after every change), and `wurfel:error` (game to menu, `{ message }`: shows the message on the main menu).
 - `window.wurfelPlayRequest` is the detail of the last `wurfel:play` (null after leaving), for a game that was not listening yet.
 - `window.wurfelMenuOpen` is true while a menu is open; the game must ignore gameplay input then. The menu also swallows keyboard, mouse and wheel events in the capture phase and dispatches `blur` when it opens so held keys are released.
