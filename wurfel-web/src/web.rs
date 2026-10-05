@@ -24,6 +24,7 @@ use crate::mesh::{self, Vertex};
 use crate::prediction::{classify, replay, Correction, InputHistory, VisualOffset};
 use crate::minimap::{CameraView, ChunkInfo, ChunkState, EntityDot, Minimap, MinimapData, Mode};
 use crate::netstats::{format_report, NetStats};
+use crate::peel::gpu::{Peeling, DEPTH_FORMAT};
 use crate::pick::{pick, Pick};
 use crate::reconnect::{Closed, Reconnect};
 use crate::render_storage::RenderStorage;
@@ -44,7 +45,6 @@ const PLAYER_COLORS: [[f32; 3]; 6] = [
 const MARKER_COLOR: [f32; 3] = [1.0, 0.92, 0.25];
 /// Room for the players and the hover marker.
 const DYNAMIC_VERTICES: u64 = 24576;
-const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 /// How often the latency probe is sent, and how often the overlays refresh (milliseconds).
 const PING_EVERY_MS: f64 = 1000.0;
@@ -133,7 +133,8 @@ struct State {
     world_vertices: u32,
     dynamic_buffer: wgpu::Buffer,
     dynamic_vertices: u32,
-    depth_view: wgpu::TextureView,
+    /// Draws the scene in layers of depth peeling (see `peel.rs`) and blends them onto the canvas.
+    peeling: Peeling,
     backend: wgpu::Backend,
     camera: Camera,
     dpr: f32,
@@ -297,9 +298,10 @@ async fn run() -> Result<(), String> {
     });
     let atlas_layout = texture::bind_group_layout(&device);
     let atlas_bind_group = texture::placeholder(&device, &queue, &atlas_layout);
+    let peeling = Peeling::new(&device, &queue, config.format, config.width, config.height);
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("blocks"),
-        bind_group_layouts: &[Some(&bind_group_layout), Some(&atlas_layout)],
+        bind_group_layouts: &[Some(&bind_group_layout), Some(&atlas_layout), Some(peeling.peel_layout())],
         immediate_size: 0,
     });
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -336,7 +338,7 @@ async fn run() -> Result<(), String> {
     let net_overlay = create_net_overlay(&document);
     let minimap = Minimap::new(&document, MINIMAP_SIZE.0, MINIMAP_SIZE.1, dpr.round().max(1.0) as u32).ok();
     let state = Rc::new(RefCell::new(State {
-        depth_view: create_depth_view(&device, config.width, config.height),
+        peeling,
         camera: Camera { center: [(gx - gy) * 100.0, (gx + gy) * 50.0 - 4.0 * 122.0], zoom: 0.5 * dpr },
         dpr,
         canvas,
@@ -463,21 +465,6 @@ fn fit_canvas(canvas: &HtmlCanvasElement) {
     let height = window.inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(600.0);
     canvas.set_width(((width * dpr) as u32).max(1));
     canvas.set_height(((height * dpr) as u32).max(1));
-}
-
-fn create_depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
-    device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some("depth"),
-            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: DEPTH_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        })
-        .create_view(&Default::default())
 }
 
 // ------------------------------------------------------------------------------------ JS helpers
@@ -1306,7 +1293,8 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         s.config.width = s.canvas.width().max(1);
         s.config.height = s.canvas.height().max(1);
         s.surface.configure(&s.device, &s.config);
-        s.depth_view = create_depth_view(&s.device, s.config.width, s.config.height);
+        let s = &mut *s;
+        s.peeling.resize(&s.device, s.config.width, s.config.height);
     });
 
     let s = state.clone();
@@ -1840,27 +1828,10 @@ fn render(s: &mut State) {
     };
     let view = output.texture.create_view(&Default::default());
     let mut encoder = s.device.create_command_encoder(&Default::default());
-    {
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("world"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.063, g: 0.075, b: 0.102, a: 1.0 }),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &s.depth_view,
-                depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Discard }),
-                stencil_ops: None,
-            }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
+    // The scene is drawn once per depth peeling layer, in any order, and the layers are blended
+    // onto the canvas (see `peel.rs`).
+    let background = wgpu::Color { r: 0.063, g: 0.075, b: 0.102, a: 1.0 };
+    s.peeling.render(&mut encoder, &view, background, |pass| {
         pass.set_pipeline(&s.pipeline);
         pass.set_bind_group(0, &s.bind_group, &[]);
         pass.set_bind_group(1, &s.atlas_bind_group, &[]);
@@ -1872,7 +1843,7 @@ fn render(s: &mut State) {
             pass.set_vertex_buffer(0, s.dynamic_buffer.slice(..));
             pass.draw(0..s.dynamic_vertices, 0..1);
         }
-    }
+    });
     s.queue.submit(Some(encoder.finish()));
     s.queue.present(output);
 }

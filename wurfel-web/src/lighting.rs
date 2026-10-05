@@ -147,6 +147,7 @@ impl LightingController {
         self.dynamic.truncate(MAX_POINT_LIGHTS);
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn dynamic_lights(&self) -> &[PointLight] {
         &self.dynamic
     }
@@ -156,6 +157,7 @@ impl LightingController {
         Lighting::new(&self.engine.state(), &self.shading, self.enabled, &self.dynamic)
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     /// One line for a debug overlay.
     pub fn describe(&self) -> String {
         let state = self.engine.state();
@@ -173,6 +175,7 @@ impl LightingController {
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn time_name(time_of_day: f32) -> &'static str {
     match time_of_day {
         t if !(0.0..1.0).contains(&t) => "?",
@@ -231,7 +234,7 @@ mod tests {
     }
 
     #[test]
-    fn the_shader_binds_camera_and_lighting_in_group_zero_and_the_atlas_in_group_one() {
+    fn the_shader_binds_camera_and_lighting_in_group_zero_the_atlas_in_one_and_the_peel_state_in_two() {
         let module = parse_shader();
         let mut bindings: Vec<(u32, u32, String)> = module
             .global_variables
@@ -249,6 +252,8 @@ mod tests {
                 (0, 1, "lighting".to_string()),
                 (1, 0, "atlas".to_string()),
                 (1, 1, "atlas_sampler".to_string()),
+                (2, 0, "peel".to_string()),
+                (2, 1, "previous_depth".to_string()),
             ]
         );
     }

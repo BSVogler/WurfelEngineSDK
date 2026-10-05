@@ -286,6 +286,7 @@ impl RenderStorage {
     /// Replace the lights that are baked into the meshes (torches built into the world, for
     /// example). Every chunk is meshed again if the set changed. Lights that move every frame
     /// belong in the lighting uniform instead, see `lighting.rs`.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn set_static_lights(&mut self, lights: Vec<PointLight>) {
         if lights != self.static_lights {
             self.static_lights = lights;

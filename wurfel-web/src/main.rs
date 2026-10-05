@@ -13,6 +13,7 @@ mod netstats;
 mod pick;
 mod sprites;
 mod particles;
+mod peel;
 mod prediction;
 mod reconnect;
 mod render_storage;
