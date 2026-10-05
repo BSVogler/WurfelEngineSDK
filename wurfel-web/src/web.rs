@@ -1552,14 +1552,6 @@ fn frame(s: &mut State, now_ms: f64) {
         s.camera.center[0] += (target[0] - s.camera.center[0]) * k;
         s.camera.center[1] += (target[1] - s.camera.center[1]) * k;
     }
-    if !blocked {
-        if s.bindings.held("zoomOut", &s.keys) {
-            s.camera.zoom *= 1.0 - 1.5 * dt;
-        }
-        if s.bindings.held("zoomIn", &s.keys) {
-            s.camera.zoom *= 1.0 + 1.5 * dt;
-        }
-    }
     s.camera.zoom = s.camera.zoom.clamp(0.1 * s.dpr, 4.0 * s.dpr);
 
     // The server accepted the connection (or not) but never sent the world.
@@ -1791,14 +1783,7 @@ fn update_info(s: &mut State) {
         (false, _) if s.reconnect.active() => "server updating, reconnecting…".to_string(),
         (false, _) => "offline: showing a preview. Open the menu (Esc) to join a world".to_string(),
     };
-    let keys = if s.caveland.is_some() {
-        "WASD walk · Space jump · F swing · R talk/build/ride · C craft · Tab players · F3 network · F4 map".to_string()
-    } else if s.editor.active() {
-        "EDITOR · left click tool · right click erase · middle click pick · 1-4 block · F2 leave · F3 network · F4 map".to_string()
-    } else {
-        "WASD walk · Space jump · F2 editor · F3 network · F4 map".to_string()
-    };
-    let text = format!("Wurfel Engine · {:?} · {status}\n{keys}", s.backend);
+    let text = format!("Wurfel Engine · {:?} · {status}", s.backend);
     if text != s.info_text {
         set_info(&text);
         s.info_text = text;

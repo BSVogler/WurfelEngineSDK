@@ -362,7 +362,7 @@ mod tests {
         assert_eq!(key_action("g", true), Some(("use", 0)));
         assert_eq!(key_action("g", false), None, "using is a press, not a hold");
         assert_eq!(key_action("1", true), None, "crafting is the popup's job, not a digit key");
-        assert_eq!(key_action("e", true), None, "e and q belong to the camera zoom");
+        assert_eq!(key_action("e", true), None, "zoom is the scroll wheel only");
         assert_eq!(key_action("w", true), None, "walking is not an action");
         assert_eq!(mouse_action(0, true), Some(("attack", 0)));
         assert_eq!(mouse_action(0, false), Some(("release_attack", 0)));

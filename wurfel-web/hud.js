@@ -30,7 +30,7 @@
   const HINTS = [
     ["WASD", "walk"], ["Space", "jump / jetpack"], ["F / click", "swing, hold to charge"],
     ["G", "use item"], ["M / right click", "hold, release: throw (long hold: drop)"], ["X", "drop"],
-    ["Z / V", "switch item"], ["C", "crafting"], ["R", "talk / build / ride (nearest)"], ["Tab", "players"],
+    ["Z / V", "switch item"], ["Wheel", "zoom"], ["C", "crafting"], ["R", "talk / build / ride (nearest)"], ["Tab", "players"],
   ];
 
   let root = null, healthFill = null, healthText = null, jetFill = null, slots = [], toasts = null;

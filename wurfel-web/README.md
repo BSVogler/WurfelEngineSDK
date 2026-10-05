@@ -18,7 +18,7 @@ One-time setup: `rustup target add wasm32-unknown-unknown && cargo install trunk
 
 ## Controls
 
-WASD / arrows walk, Space jumps, wheel or Q/E zoom. Normal play never edits blocks with the mouse.
+WASD / arrows walk, Space jumps, wheel zoom. Normal play never edits blocks with the mouse.
 `F2` (or the console command `editor`, `editor on|off`) switches the map editor on and off, like the
 Java engine's editor: a red EDITOR badge and a toolbar appear, and only then does the mouse edit
 blocks. In the editor the left button uses the toolbar's tool (draw: place next to the clicked block,
@@ -67,7 +67,7 @@ Plain HTML/CSS/JS, no framework. The game canvas keeps running behind the menu. 
 
 The contract with the game side (the full version is the comment at the top of `menu.js`):
 
-- `window.wurfelSettings`: live object with `playerName`, `playerColor` (`#rrggbb`), `serverUrl`, `servers`, `masterVolume`/`musicVolume`/`effectsVolume` (0..1), `renderScale` (0.5..1), `zoom` (0.2..2), `limitFps`, `ambientOcclusion`, `showFps`, `showHelp`, `generator`/`seed` (last used in the Create map form), and `keys`: `{ up, down, left, right, jump, zoomIn, zoomOut }`, each `[primary, alternate]` as lowercased `KeyboardEvent.key` or `"mouse0"`/`"mouse1"`/`"mouse2"`; an empty string means unbound.
+- `window.wurfelSettings`: live object with `playerName`, `playerColor` (`#rrggbb`), `serverUrl`, `servers`, `masterVolume`/`musicVolume`/`effectsVolume` (0..1), `renderScale` (0.5..1), `zoom` (0.2..2), `limitFps`, `ambientOcclusion`, `showFps`, `showHelp`, `generator`/`seed` (last used in the Create map form), and `keys`: `{ up, down, left, right, jump }`, each `[primary, alternate]` as lowercased `KeyboardEvent.key` or `"mouse0"`/`"mouse1"`/`"mouse2"`; an empty string means unbound.
 - Events on `window`: `wurfel:play` with `{ name, color, server, generator, seed, create }` (`server` is a full `ws(s)://` URL without a query string; `generator`/`seed` describe the world the server is running; `create` is true when a new save slot was created), `wurfel:pause`, `wurfel:resume`, `wurfel:leave`, `wurfel:settings` (detail is the settings object; fired at startup and after every change), and `wurfel:error` (game to menu, `{ message }`: shows the message on the main menu; a lost connection is only reported after the reconnect attempts, see Server updates).
 - `window.wurfelPlayRequest` is the detail of the last `wurfel:play` (null after leaving), for a game that was not listening yet.
 - `window.wurfelMenuOpen` is true while a menu is open; the game must ignore gameplay input then. The menu also swallows keyboard, mouse and wheel events in the capture phase and dispatches `blur` when it opens so held keys are released.

@@ -5,7 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-pub const ACTIONS: [&str; 7] = ["up", "down", "left", "right", "jump", "zoomIn", "zoomOut"];
+pub const ACTIONS: [&str; 5] = ["up", "down", "left", "right", "jump"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bindings {
@@ -15,14 +15,12 @@ pub struct Bindings {
 impl Default for Bindings {
     /// The same defaults as the menu, used until it reports its settings.
     fn default() -> Self {
-        let defaults: [(&str, [&str; 2]); 7] = [
+        let defaults: [(&str, [&str; 2]); 5] = [
             ("up", ["w", "arrowup"]),
             ("down", ["s", "arrowdown"]),
             ("left", ["a", "arrowleft"]),
             ("right", ["d", "arrowright"]),
             ("jump", [" ", ""]),
-            ("zoomIn", ["e", ""]),
-            ("zoomOut", ["q", ""]),
         ];
         Bindings {
             slots: defaults.iter().map(|(a, keys)| (a.to_string(), keys.iter().map(|k| k.to_string()).collect())).collect(),

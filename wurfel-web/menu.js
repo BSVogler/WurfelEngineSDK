@@ -21,7 +21,7 @@
  *     ambientOcclusion bool     for the light engine, once it exists
  *     showFps, showHelp bool    (JS handles the FPS counter and hides #info itself)
  *     keys             { action: [primary, alternate] } with actions
- *                      up, down, left, right, jump, zoomIn, zoomOut, players.
+ *                      up, down, left, right, jump, players.
  *                      Values are KeyboardEvent.key lowercased (" " is space, "arrowup"...), or
  *                      "mouse0" / "mouse1" / "mouse2" for mouse buttons. An empty string means
  *                      unbound: ignore it. Block editing is not a binding: it only exists in the map
@@ -112,11 +112,11 @@
   const ACTIONS = [
     ['up', 'Walk up'], ['down', 'Walk down'], ['left', 'Walk left'], ['right', 'Walk right'],
     ['jump', 'Jump'],
-    ['zoomIn', 'Zoom in'], ['zoomOut', 'Zoom out'], ['players', 'Player list'],
+    ['players', 'Player list'],
   ];
   const DEFAULT_KEYS = {
     up: ['w', 'arrowup'], down: ['s', 'arrowdown'], left: ['a', 'arrowleft'], right: ['d', 'arrowright'],
-    jump: [' ', ''], zoomIn: ['e', ''], zoomOut: ['q', ''], players: ['tab', ''],
+    jump: [' ', ''], players: ['tab', ''],
   };
   const RANGES = {
     masterVolume: [0, 1], musicVolume: [0, 1], effectsVolume: [0, 1], renderScale: [0.5, 1], zoom: [0.2, 2],
