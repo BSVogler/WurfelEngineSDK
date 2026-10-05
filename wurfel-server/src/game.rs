@@ -361,6 +361,7 @@ impl Game {
             }
             // Answered by the connection itself (pings, lobby requests, joining): no game state needed.
             ClientMsg::Ping { .. }
+            | ClientMsg::Heart { .. }
             | ClientMsg::ListMaps
             | ClientMsg::GetWorld
             | ClientMsg::LoadMap { .. }

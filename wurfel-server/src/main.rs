@@ -15,6 +15,7 @@
 //! copes with a slow connection.
 
 mod caveland_mode;
+mod friends;
 mod game;
 mod interest;
 mod maps;
@@ -77,6 +78,8 @@ struct Shared {
     net: Arc<NetCounters>,
     /// Each player's own measurement of their round trip, for the Tab player list.
     pings: Arc<Mutex<pings::Pings>>,
+    /// Hearts in the Tab player list: who is friends with whom.
+    friends: Arc<Mutex<friends::Friends>>,
     lag: Duration,
     started: Instant,
 }
@@ -133,6 +136,7 @@ async fn main() {
         lobby_tx,
         net: Arc::default(),
         pings: Arc::default(),
+        friends: Arc::default(),
         lag,
         started: Instant::now(),
     };
@@ -354,6 +358,20 @@ async fn tick_loop(shared: Shared) {
     }
 }
 
+/// Tell everybody the friends and invites of each of `players` (each client acts on its own).
+fn broadcast_friends(shared: &Shared, players: &[u32]) {
+    let friends = shared.friends.lock().unwrap();
+    for &player in players {
+        let view = friends.view(player);
+        let _ = shared.tx.send(encode(&ServerMsg::Friends {
+            player,
+            friends: view.friends,
+            sent: view.sent,
+            received: view.received,
+        }));
+    }
+}
+
 // ------------------------------------------------------------------------------------ WebSocket
 
 async fn ws_handler(ws: WebSocketUpgrade, State(shared): State<Shared>) -> impl IntoResponse {
@@ -435,6 +453,14 @@ async fn client(socket: WebSocket, shared: Shared) {
                             alive = send(Payload::Text(welcome));
                         }
                         ClientMsg::Join { .. } => {}
+                        ClientMsg::Heart { to, on } => {
+                            if let Some((id, _)) = &player {
+                                let known = shared.game.lock().unwrap().player_info(to).is_some();
+                                if known && shared.friends.lock().unwrap().heart(*id, to, on) {
+                                    broadcast_friends(&shared, &[*id, to]);
+                                }
+                            }
+                        }
                         ClientMsg::Input { .. } | ClientMsg::SetBlock { .. } | ClientMsg::Action { .. } | ClientMsg::Command { .. } => {
                             if let Some((id, _)) = &player {
                                 let broadcast = shared.game.lock().unwrap().handle(*id, msg);
@@ -492,6 +518,8 @@ async fn client(socket: WebSocket, shared: Shared) {
     if let Some((id, _)) = player {
         shared.game.lock().unwrap().remove_player(id);
         shared.pings.lock().unwrap().remove(id);
+        let affected = shared.friends.lock().unwrap().remove_player(id);
+        broadcast_friends(&shared, &affected);
         let _ = shared.tx.send(encode(&ServerMsg::PlayerLeft { id }));
         eprintln!("player {id} left");
     }

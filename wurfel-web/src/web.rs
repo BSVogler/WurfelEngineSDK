@@ -24,6 +24,7 @@ use crate::mesh::{self, Vertex};
 use crate::prediction::{classify, replay, Correction, InputHistory, VisualOffset};
 use crate::minimap::{CameraView, ChunkInfo, ChunkState, EntityDot, Minimap, MinimapData, Mode};
 use crate::netstats::{format_report, NetStats};
+use crate::peel::gpu::{Peeling, DEPTH_FORMAT};
 use crate::pick::{pick, Pick};
 use crate::render_storage::RenderStorage;
 use crate::texture;
@@ -46,7 +47,6 @@ const PLAYER_COLORS: [[f32; 3]; 6] = [
 const MARKER_COLOR: [f32; 3] = [1.0, 0.92, 0.25];
 /// Room for the players and the hover marker.
 const DYNAMIC_VERTICES: u64 = 24576;
-const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 /// How often the latency probe is sent, and how often the overlays refresh (milliseconds).
 const PING_EVERY_MS: f64 = 1000.0;
@@ -133,7 +133,8 @@ struct State {
     world_vertices: u32,
     dynamic_buffer: wgpu::Buffer,
     dynamic_vertices: u32,
-    depth_view: wgpu::TextureView,
+    /// Draws the scene in layers of depth peeling (see `peel.rs`) and blends them onto the canvas.
+    peeling: Peeling,
     backend: wgpu::Backend,
     camera: Camera,
     dpr: f32,
@@ -162,6 +163,10 @@ struct State {
     roster: HashMap<u32, PlayerInfo>,
     /// Everybody's ping in ms as the server last told us (the Tab player list).
     pings: HashMap<u32, u32>,
+    /// Hearts in the Tab list: friends (both agreed), players we invited, players who invited us.
+    friends: HashSet<u32>,
+    invited: HashSet<u32>,
+    invited_by: HashSet<u32>,
     map_name: String,
     /// Real time not yet consumed by fixed physics steps.
     accumulator: f32,
@@ -288,9 +293,10 @@ async fn run() -> Result<(), String> {
     });
     let atlas_layout = texture::bind_group_layout(&device);
     let atlas_bind_group = texture::placeholder(&device, &queue, &atlas_layout);
+    let peeling = Peeling::new(&device, &queue, config.format, config.width, config.height);
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("blocks"),
-        bind_group_layouts: &[Some(&bind_group_layout), Some(&atlas_layout)],
+        bind_group_layouts: &[Some(&bind_group_layout), Some(&atlas_layout), Some(peeling.peel_layout())],
         immediate_size: 0,
     });
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -327,7 +333,7 @@ async fn run() -> Result<(), String> {
     let net_overlay = create_net_overlay(&document);
     let minimap = Minimap::new(&document, MINIMAP_SIZE.0, MINIMAP_SIZE.1, dpr.round().max(1.0) as u32).ok();
     let state = Rc::new(RefCell::new(State {
-        depth_view: create_depth_view(&device, config.width, config.height),
+        peeling,
         camera: Camera { center: [(gx - gy) * 100.0, (gx + gy) * 50.0 - 4.0 * 122.0], zoom: 0.5 * dpr },
         dpr,
         canvas,
@@ -371,6 +377,9 @@ async fn run() -> Result<(), String> {
         remotes: HashMap::new(),
         roster: HashMap::new(),
         pings: HashMap::new(),
+        friends: HashSet::new(),
+        invited: HashSet::new(),
+        invited_by: HashSet::new(),
         map_name: String::new(),
         accumulator: 0.0,
         history: InputHistory::new(),
@@ -449,21 +458,6 @@ fn fit_canvas(canvas: &HtmlCanvasElement) {
     let height = window.inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(600.0);
     canvas.set_width(((width * dpr) as u32).max(1));
     canvas.set_height(((height * dpr) as u32).max(1));
-}
-
-fn create_depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
-    device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some("depth"),
-            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: DEPTH_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        })
-        .create_view(&Default::default())
 }
 
 // ------------------------------------------------------------------------------------ JS helpers
@@ -570,9 +564,18 @@ fn export_players(s: &State, window: &web_sys::Window) {
         set("color", format!("#{:02x}{:02x}{:02x}", p.color[0], p.color[1], p.color[2]).into());
         set("pingMs", ping.map_or(JsValue::NULL, JsValue::from));
         set("me", me.into());
+        set("friend", s.friends.contains(&p.id).into());
+        set("invited", s.invited.contains(&p.id).into());
+        set("invitesMe", s.invited_by.contains(&p.id).into());
         players.push(&entry);
     }
     let _ = js_sys::Reflect::set(window, &JsValue::from_str("wurfelPlayers"), &players);
+}
+
+fn clear_friends(s: &mut State) {
+    s.friends.clear();
+    s.invited.clear();
+    s.invited_by.clear();
 }
 
 // --------------------------------------------------------------------------------- status banner
@@ -581,6 +584,8 @@ fn export_players(s: &State, window: &web_sys::Window) {
 enum Tone {
     Info,
     Ok,
+    /// News the player has to read and act on: stays a little longer than `Ok`.
+    Invite,
     Error,
 }
 
@@ -605,6 +610,7 @@ fn show_banner(text: &str, tone: Tone) {
     let (background, color) = match tone {
         Tone::Info => ("rgba(20,28,48,0.92)", "#dfe8ff"),
         Tone::Ok => ("rgba(24,74,40,0.92)", "#dcffe6"),
+        Tone::Invite => ("rgba(92,28,70,0.94)", "#ffe0f3"),
         Tone::Error => ("rgba(110,24,24,0.95)", "#ffe3e3"),
     };
     let _ = element.set_attribute(
@@ -621,7 +627,12 @@ fn show_banner(text: &str, tone: Tone) {
     // A newer message must not be hidden by an older timer.
     let seq = element.get_attribute("data-seq").and_then(|v| v.parse::<u32>().ok()).unwrap_or(0) + 1;
     let _ = element.set_attribute("data-seq", &seq.to_string());
-    if tone == Tone::Ok {
+    let hide_after_ms = match tone {
+        Tone::Ok => Some(2500),
+        Tone::Invite => Some(7000),
+        Tone::Info | Tone::Error => None,
+    };
+    if let Some(hide_after_ms) = hide_after_ms {
         let hide = Closure::once_into_js(move || {
             if let Some(el) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.get_element_by_id("statusbanner")) {
                 if el.get_attribute("data-seq").and_then(|v| v.parse::<u32>().ok()) == Some(seq) {
@@ -629,7 +640,7 @@ fn show_banner(text: &str, tone: Tone) {
                 }
             }
         });
-        let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(hide.unchecked_ref(), 2500);
+        let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(hide.unchecked_ref(), hide_after_ms);
     }
 }
 
@@ -686,6 +697,7 @@ fn end_session(s: &mut State) {
     s.entities = Entities::new();
     s.remotes.clear();
     s.roster.clear();
+    clear_friends(s);
     s.history = InputHistory::new();
     s.visual_offset.clear();
     s.render_clock = RenderClock::default();
@@ -808,6 +820,7 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
         ServerMsg::Welcome { your_id, map, players, roster, gamemode, .. } => {
             s.roster = roster.into_iter().map(|p| (p.id, p)).collect();
             s.pings.clear();
+            clear_friends(s);
             s.map_name = map.clone();
             // The server sends the terrain as chunks: this world has no generator of its own and
             // fills up as they arrive.
@@ -884,6 +897,19 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
         ServerMsg::Pong { client_time, .. } => s.net.on_pong(client_time, now),
         ServerMsg::Stats(stats) => s.net.on_server_stats(stats),
         ServerMsg::Pings { list } => s.pings = list.into_iter().collect(),
+        ServerMsg::Friends { player, friends, sent, received } if Some(player) == s.my_id => {
+            let name = |s: &State, id: u32| s.roster.get(&id).map_or_else(|| "Somebody".to_string(), |p| p.name.clone());
+            for &id in received.iter().filter(|id| !s.invited_by.contains(id)) {
+                show_banner(&format!("{} wants to be friends. Hold Tab and click ♥ to accept", name(s, id)), Tone::Invite);
+            }
+            for &id in friends.iter().filter(|id| !s.friends.contains(id)) {
+                show_banner(&format!("You and {} are friends now", name(s, id)), Tone::Ok);
+            }
+            s.friends = friends.into_iter().collect();
+            s.invited = sent.into_iter().collect();
+            s.invited_by = received.into_iter().collect();
+        }
+        ServerMsg::Friends { .. } => {} // somebody else's
         ServerMsg::Things { things, .. } => s.things = things,
         ServerMsg::Rules { kind, data } => handle_rules(s, &kind, &data),
     }
@@ -1092,7 +1118,8 @@ fn install_menu_events(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
 }
 
 /// What the page's HUD and console send to the server: `wurfelNet.action(name, arg)` answers a
-/// dialog or offer, `wurfelNet.command(line)` is a console line of the game mode.
+/// dialog or offer, `wurfelNet.command(line)` is a console line of the game mode,
+/// `wurfelNet.heart(playerId, on)` is the heart in the Tab player list.
 fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     let net = js_sys::Object::new();
     let s = state.clone();
@@ -1107,6 +1134,12 @@ fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     });
     let _ = js_sys::Reflect::set(&net, &"command".into(), command.as_ref());
     command.forget();
+    let s = state.clone();
+    let heart = Closure::<dyn FnMut(u32, bool)>::new(move |to: u32, on: bool| {
+        send(&mut s.borrow_mut(), &ClientMsg::Heart { to, on });
+    });
+    let _ = js_sys::Reflect::set(&net, &"heart".into(), heart.as_ref());
+    heart.forget();
     let _ = js_sys::Reflect::set(window, &"wurfelNet".into(), &net);
 }
 
@@ -1155,7 +1188,8 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         s.config.width = s.canvas.width().max(1);
         s.config.height = s.canvas.height().max(1);
         s.surface.configure(&s.device, &s.config);
-        s.depth_view = create_depth_view(&s.device, s.config.width, s.config.height);
+        let s = &mut *s;
+        s.peeling.resize(&s.device, s.config.width, s.config.height);
     });
 
     let s = state.clone();
@@ -1167,7 +1201,8 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     listen(window, "mousedown", move |e: MouseEvent| {
         let mut s = s.borrow_mut();
         s.pointer = Some((e.client_x() as f32 * s.dpr, e.client_y() as f32 * s.dpr));
-        if input_blocked() {
+        // Clicking a heart in the Tab list must not also place a block behind it.
+        if input_blocked() || window_flag("wurfelScoreboardOpen") {
             return;
         }
         s.keys.insert(format!("mouse{}", e.button()));
@@ -1298,8 +1333,17 @@ fn hovered(s: &State) -> Option<Pick> {
 fn start_frame_loop(state: Rc<RefCell<State>>) {
     let callback: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
     let next = callback.clone();
+    let mut last_frame = f64::NEG_INFINITY;
     *next.borrow_mut() = Some(Closure::new(move |now_ms: f64| {
-        frame(&mut state.borrow_mut(), now_ms);
+        // `fpsLimit` from the menu: 0 is unlimited. Skip callbacks that arrive too early; the 1 ms slack
+        // keeps a 60 FPS cap from dropping to 30 on a 60 Hz display whose callbacks jitter.
+        let limit = web_sys::window()
+            .and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "fpsLimit").as_f64())
+            .unwrap_or(60.0);
+        if limit < 1.0 || now_ms - last_frame >= 1000.0 / limit - 1.0 {
+            last_frame = now_ms;
+            frame(&mut state.borrow_mut(), now_ms);
+        }
         request_animation_frame(callback.borrow().as_ref().unwrap());
     }));
     request_animation_frame(next.borrow().as_ref().unwrap());
@@ -1410,14 +1454,6 @@ fn frame(s: &mut State, now_ms: f64) {
         let k = ease(8.0);
         s.camera.center[0] += (target[0] - s.camera.center[0]) * k;
         s.camera.center[1] += (target[1] - s.camera.center[1]) * k;
-    }
-    if !blocked {
-        if s.bindings.held("zoomOut", &s.keys) {
-            s.camera.zoom *= 1.0 - 1.5 * dt;
-        }
-        if s.bindings.held("zoomIn", &s.keys) {
-            s.camera.zoom *= 1.0 + 1.5 * dt;
-        }
     }
     s.camera.zoom = s.camera.zoom.clamp(0.1 * s.dpr, 4.0 * s.dpr);
 
@@ -1639,12 +1675,7 @@ fn update_info(s: &mut State) {
         (true, None) => "connecting…".to_string(),
         (false, _) => "offline: showing a preview. Open the menu (Esc) to join a world".to_string(),
     };
-    let keys = if s.caveland.is_some() {
-        "WASD walk · Space jump · F swing · R talk/build/ride · 1-9 craft · Tab players · F3 network · F4 map".to_string()
-    } else {
-        format!("WASD walk · Space jump · left click place {} · right click break · 1-4 block · F3 network · F4 map", HOTBAR[s.selected].1)
-    };
-    let text = format!("Wurfel Engine · {:?} · {status}\n{keys}", s.backend);
+    let text = format!("Wurfel Engine · {:?} · {status}", s.backend);
     if text != s.info_text {
         set_info(&text);
         s.info_text = text;
@@ -1674,27 +1705,10 @@ fn render(s: &mut State) {
     };
     let view = output.texture.create_view(&Default::default());
     let mut encoder = s.device.create_command_encoder(&Default::default());
-    {
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("world"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.063, g: 0.075, b: 0.102, a: 1.0 }),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &s.depth_view,
-                depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Discard }),
-                stencil_ops: None,
-            }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
+    // The scene is drawn once per depth peeling layer, in any order, and the layers are blended
+    // onto the canvas (see `peel.rs`).
+    let background = wgpu::Color { r: 0.063, g: 0.075, b: 0.102, a: 1.0 };
+    s.peeling.render(&mut encoder, &view, background, |pass| {
         pass.set_pipeline(&s.pipeline);
         pass.set_bind_group(0, &s.bind_group, &[]);
         pass.set_bind_group(1, &s.atlas_bind_group, &[]);
@@ -1706,7 +1720,7 @@ fn render(s: &mut State) {
             pass.set_vertex_buffer(0, s.dynamic_buffer.slice(..));
             pass.draw(0..s.dynamic_vertices, 0..1);
         }
-    }
+    });
     s.queue.submit(Some(encoder.finish()));
     s.queue.present(output);
 }
