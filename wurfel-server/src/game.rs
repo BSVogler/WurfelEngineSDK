@@ -130,6 +130,13 @@ impl Game {
         }
     }
 
+    /// Tell the game rules who is friends with whom.
+    pub fn set_friends(&mut self, pairs: &[(u32, u32)]) {
+        if let Some(mode) = self.mode.as_mut() {
+            mode.set_friends(pairs);
+        }
+    }
+
     #[cfg(test)]
     pub fn game_mode(&self) -> &str {
         &self.gamemode
@@ -361,6 +368,7 @@ impl Game {
             }
             // Answered by the connection itself (pings, lobby requests, joining): no game state needed.
             ClientMsg::Ping { .. }
+            | ClientMsg::Heart { .. }
             | ClientMsg::ListMaps
             | ClientMsg::GetWorld
             | ClientMsg::LoadMap { .. }

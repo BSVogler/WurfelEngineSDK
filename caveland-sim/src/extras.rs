@@ -24,7 +24,7 @@ use crate::game::{cell_center, cell_floor, Caveland, Cell, EntityKind, GameEvent
 use crate::logic::OvenLogic;
 use crate::npc::{self, Bird, Vanya, SHOP_STOCK, VANYA_DUPLICATE_RADIUS, VANYA_LOOK_RADIUS};
 use crate::player::{PlayerState, INTERACT_RADIUS};
-use crate::power::{self, Candidate, PowerGrid, Turret, TURRET_SIGHT};
+use crate::power::{self, Candidate, PowerGrid, TargetMode, Turret, TURRET_SIGHT};
 use crate::team::Team;
 use wurfel_sim::entity::ai::MoveToAi;
 use wurfel_sim::entity::Component;
@@ -109,6 +109,10 @@ pub(crate) struct Extras {
     /// Non-cable power blocks that had power at the last look, to report changes.
     pub powered_before: HashSet<Cell>,
     pub turrets: HashMap<Cell, Turret>,
+    /// Whoever pressed Build last on a turret. Not saved: player ids last one session, like friends.
+    pub turret_owners: HashMap<Cell, EntityId>,
+    /// Friendships between players as `(smaller id, larger id)`, told by the server.
+    pub friends: HashSet<(EntityId, EntityId)>,
     pub factories: HashMap<Cell, RobotFactory>,
     pub flagpoles: HashMap<Cell, EntityId>,
     pub variants: HashMap<EntityId, RobotVariant>,
@@ -299,6 +303,12 @@ impl Caveland {
         self.x.scenario.enabled = enabled;
     }
 
+    /// Replace who is friends with whom (the server tells it whenever it changes). Turrets spare
+    /// the friends of their owner.
+    pub fn set_friends(&mut self, pairs: impl IntoIterator<Item = (EntityId, EntityId)>) {
+        self.x.friends = pairs.into_iter().map(|(a, b)| (a.min(b), a.max(b))).collect();
+    }
+
     /// Take the events collected since the last call.
     pub fn drain_extra_events(&mut self) -> Vec<ExtraEvent> {
         std::mem::take(&mut self.x.events)
@@ -362,8 +372,9 @@ impl Caveland {
         match open.source {
             Source::Vanya(vanya) => self.vanya_answer(entities, id, vanya, answer == 1),
             Source::Shop(shop) => self.shop_buy(entities, id, state, shop, answer),
-            Source::Site(cell) => self.site_choice(entities, world, state, cell, answer),
+            Source::Site(cell) => self.site_choice(entities, world, id, state, cell, answer),
             Source::Factory(cell) => self.factory_choice(entities, id, cell, answer, &open.dialog),
+            Source::Turret(cell) => self.turret_choice(cell, answer),
             Source::Toolkit => self.toolkit_build(entities, world, state, position, answer),
             Source::LineKit => self.line_kit_lay(entities, world, id, state, answer),
         }
@@ -399,6 +410,7 @@ impl Caveland {
         enum Target {
             Site(Cell),
             Factory(Cell),
+            Turret(Cell),
             Entity(EntityId),
         }
         let mut best: Option<(f32, Target)> = None;
@@ -416,6 +428,7 @@ impl Caveland {
                     let target = match world.get(cell.0, cell.1, cell.2).id() {
                         ids::CONSTRUCTION_SITE => Target::Site(cell),
                         ids::ROBOT_FACTORY => Target::Factory(cell),
+                        ids::TURRET if self.x.turrets.contains_key(&cell) => Target::Turret(cell),
                         _ => continue,
                     };
                     let d = cell_center(cell).distance(position + Vec3::Z * 0.5);
@@ -449,6 +462,7 @@ impl Caveland {
         match target {
             Target::Site(cell) => self.open_site(id, state, cell, world),
             Target::Factory(cell) => self.open_factory_dialog(entities, id, cell),
+            Target::Turret(cell) => self.open_turret_dialog(id, cell),
             Target::Entity(eid) => self.use_entity(entities, id, state, eid),
         }
         true
@@ -582,7 +596,7 @@ impl Caveland {
         self.open(player, Dialog::selection(&format!("Build {name}"), "", options), Source::Site(cell));
     }
 
-    fn site_choice(&mut self, entities: &mut Entities, world: &mut World, state: &mut PlayerState, cell: Cell, answer: u8) {
+    fn site_choice(&mut self, entities: &mut Entities, world: &mut World, player: EntityId, state: &mut PlayerState, cell: Cell, answer: u8) {
         let position = cell_center(cell);
         match answer {
             0 => {
@@ -601,7 +615,7 @@ impl Caveland {
                 }
             }
             2 => {
-                self.build_site(entities, world, cell);
+                self.build_site(entities, world, cell, player);
             }
             _ => {}
         }
@@ -609,7 +623,8 @@ impl Caveland {
     }
 
     /// Turn a site into its machine if everything is in (`ConstructionSite.build`).
-    fn build_site(&mut self, _entities: &mut Entities, world: &mut World, cell: Cell) -> bool {
+    /// The player who does it becomes the owner of a turret.
+    fn build_site(&mut self, _entities: &mut Entities, world: &mut World, cell: Cell, player: EntityId) -> bool {
         let Some(site) = self.x.sites.get_mut(&cell) else { return false };
         if !site.can_build() {
             return false;
@@ -618,6 +633,9 @@ impl Caveland {
         site.consume();
         self.x.sites.remove(&cell);
         self.set_block(world, cell, Block::new(result, 0));
+        if result == ids::TURRET {
+            self.x.turret_owners.insert(cell, player);
+        }
         self.x.events.push(ExtraEvent::Built { cell, block: result });
         self.sound("construct", cell_center(cell));
         true
@@ -705,6 +723,27 @@ impl Caveland {
             Dialog::boolean("Robot in use", "The robot is already in use. Destroy it?")
         };
         self.open(player, dialog, Source::Factory(cell));
+    }
+
+    /// A turret's menu: who it shoots at. Like everything built, anybody can change it.
+    fn open_turret_dialog(&mut self, player: EntityId, cell: Cell) {
+        let Some(turret) = self.x.turrets.get(&cell) else { return };
+        let options = TargetMode::ALL.iter().enumerate().map(|(i, mode)| option(i as u8, mode.label())).collect();
+        let text = format!("Shoots at: {}", turret.mode.label());
+        self.open(player, Dialog::selection("Turret", &text, options), Source::Turret(cell));
+    }
+
+    fn turret_choice(&mut self, cell: Cell, answer: u8) {
+        let Some(mode) = TargetMode::ALL.get(answer as usize).copied() else { return };
+        if let Some(turret) = self.x.turrets.get_mut(&cell) {
+            turret.mode = mode;
+            self.sound("metallic", cell_center(cell));
+        }
+    }
+
+    /// Who the turret at `cell` shoots at.
+    pub fn turret_mode(&self, cell: Cell) -> Option<TargetMode> {
+        self.x.turrets.get(&cell).map(|t| t.mode)
     }
 
     fn factory_choice(&mut self, entities: &mut Entities, player: EntityId, cell: Cell, answer: u8, dialog: &Dialog) {
@@ -843,6 +882,7 @@ impl Caveland {
         }
         self.x.factories.retain(|c, _| factories.contains(c));
         self.x.turrets.retain(|c, _| turrets.contains(c));
+        self.x.turret_owners.retain(|c, _| turrets.contains(c));
 
         // Flag poles carry a flag above them.
         let lost: Vec<Cell> = self.x.flagpoles.keys().filter(|c| !poles.contains(*c)).copied().collect();
@@ -895,17 +935,29 @@ impl Caveland {
                 continue;
             }
             let gun = turret.gun_position(cell_floor(cell));
+            let mode = turret.mode;
+            let owner = self.x.turret_owners.get(&cell).copied();
             let origin = cell_center(cell);
-            // Robots within sight, in the order of their ids.
+            let friends = &self.x.friends;
+            let are_friends = |a: EntityId, b: EntityId| friends.contains(&(a.min(b), a.max(b)));
+            // What the turret may shoot at within sight, in the order of the ids.
             let mut candidates = Vec::new();
             for e in entities.iter() {
-                let Some(Kind::Robot(r)) = self.kinds.get(&e.id()) else { continue };
                 if e.is_disposed() {
                     continue;
                 }
+                let (team, player) = match self.kinds.get(&e.id()) {
+                    Some(Kind::Robot(r)) => (r.team, false),
+                    Some(Kind::Player(_)) => (Team::Player, true),
+                    _ => continue,
+                };
                 let horizontal = Vec2::new(e.position.x - origin.x, e.position.y - origin.y).length();
-                if horizontal < TURRET_SIGHT {
-                    candidates.push(Candidate { id: e.id(), position: e.position + Vec3::Z * 0.5, team: r.team });
+                if horizontal >= TURRET_SIGHT {
+                    continue;
+                }
+                let candidate = Candidate { id: e.id(), position: e.position + Vec3::Z * 0.5, team, player };
+                if power::should_target(mode, owner, &candidate, &are_friends) {
+                    candidates.push(candidate);
                 }
             }
             let Some(target) = power::pick_target(world, gun, &candidates) else { continue };
@@ -1213,6 +1265,8 @@ impl Caveland {
         for id in dead_kinds {
             self.kinds.remove(&id);
         }
+        // A turret whose builder has left has no owner any more.
+        self.x.turret_owners.retain(|_, owner| !gone(entities, *owner));
         let dead_spiders: Vec<EntityId> = self.x.spiders.keys().copied().filter(|&id| gone(entities, id)).collect();
         for id in dead_spiders {
             if let Some(spider) = self.x.spiders.remove(&id) {

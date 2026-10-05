@@ -63,6 +63,8 @@ pub(crate) enum Source {
     Shop(EntityId),
     Site(Cell),
     Factory(Cell),
+    /// A turret's menu: who it shoots at.
+    Turret(Cell),
     /// The toolkit in hand: choose what to build where the player stands.
     Toolkit,
     /// A rails or cable kit in hand: choose the piece to lay where the player stands.

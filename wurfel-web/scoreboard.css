@@ -3,7 +3,7 @@
   position: fixed; top: 12vh; left: 50%; transform: translateX(-50%);
   min-width: 280px; max-width: min(92vw, 460px); max-height: 70vh; overflow: hidden auto;
   background: rgba(14, 16, 22, 0.86); color: #eef1f6; border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 10px; padding: 10px 14px 12px; z-index: 40; pointer-events: none;
+  border-radius: 10px; padding: 10px 14px 12px; z-index: 40;
   font: 14px/1.5 system-ui, sans-serif; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
 }
 #scoreboard[hidden] { display: none; }
@@ -11,7 +11,7 @@
   margin-bottom: 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.14); font-weight: 600; }
 #scoreboard header span:last-child { font-weight: 400; opacity: 0.7; }
 #scoreboard ul { list-style: none; margin: 0; padding: 0; }
-#scoreboard li { display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 10px; padding: 2px 0; }
+#scoreboard li { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 10px; padding: 2px 0; }
 #scoreboard li.me { font-weight: 700; background: rgba(255, 255, 255, 0.08); border-radius: 4px; margin: 0 -6px; padding: 2px 6px; }
 #scoreboard .swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.35); }
 #scoreboard .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -20,3 +20,12 @@
 #scoreboard .ping.ok { color: #f0d060; }
 #scoreboard .ping.bad { color: #ff7a6b; }
 #scoreboard .ping.unknown { opacity: 0.5; }
+#scoreboard .heart { font-size: 18px; line-height: 1; cursor: pointer; user-select: none; padding: 0 2px; }
+#scoreboard .heart.none { opacity: 0.45; }
+#scoreboard .heart.none:hover { opacity: 1; color: #ff6fa8; }
+#scoreboard .heart.sent { color: #ff9ac0; animation: heart-wait 1.4s ease-in-out infinite; }
+#scoreboard .heart.accept { color: #ff4f93; animation: heart-beat 0.9s ease-in-out infinite; }
+#scoreboard .heart.friend { color: #ff3b6b; }
+@keyframes heart-wait { 50% { opacity: 0.4; } }
+@keyframes heart-beat { 50% { transform: scale(1.25); } }
+@media (prefers-reduced-motion: reduce) { #scoreboard .heart { animation: none !important; } }

@@ -112,6 +112,11 @@ impl CavelandMode {
         self.spawner = create_generator(generator, seed);
     }
 
+    /// Who is friends with whom: turrets spare the friends of their owner.
+    pub fn set_friends(&mut self, pairs: &[(u32, u32)]) {
+        self.caveland.set_friends(pairs.iter().copied());
+    }
+
     #[cfg(test)]
     pub fn caveland(&self) -> &Caveland {
         &self.caveland

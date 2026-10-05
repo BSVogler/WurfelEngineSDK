@@ -20,6 +20,7 @@ use crate::audio::{Audio, EntityInfo};
 use crate::bindings::{parse_hex_color, Bindings};
 use crate::caveland_client::{self, Happening};
 use crate::interp::{RenderClock, Track};
+use crate::locator;
 use crate::mesh::{self, Vertex};
 use crate::prediction::{classify, replay, Correction, InputHistory, VisualOffset};
 use crate::minimap::{CameraView, ChunkInfo, ChunkState, EntityDot, Minimap, MinimapData, Mode};
@@ -126,6 +127,8 @@ struct State {
     actors: Actors,
     /// The names above the other players' heads.
     name_tags: NameTags,
+    /// Arrows at the screen edge towards friends who are out of view.
+    friend_markers: FriendMarkers,
     bind_group: wgpu::BindGroup,
     /// The sprite atlas texture array (a 1 pixel placeholder until it has loaded).
     atlas_bind_group: wgpu::BindGroup,
@@ -162,6 +165,10 @@ struct State {
     roster: HashMap<u32, PlayerInfo>,
     /// Everybody's ping in ms as the server last told us (the Tab player list).
     pings: HashMap<u32, u32>,
+    /// Hearts in the Tab list: friends (both agreed), players we invited, players who invited us.
+    friends: HashSet<u32>,
+    invited: HashSet<u32>,
+    invited_by: HashSet<u32>,
     map_name: String,
     /// Real time not yet consumed by fixed physics steps.
     accumulator: f32,
@@ -350,6 +357,7 @@ async fn run() -> Result<(), String> {
         sound_loops: HashMap::new(),
         actors: Actors::default(),
         name_tags: NameTags::new(&document),
+        friend_markers: FriendMarkers::new(&document),
         bind_group,
         atlas_bind_group,
         world_buffer,
@@ -371,6 +379,9 @@ async fn run() -> Result<(), String> {
         remotes: HashMap::new(),
         roster: HashMap::new(),
         pings: HashMap::new(),
+        friends: HashSet::new(),
+        invited: HashSet::new(),
+        invited_by: HashSet::new(),
         map_name: String::new(),
         accumulator: 0.0,
         history: InputHistory::new(),
@@ -570,9 +581,18 @@ fn export_players(s: &State, window: &web_sys::Window) {
         set("color", format!("#{:02x}{:02x}{:02x}", p.color[0], p.color[1], p.color[2]).into());
         set("pingMs", ping.map_or(JsValue::NULL, JsValue::from));
         set("me", me.into());
+        set("friend", s.friends.contains(&p.id).into());
+        set("invited", s.invited.contains(&p.id).into());
+        set("invitesMe", s.invited_by.contains(&p.id).into());
         players.push(&entry);
     }
     let _ = js_sys::Reflect::set(window, &JsValue::from_str("wurfelPlayers"), &players);
+}
+
+fn clear_friends(s: &mut State) {
+    s.friends.clear();
+    s.invited.clear();
+    s.invited_by.clear();
 }
 
 // --------------------------------------------------------------------------------- status banner
@@ -581,6 +601,8 @@ fn export_players(s: &State, window: &web_sys::Window) {
 enum Tone {
     Info,
     Ok,
+    /// News the player has to read and act on: stays a little longer than `Ok`.
+    Invite,
     Error,
 }
 
@@ -605,6 +627,7 @@ fn show_banner(text: &str, tone: Tone) {
     let (background, color) = match tone {
         Tone::Info => ("rgba(20,28,48,0.92)", "#dfe8ff"),
         Tone::Ok => ("rgba(24,74,40,0.92)", "#dcffe6"),
+        Tone::Invite => ("rgba(92,28,70,0.94)", "#ffe0f3"),
         Tone::Error => ("rgba(110,24,24,0.95)", "#ffe3e3"),
     };
     let _ = element.set_attribute(
@@ -621,7 +644,12 @@ fn show_banner(text: &str, tone: Tone) {
     // A newer message must not be hidden by an older timer.
     let seq = element.get_attribute("data-seq").and_then(|v| v.parse::<u32>().ok()).unwrap_or(0) + 1;
     let _ = element.set_attribute("data-seq", &seq.to_string());
-    if tone == Tone::Ok {
+    let hide_after_ms = match tone {
+        Tone::Ok => Some(2500),
+        Tone::Invite => Some(7000),
+        Tone::Info | Tone::Error => None,
+    };
+    if let Some(hide_after_ms) = hide_after_ms {
         let hide = Closure::once_into_js(move || {
             if let Some(el) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.get_element_by_id("statusbanner")) {
                 if el.get_attribute("data-seq").and_then(|v| v.parse::<u32>().ok()) == Some(seq) {
@@ -629,7 +657,7 @@ fn show_banner(text: &str, tone: Tone) {
                 }
             }
         });
-        let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(hide.unchecked_ref(), 2500);
+        let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(hide.unchecked_ref(), hide_after_ms);
     }
 }
 
@@ -686,6 +714,7 @@ fn end_session(s: &mut State) {
     s.entities = Entities::new();
     s.remotes.clear();
     s.roster.clear();
+    clear_friends(s);
     s.history = InputHistory::new();
     s.visual_offset.clear();
     s.render_clock = RenderClock::default();
@@ -808,6 +837,7 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
         ServerMsg::Welcome { your_id, map, players, roster, gamemode, .. } => {
             s.roster = roster.into_iter().map(|p| (p.id, p)).collect();
             s.pings.clear();
+            clear_friends(s);
             s.map_name = map.clone();
             // The server sends the terrain as chunks: this world has no generator of its own and
             // fills up as they arrive.
@@ -884,6 +914,19 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
         ServerMsg::Pong { client_time, .. } => s.net.on_pong(client_time, now),
         ServerMsg::Stats(stats) => s.net.on_server_stats(stats),
         ServerMsg::Pings { list } => s.pings = list.into_iter().collect(),
+        ServerMsg::Friends { player, friends, sent, received } if Some(player) == s.my_id => {
+            let name = |s: &State, id: u32| s.roster.get(&id).map_or_else(|| "Somebody".to_string(), |p| p.name.clone());
+            for &id in received.iter().filter(|id| !s.invited_by.contains(id)) {
+                show_banner(&format!("{} wants to be friends. Hold Tab and click ♥ to accept", name(s, id)), Tone::Invite);
+            }
+            for &id in friends.iter().filter(|id| !s.friends.contains(id)) {
+                show_banner(&format!("You and {} are friends now", name(s, id)), Tone::Ok);
+            }
+            s.friends = friends.into_iter().collect();
+            s.invited = sent.into_iter().collect();
+            s.invited_by = received.into_iter().collect();
+        }
+        ServerMsg::Friends { .. } => {} // somebody else's
         ServerMsg::Things { things, .. } => s.things = things,
         ServerMsg::Rules { kind, data } => handle_rules(s, &kind, &data),
     }
@@ -1092,7 +1135,8 @@ fn install_menu_events(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
 }
 
 /// What the page's HUD and console send to the server: `wurfelNet.action(name, arg)` answers a
-/// dialog or offer, `wurfelNet.command(line)` is a console line of the game mode.
+/// dialog or offer, `wurfelNet.command(line)` is a console line of the game mode,
+/// `wurfelNet.heart(playerId, on)` is the heart in the Tab player list.
 fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     let net = js_sys::Object::new();
     let s = state.clone();
@@ -1107,6 +1151,12 @@ fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     });
     let _ = js_sys::Reflect::set(&net, &"command".into(), command.as_ref());
     command.forget();
+    let s = state.clone();
+    let heart = Closure::<dyn FnMut(u32, bool)>::new(move |to: u32, on: bool| {
+        send(&mut s.borrow_mut(), &ClientMsg::Heart { to, on });
+    });
+    let _ = js_sys::Reflect::set(&net, &"heart".into(), heart.as_ref());
+    heart.forget();
     let _ = js_sys::Reflect::set(window, &"wurfelNet".into(), &net);
 }
 
@@ -1167,7 +1217,8 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     listen(window, "mousedown", move |e: MouseEvent| {
         let mut s = s.borrow_mut();
         s.pointer = Some((e.client_x() as f32 * s.dpr, e.client_y() as f32 * s.dpr));
-        if input_blocked() {
+        // Clicking a heart in the Tab list must not also place a block behind it.
+        if input_blocked() || window_flag("wurfelScoreboardOpen") {
             return;
         }
         s.keys.insert(format!("mouse{}", e.button()));
@@ -1459,6 +1510,7 @@ fn frame(s: &mut State, now_ms: f64) {
     update_overlays(s, now_ms);
     update_info(s);
     update_name_tags(s);
+    update_friend_markers(s);
     render(s);
 }
 
@@ -1518,7 +1570,8 @@ fn update_name_tags(s: &mut State) {
         let x = ((screen[0] - s.camera.center[0]) * s.camera.zoom + width / 2.0) / s.dpr;
         let y = ((screen[1] - s.camera.center[1]) * s.camera.zoom + height / 2.0) / s.dpr;
         if x > -100.0 && y > -50.0 && x < width / s.dpr + 100.0 && y < height / s.dpr + 50.0 {
-            wanted.push((id, info.name.clone(), x, y));
+            let name = if s.friends.contains(&id) { format!("♥ {}", info.name) } else { info.name.clone() };
+            wanted.push((id, name, x, y));
         }
     }
     s.name_tags.tags.retain(|id, element| {
@@ -1545,6 +1598,95 @@ fn update_name_tags(s: &mut State) {
             element.set_text_content(Some(&name));
         }
         let _ = element.style().set_property("transform", &format!("translate({x:.1}px, {y:.1}px) translate(-50%, -100%)"));
+    }
+}
+
+/// One arrow with the friend's name and distance.
+struct FriendMarker {
+    root: web_sys::HtmlElement,
+    arrow: web_sys::HtmlElement,
+    label: web_sys::HtmlElement,
+}
+
+/// Arrows at the edge of the screen pointing to friends who are out of view, with their name and
+/// distance in blocks, and a hint when they are well above or below.
+struct FriendMarkers {
+    layer: Option<web_sys::HtmlElement>,
+    markers: HashMap<u32, FriendMarker>,
+}
+
+impl FriendMarkers {
+    fn new(document: &web_sys::Document) -> Self {
+        let layer = document.create_element("div").ok().and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok());
+        if let Some(layer) = &layer {
+            layer.set_id("friendmarkers");
+            let _ = layer.set_attribute("aria-hidden", "true");
+            let _ = layer.set_attribute("style", "position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:4");
+            if let Some(body) = document.body() {
+                let _ = body.append_child(layer);
+            }
+        }
+        FriendMarkers { layer, markers: HashMap::new() }
+    }
+}
+
+/// Keep one arrow per friend who is on the server but not on the screen.
+fn update_friend_markers(s: &mut State) {
+    let Some(layer) = s.friend_markers.layer.clone() else { return };
+    let Some(document) = layer.owner_document() else { return };
+    let (width, height) = (s.config.width as f32, s.config.height as f32);
+    let (css_width, css_height) = (width / s.dpr, height / s.dpr);
+    let mut wanted: Vec<(u32, String, [u8; 3], locator::Marker)> = Vec::new();
+    if let Some(me) = local_position(s) {
+        for &id in &s.friends {
+            let Some(remote) = s.remotes.get(&id).filter(|_| !s.hidden.contains(&id)) else { continue };
+            let Some(info) = s.roster.get(&id) else { continue };
+            let middle = remote.pos + Vec3::Z * (PLAYER_HEIGHT / 2.0);
+            let screen = screen_position((middle.x, middle.y), middle.z);
+            let x = ((screen[0] - s.camera.center[0]) * s.camera.zoom + width / 2.0) / s.dpr;
+            let y = ((screen[1] - s.camera.center[1]) * s.camera.zoom + height / 2.0) / s.dpr;
+            let Some(marker) = locator::edge_marker((x, y), (css_width, css_height), (70.0, 44.0)) else { continue };
+            let delta = remote.pos - me;
+            let mut label = format!("{} {}", info.name, locator::distance_label(delta.length()));
+            if let Some(hint) = locator::height_hint(delta.z) {
+                label.push(' ');
+                label.push(hint);
+            }
+            wanted.push((id, label, info.color, marker));
+        }
+    }
+    s.friend_markers.markers.retain(|id, m| {
+        let keep = wanted.iter().any(|(wanted_id, ..)| wanted_id == id);
+        if !keep {
+            m.root.remove();
+        }
+        keep
+    });
+    for (id, label, color, marker) in wanted {
+        let m = s.friend_markers.markers.entry(id).or_insert_with(|| {
+            let make = |style: &str| -> web_sys::HtmlElement {
+                let element: web_sys::HtmlElement = document.create_element("div").unwrap().unchecked_into();
+                let _ = element.set_attribute("style", style);
+                element
+            };
+            let root = make("position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:1px;will-change:transform");
+            let arrow = make("font:700 22px/1 system-ui,sans-serif;text-shadow:0 1px 3px #000;will-change:transform");
+            arrow.set_text_content(Some("➤"));
+            let label = make(
+                "padding:1px 6px;border-radius:4px;white-space:nowrap;font:600 12px/1.3 system-ui,sans-serif;\
+                 color:#fff;background:rgba(10,12,18,0.6);text-shadow:0 1px 2px #000",
+            );
+            let _ = root.append_child(&arrow);
+            let _ = root.append_child(&label);
+            let _ = layer.append_child(&root);
+            FriendMarker { root, arrow, label }
+        });
+        if m.label.text_content().as_deref() != Some(label.as_str()) {
+            m.label.set_text_content(Some(&label));
+        }
+        let _ = m.arrow.style().set_property("color", &format!("rgb({},{},{})", color[0], color[1], color[2]));
+        let _ = m.arrow.style().set_property("transform", &format!("rotate({:.1}deg)", marker.angle_deg));
+        let _ = m.root.style().set_property("transform", &format!("translate({:.1}px, {:.1}px) translate(-50%, -50%)", marker.x, marker.y));
     }
 }
 
