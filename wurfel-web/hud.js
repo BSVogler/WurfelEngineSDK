@@ -22,7 +22,7 @@
 
   const HINTS = [
     ["WASD", "walk"], ["Space", "jump / jetpack"], ["F / click", "swing, hold to charge"],
-    ["G", "use item"], ["C", "hold + release: throw"], ["X", "drop"],
+    ["G", "use item"], ["M / right click", "hold, release: throw (long hold: drop)"], ["X", "drop"],
     ["Z / V", "switch item"], ["1-9", "craft"], ["R", "talk / build / ride (nearest)"], ["Tab", "players"],
   ];
 

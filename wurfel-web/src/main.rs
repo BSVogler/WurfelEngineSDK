@@ -1,4 +1,5 @@
 mod actors;
+mod animation;
 mod atlas;
 mod audio;
 mod bindings;

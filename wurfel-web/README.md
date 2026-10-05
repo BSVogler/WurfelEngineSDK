@@ -74,3 +74,29 @@ the geometry, `src/actors.rs` animates players and things, `src/texture.rs` deco
 (a texture array, bind group 1 of `shader.wgsl`). While the atlas loads, or if it cannot be loaded, and
 for blocks without art, the old flat colours are shown; `?flat=1` in the address forces them. To rebuild
 the atlas from the Java sheets run `python3 tools/build_atlas.py`.
+
+### Player animation and the Caveland actions
+
+Animation is presentation: the client owns it and the server neither holds nor sends any animation state
+(`PlayerState` has no pose). `src/animation.rs` is the port of `Ejira.playAnimation`/`updateSprite` (swing `h`,
+charge/loaded stance `l`, power attack `i`, throw `t`, jump `j`, overlays `s`/`o`) plus a `Performer` that mirrors
+just enough of the rules to animate, with the same constants as the server's `Tuning` (0.3 s charge threshold,
+1.0 s full charge, 0.15 s swing, 0.6 s drop).
+
+* Local player: the animation starts from the local input at once (`send_action` in `web.rs` feeds `Actors` and
+  sends the unchanged `Action` message), without waiting for the server.
+* Other players: the server announces each of their moves as a one-shot happening in the `events` Rules message,
+  `{"t": "action", "player": id, "name": "attack"|"release_attack"|"prepare_throw"|"throw"|"drop", "ok": bool}`
+  (`ok` is false when the rules refused: no swing began, nothing prepared, nothing thrown). An accepted one
+  starts that player's animation; timings run on the client from the same constants.
+* Reconciling: an `ok: false` event about the local player takes its animation back to standing; an accepted one
+  changes nothing.
+* Jumping and walking come from the movement seen in the snapshots (leaving the ground upwards faster than 1.5
+  blocks per second is a jump, horizontal speed starts and ends the walk), for the local player and others alike.
+* Facing is the one derived from movement (the character does not move while aiming, so it keeps where it last
+  walked).
+
+Keys (`caveland_client::key_action`, `mouse_action`): left mouse button or `F` swing, hold to charge, release to
+fire a charged power attack; right mouse button or `M` hold to wind up a throw, release to throw, hold 0.6 s
+(`playerItemDropTime`) to drop the item instead; `G` use the item in hand (torch, explosives, kits), `R`
+interact, `X` drop, `Z`/`V` switch items.
