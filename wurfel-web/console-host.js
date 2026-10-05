@@ -23,8 +23,16 @@
       const text = String(line).trim().replace(/^[\/:]/, '');
       const name = text.split(/\s+/)[0];
       if (name === 'help' || name === '?') {
-        return lines(...Object.values(COMMANDS).map((m) => ['info', m]),
+        return lines(['info', 'editor [on|off]: switch the map editor on or off (F2); only there the mouse changes blocks'], ...Object.values(COMMANDS).map((m) => ['info', m]),
           ['info', 'Commands only work in Caveland maps, for the host. Engine commands are not connected yet.']);
+      }
+      if (name === 'editor') {
+        // Java `editor`: switch to the map editor (again to leave it). `editor on|off` is explicit.
+        const mode = text.split(/\s+/)[1];
+        if (!window.wurfelEditor) return lines(['error', 'The editor is not available in this page.']);
+        const refused = window.wurfelEditor.toggle(mode);
+        if (refused) return lines(['error', refused]);
+        return lines(['info', window.wurfelEditor.active ? 'Editor on. Use F2 or `editor` to leave.' : 'Editor off.']);
       }
       if (!Object.prototype.hasOwnProperty.call(COMMANDS, name)) {
         return lines(['error', `${text}: command not found (try help)`]);
@@ -48,7 +56,7 @@
     suggest(prefix) {
       const typed = String(prefix).replace(/^[\/:]/, '');
       if (/\s/.test(typed)) return [];
-      return ['help', ...Object.keys(COMMANDS)].filter((c) => c.startsWith(typed));
+      return ['help', 'editor', ...Object.keys(COMMANDS)].filter((c) => c.startsWith(typed));
     },
 
     /** The server's answer, as JSON {ok, text}, called by the client. */

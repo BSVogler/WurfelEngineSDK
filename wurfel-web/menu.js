@@ -21,10 +21,11 @@
  *     ambientOcclusion bool     for the light engine, once it exists
  *     showFps, showHelp bool    (JS handles the FPS counter and hides #info itself)
  *     keys             { action: [primary, alternate] } with actions
- *                      up, down, left, right, jump, place, break, zoomIn, zoomOut, players.
+ *                      up, down, left, right, jump, zoomIn, zoomOut, players.
  *                      Values are KeyboardEvent.key lowercased (" " is space, "arrowup"...), or
  *                      "mouse0" / "mouse1" / "mouse2" for mouse buttons. An empty string means
- *                      unbound: ignore it. Number keys 1-4 (hotbar) are fixed and not listed.
+ *                      unbound: ignore it. Block editing is not a binding: it only exists in the map
+ *                      editor (F2 / console `editor`), where the mouse buttons and keys 1-4 are fixed.
  *
  * Events dispatched on window (CustomEvent):
  *     wurfel:play      detail { name, color, server, generator, seed, create }
@@ -107,12 +108,12 @@
   // ---------------------------------------------------------------------------------- settings
   const ACTIONS = [
     ['up', 'Walk up'], ['down', 'Walk down'], ['left', 'Walk left'], ['right', 'Walk right'],
-    ['jump', 'Jump'], ['place', 'Place block'], ['break', 'Break block'],
+    ['jump', 'Jump'],
     ['zoomIn', 'Zoom in'], ['zoomOut', 'Zoom out'], ['players', 'Player list'],
   ];
   const DEFAULT_KEYS = {
     up: ['w', 'arrowup'], down: ['s', 'arrowdown'], left: ['a', 'arrowleft'], right: ['d', 'arrowright'],
-    jump: [' ', ''], place: ['mouse0', ''], break: ['mouse2', ''], zoomIn: ['e', ''], zoomOut: ['q', ''], players: ['tab', ''],
+    jump: [' ', ''], zoomIn: ['e', ''], zoomOut: ['q', ''], players: ['tab', ''],
   };
   const RANGES = {
     masterVolume: [0, 1], musicVolume: [0, 1], effectsVolume: [0, 1], renderScale: [0.5, 1], zoom: [0.2, 2],
@@ -1359,7 +1360,7 @@
         swallow(e);
         return finishCapture('mouse' + e.button);
       }
-      if (menuOpen) swallow(e); // clicks on the menu must not place blocks underneath
+      if (menuOpen) swallow(e); // clicks on the menu must not reach the game underneath
     }, true);
   }
 

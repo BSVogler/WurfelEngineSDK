@@ -98,7 +98,11 @@ const me = a.me();
 const gx = Math.round(me.pos[0]) + 1, gy = Math.round(me.pos[1]);
 const y = gx + gy, x = (gx - gy - ((y % 2) + 2) % 2) / 2;
 a.send({ type: 'SetBlock', x, y, z: 9, block: 3 });
-check((await a.wait('BlockSet', 1000 + lag))?.x === x, 'a block placement is broadcast');
+await sleep(300 + lag);
+check(!a.log.some(m => m.type === 'BlockSet'), 'block edits outside the editor are ignored');
+a.send({ type: 'Editor', on: true });
+a.send({ type: 'SetBlock', x, y, z: 9, block: 3 });
+check((await a.wait('BlockSet', 1000 + lag))?.x === x, 'a block placement from the editor is broadcast');
 
 // ---- robustness
 a.ws.send('not json'); a.ws.send('{"type":"Nonsense"}'); a.ws.send('{"type":"Input","seq":99,"input":{"upp":true}}');

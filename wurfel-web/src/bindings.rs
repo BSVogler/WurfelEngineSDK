@@ -5,7 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-pub const ACTIONS: [&str; 9] = ["up", "down", "left", "right", "jump", "place", "break", "zoomIn", "zoomOut"];
+pub const ACTIONS: [&str; 7] = ["up", "down", "left", "right", "jump", "zoomIn", "zoomOut"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bindings {
@@ -15,14 +15,12 @@ pub struct Bindings {
 impl Default for Bindings {
     /// The same defaults as the menu, used until it reports its settings.
     fn default() -> Self {
-        let defaults: [(&str, [&str; 2]); 9] = [
+        let defaults: [(&str, [&str; 2]); 7] = [
             ("up", ["w", "arrowup"]),
             ("down", ["s", "arrowdown"]),
             ("left", ["a", "arrowleft"]),
             ("right", ["d", "arrowright"]),
             ("jump", [" ", ""]),
-            ("place", ["mouse0", ""]),
-            ("break", ["mouse2", ""]),
             ("zoomIn", ["e", ""]),
             ("zoomOut", ["q", ""]),
         ];
@@ -53,15 +51,6 @@ impl Bindings {
     pub fn held(&self, action: &str, held: &HashSet<String>) -> bool {
         self.bound(action).any(|k| held.contains(k))
     }
-
-    pub fn matches_key(&self, action: &str, key: &str) -> bool {
-        let key = key.to_lowercase();
-        self.bound(action).any(|k| k == key)
-    }
-
-    pub fn matches_button(&self, action: &str, button: i16) -> bool {
-        self.bound(action).any(|k| k.strip_prefix("mouse").and_then(|n| n.parse::<i16>().ok()) == Some(button))
-    }
 }
 
 /// `#rrggbb` (or `rrggbb`) as red, green, blue. Anything else is `None`.
@@ -88,9 +77,7 @@ mod tests {
         assert!(b.held("up", &held(&["w"])) && b.held("up", &held(&["arrowup"])));
         assert!(b.held("jump", &held(&[" "])));
         assert!(!b.held("up", &held(&["s"])));
-        assert!(b.matches_button("place", 0) && b.matches_button("break", 2));
-        assert!(!b.matches_button("place", 2));
-        assert!(b.matches_key("zoomIn", "E"), "event keys arrive in either case");
+        assert!(!b.held("place", &held(&["mouse0"])), "block editing is not a binding: it belongs to the editor");
     }
 
     #[test]
@@ -110,19 +97,7 @@ mod tests {
         settings.insert("fly".to_string(), vec!["f".to_string()]);
         let b = Bindings::from_settings(&settings);
         assert!(!b.held("up", &held(&[""])), "an unbound action cannot be triggered by an empty key");
-        assert!(!b.matches_key("up", ""));
-        assert!(!b.matches_key("fly", "f"));
-    }
-
-    #[test]
-    fn the_mouse_can_be_bound_to_anything() {
-        let mut settings = HashMap::new();
-        settings.insert("jump".to_string(), vec!["mouse1".to_string()]);
-        settings.insert("place".to_string(), vec!["q".to_string()]);
-        let b = Bindings::from_settings(&settings);
-        assert!(b.matches_button("jump", 1) && !b.matches_button("jump", 0));
-        assert!(b.matches_key("place", "q") && !b.matches_button("place", 0));
-        assert!(!b.matches_button("jump", -1));
+        assert!(!b.held("fly", &held(&["f"])));
     }
 
     #[test]

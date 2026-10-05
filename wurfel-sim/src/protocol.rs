@@ -209,7 +209,11 @@ pub enum ClientMsg {
     /// than the last one it applied, and echoes it in [`PlayerState::input_seq`]. A pressed jump is
     /// never lost, even if the next change arrives before the next tick.
     Input { seq: u32, input: PlayerInput },
-    /// Place a block, or remove it with `block == 0`.
+    /// Enter (`on`) or leave the map editor. Only a player in the editor may send `SetBlock`: the
+    /// server ignores block edits from everybody else. Not used in game modes (they have their own
+    /// rules for changing blocks). A new connection starts outside the editor.
+    Editor { on: bool },
+    /// Place a block, or remove it with `block == 0`. Only accepted from a player in the editor.
     SetBlock { x: i32, y: i32, z: i32, block: u16 },
     /// A one-off action of the game mode (for Caveland: `attack`, `throw`, `craft`...). The engine
     /// does not interpret it; unknown actions are ignored.
@@ -237,6 +241,7 @@ impl ClientMsg {
         match self {
             ClientMsg::Input { .. } | ClientMsg::Ping { .. } => Channel::Unreliable,
             ClientMsg::SetBlock { .. }
+            | ClientMsg::Editor { .. }
             | ClientMsg::Action { .. }
             | ClientMsg::Command { .. }
             | ClientMsg::ListMaps

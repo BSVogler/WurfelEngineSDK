@@ -435,7 +435,7 @@ async fn client(socket: WebSocket, shared: Shared) {
                             alive = send(Payload::Text(welcome));
                         }
                         ClientMsg::Join { .. } => {}
-                        ClientMsg::Input { .. } | ClientMsg::SetBlock { .. } | ClientMsg::Action { .. } | ClientMsg::Command { .. } => {
+                        ClientMsg::Input { .. } | ClientMsg::Editor { .. } | ClientMsg::SetBlock { .. } | ClientMsg::Action { .. } | ClientMsg::Command { .. } => {
                             if let Some((id, _)) = &player {
                                 let broadcast = shared.game.lock().unwrap().handle(*id, msg);
                                 if let Some(msg) = broadcast {

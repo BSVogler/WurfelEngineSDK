@@ -8,7 +8,6 @@ use glam::Vec3;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlCanvasElement, KeyboardEvent, MessageEvent, MouseEvent, WebSocket, WheelEvent};
-use wurfel_sim::block::id;
 use wurfel_sim::entity::{Entities, EntityId};
 use wurfel_sim::grid::{chunk_of, from_iso, to_iso};
 use wurfel_sim::player::{apply_input, new_player, PlayerInput, PLAYER_HEIGHT, TICK_DT, TICK_RATE};
@@ -19,6 +18,7 @@ use crate::actors::Actors;
 use crate::audio::{Audio, EntityInfo};
 use crate::bindings::{parse_hex_color, Bindings};
 use crate::caveland_client::{self, Happening};
+use crate::editor::{self, Button, Editor, Tool};
 use crate::interp::{RenderClock, Track};
 use crate::mesh::{self, Vertex};
 use crate::prediction::{classify, replay, Correction, InputHistory, VisualOffset};
@@ -32,9 +32,6 @@ use crate::texture;
 const DEFAULT_SEED: u64 = 1;
 /// Most fires placed in the world at once (each costs a light and particles).
 const MAX_EMITTERS: usize = 8;
-/// Blocks selectable with the number keys.
-const HOTBAR: [(u8, &str); 4] =
-    [(id::STONE, "stone"), (id::DIRT, "dirt"), (id::GRASS, "grass"), (id::SAND, "sand")];
 const PLAYER_COLORS: [[f32; 3]; 6] = [
     [0.90, 0.30, 0.30],
     [0.95, 0.75, 0.20],
@@ -177,7 +174,10 @@ struct State {
     bindings: Bindings,
     /// Pointer position in canvas pixels.
     pointer: Option<(f32, f32)>,
-    selected: usize,
+    /// The map editor: the only mode in which the mouse edits blocks (see `editor.rs`).
+    editor: Editor,
+    /// Last toolbar state pushed to the page, to send it only when it changes.
+    editor_ui: String,
 
     // --- debug overlays
     net: NetStats,
@@ -379,7 +379,8 @@ async fn run() -> Result<(), String> {
         keys: HashSet::new(),
         bindings: read_bindings(),
         pointer: None,
-        selected: 0,
+        editor: Editor::default(),
+        editor_ui: String::new(),
         net: NetStats::new(),
         net_overlay,
         show_net: false,
@@ -908,6 +909,8 @@ fn hud(method: &str, arg: &JsValue) {
 
 /// What a game mode told us about the world and the people in it is only valid for one session.
 fn reset_mode_state(s: &mut State) {
+    // The server forgets the editor with the connection, so a new session starts outside it.
+    s.editor.set_active(false);
     s.riding = false;
     s.hidden.clear();
     s.powered.clear();
@@ -1107,6 +1110,36 @@ fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     });
     let _ = js_sys::Reflect::set(&net, &"command".into(), command.as_ref());
     command.forget();
+    // The editor toolbar and the `editor` console command (editor.js, console-host.js).
+    let s = state.clone();
+    let editor_set = Closure::<dyn FnMut(String) -> String>::new(move |mode: String| {
+        let mut s = s.borrow_mut();
+        let on = match mode.as_str() {
+            "on" => true,
+            "off" => false,
+            _ => !s.editor.active(),
+        };
+        match set_editor(&mut s, on) {
+            Ok(()) => String::new(),
+            Err(message) => message.to_string(),
+        }
+    });
+    let _ = js_sys::Reflect::set(&net, &"editor".into(), editor_set.as_ref());
+    editor_set.forget();
+    let s = state.clone();
+    let editor_tool = Closure::<dyn FnMut(String)>::new(move |name: String| {
+        if let Some(tool) = Tool::parse(&name) {
+            s.borrow_mut().editor.select_tool(tool);
+        }
+    });
+    let _ = js_sys::Reflect::set(&net, &"editorTool".into(), editor_tool.as_ref());
+    editor_tool.forget();
+    let s = state.clone();
+    let editor_block = Closure::<dyn FnMut(u32)>::new(move |index: u32| {
+        s.borrow_mut().editor.select_block(index as usize);
+    });
+    let _ = js_sys::Reflect::set(&net, &"editorBlock".into(), editor_block.as_ref());
+    editor_block.forget();
     let _ = js_sys::Reflect::set(window, &"wurfelNet".into(), &net);
 }
 
@@ -1127,23 +1160,50 @@ fn start_from_menu(state: &Rc<RefCell<State>>, detail: &JsValue) {
     begin_session(state, join);
 }
 
-fn place_block(s: &mut State) {
-    // In a game mode blocks change through its rules (digging), not by clicking.
-    if s.caveland.is_some() {
-        return;
-    }
-    if let Some(Pick { place: (x, y, z), .. }) = hovered(s) {
-        let block = Block::new(HOTBAR[s.selected].0, 0).raw();
-        send(s, &ClientMsg::SetBlock { x, y, z, block });
+/// A mouse button went down in the game view. Only the editor turns this into a block edit.
+fn editor_click(s: &mut State, button: i16) {
+    let Some(button) = Button::from_dom(button) else { return };
+    let target = hovered(s);
+    let world = &s.world;
+    let edit = s.editor.click(button, target, |(x, y, z)| world.get(x, y, z).id());
+    if let Some(edit) = edit {
+        send(s, &ClientMsg::SetBlock { x: edit.x, y: edit.y, z: edit.z, block: edit.block });
     }
 }
 
-fn break_block(s: &mut State) {
-    if s.caveland.is_some() {
-        return;
+/// Enter or leave the editor (F2, the `editor` console command, the toolbar). Not available
+/// offline (the preview is read-only) or in a game mode (it has its own rules for blocks).
+fn set_editor(s: &mut State, on: bool) -> Result<(), &'static str> {
+    if on && !s.connected {
+        return Err("The editor needs a world: join one from the menu first.");
     }
-    if let Some(Pick { hit: (x, y, z), .. }) = hovered(s) {
-        send(s, &ClientMsg::SetBlock { x, y, z, block: 0 });
+    if on && s.caveland.is_some() {
+        return Err("The editor is not available in Caveland maps.");
+    }
+    if s.editor.active() != on {
+        s.editor.set_active(on);
+        send(s, &ClientMsg::Editor { on });
+    }
+    Ok(())
+}
+
+fn toggle_editor(s: &mut State) {
+    let on = !s.editor.active();
+    if let Err(message) = set_editor(s, on) {
+        show_banner(message, Tone::Info);
+    }
+}
+
+/// Push the toolbar state (and the cursor line) to `editor.js` when it changed.
+fn update_editor_ui(s: &mut State, target: Option<Pick>) {
+    let cursor = match target {
+        Some(pick) => editor::cursor_text(Some(pick), s.world.get(pick.hit.0, pick.hit.1, pick.hit.2).id()),
+        None => String::new(),
+    };
+    let json = s.editor.ui_json(&cursor);
+    if json != s.editor_ui {
+        call_js("wurfelEditor", "update", &JsValue::from_str(&json));
+        s.editor_ui = json;
     }
 }
 
@@ -1176,11 +1236,7 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
                 send(&mut s, &ClientMsg::Action { name: name.to_string(), arg });
             }
         }
-        if s.bindings.matches_button("place", e.button()) {
-            place_block(&mut s);
-        } else if s.bindings.matches_button("break", e.button()) {
-            break_block(&mut s);
-        }
+        editor_click(&mut s, e.button());
     });
     let s = state.clone();
     listen(window, "mouseup", move |e: MouseEvent| {
@@ -1223,6 +1279,13 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
                 set_overlay_visible(&s.net_overlay, s.show_net);
                 return;
             }
+            "f2" if !window_flag("wurfelMenuOpen") => {
+                e.prevent_default();
+                if !e.repeat() {
+                    toggle_editor(&mut s);
+                }
+                return;
+            }
             "f4" if !window_flag("wurfelMenuOpen") => {
                 e.prevent_default();
                 if let Some(minimap) = s.minimap.as_mut() {
@@ -1242,15 +1305,9 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
                     send(&mut s, &ClientMsg::Action { name: name.to_string(), arg });
                 }
             }
-        } else if let Some(n) = key.parse::<usize>().ok().filter(|n| (1..=HOTBAR.len()).contains(n)) {
-            s.selected = n - 1;
-        }
-        if !e.repeat() {
-            if s.bindings.matches_key("place", &key) {
-                place_block(&mut s);
-            } else if s.bindings.matches_key("break", &key) {
-                break_block(&mut s);
-            }
+        } else if let Some(index) = Editor::index_for_key(&key) {
+            // Number keys choose the block to build with, but only inside the editor.
+            s.editor.select_block(index);
         }
         s.keys.insert(key);
     });
@@ -1454,8 +1511,10 @@ fn frame(s: &mut State, now_ms: f64) {
         s.world_vertices = vertices.len() as u32;
     }
 
-    let target = hovered(s);
+    // The hover marker and the cursor info belong to the editor.
+    let target = if s.editor.active() { hovered(s) } else { None };
     upload_dynamic_mesh(s, target);
+    update_editor_ui(s, target);
     update_overlays(s, now_ms);
     update_info(s);
     update_name_tags(s);
@@ -1641,8 +1700,10 @@ fn update_info(s: &mut State) {
     };
     let keys = if s.caveland.is_some() {
         "WASD walk · Space jump · F swing · R talk/build/ride · 1-9 craft · Tab players · F3 network · F4 map".to_string()
+    } else if s.editor.active() {
+        "EDITOR · left click tool · right click erase · middle click pick · 1-4 block · F2 leave · F3 network · F4 map".to_string()
     } else {
-        format!("WASD walk · Space jump · left click place {} · right click break · 1-4 block · F3 network · F4 map", HOTBAR[s.selected].1)
+        "WASD walk · Space jump · F2 editor · F3 network · F4 map".to_string()
     };
     let text = format!("Wurfel Engine · {:?} · {status}\n{keys}", s.backend);
     if text != s.info_text {
