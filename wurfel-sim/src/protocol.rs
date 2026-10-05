@@ -221,6 +221,10 @@ pub enum ClientMsg {
     /// A console line for the game mode (Caveland: `give Torch`, `tpplayer 0 0 10`). Whether it is
     /// allowed is up to the mode; the answer comes back as a `Rules` message of kind `console`.
     Command { line: String },
+    /// The heart in the Tab player list. `on` invites `to` to be friends, or accepts their invite
+    /// if they already invited you; `off` withdraws your invite, declines theirs or ends the
+    /// friendship. The answer is a [`ServerMsg::Friends`] to both players.
+    Heart { to: u32, on: bool },
     /// Latency probe: the server answers with [`ServerMsg::Pong`] carrying the same `client_time`.
     ///
     /// `rtt_ms` is the latest round trip this client measured; the server shares it with everybody
@@ -239,6 +243,7 @@ impl ClientMsg {
             ClientMsg::SetBlock { .. }
             | ClientMsg::Action { .. }
             | ClientMsg::Command { .. }
+            | ClientMsg::Heart { .. }
             | ClientMsg::ListMaps
             | ClientMsg::GetWorld
             | ClientMsg::LoadMap { .. }
@@ -293,6 +298,17 @@ pub enum ServerMsg {
     /// Everybody's latest ping in milliseconds as `(player id, ms)`, about once a second. Players
     /// who have not reported one yet are left out.
     Pings { list: Vec<(u32, u32)> },
+    /// Who `player` is friends with and who has invited whom, sent to everybody on the server
+    /// whenever it changes: only `player` is meant to act on it, the others ignore it.
+    Friends {
+        player: u32,
+        /// Players who accepted: friends in both directions.
+        friends: Vec<u32>,
+        /// Players `player` has invited and who have not answered.
+        sent: Vec<u32>,
+        /// Players who have invited `player` and wait for an answer.
+        received: Vec<u32>,
+    },
     /// The non-player entities of a game mode, sent with the snapshots.
     Things { tick: u64, things: Vec<ThingState> },
     /// Rules-specific news of a game mode: `kind` says what `data` is (Caveland: `state` with
@@ -313,6 +329,7 @@ impl ServerMsg {
             | ServerMsg::BlockSet(_)
             | ServerMsg::PlayerLeft { .. }
             | ServerMsg::PlayerJoined { .. }
+            | ServerMsg::Friends { .. }
             | ServerMsg::ChunkUnload { .. }
             | ServerMsg::Lobby { .. }
             | ServerMsg::Maps { .. }
@@ -434,6 +451,7 @@ mod tests {
         assert_eq!(load(r#"{"type":"Join"}"#), ClientMsg::Join { name: String::new(), color: [230, 190, 50] }, "name and colour are optional");
         assert_eq!(load(r#"{"type":"Join","name":"Ann","color":[1,2,3]}"#), ClientMsg::Join { name: "Ann".into(), color: [1, 2, 3] });
         assert_eq!(load(r#"{"type":"ListMaps"}"#), ClientMsg::ListMaps);
+        assert_eq!(load(r#"{"type":"Heart","to":3,"on":true}"#), ClientMsg::Heart { to: 3, on: true });
         let create = ClientMsg::CreateMap { id: "x".into(), name: "X".into(), description: "".into(), generator: "island".into(), seed: 2, gamemode: "caveland".into() };
         assert_eq!(load(&serde_json::to_string(&create).unwrap()), create);
         assert!(serde_json::from_str::<ClientMsg>(r#"{"type":"LoadMap","map":"a","slot":-1}"#).is_err(), "a negative slot is rejected, not guessed");
@@ -501,6 +519,7 @@ mod tests {
             ServerMsg::PlayerLeft { id: 2 },
             ServerMsg::Pong { client_time: 1234.5, tick: 7 },
             ServerMsg::Pings { list: vec![(1, 20), (4, 135)] },
+            ServerMsg::Friends { player: 4, friends: vec![1], sent: vec![2, 3], received: vec![] },
             ServerMsg::Stats(ServerStats {
                 players: 2,
                 entities: 2,

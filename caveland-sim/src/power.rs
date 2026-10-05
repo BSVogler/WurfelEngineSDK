@@ -124,8 +124,56 @@ fn flood(nodes: &HashMap<Cell, Block>) -> HashSet<Cell> {
 
 // ---- Turret -----------------------------------------------------------------------------------
 
-/// The turret is on the robots' team (`teamId = 1`): it shoots entities of the other teams.
-pub const TURRET_TEAM: Team = Team::Robots;
+/// Who a turret shoots at. A turret never shoots its owner, whatever the mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TargetMode {
+    /// Only enemy robots.
+    HostileRobots,
+    /// Enemy robots and every player except the owner's friends. A turret without an owner
+    /// (nobody has built it in this session) spares all players.
+    #[default]
+    HostilesAndStrangers,
+    /// Every robot and every player.
+    Everything,
+}
+
+impl TargetMode {
+    /// In the order the turret's menu lists them.
+    pub const ALL: [TargetMode; 3] = [TargetMode::HostileRobots, TargetMode::HostilesAndStrangers, TargetMode::Everything];
+
+    /// What the turret's menu says.
+    pub fn label(self) -> &'static str {
+        match self {
+            TargetMode::HostileRobots => "Enemy robots only",
+            TargetMode::HostilesAndStrangers => "Enemies and strangers, not friends",
+            TargetMode::Everything => "Everything",
+        }
+    }
+}
+
+/// Should a turret owned by `owner` in `mode` shoot at `candidate`? `are_friends` says whether two
+/// players are friends.
+pub fn should_target(
+    mode: TargetMode,
+    owner: Option<EntityId>,
+    candidate: &Candidate,
+    are_friends: impl Fn(EntityId, EntityId) -> bool,
+) -> bool {
+    if owner == Some(candidate.id) {
+        return false;
+    }
+    if candidate.player {
+        return match mode {
+            TargetMode::HostileRobots => false,
+            TargetMode::HostilesAndStrangers => owner.is_some_and(|o| !are_friends(o, candidate.id)),
+            TargetMode::Everything => true,
+        };
+    }
+    match mode {
+        TargetMode::Everything => true,
+        TargetMode::HostileRobots | TargetMode::HostilesAndStrangers => candidate.team == Team::Robots,
+    }
+}
 /// How far a turret shoots, in blocks (`MAXDISTANCE`).
 pub const TURRET_RANGE: f32 = 20.0;
 /// It only looks for targets this close horizontally (`GAME_DIAGLENGTH * 4`), in blocks.
@@ -143,10 +191,11 @@ pub const GUN_DAMAGE: f32 = 50.0;
 const GUN_HEIGHT: f32 = 0.8;
 const GUN_RISE: f32 = 0.6;
 
-/// A turret: needs power, rises when it has some and shoots the first robot of another team in
-/// sight.
+/// A turret: needs power, rises when it has some and shoots the first target its [`TargetMode`]
+/// allows in sight.
 #[derive(Debug, Clone, Default)]
 pub struct Turret {
+    pub mode: TargetMode,
     /// 0 offline, 1 online (the gun is up).
     online: f32,
     delay: f32,
@@ -156,7 +205,7 @@ pub struct Turret {
 
 impl Turret {
     pub fn new() -> Self {
-        Turret { online: 0.0, delay: 0.0, loaded: GUN_MAGAZINE, reloading: 0.0 }
+        Turret { mode: TargetMode::default(), online: 0.0, delay: 0.0, loaded: GUN_MAGAZINE, reloading: 0.0 }
     }
 
     pub fn online(&self) -> f32 {
@@ -204,12 +253,14 @@ impl Turret {
     }
 }
 
-/// A robot a turret might aim at.
+/// A robot or player a turret might aim at.
 #[derive(Debug, Clone, Copy)]
 pub struct Candidate {
     pub id: EntityId,
     pub position: Vec3,
     pub team: Team,
+    /// A player (a human) and not a robot.
+    pub player: bool,
 }
 
 /// Is something opaque between two points? The turret's own block does not count.
@@ -223,15 +274,12 @@ pub fn line_blocked(world: &World, from: Vec3, to: Vec3) -> bool {
     })
 }
 
-/// Pick what to shoot at (`Turret.update`): `candidates` are the robots near the turret in the order
-/// the world lists them. Like the Java loop it looks at them one by one; one on the turret's own
-/// team ends the search, one behind a wall is skipped, and the first one in the open is the target
-/// if it is within range.
+/// Pick what to shoot at (`Turret.update`): `candidates` are what the turret may shoot at near it
+/// (already filtered by [`should_target`]) in the order the world lists them. Like the Java loop it
+/// looks at them one by one; one behind a wall is skipped, and the first one in the open is the
+/// target if it is within range.
 pub fn pick_target(world: &World, gun: Vec3, candidates: &[Candidate]) -> Option<Candidate> {
     for &c in candidates {
-        if c.team == TURRET_TEAM {
-            return None;
-        }
         let target_point = c.position;
         if line_blocked(world, gun, target_point) {
             continue;
@@ -464,7 +512,7 @@ mod tests {
     }
 
     fn candidate(id: u32, x: f32, team: Team) -> Candidate {
-        Candidate { id, position: Vec3::new(x, 0.0, 1.5), team }
+        Candidate { id, position: Vec3::new(x, 0.0, 1.5), team, player: false }
     }
 
     #[test]
@@ -474,11 +522,48 @@ mod tests {
         assert_eq!(target.map(|c| c.id), Some(7));
     }
 
+    fn robot(id: u32, team: Team) -> Candidate {
+        Candidate { id, position: Vec3::ZERO, team, player: false }
+    }
+
+    fn human(id: u32) -> Candidate {
+        Candidate { id, position: Vec3::ZERO, team: Team::Player, player: true }
+    }
+
+    /// Players 1 and 2 are friends, nobody else is.
+    fn friends(a: u32, b: u32) -> bool {
+        (a, b) == (1, 2) || (a, b) == (2, 1)
+    }
+
     #[test]
-    fn a_robot_on_its_own_team_ends_the_search() {
-        let w = world();
-        let list = [candidate(1, 3.0, Team::Robots), candidate(2, 5.0, Team::Player)];
-        assert!(pick_target(&w, gun(), &list).is_none(), "the Java loop stops at the first robot it finds");
+    fn by_default_a_turret_shoots_enemy_robots_and_strangers_but_not_friends() {
+        let mode = TargetMode::default();
+        assert_eq!(mode, TargetMode::HostilesAndStrangers);
+        let owner = Some(1);
+        assert!(should_target(mode, owner, &robot(10, Team::Robots), friends), "an enemy robot");
+        assert!(!should_target(mode, owner, &robot(11, Team::Player), friends), "a friendly robot");
+        assert!(!should_target(mode, owner, &robot(12, Team::Neutral), friends), "a neutral robot");
+        assert!(should_target(mode, owner, &human(3), friends), "a stranger");
+        assert!(!should_target(mode, owner, &human(2), friends), "a friend of the owner");
+        assert!(!should_target(mode, owner, &human(1), friends), "the owner");
+    }
+
+    #[test]
+    fn a_turret_nobody_has_built_spares_every_player() {
+        let mode = TargetMode::HostilesAndStrangers;
+        assert!(!should_target(mode, None, &human(3), friends));
+        assert!(should_target(mode, None, &robot(10, Team::Robots), friends));
+    }
+
+    #[test]
+    fn hostile_only_never_shoots_players_and_everything_shoots_all_but_the_owner() {
+        assert!(!should_target(TargetMode::HostileRobots, Some(1), &human(3), friends));
+        assert!(should_target(TargetMode::HostileRobots, Some(1), &robot(10, Team::Robots), friends));
+        let all = TargetMode::Everything;
+        assert!(should_target(all, Some(1), &human(2), friends), "even a friend");
+        assert!(should_target(all, Some(1), &robot(11, Team::Player), friends), "even a friendly robot");
+        assert!(should_target(all, None, &human(3), friends));
+        assert!(!should_target(all, Some(1), &human(1), friends), "never the owner");
     }
 
     #[test]
@@ -497,7 +582,7 @@ mod tests {
                 }
             }
         }
-        let behind_wall = Candidate { id: 1, position: Vec3::new(-6.0, 0.0, 1.5), team: Team::Player };
+        let behind_wall = Candidate { id: 1, position: Vec3::new(-6.0, 0.0, 1.5), team: Team::Player, player: false };
         let in_the_open = candidate(2, 5.0, Team::Player);
         let target = pick_target(&w, gun(), &[behind_wall, in_the_open]);
         assert_eq!(target.map(|c| c.id), Some(2));

@@ -5,6 +5,7 @@ use caveland_sim::cells::neighbour;
 use caveland_sim::collectible::{CollectibleType as C, Item};
 use caveland_sim::game::{cell_center, cell_floor, Cell};
 use caveland_sim::player::{Action, Controls};
+use caveland_sim::power::TargetMode;
 use caveland_sim::{Caveland, DialogMode, EntityKind, ExtraEvent, GameEvent, Team, Tuning};
 use glam::Vec3;
 use wurfel_sim::block::Block;
@@ -551,11 +552,11 @@ fn breaking_the_station_switches_the_turret_off_again() {
 }
 
 #[test]
-fn a_powered_turret_shoots_a_robot_of_another_team() {
+fn a_powered_turret_shoots_an_enemy_robot() {
     let mut g = Game::new();
     let turret = powered_turret(&mut g, (10, 40, 1));
     let near = cell_center((turret.0 + 1, turret.1, 1));
-    let robot = g.caveland.spawn_robot(&mut g.entities, Team::Player, Vec3::new(near.x, near.y, 1.0));
+    let robot = g.caveland.spawn_robot(&mut g.entities, Team::Robots, Vec3::new(near.x, near.y, 1.0));
     g.seconds(2.0);
     assert!(g.saw_extra(|e| matches!(e, ExtraEvent::TurretShot { .. })), "the turret never fired");
     assert!(g.saw(|e| matches!(e, GameEvent::Sound { name: "turret", .. })));
@@ -569,20 +570,160 @@ fn an_unpowered_turret_leaves_robots_alone() {
     let turret = (10, 40, 1);
     g.put(turret, ids::TURRET, 0);
     let near = cell_center((turret.0 + 1, turret.1, 1));
-    let robot = g.caveland.spawn_robot(&mut g.entities, Team::Player, Vec3::new(near.x, near.y, 1.0));
+    let robot = g.caveland.spawn_robot(&mut g.entities, Team::Robots, Vec3::new(near.x, near.y, 1.0));
     g.seconds(2.0);
     assert_eq!(g.entities.get(robot).unwrap().health(), 100.0);
     assert!(!g.saw_extra(|e| matches!(e, ExtraEvent::TurretShot { .. })));
 }
 
 #[test]
-fn a_turret_does_not_shoot_robots_of_its_own_team() {
+fn a_turret_does_not_shoot_friendly_robots() {
     let mut g = Game::new();
     let turret = powered_turret(&mut g, (10, 40, 1));
     let near = cell_center((turret.0 + 1, turret.1, 1));
-    let robot = g.caveland.spawn_robot(&mut g.entities, Team::Robots, Vec3::new(near.x, near.y, 1.0));
+    let robot = g.caveland.spawn_robot(&mut g.entities, Team::Player, Vec3::new(near.x, near.y, 1.0));
     g.seconds(2.0);
     assert_eq!(g.entities.get(robot).unwrap().health(), 100.0);
+    assert!(!g.saw_extra(|e| matches!(e, ExtraEvent::TurretShot { .. })));
+}
+
+/// The powered turret of [`powered_turret`], but built by `builder` with the toolkit, so that
+/// they own it. Returns the turret's cell.
+fn turret_built_by(g: &mut Game, builder: EntityId, origin: Cell) -> Cell {
+    let c1 = neighbour(origin, 3);
+    let c2 = neighbour(c1, 3);
+    let turret = neighbour(c2, 3);
+    g.put(origin, ids::POWER_STATION, 0);
+    g.put(c1, ids::POWER_CABLE, 2);
+    g.put(c2, ids::POWER_CABLE, 2);
+    g.teleport(builder, turret);
+    g.step(2);
+    let site = toolkit_site(g, builder, ids::TURRET);
+    assert_eq!(site, turret, "the site is where the builder stood");
+    for kind in [C::Iron, C::Iron, C::Wood] {
+        g.give(builder, kind);
+        g.act(builder, Action::Interact);
+        g.act(builder, Action::Choose(0));
+    }
+    g.act(builder, Action::Interact);
+    g.act(builder, Action::Choose(2));
+    assert_eq!(g.block(turret).id(), ids::TURRET, "the turret was not built");
+    g.seconds(1.0);
+    turret
+}
+
+/// A player's health; one who was shot dead is gone from the world and counts as 0.
+fn health(g: &Game, id: EntityId) -> f32 {
+    g.entities.get(id).map_or(0.0, |e| e.health())
+}
+
+#[test]
+fn a_turret_shoots_strangers_but_not_its_owner() {
+    let mut g = Game::new();
+    let owner = g.player_at(10, 40);
+    let turret = turret_built_by(&mut g, owner, (10, 40, 1));
+    let owner_health = health(&g, owner);
+    let stranger = g.player_at(10, 40);
+    g.teleport(stranger, (turret.0 + 1, turret.1 + 1, 1));
+    let stranger_health = health(&g, stranger);
+    g.seconds(2.0);
+    assert!(health(&g, stranger) < stranger_health, "a stranger near the turret is shot");
+    assert_eq!(health(&g, owner), owner_health, "the owner standing next to it is not");
+}
+
+#[test]
+fn a_turret_spares_the_friends_of_its_owner_until_the_friendship_ends() {
+    let mut g = Game::new();
+    let owner = g.player_at(10, 40);
+    let turret = turret_built_by(&mut g, owner, (10, 40, 1));
+    let friend = g.player_at(10, 40);
+    g.teleport(friend, (turret.0 + 1, turret.1 + 1, 1));
+    g.caveland.set_friends([(friend, owner)]);
+    let before = health(&g, friend);
+    g.seconds(2.0);
+    assert_eq!(health(&g, friend), before, "a friend is spared");
+    g.caveland.set_friends([]);
+    g.seconds(2.0);
+    assert!(health(&g, friend) < before, "after the friendship ends they are shot like anybody");
+}
+
+/// Open the turret's menu next to it and pick `answer`.
+fn set_turret_mode(g: &mut Game, player: EntityId, answer: u8) {
+    g.act(player, Action::Interact);
+    assert_eq!(g.caveland.open_dialog(player).expect("the turret's menu").title, "Turret");
+    g.act(player, Action::Choose(answer));
+}
+
+#[test]
+fn a_turret_menu_lists_the_modes_and_says_which_one_is_on() {
+    let mut g = Game::new();
+    let owner = g.player_at(10, 40);
+    let turret = turret_built_by(&mut g, owner, (10, 40, 1));
+    assert_eq!(g.caveland.turret_mode(turret), Some(TargetMode::HostilesAndStrangers), "the default");
+    g.act(owner, Action::Interact);
+    let dialog = g.caveland.open_dialog(owner).expect("the turret's menu").clone();
+    assert_eq!(dialog.title, "Turret");
+    assert!(dialog.text.contains("Enemies and strangers"), "{}", dialog.text);
+    assert_eq!(dialog.options.iter().map(|o| o.label.as_str()).collect::<Vec<_>>(), vec![
+        "Enemy robots only",
+        "Enemies and strangers, not friends",
+        "Everything",
+    ]);
+    g.act(owner, Action::Choose(0));
+    assert_eq!(g.caveland.turret_mode(turret), Some(TargetMode::HostileRobots));
+    assert!(g.caveland.open_dialog(owner).is_none(), "the menu closes after choosing");
+}
+
+#[test]
+fn enemy_robots_only_spares_strangers_and_everything_shoots_friends_too() {
+    let mut g = Game::new();
+    let owner = g.player_at(10, 40);
+    let turret = turret_built_by(&mut g, owner, (10, 40, 1));
+    set_turret_mode(&mut g, owner, 0);
+
+    let stranger = g.player_at(10, 40);
+    g.teleport(stranger, (turret.0 + 1, turret.1 + 1, 1));
+    g.seconds(2.0);
+    assert_eq!(health(&g, stranger), 100.0, "enemy robots only leaves players alone");
+    let robot = g.caveland.spawn_robot(&mut g.entities, Team::Robots, cell_center((turret.0 + 1, turret.1, 1)));
+    g.seconds(2.0);
+    assert!(g.entities.get(robot).is_none_or(|e| e.health() <= 0.0), "but still shoots an enemy robot");
+
+    set_turret_mode(&mut g, owner, 2);
+    assert_eq!(g.caveland.turret_mode(turret), Some(TargetMode::Everything));
+    g.caveland.set_friends([(stranger, owner)]);
+    g.seconds(2.0);
+    assert!(health(&g, stranger) < 100.0, "everything shoots even a friend of the owner");
+    assert_eq!(health(&g, owner), 100.0, "but never the owner");
+}
+
+#[test]
+fn whoever_built_a_turret_last_owns_it() {
+    let mut g = Game::new();
+    let first = g.player_at(10, 40);
+    let turret = turret_built_by(&mut g, first, (10, 40, 1));
+    // The turret is replaced: the second player rebuilds a turret in the same spot.
+    let second = g.player_at(40, 80); // far from the turret's sight
+    g.teleport(first, (40, 82, 1));
+    g.world.set(turret.0, turret.1, turret.2, Block::AIR);
+    g.seconds(1.0);
+    g.teleport(second, turret);
+    g.step(2);
+    let site = toolkit_site(&mut g, second, ids::TURRET);
+    assert_eq!(site, turret);
+    for kind in [C::Iron, C::Iron, C::Wood] {
+        g.give(second, kind);
+        g.act(second, Action::Interact);
+        g.act(second, Action::Choose(0));
+    }
+    g.act(second, Action::Interact);
+    g.act(second, Action::Choose(2));
+    g.seconds(1.0);
+    g.teleport(first, (turret.0 + 1, turret.1 + 1, 1));
+    let before = health(&g, first);
+    g.seconds(2.0);
+    assert!(health(&g, first) < before, "the first builder is a stranger to the turret now");
+    assert_eq!(health(&g, second), 100.0);
 }
 
 // ---- robot factory and the robots -----------------------------------------------------------

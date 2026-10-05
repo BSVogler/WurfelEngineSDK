@@ -5,6 +5,7 @@ mod bindings;
 mod caveland_client;
 mod interp;
 mod lighting;
+mod locator;
 mod mesh;
 mod minimap;
 mod netstats;
