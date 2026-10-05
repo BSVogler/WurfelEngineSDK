@@ -8,7 +8,7 @@ Browser client for the Wurfel Engine prototype: a small multiplayer block world 
 
 | | |
 |---|---|
-| `./dev.sh` | Starts the game server (port 3000) and the client dev server (http://127.0.0.1:8080). A change to `wurfel-web` or `wurfel-sim` rebuilds and reloads the page in about 1 s. Open the URL in two tabs to see two players. `NO_OPEN=1 ./dev.sh` skips opening a browser. |
+| `./dev.sh` | Starts the game server (port 3000) and the client dev server (http://127.0.0.1:8080). A change to `wurfel-web` or `wurfel-sim` rebuilds and reloads the page in about 1 s. A change to `wurfel-server`, `wurfel-sim` or `caveland-sim` rebuilds and restarts the server (SIGTERM, so it saves first); open pages show "Server updating, reconnecting…" and rejoin by themselves. Open the URL in two tabs to see two players. `NO_OPEN=1 ./dev.sh` skips opening a browser. |
 | `./build.sh` | Runs all tests, then builds an optimised client into `dist/`. |
 | `cargo run --release -p wurfel-server -- --static wurfel-web/dist` | Serves the built client and the game from one port (default 3000). This is the thing to put on a VPS. |
 | `cargo test -p wurfel-sim -p wurfel-web -p wurfel-server` | Native tests, no browser needed. |
@@ -46,6 +46,14 @@ The grid is the Java engine's staggered one (odd `y` rows shifted half a block),
 - Edits live in server memory only; restarting the server resets the world. No authentication or rate limiting.
 - The protocol is JSON for readability while it still changes.
 
+## Server updates
+
+A WebSocket cannot move between processes, so an update restarts the server and the pages rejoin.
+
+- **Build id.** `Lobby` and `Welcome` carry `build` (`"0.1.0+1a2b3c4d"`: crate version plus the git commit `wurfel-sim` was built from, or just the version outside a git checkout; empty from older servers). The client compares it with its own (`wurfel_sim::protocol::build_id()`); on a mismatch it calls `wurfelUpdate.show(serverBuild)` (`menu.js`), a small "Update available – Reload" notice that does not block input. Once per server build; no notice when either id is empty.
+- **Shutdown.** On Ctrl-C or SIGTERM the server saves the world, sends `ServerRestarting` (no fields) to every player, closes all sockets with a normal close frame and exits (after at most 5 s even if a client does not answer).
+- **Reconnect.** When the game socket closes while playing (after `ServerRestarting`, a crash or a network drop) the client keeps the world, camera and HUD on screen, freezes input, shows "Server updating, reconnecting…" and opens a new socket after 0.5 s, 1 s, 2 s, 4 s, then every 5 s, sending `Join` with the same name and colour. The new `Welcome` replaces the old state (world, remote players, prediction history, interpolation clock, mode state). After about 60 s without success it gives up with the usual `wurfel:error`. Leaving through the menu (`wurfel:leave`) and a first connection that never got a `Welcome` never reconnect. The bookkeeping is `src/reconnect.rs` (native tests); the sockets and timers are in `src/web.rs`.
+
 ## Menu (`index.html`, `menu.css`, `menu.js`)
 
 Plain HTML/CSS/JS, no framework. The game canvas keeps running behind the menu. Screens: main (**Connect**, a small Server field, Host a map, Options, Controls, Credits), **Host a map** (the running map, and every map on the server with its generator, seed and saves), Create map, Options, Controls, Credits and a pause overlay on Esc. A **Player panel** (name, colour swatches, custom colour, preview) sits to the right of the main panel on desktop and collapses below it on phones. Arrow keys/W/S and Enter/Space navigate, Esc goes back, a gamepad works too. Settings are saved in `localStorage` (the menu still works when it is blocked).
@@ -54,13 +62,13 @@ Plain HTML/CSS/JS, no framework. The game canvas keeps running behind the menu. 
 
 **Lobby.** There is no REST API. Connect and Host a map each open its own short-lived WebSocket to the server (`ws(s)://host/ws`, JSON text frames, 4 s to connect and get a first answer; Refresh reconnects). It closes when the player leaves the Host screens or joins; the game then opens its own socket (the menu never sends `Join`).
 
-- server to menu: `Lobby { world: { map, map_id, slot, generator, seed, players }, generators }`, `Maps { maps: [{ id, name, description, generator, seed, saves: [{ slot, modified }] }] }`, `WorldChanged { world }`, `MapCreated { map }`, `Failed { request, message }`
+- server to menu: `Lobby { world: { map, map_id, slot, generator, seed, players }, generators, build }`, `Maps { maps: [{ id, name, description, generator, seed, saves: [{ slot, modified }] }] }`, `WorldChanged { world }`, `MapCreated { map }`, `Failed { request, message }`
 - menu to server: `ListMaps`, `GetWorld`, `LoadMap { map, slot: n | "new" }`, `CreateMap { id, name, description, generator, seed }` (frames stay under 1 KB)
 
 The contract with the game side (the full version is the comment at the top of `menu.js`):
 
 - `window.wurfelSettings`: live object with `playerName`, `playerColor` (`#rrggbb`), `serverUrl`, `servers`, `masterVolume`/`musicVolume`/`effectsVolume` (0..1), `renderScale` (0.5..1), `zoom` (0.2..2), `limitFps`, `ambientOcclusion`, `showFps`, `showHelp`, `generator`/`seed` (last used in the Create map form), and `keys`: `{ up, down, left, right, jump, zoomIn, zoomOut }`, each `[primary, alternate]` as lowercased `KeyboardEvent.key` or `"mouse0"`/`"mouse1"`/`"mouse2"`; an empty string means unbound.
-- Events on `window`: `wurfel:play` with `{ name, color, server, generator, seed, create }` (`server` is a full `ws(s)://` URL without a query string; `generator`/`seed` describe the world the server is running; `create` is true when a new save slot was created), `wurfel:pause`, `wurfel:resume`, `wurfel:leave`, `wurfel:settings` (detail is the settings object; fired at startup and after every change), and `wurfel:error` (game to menu, `{ message }`: shows the message on the main menu).
+- Events on `window`: `wurfel:play` with `{ name, color, server, generator, seed, create }` (`server` is a full `ws(s)://` URL without a query string; `generator`/`seed` describe the world the server is running; `create` is true when a new save slot was created), `wurfel:pause`, `wurfel:resume`, `wurfel:leave`, `wurfel:settings` (detail is the settings object; fired at startup and after every change), and `wurfel:error` (game to menu, `{ message }`: shows the message on the main menu; a lost connection is only reported after the reconnect attempts, see Server updates).
 - `window.wurfelPlayRequest` is the detail of the last `wurfel:play` (null after leaving), for a game that was not listening yet.
 - `window.wurfelMenuOpen` is true while a menu is open; the game must ignore gameplay input then. The menu also swallows keyboard, mouse and wheel events in the capture phase and dispatches `blur` when it opens so held keys are released.
 - Optional, set by the game: `window.wurfelStatus = { connected, players, fps, backend }` (shown in the menu and HUD) and `window.wurfelGenerators = [{ id, name, description, uses_seed }]` (fallback when the lobby sends none or cannot be reached; otherwise a built-in list: island, air, blocktest, fullmap, arena, caveland).

@@ -40,7 +40,10 @@
  *     wurfel:resume    the pause overlay closed, back to the game.
  *     wurfel:leave     the player left the game; connection should be closed (menu shows main screen).
  *     wurfel:error     (game -> menu) detail { message }: joining or creating a world failed, or the
- *                      connection was lost. The menu shows the message on the main menu.
+ *                      connection was lost for good (the game retries for about a minute first, keeping the
+ *                      world on screen). The menu shows the message on the main menu.
+ *     window.wurfelUpdate.show(serverBuild)   (game -> page) the server runs another build than this page:
+ *                      shows a small "Update available - Reload" notice. Does not block input.
  *     window.wurfelPlayRequest   the detail of the last wurfel:play (null after leaving). A game that
  *                      was not listening yet when the event fired reads this at startup.
  *     wurfel:settings  detail = window.wurfelSettings; fired once at startup and after every change.
@@ -1149,6 +1152,36 @@
     openMenu('main');
     blip(260);
   });
+
+  // The game calls this when the server runs another build than this page: a small banner offers a
+  // reload. It never takes focus or blocks input, and the game only asks once per server build.
+  window.wurfelUpdate = {
+    show(serverBuild) {
+      let box = $('#update-notice');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'update-notice';
+        box.className = 'update-notice';
+        box.setAttribute('role', 'status');
+        const text = document.createElement('span');
+        text.textContent = 'Update available – reload to get the new version.';
+        const reload = document.createElement('button');
+        reload.type = 'button';
+        reload.textContent = 'Reload';
+        reload.addEventListener('click', () => location.reload());
+        const dismiss = document.createElement('button');
+        dismiss.type = 'button';
+        dismiss.className = 'dismiss';
+        dismiss.setAttribute('aria-label', 'Dismiss');
+        dismiss.textContent = '×';
+        dismiss.addEventListener('click', () => { box.hidden = true; });
+        box.append(text, reload, dismiss);
+        document.body.appendChild(box);
+      }
+      box.title = serverBuild ? `Server build ${serverBuild}` : '';
+      box.hidden = false;
+    },
+  };
 
   // ---------------------------------------------------------------------------------- status / HUD
   function refreshStatus() {
