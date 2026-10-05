@@ -12,6 +12,7 @@ mod pick;
 mod sprites;
 mod particles;
 mod prediction;
+mod reconnect;
 mod render_storage;
 mod texture;
 

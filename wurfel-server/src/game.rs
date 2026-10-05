@@ -267,6 +267,7 @@ impl Game {
             players: self.states(),
             roster: self.roster_list(),
             gamemode: self.gamemode.clone(),
+            build: wurfel_sim::protocol::build_id(),
         }
     }
 

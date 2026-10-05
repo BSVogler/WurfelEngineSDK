@@ -25,6 +25,7 @@ use crate::prediction::{classify, replay, Correction, InputHistory, VisualOffset
 use crate::minimap::{CameraView, ChunkInfo, ChunkState, EntityDot, Minimap, MinimapData, Mode};
 use crate::netstats::{format_report, NetStats};
 use crate::pick::{pick, Pick};
+use crate::reconnect::{Closed, Reconnect};
 use crate::render_storage::RenderStorage;
 use crate::texture;
 
@@ -152,6 +153,12 @@ struct State {
     connected: bool,
     /// When the current connection attempt started, until the server's welcome arrives.
     connecting_since: Option<f64>,
+    /// Rejoining after the connection broke (a server update): what to try next and when to stop.
+    reconnect: Reconnect,
+    /// The server address of this session, for reconnecting.
+    server_url: String,
+    /// The server build the "update available" notice was already shown for.
+    update_notified: Option<String>,
     my_id: Option<u32>,
     /// Holds just our own player, simulated locally with the same fixed steps as the server so
     /// that movement feels instant (prediction).
@@ -365,6 +372,9 @@ async fn run() -> Result<(), String> {
         socket: None,
         connected: false,
         connecting_since: None,
+        reconnect: Reconnect::new(),
+        server_url: String::new(),
+        update_notified: None,
         my_id: None,
         entities: Entities::new(),
         local_id: None,
@@ -679,6 +689,7 @@ fn end_session(s: &mut State) {
         socket.set_onmessage(None);
         let _ = socket.close();
     }
+    s.reconnect.stop(); // leaving (or giving up) is final
     s.connected = false;
     s.connecting_since = None;
     s.my_id = None;
@@ -702,7 +713,12 @@ fn end_session(s: &mut State) {
 
 fn begin_session(state: &Rc<RefCell<State>>, join: Join) {
     show_banner("Connecting to the server…", Tone::Info);
-    end_session(&mut state.borrow_mut());
+    {
+        let mut s = state.borrow_mut();
+        end_session(&mut s);
+        s.reconnect.begin();
+        s.server_url = join.server.clone();
+    }
     if let Some(window) = web_sys::window() {
         connect(&window, state, &join.server);
     }
@@ -713,7 +729,13 @@ fn connect(window: &web_sys::Window, state: &Rc<RefCell<State>>, url: &str) {
     let socket = match WebSocket::new(url) {
         Ok(socket) => socket,
         Err(_) => {
-            report_error(&format!("Cannot open {url}"));
+            // While reconnecting this is just another failed try.
+            if state.borrow().reconnect.active() {
+                handle_close(state, url);
+            } else {
+                state.borrow_mut().reconnect.stop();
+                report_error(&format!("Cannot open {url}"));
+            }
             return;
         }
     };
@@ -734,25 +756,7 @@ fn connect(window: &web_sys::Window, state: &Rc<RefCell<State>>, url: &str) {
 
     let s = state.clone();
     let url_for_message = url.to_string();
-    let on_close = Closure::<dyn FnMut()>::new(move || {
-        let mut s = s.borrow_mut();
-        let was_in_world = s.my_id.is_some();
-        s.connected = false;
-        s.connecting_since = None;
-        s.my_id = None;
-        s.local_id = None;
-        s.entities = Entities::new();
-        s.remotes.clear();
-        s.socket = None;
-        if was_in_world {
-            report_error("Connection to the server lost. Pick a world to join again.");
-        } else {
-            report_error(&format!(
-                "Could not join the world: the server at {url_for_message} refused or closed the connection. \
-                 Does the world still exist?"
-            ));
-        }
-    });
+    let on_close = Closure::<dyn FnMut()>::new(move || handle_close(&s, &url_for_message));
     socket.set_onclose(Some(on_close.as_ref().unchecked_ref()));
     on_close.forget();
 
@@ -793,6 +797,72 @@ fn connect(window: &web_sys::Window, state: &Rc<RefCell<State>>, url: &str) {
     }
 }
 
+/// The game socket closed. While playing that is most likely a server update: keep the world, the
+/// camera and the HUD as they are, say so, and try again with growing pauses (`reconnect.rs`). The
+/// server's fresh world replaces the old one when its welcome arrives.
+fn handle_close(state: &Rc<RefCell<State>>, url: &str) {
+    let mut s = state.borrow_mut();
+    match s.reconnect.on_closed(now_ms()) {
+        // The player left, or this is an old socket: nothing of ours.
+        Closed::Ignore => {}
+        Closed::Refused => {
+            end_session(&mut s);
+            report_error(&format!(
+                "Could not join the world: the server at {url} refused or closed the connection. \
+                 Does the world still exist?"
+            ));
+        }
+        Closed::GiveUp => {
+            end_session(&mut s);
+            report_error("Connection to the server lost. Pick a world to join again.");
+        }
+        Closed::Retry { delay_ms, epoch } => {
+            s.connected = false;
+            s.connecting_since = None;
+            s.socket = None;
+            s.keys.clear(); // do not walk on when the key is released while nobody is listening
+            let attempt = s.reconnect.attempt();
+            show_banner(
+                &if attempt > 2 {
+                    format!("Server updating, reconnecting… (try {attempt})")
+                } else {
+                    "Server updating, reconnecting…".to_string()
+                },
+                Tone::Info,
+            );
+            let retry_state = state.clone();
+            let retry = Closure::once_into_js(move || retry_connect(&retry_state, epoch));
+            if let Some(window) = web_sys::window() {
+                let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(retry.unchecked_ref(), delay_ms as i32);
+            }
+        }
+    }
+}
+
+/// The pause before a retry is over: open a new socket, unless the player left in the meantime.
+fn retry_connect(state: &Rc<RefCell<State>>, epoch: u32) {
+    let url = {
+        let mut s = state.borrow_mut();
+        if !s.reconnect.fire(epoch) {
+            return;
+        }
+        s.server_url.clone()
+    };
+    if let Some(window) = web_sys::window() {
+        connect(&window, state, &url);
+    }
+}
+
+/// Offer a reload when the server runs another build than this page (`wurfelUpdate` in `menu.js`).
+/// Once per server build, so it does not nag.
+fn check_build(s: &mut State, server: &str) {
+    if !wurfel_sim::protocol::build_mismatch(&wurfel_sim::protocol::build_id(), server) || s.update_notified.as_deref() == Some(server) {
+        return;
+    }
+    s.update_notified = Some(server.to_string());
+    call_js("wurfelUpdate", "show", &JsValue::from_str(server));
+}
+
 fn send(s: &mut State, msg: &ClientMsg) {
     if let (true, Some(socket)) = (s.connected, &s.socket) {
         if let Ok(json) = serde_json::to_string(msg) {
@@ -805,7 +875,12 @@ fn send(s: &mut State, msg: &ClientMsg) {
 
 fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
     match msg {
-        ServerMsg::Welcome { your_id, map, players, roster, gamemode, .. } => {
+        ServerMsg::Welcome { your_id, map, players, roster, gamemode, build, .. } => {
+            check_build(s, &build);
+            let rejoined = s.reconnect.active();
+            s.reconnect.on_welcome();
+            // Whatever a dialog of the old server asked is moot; the state below is the new server's.
+            hud("closeDialog", &JsValue::UNDEFINED);
             s.roster = roster.into_iter().map(|p| (p.id, p)).collect();
             s.pings.clear();
             s.map_name = map.clone();
@@ -844,7 +919,7 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
                 }
             }
             s.connecting_since = None;
-            show_banner(&format!("Joined '{map}'"), Tone::Ok);
+            show_banner(&if rejoined { format!("Reconnected to '{map}'") } else { format!("Joined '{map}'") }, Tone::Ok);
             s.audio.play_music("overworld");
         }
         ServerMsg::Snapshot { tick, players } => {
@@ -879,7 +954,10 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
             s.terrain_version += 1;
         }
         // The lobby is the menu's business; the game socket only sees its greeting before it joins.
-        ServerMsg::Lobby { .. } | ServerMsg::Maps { .. } | ServerMsg::WorldChanged { .. } | ServerMsg::MapCreated { .. } => {}
+        ServerMsg::Lobby { build, .. } => check_build(s, &build),
+        ServerMsg::Maps { .. } | ServerMsg::WorldChanged { .. } | ServerMsg::MapCreated { .. } => {}
+        // The server saved and is going away; the socket closes next and the reconnect starts.
+        ServerMsg::ServerRestarting => show_banner("Server updating, reconnecting…", Tone::Info),
         ServerMsg::Failed { message, .. } => report_error(&message),
         ServerMsg::Pong { client_time, .. } => s.net.on_pong(client_time, now),
         ServerMsg::Stats(stats) => s.net.on_server_stats(stats),
@@ -1314,7 +1392,8 @@ fn frame(s: &mut State, now_ms: f64) {
     s.last_frame_ms = Some(now_ms);
     s.net.on_frame(dt as f64 * 1000.0);
     let ease = |rate: f32| 1.0 - (-rate * dt).exp();
-    let blocked = input_blocked();
+    // While rejoining the world is frozen as it was: nobody is listening to our inputs.
+    let blocked = input_blocked() || s.reconnect.active();
 
     let wanted = if blocked { PlayerInput::default() } else { read_input(s) };
 
@@ -1423,9 +1502,17 @@ fn frame(s: &mut State, now_ms: f64) {
 
     // The server accepted the connection (or not) but never sent the world.
     if s.connecting_since.is_some_and(|since| now_ms - since > CONNECT_TIMEOUT_MS) {
-        end_session(s);
-        hide_banner();
-        report_error("The server did not answer in time. Check the address and try again.");
+        if s.reconnect.active() {
+            // This try hangs: close it, which schedules the next one.
+            s.connecting_since = None;
+            if let Some(socket) = &s.socket {
+                let _ = socket.close();
+            }
+        } else {
+            end_session(s);
+            hide_banner();
+            report_error("The server did not answer in time. Check the address and try again.");
+        }
     }
 
     s.lighting.update(dt * 1000.0);
@@ -1637,6 +1724,7 @@ fn update_info(s: &mut State) {
     let status = match (s.connected, s.my_id) {
         (true, Some(id)) => format!("online as player {id} · {} other(s)", s.remotes.len()),
         (true, None) => "connecting…".to_string(),
+        (false, _) if s.reconnect.active() => "server updating, reconnecting…".to_string(),
         (false, _) => "offline: showing a preview. Open the menu (Esc) to join a world".to_string(),
     };
     let keys = if s.caveland.is_some() {
