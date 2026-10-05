@@ -42,6 +42,19 @@ impl ParticleEmitter {
         }
     }
 
+    /// The jetpack exhaust: starts switched off, sprays flame down and a little sideways every
+    /// 30 ms. Move it to the player's feet and set `active` while the jetpack burns.
+    pub fn jetpack() -> Self {
+        ParticleEmitter {
+            active: false,
+            spec: ParticleSpec::jetpack(),
+            interval: 0.03,
+            velocity: Vec3::new(0.0, 0.0, -2.0),
+            spread: Vec3::new(0.3, 0.3, 0.5),
+            ..Self::new(Vec3::ZERO)
+        }
+    }
+
     /// Give the emitter a yellow point light of the given brightness, or remove it with a negative
     /// value (`ParticleEmitter.setBrightness`).
     pub fn set_brightness(&mut self, brightness: f32) {

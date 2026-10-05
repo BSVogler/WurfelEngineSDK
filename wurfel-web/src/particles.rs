@@ -6,7 +6,8 @@
 //! shrinks with its alpha instead (see [`SHRINK_WITH_ALPHA`]). True blending needs an alpha
 //! channel in the vertex and a blend state in a second pipeline.
 
-use wurfel_sim::particle::{Particle, Particles};
+use glam::Vec3;
+use wurfel_sim::particle::{Particle, ParticleEmitter, Particles};
 
 use crate::mesh::{Vertex, FACE_UNLIT};
 
@@ -17,6 +18,14 @@ pub const SHRINK_WITH_ALPHA: bool = true;
 /// on screen needs `WIDTH / HEIGHT` times its width as vertical extent in `z`.
 const BLOCK_WIDTH_PX: f32 = 200.0;
 const BLOCK_HEIGHT_PX: f32 = 122.0;
+
+/// Switch the jetpack exhaust on at the player's feet, or off when the jetpack does not burn.
+pub fn light_jetpack(flame: &mut ParticleEmitter, feet: Option<Vec3>) {
+    flame.active = feet.is_some();
+    if let Some(feet) = feet {
+        flame.position = feet;
+    }
+}
 
 /// The six vertices (two triangles) of one particle.
 pub fn quad(p: &Particle) -> [Vertex; 6] {
@@ -72,6 +81,25 @@ mod tests {
     fn screen(v: &Vertex) -> (f32, f32) {
         let [x, y, z] = v.position;
         ((x - y) * 100.0, (x + y) * 50.0 - z * 122.0)
+    }
+
+    #[test]
+    fn a_burning_jetpack_puts_visible_flame_quads_under_the_player() {
+        let mut particles = Particles::new(64, 1);
+        let mut flame = ParticleEmitter::jetpack();
+        let feet = Vec3::new(3.0, 4.0, 5.0);
+        light_jetpack(&mut flame, None);
+        assert_eq!(flame.update(0.2, &mut particles), 0);
+        light_jetpack(&mut flame, Some(feet));
+        assert!(flame.update(0.2, &mut particles) > 0);
+        particles.update(&wurfel_sim::World::new(wurfel_sim::generator::AirGenerator), 1.0 / 60.0);
+        let out = vertices(&particles);
+        assert!(!out.is_empty());
+        for q in out.chunks(6) {
+            let (a, c) = (screen(&q[0]), screen(&q[2]));
+            assert!((a.0 - c.0).abs() + (a.1 - c.1).abs() > 1.0, "quad has area");
+            assert!(q[0].color.iter().any(|&v| v > 0.0), "not black");
+        }
     }
 
     #[test]
