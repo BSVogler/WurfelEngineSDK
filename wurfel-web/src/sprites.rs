@@ -94,6 +94,12 @@ impl Sprites {
         self.player_sheet(b'w', frame)
     }
 
+    /// The player sheets (`w h l i t j`) the atlas has no first frame for. An atlas that is out of
+    /// date misses the newer ones, and the player would show only the walking frames.
+    pub fn missing_player_sheets(&self) -> Vec<char> {
+        "whltij".chars().filter(|&glyph| self.player_sheet(glyph as u8, 1).is_none()).collect()
+    }
+
     /// A frame of the player sheet: `diff/<glyph>/<n>` for the animations `w h l i t j` and the
     /// overlays `s o` (see `caveland_sim::animation`).
     pub fn player_sheet(&self, glyph: u8, frame: u32) -> Option<&Region> {
@@ -388,6 +394,15 @@ mod tests {
     fn real() -> Sprites {
         let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/sprites/sprites.atlas")).unwrap();
         Sprites::new(Atlas::parse(&text).unwrap())
+    }
+
+    #[test]
+    fn the_shipped_atlas_has_every_player_sheet_and_an_old_one_is_noticed() {
+        assert!(real().missing_player_sheets().is_empty());
+        // An atlas from before the attack, charge, throw and jump sheets were added.
+        let old = "sprites0.png\nsize: 64, 64\nformat: RGBA8888\nfilter: Linear,Linear\nrepeat: none\ndiff/w/1\n  rotate: false\n  xy: 0, 0\n  size: 8, 8\n  orig: 8, 8\n  offset: 0, 0\n  index: -1\n";
+        let sprites = Sprites::new(Atlas::parse(old).unwrap());
+        assert_eq!(sprites.missing_player_sheets(), vec!['h', 'l', 't', 'i', 'j']);
     }
 
     #[test]

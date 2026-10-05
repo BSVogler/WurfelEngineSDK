@@ -132,9 +132,14 @@ mod web {
         bind_group(device, layout, &texture)
     }
 
+    /// The atlas keeps its file names when its content changes, so the browser must ask the server
+    /// whether its copy is still good (`no-cache`) instead of reusing an old atlas: that one would
+    /// miss the newer animation frames and the player would only ever show the walking ones.
     async fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
         let window = web_sys::window().ok_or("no window")?;
-        let response: web_sys::Response = JsFuture::from(window.fetch_with_str(url))
+        let init = web_sys::RequestInit::new();
+        init.set_cache(web_sys::RequestCache::NoCache);
+        let response: web_sys::Response = JsFuture::from(window.fetch_with_str_and_init(url, &init))
             .await
             .map_err(|e| format!("{url}: {}", js_message(&e)))?
             .dyn_into()

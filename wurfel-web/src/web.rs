@@ -449,6 +449,12 @@ async fn load_sprites(state: Rc<RefCell<State>>, device: wgpu::Device, queue: wg
         Ok((sprites, group)) => {
             let sprites = Rc::new(sprites);
             web_sys::console::log_1(&format!("sprites: {} sprites loaded in {:.0} ms", sprites.atlas.len(), now_ms() - started).into());
+            let missing = sprites.missing_player_sheets();
+            if !missing.is_empty() {
+                let sheets: String = missing.iter().collect();
+                web_sys::console::warn_1(&format!("sprites: the atlas has no frames for the player sheets '{sheets}'").into());
+                show_banner(&format!("The sprite atlas is out of date (no player animations '{sheets}'). Reload the page without its cache."), Tone::Error);
+            }
             let mut s = state.borrow_mut();
             s.atlas_bind_group = group;
             s.actors.set_sprites(Some(sprites.clone()));
