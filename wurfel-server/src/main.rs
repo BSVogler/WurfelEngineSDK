@@ -154,12 +154,28 @@ async fn main() {
     let on_shutdown = shared.clone();
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
-            let _ = tokio::signal::ctrl_c().await;
+            shutdown_signal().await;
             eprintln!("wurfel-server: shutting down, saving the world");
             save_world(&on_shutdown);
         })
         .await
         .expect("server error");
+}
+
+/// Resolves on Ctrl-C, or on SIGTERM (what Kubernetes and `docker stop` send) where that exists.
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        if let Ok(mut term) = signal(SignalKind::terminate()) {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = term.recv() => {}
+            }
+            return;
+        }
+    }
+    let _ = tokio::signal::ctrl_c().await;
 }
 
 /// Where the Java engine keeps its maps (`WorkingDirectory.getMapsFolder`): a folder named after the

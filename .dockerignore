@@ -1,0 +1,16 @@
+target
+**/target
+wurfel-web/dist
+legacy
+core
+demogame
+docs
+MinecraftToWurfelEngine
+Logos
+sprites
+tools
+*.jar
+*.pdf
+.git
+.claude
+**/node_modules

@@ -1,0 +1,10 @@
+# Maps and savegames. The server writes here on shutdown, so it must survive restarts.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wurfel-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi

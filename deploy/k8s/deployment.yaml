@@ -1,0 +1,45 @@
+# One replica only: the server holds a single authoritative world in memory and owns the save folder.
+# Recreate (not RollingUpdate) so two pods never write the same volume.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wurfel-server
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app: wurfel-server}
+  template:
+    metadata:
+      labels: {app: wurfel-server}
+    spec:
+      terminationGracePeriodSeconds: 60   # SIGTERM triggers the world save
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: wurfel-server
+          image: wurfel-server:latest   # replaced by kustomization.yaml `images`
+          ports:
+            - {name: http, containerPort: 3000}
+          readinessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: wurfel-data}

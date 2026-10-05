@@ -1,0 +1,22 @@
+# Serves the client and the /ws WebSocket on one host. Set the host (and ingressClassName / TLS
+# issuer to match the cluster) before applying. Long timeouts keep idle WebSockets open (ingress-nginx).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wurfel-server
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  # ingressClassName: nginx
+  rules:
+    - host: wurfel.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: wurfel-server, port: {name: http}}
+  # tls:
+  #   - hosts: [wurfel.example.com]
+  #     secretName: wurfel-tls
