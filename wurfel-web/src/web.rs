@@ -110,7 +110,7 @@ struct State {
     /// Fires and the like placed in the world; their light goes to the light engine.
     emitters: Vec<wurfel_sim::particle::ParticleEmitter>,
     /// The exhaust of our own jetpack, lit while Caveland's rules say it burns.
-    jetpack_flame: wurfel_sim::particle::ParticleEmitter,
+    jetpack_flames: [wurfel_sim::particle::ParticleEmitter; crate::particles::NOZZLES],
     /// The Caveland ruleset, when the world is played by it (the local player is predicted with it).
     caveland: Option<caveland_sim::Caveland>,
     /// Items, robots... of the game mode, as the server last said.
@@ -360,7 +360,7 @@ async fn run() -> Result<(), String> {
         audio: Audio::new(),
         particles: wurfel_sim::particle::Particles::default(),
         emitters: Vec::new(),
-        jetpack_flame: wurfel_sim::particle::ParticleEmitter::jetpack(),
+        jetpack_flames: crate::particles::jetpack_flames(),
         caveland: None,
         things: Vec::new(),
         riding: false,
@@ -1583,8 +1583,10 @@ fn frame(s: &mut State, now_ms: f64) {
     }
     let burning = s.local_id.zip(s.caveland.as_ref()).and_then(|(id, c)| c.player(id)).is_some_and(|p| p.jetpack_on);
     let feet = if burning { local_position(s) } else { None };
-    crate::particles::light_jetpack(&mut s.jetpack_flame, feet);
-    s.jetpack_flame.update(dt, &mut s.particles);
+    crate::particles::light_jetpack(&mut s.jetpack_flames, feet);
+    for flame in &mut s.jetpack_flames {
+        flame.update(dt, &mut s.particles);
+    }
     let focus = local_position(s).unwrap_or(Vec3::ZERO);
     let lamps = caveland_client::lamps(&s.world, &s.powered, &s.things);
     s.lighting.set_dynamic_lights(s.emitters.iter().filter_map(|e| e.light()).chain(lamps), focus);

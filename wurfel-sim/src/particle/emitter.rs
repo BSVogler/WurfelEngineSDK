@@ -50,7 +50,7 @@ impl ParticleEmitter {
             spec: ParticleSpec::jetpack(),
             interval: 0.03,
             velocity: Vec3::new(0.0, 0.0, -2.0),
-            spread: Vec3::new(0.3, 0.3, 0.5),
+            spread: Vec3::new(0.1, 0.1, 0.5),
             ..Self::new(Vec3::ZERO)
         }
     }

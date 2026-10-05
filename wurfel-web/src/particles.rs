@@ -19,11 +19,24 @@ pub const SHRINK_WITH_ALPHA: bool = true;
 const BLOCK_WIDTH_PX: f32 = 200.0;
 const BLOCK_HEIGHT_PX: f32 = 122.0;
 
-/// Switch the jetpack exhaust on at the player's feet, or off when the jetpack does not burn.
-pub fn light_jetpack(flame: &mut ParticleEmitter, feet: Option<Vec3>) {
-    flame.active = feet.is_some();
-    if let Some(feet) = feet {
-        flame.position = feet;
+/// The backpack has two nozzles, left and right of the player on screen.
+pub const NOZZLES: usize = 2;
+/// How far each nozzle sits from the player's middle, in blocks along the ground.
+const NOZZLE_SPACING: f32 = 0.14;
+
+pub fn jetpack_flames() -> [ParticleEmitter; NOZZLES] {
+    [ParticleEmitter::jetpack(), ParticleEmitter::jetpack()]
+}
+
+/// Switch the jetpack exhaust on at the nozzles by the player's feet, or off when the jetpack does
+/// not burn.
+pub fn light_jetpack(flames: &mut [ParticleEmitter; NOZZLES], feet: Option<Vec3>) {
+    for (flame, side) in flames.iter_mut().zip([-1.0_f32, 1.0]) {
+        flame.active = feet.is_some();
+        if let Some(feet) = feet {
+            // Screen right is (+x, -y) in the ground frame.
+            flame.position = feet + Vec3::new(side, -side, 0.0) * NOZZLE_SPACING;
+        }
     }
 }
 
@@ -86,12 +99,12 @@ mod tests {
     #[test]
     fn a_burning_jetpack_puts_visible_flame_quads_under_the_player() {
         let mut particles = Particles::new(64, 1);
-        let mut flame = ParticleEmitter::jetpack();
+        let mut flames = jetpack_flames();
         let feet = Vec3::new(3.0, 4.0, 5.0);
-        light_jetpack(&mut flame, None);
-        assert_eq!(flame.update(0.2, &mut particles), 0);
-        light_jetpack(&mut flame, Some(feet));
-        assert!(flame.update(0.2, &mut particles) > 0);
+        light_jetpack(&mut flames, None);
+        assert_eq!(flames.iter_mut().map(|f| f.update(0.2, &mut particles)).sum::<usize>(), 0);
+        light_jetpack(&mut flames, Some(feet));
+        assert!(flames.iter_mut().all(|f| f.update(0.2, &mut particles) > 0), "both nozzles burn");
         particles.update(&wurfel_sim::World::new(wurfel_sim::generator::AirGenerator), 1.0 / 60.0);
         let out = vertices(&particles);
         assert!(!out.is_empty());
@@ -100,6 +113,19 @@ mod tests {
             assert!((a.0 - c.0).abs() + (a.1 - c.1).abs() > 1.0, "quad has area");
             assert!(q[0].color.iter().any(|&v| v > 0.0), "not black");
         }
+    }
+
+    #[test]
+    fn the_jetpack_has_two_nozzles_side_by_side_on_screen() {
+        let mut flames = jetpack_flames();
+        let feet = Vec3::new(3.0, 4.0, 5.0);
+        light_jetpack(&mut flames, Some(feet));
+        let screen_of = |p: Vec3| ((p.x - p.y) * 100.0, (p.x + p.y) * 50.0 - p.z * 122.0);
+        let (left, right) = (screen_of(flames[0].position), screen_of(flames[1].position));
+        assert!(right.0 - left.0 > 20.0, "the nozzles are apart horizontally: {left:?} {right:?}");
+        assert!((right.1 - left.1).abs() < 0.01, "at the same height on screen: {left:?} {right:?}");
+        let middle = screen_of(feet);
+        assert!(((left.0 + right.0) / 2.0 - middle.0).abs() < 0.01, "centred on the player");
     }
 
     #[test]
