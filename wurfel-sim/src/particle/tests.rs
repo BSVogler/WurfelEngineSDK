@@ -392,7 +392,10 @@ fn the_jetpack_emitter_is_off_until_lit_and_then_sprays_flame_downwards() {
     let mut particles = Particles::new(64, 1);
     let mut emitter = ParticleEmitter::jetpack();
     assert_eq!(emitter.update(1.0, &mut particles), 0, "off while the jetpack is not burning");
+    assert_eq!(emitter.spec.ttl, 1.8, "Ejira's flame lives 1.8 s");
+    assert_eq!(emitter.spec.color, [1.0, 0.8, 0.2, 0.7], "yellow-orange, 70 % opaque");
     emitter.active = true;
+    emitter.velocity.z = -4.5; // rising at 3 blocks/s: the exhaust goes the other way, 1.5 times as fast
     emitter.position = Vec3::new(3.0, 4.0, 5.0);
     assert!(emitter.update(0.1, &mut particles) >= 3);
     let world = World::new(crate::generator::AirGenerator);

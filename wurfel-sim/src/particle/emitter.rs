@@ -42,15 +42,16 @@ impl ParticleEmitter {
         }
     }
 
-    /// The jetpack exhaust: starts switched off, sprays flame down and a little sideways every
-    /// 30 ms. Move it to the player's feet and set `active` while the jetpack burns.
+    /// One nozzle of Ejira's jetpack: starts switched off. The Java emitter holds 80 particles of
+    /// 1.8 s, so it spawns about one every 22 ms; the particles spread wide sideways and little
+    /// vertically. Set `velocity.z` to the exhaust speed and move it to the nozzle while it burns.
     pub fn jetpack() -> Self {
         ParticleEmitter {
             active: false,
             spec: ParticleSpec::jetpack(),
-            interval: 0.03,
-            velocity: Vec3::new(0.0, 0.0, -2.0),
-            spread: Vec3::new(0.1, 0.1, 0.5),
+            interval: 1.8 / 80.0,
+            velocity: Vec3::new(0.0, 0.0, -0.1),
+            spread: Vec3::new(0.8, 0.8, 0.2),
             ..Self::new(Vec3::ZERO)
         }
     }

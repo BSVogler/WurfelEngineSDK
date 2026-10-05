@@ -110,7 +110,7 @@ struct State {
     /// Fires and the like placed in the world; their light goes to the light engine.
     emitters: Vec<wurfel_sim::particle::ParticleEmitter>,
     /// The exhaust of our own jetpack, lit while Caveland's rules say it burns.
-    jetpack_flames: [wurfel_sim::particle::ParticleEmitter; crate::particles::NOZZLES],
+    jetpack: crate::particles::Jetpack,
     /// The Caveland ruleset, when the world is played by it (the local player is predicted with it).
     caveland: Option<caveland_sim::Caveland>,
     /// Items, robots... of the game mode, as the server last said.
@@ -360,7 +360,7 @@ async fn run() -> Result<(), String> {
         audio: Audio::new(),
         particles: wurfel_sim::particle::Particles::default(),
         emitters: Vec::new(),
-        jetpack_flames: crate::particles::jetpack_flames(),
+        jetpack: crate::particles::Jetpack::new(),
         caveland: None,
         things: Vec::new(),
         riding: false,
@@ -1582,14 +1582,15 @@ fn frame(s: &mut State, now_ms: f64) {
         emitter.update(dt, &mut s.particles);
     }
     let burning = s.local_id.zip(s.caveland.as_ref()).and_then(|(id, c)| c.player(id)).is_some_and(|p| p.jetpack_on);
-    let feet = if burning { local_position(s) } else { None };
-    crate::particles::light_jetpack(&mut s.jetpack_flames, feet);
-    for flame in &mut s.jetpack_flames {
-        flame.update(dt, &mut s.particles);
-    }
+    let flame_at = if burning {
+        local_position(s).map(|feet| (feet, s.local_id.map_or([0.0, 1.0], |id| s.actors.facing(id))))
+    } else {
+        None
+    };
+    s.jetpack.update(dt, &mut s.particles, flame_at);
     let focus = local_position(s).unwrap_or(Vec3::ZERO);
     let lamps = caveland_client::lamps(&s.world, &s.powered, &s.things);
-    s.lighting.set_dynamic_lights(s.emitters.iter().filter_map(|e| e.light()).chain(lamps), focus);
+    s.lighting.set_dynamic_lights(s.emitters.iter().filter_map(|e| e.light()).chain(s.jetpack.lights()).chain(lamps), focus);
 
     // Everyone else is drawn slightly in the past, between two snapshots.
     s.render_clock.advance(dt as f64 * 1000.0);

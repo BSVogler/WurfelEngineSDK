@@ -79,9 +79,10 @@ impl ParticleSpec {
         ParticleSpec { kind: ParticleType::Fire, color: [1.0, 0.55, 0.1, 1.0], ttl: 1.0, drag: 0.5, ..Self::regular() }
     }
 
-    /// The jetpack's flame: short-lived, small, and it keeps falling away from the pack.
+    /// The jetpack's flame (`Ejira`'s prototype particle): a yellow-orange fire particle, 70 % opaque,
+    /// that lives 1.8 s.
     pub fn jetpack() -> Self {
-        ParticleSpec { ttl: 0.5, size: 0.5, drag: 1.0, collides: false, ..Self::fire() }
+        ParticleSpec { color: [1.0, 0.8, 0.2, 0.7], ttl: 1.8, collides: false, ..Self::fire() }
     }
 
     /// Dust kicked up when landing.

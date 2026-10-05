@@ -92,6 +92,12 @@ impl Actors {
         self.sprites = sprites;
     }
 
+    /// Which way the player's sprite faces (a unit vector of `sprites::facing_of`'s space; south
+    /// until it has moved).
+    pub fn facing(&self, id: u32) -> [f32; 2] {
+        self.players.get(&id).map_or([0.0, 1.0], |anim| anim.facing)
+    }
+
     /// The local player did something: its animation starts now, without waiting for the server.
     /// Names that do not animate (use, interact...) are ignored.
     pub fn local_action(&mut self, id: u32, name: &str) {
