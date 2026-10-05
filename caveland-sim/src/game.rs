@@ -115,8 +115,19 @@ pub struct PlayerView {
     pub jetpack: f32,
     /// What the player carries, the item in hand first.
     pub items: Vec<&'static str>,
-    /// The recipes in the order [`Action::Craft`] counts them, each with whether it can be made now.
-    pub recipes: Vec<(&'static str, bool)>,
+    /// The recipes in the fixed order of [`crate::crafting::recipes`], which is what
+    /// [`Action::Craft`] indexes. Clients order them for display themselves.
+    pub recipes: Vec<RecipeView>,
+}
+
+/// One recipe as a player's screen shows it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecipeView {
+    pub name: &'static str,
+    /// Whether the pack holds the ingredients right now.
+    pub can_craft: bool,
+    /// The ingredient item names, in recipe order.
+    pub ingredients: Vec<&'static str>,
 }
 
 /// Something that happened that clients want to show or hear, or that other systems react to.
@@ -352,9 +363,13 @@ impl Caveland {
             health: entity.health(),
             jetpack: (state.jetpack_time / self.tuning.jetpack_max_time.max(f32::EPSILON)).clamp(0.0, 1.0),
             items: state.inventory.items().iter().map(|item| item.kind.name()).collect(),
-            recipes: crafting::ordered_recipes(&state.inventory)
+            recipes: crafting::recipes()
                 .iter()
-                .map(|r| (r.name, crafting::can_craft(r, &state.inventory)))
+                .map(|r| RecipeView {
+                    name: r.name,
+                    can_craft: crafting::can_craft(r, &state.inventory),
+                    ingredients: r.ingredients.iter().map(|i| i.name()).collect(),
+                })
                 .collect(),
         })
     }
@@ -617,7 +632,9 @@ impl Caveland {
             Action::Choose(answer) => self.choose(entities, world, id, state, answer),
             Action::Cancel => self.cancel(entities, world, id, state),
             Action::Craft(index) => {
-                let recipes = crafting::ordered_recipes(&state.inventory);
+                // The fixed list, not the display order: the pack may change between the client
+                // drawing the menu and the key arriving.
+                let recipes = crafting::recipes();
                 let Some(recipe) = recipes.get(index) else { return };
                 match crafting::craft(recipe, &mut state.inventory) {
                     Some(result) => {

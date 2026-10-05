@@ -80,7 +80,7 @@ pub use collectible::{CollectibleType, Item};
 pub use container::Inventory;
 pub use dialog::{Dialog, DialogMode, DialogOption};
 pub use extras::ExtraEvent;
-pub use game::{Caveland, EntityKind, GameEvent};
+pub use game::{Caveland, EntityKind, GameEvent, PlayerView, RecipeView};
 pub use player::{Action, Controls, PlayerState};
 pub use team::Team;
 pub use transport::{Interaction, Transport, TransportEvent};

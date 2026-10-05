@@ -67,7 +67,7 @@ pub enum Action {
     Interact,
     /// Rotate the inventory slots.
     SwitchItems { left: bool },
-    /// Craft the n-th recipe of [`crate::crafting::ordered_recipes`].
+    /// Craft the n-th recipe of the fixed list [`crate::crafting::recipes`] (out of range is ignored).
     Craft(usize),
     /// Answer the open dialog (an NPC's line, a construction site, a shop...): the option's id. A
     /// plain "next" or "yes" is 1, "no" is 0; see [`crate::dialog::Dialog`].

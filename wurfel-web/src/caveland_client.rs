@@ -48,15 +48,8 @@ pub fn key_action(key: &str, pressed: bool) -> Option<(&'static str, i32)> {
         ("x", true) => Some(("drop", 0)),
         ("z", true) => Some(("switch_left", 0)),
         ("v", true) => Some(("switch_right", 0)),
-        (digit, true) => craft_index(digit).map(|i| ("craft", i)),
         _ => None,
     }
-}
-
-/// `1` to `9` pick the first to ninth recipe of the list the HUD shows.
-pub fn craft_index(key: &str) -> Option<i32> {
-    let n: i32 = key.parse().ok()?;
-    (1..=9).contains(&n).then_some(n - 1)
 }
 
 /// The mouse does the same as the attack and throw keys (`MouseKeyboardListener.touchDown/Up`): the
@@ -127,20 +120,59 @@ pub struct Hud {
     pub health: f32,
     pub jetpack: f32,
     pub items: Vec<String>,
-    pub recipes: Vec<(String, bool)>,
+    /// In the server's fixed order; see [`craft_menu`] for the order the player sees.
+    pub recipes: Vec<RecipeInfo>,
     /// What the shop takes; the money is the party's, not a player's.
     pub money: u32,
+}
+
+/// One recipe of the crafting menu.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecipeInfo {
+    /// Position in the server's fixed recipe list: what the `craft` action takes.
+    pub index: usize,
+    pub name: String,
+    /// The pack holds every ingredient.
+    pub can: bool,
+    pub ingredients: Vec<Ingredient>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Ingredient {
+    pub name: String,
+    /// The pack holds an item of this name at all (the menu dims the ones that are missing).
+    pub have: bool,
+}
+
+/// The recipes as the crafting menu lists them: the craftable ones first, the rest after, each
+/// group in the server's list order. Every recipe keeps its fixed `index`.
+pub fn craft_menu(hud: &Hud) -> Vec<&RecipeInfo> {
+    let (mut menu, rest): (Vec<_>, Vec<_>) = hud.recipes.iter().partition(|r| r.can);
+    menu.extend(rest);
+    menu
 }
 
 /// Our entry of a `state` message: `{"<id>": {health, jetpack, items, recipes}, ...}`.
 pub fn parse_state(data: &Value, my_id: u32) -> Option<Hud> {
     let mine = data.get(my_id.to_string())?;
-    let items = mine.get("items")?.as_array()?.iter().filter_map(|v| v.as_str().map(str::to_string)).collect();
+    let items: Vec<String> = mine.get("items")?.as_array()?.iter().filter_map(|v| v.as_str().map(str::to_string)).collect();
     let recipes = mine
         .get("recipes")?
         .as_array()?
         .iter()
-        .filter_map(|r| Some((r.get(0)?.as_str()?.to_string(), r.get(1)?.as_bool()?)))
+        .enumerate()
+        .filter_map(|(index, r)| {
+            // `[name, can, [ingredient, ...]]`; the older `[name, can]` has no ingredients.
+            let ingredients = r
+                .get(2)
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(|name| Ingredient { name: name.to_string(), have: items.iter().any(|i| i == name) })
+                .collect();
+            Some(RecipeInfo { index, name: r.get(0)?.as_str()?.to_string(), can: r.get(1)?.as_bool()?, ingredients })
+        })
         .collect();
     Some(Hud {
         health: mine.get("health")?.as_f64()? as f32,
@@ -209,7 +241,13 @@ pub fn hud_json(hud: &Hud) -> String {
         "health": hud.health,
         "jetpack": hud.jetpack,
         "items": hud.items,
-        "recipes": hud.recipes.iter().map(|(name, ok)| serde_json::json!([name, ok])).collect::<Vec<_>>(),
+        // Already in menu order; `index` is what `craft` takes.
+        "recipes": craft_menu(hud).iter().map(|r| serde_json::json!({
+            "index": r.index,
+            "name": r.name,
+            "can": r.can,
+            "ingredients": r.ingredients.iter().map(|i| serde_json::json!({"name": i.name, "have": i.have})).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
         "money": hud.money,
     })
     .to_string()
@@ -323,9 +361,7 @@ mod tests {
         assert_eq!(key_action("c", false), None);
         assert_eq!(key_action("g", true), Some(("use", 0)));
         assert_eq!(key_action("g", false), None, "using is a press, not a hold");
-        assert_eq!(key_action("1", true), Some(("craft", 0)));
-        assert_eq!(key_action("7", true), Some(("craft", 6)));
-        assert_eq!(key_action("0", true), None);
+        assert_eq!(key_action("1", true), None, "crafting is the popup's job, not a digit key");
         assert_eq!(key_action("e", true), None, "e and q belong to the camera zoom");
         assert_eq!(key_action("w", true), None, "walking is not an action");
         assert_eq!(mouse_action(0, true), Some(("attack", 0)));
@@ -382,18 +418,38 @@ mod tests {
     #[test]
     fn our_entry_of_a_state_message_becomes_the_hud() {
         let data = json!({
-            "4": {"health": 80.0, "jetpack": 0.5, "items": ["Wood", "Coal"], "recipes": [["Torch", true], ["Minecart", false]]},
+            "4": {"health": 80.0, "jetpack": 0.5, "items": ["Wood", "Coal"], "recipes": [["Minecart", false, ["Iron", "Wood"]], ["Torch", true, ["Wood", "Coal"]], ["Old", false]]},
             "9": {"health": 10.0, "jetpack": 0.0, "items": [], "recipes": []},
         });
         let hud = parse_state(&data, 4).unwrap();
         assert_eq!(hud.health, 80.0);
         assert_eq!(hud.items, vec!["Wood".to_string(), "Coal".to_string()]);
-        assert_eq!(hud.recipes, vec![("Torch".to_string(), true), ("Minecart".to_string(), false)]);
+        let ing = |name: &str, have| Ingredient { name: name.to_string(), have };
+        assert_eq!(
+            hud.recipes[0],
+            RecipeInfo { index: 0, name: "Minecart".into(), can: false, ingredients: vec![ing("Iron", false), ing("Wood", true)] }
+        );
+        assert_eq!(hud.recipes[1].ingredients, vec![ing("Wood", true), ing("Coal", true)]);
+        assert!(hud.recipes[2].ingredients.is_empty(), "the old [name, can] form still parses");
         assert!(parse_state(&data, 5).is_none(), "somebody else's state is not ours");
         assert!(parse_state(&json!({"4": {"health": 1}}), 4).is_none(), "a broken entry is ignored, not guessed");
         let round: Value = serde_json::from_str(&hud_json(&hud)).unwrap();
         assert_eq!(round["items"], json!(["Wood", "Coal"]));
-        assert_eq!(round["recipes"][1], json!(["Minecart", false]));
+        // The menu order: craftable first, each keeping its fixed index.
+        let order: Vec<u64> = round["recipes"].as_array().unwrap().iter().map(|r| r["index"].as_u64().unwrap()).collect();
+        assert_eq!(order, vec![1, 0, 2]);
+        assert_eq!(round["recipes"][0]["name"], "Torch");
+        assert_eq!(round["recipes"][0]["can"], true);
+        assert_eq!(round["recipes"][1]["ingredients"], json!([{"name": "Iron", "have": false}, {"name": "Wood", "have": true}]));
+    }
+
+    #[test]
+    fn the_craft_menu_lists_craftable_recipes_first_and_keeps_the_fixed_indices() {
+        let r = |index, can| RecipeInfo { index, name: format!("r{index}"), can, ingredients: vec![] };
+        let hud = Hud { recipes: vec![r(0, false), r(1, true), r(2, false), r(3, true)], ..Hud::default() };
+        let order: Vec<usize> = craft_menu(&hud).iter().map(|r| r.index).collect();
+        assert_eq!(order, vec![1, 3, 0, 2], "stable: list order within each group");
+        assert!(craft_menu(&Hud::default()).is_empty());
     }
 
     #[test]

@@ -471,7 +471,7 @@ impl CavelandMode {
         ServerMsg::Things { tick, things }
     }
 
-    /// Everybody's health and pack: `{"<player id>": {health, jetpack, items, recipes}}`.
+    /// Everybody's health and pack: `{"<player id>": {health, jetpack, items, recipes: [[name, can_craft, [ingredient, ...]], ...]}}`.
     pub fn state(&self, entities: &Entities) -> Value {
         let mut players = serde_json::Map::new();
         let mut ids: Vec<_> = self.numbers.keys().copied().collect();
@@ -484,7 +484,8 @@ impl CavelandMode {
                     "health": view.health.round(),
                     "jetpack": (view.jetpack * 100.0).round() / 100.0,
                     "items": view.items,
-                    "recipes": view.recipes.iter().map(|(name, ok)| json!([name, ok])).collect::<Vec<_>>(),
+                    // In the fixed order `craft` indexes; the client orders them for display.
+                    "recipes": view.recipes.iter().map(|r| json!([r.name, r.can_craft, r.ingredients])).collect::<Vec<_>>(),
                     // Hidden players (inside the spaceship) are not drawn; riders are moved by the
                     // server, so the client does not predict them.
                     "hidden": self.caveland.is_hidden(id),
@@ -696,8 +697,10 @@ mod tests {
         let mut s = Setup::new();
         s.give(&[CollectibleType::Wood, CollectibleType::Coal]);
         s.run(12);
-        assert_eq!(s.state_of(s.player)["recipes"][0], json!(["Torch", true]), "craftable recipes are listed first");
-        s.mode.act(&mut s.entities, &mut s.world, s.player, "craft", 0);
+        let recipes = s.state_of(s.player)["recipes"].clone();
+        let torch = recipes.as_array().unwrap().iter().position(|r| r[0] == "Torch").expect("the torch recipe");
+        assert_eq!(recipes[torch], json!(["Torch", true, ["Wood", "Coal"]]), "fixed order, with ingredients");
+        s.mode.act(&mut s.entities, &mut s.world, s.player, "craft", torch as i32);
         s.run(12);
         assert_eq!(s.state_of(s.player)["items"], json!(["Torch"]));
         assert!(s.events().iter().any(|e| e["t"] == "crafted" && e["item"] == "Torch"));

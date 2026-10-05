@@ -1716,7 +1716,7 @@ fn update_info(s: &mut State) {
         (false, _) => "offline: showing a preview. Open the menu (Esc) to join a world".to_string(),
     };
     let keys = if s.caveland.is_some() {
-        "WASD walk · Space jump · F swing · R talk/build/ride · 1-9 craft · Tab players · F3 network · F4 map".to_string()
+        "WASD walk · Space jump · F swing · R talk/build/ride · C craft · Tab players · F3 network · F4 map".to_string()
     } else if s.editor.active() {
         "EDITOR · left click tool · right click erase · middle click pick · 1-4 block · F2 leave · F3 network · F4 map".to_string()
     } else {

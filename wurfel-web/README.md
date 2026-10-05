@@ -65,6 +65,10 @@ The contract with the game side (the full version is the comment at the top of `
 - `window.wurfelMenuOpen` is true while a menu is open; the game must ignore gameplay input then. The menu also swallows keyboard, mouse and wheel events in the capture phase and dispatches `blur` when it opens so held keys are released.
 - Optional, set by the game: `window.wurfelStatus = { connected, players, fps, backend }` (shown in the menu and HUD) and `window.wurfelGenerators = [{ id, name, description, uses_seed }]` (fallback when the lobby sends none or cannot be reached; otherwise a built-in list: island, air, blocktest, fullmap, arena, caveland).
 
+## Caveland HUD
+
+`hud.js` draws the in-game HUD of Caveland worlds. Crafting is a popup like in the Java game: `C` opens it (and closes it again), `W`/`S` or the arrow keys choose a recipe (one is shown at a time, craftable ones first), `Enter`, `Space` or `N` craft it, `Esc`, `M`, a right click or a click beside the popup close it. The server owns the recipes: the `state` message lists them in a fixed order as `[name, can_craft, [ingredient, ...]]`, the client orders them for display and sends `craft` with the recipe's fixed index. `wurfelHud.update` takes `"recipes": [{index, name, can, ingredients: [{name, have}]}]` already in menu order. While the popup is open `window.wurfelDialogOpen` is true, so the game ignores gameplay keys.
+
 ## Sprites
 
 The client draws the Java game's art: block faces, entities and the player come from a sprite atlas in
