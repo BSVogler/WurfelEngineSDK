@@ -17,7 +17,7 @@
  *     generator        string: id of the generator last used in the "Create map" form
  *     seed             integer >= 0: the seed last used in that form
  *                      (both only remember the form; the world you play in is described by wurfel:play)
- *     limitFps         bool     cap at 60 FPS
+ *     fpsLimit         integer 0..1000: frame rate cap in FPS, 0 = unlimited (default 60)
  *     ambientOcclusion bool     for the light engine, once it exists
  *     showFps, showHelp bool    (JS handles the FPS counter and hides #info itself)
  *     keys             { action: [primary, alternate] } with actions
@@ -29,8 +29,8 @@
  *
  * Events dispatched on window (CustomEvent):
  *     wurfel:play      detail { name, color, server, generator, seed, create }
- *                      The player joined the server's world: "Connect" joins the one already running, "Host a
- *                      map" loads a save first. name / color = the player's name and "#rrggbb" colour, server =
+ *                      The player joined the server's world: "Connect" joins the one already running, "Maps"
+ *                      loads a save first. name / color = the player's name and "#rrggbb" colour, server =
  *                      ws(s):// URL to connect to (no
  *                      query string). generator / seed describe the world the server is running now (read
  *                      from the server, so the game can generate the same terrain). create is true when
@@ -54,16 +54,16 @@
  *     https page), "" is the server this page came from, ws(s):// and http(s):// URLs are used as given
  *     (http -> ws). A path defaults to /ws. Everything below belongs to the selected server.
  *
- * Connect, Host a map and the lobby WebSocket
+ * Connect, Maps and the lobby WebSocket
  *     The main menu has a "Connect" button and a small Server field (default localhost). Connect asks the
- *     server's lobby for the running world, then joins it. "Host a map" lists all maps on the server's disk with generator, seed and saves;
+ *     server's lobby for the running world, then joins it. "Maps" lists all maps on the server's disk with generator, seed and saves;
  *     loading one switches what the server runs, then joins it.
  *     The server holds exactly one (map, save slot) in memory, like the Java engine's single Map. It can
  *     only switch it while nobody is joined. The menu never starts a server process.
  *     For both, the menu opens its OWN short-lived WebSocket to the `server`
- *     URL (ws(s)://host/ws, no query string). It is closed when the player leaves the Host screens or
+ *     URL (ws(s)://host/ws, no query string). It is closed when the player leaves the Maps screens or
  *     joins; the game then opens a separate socket and joins there (the menu never sends
- *     Join). Refresh reconnects. Frames are JSON text with a "type" field. The menu must be able to
+ *     Join). Reconnect re-opens it (only shown after a failure; it does not affect the running world). Frames are JSON text with a "type" field. The menu must be able to
  *     connect, and receive a Lobby, within 4 s, else it shows "couldn't reach a game server".
  *     server -> menu
  *       Lobby         { world: { map (display name), map_id, slot, generator, seed, players, gamemode }, generators: [...] }
@@ -131,7 +131,7 @@
       masterVolume: 0.8, musicVolume: 0.6, effectsVolume: 0.8,
       renderScale: 1, zoom: 0.5,
       generator: 'island', seed: Math.floor(Math.random() * 1000000),
-      limitFps: true, ambientOcclusion: false, showFps: false, showHelp: true,
+      fpsLimit: 60, ambientOcclusion: false, showFps: false, showHelp: true,
       keys: clone(DEFAULT_KEYS),
     };
   }
@@ -149,9 +149,11 @@
     for (const [key, [lo, hi]] of Object.entries(RANGES)) {
       if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) out[key] = Math.min(hi, Math.max(lo, raw[key]));
     }
-    for (const key of ['limitFps', 'ambientOcclusion', 'showFps', 'showHelp']) {
+    for (const key of ['ambientOcclusion', 'showFps', 'showHelp']) {
       if (typeof raw[key] === 'boolean') out[key] = raw[key];
     }
+    if (typeof raw.fpsLimit === 'number' && Number.isFinite(raw.fpsLimit)) out.fpsLimit = Math.min(1000, Math.max(0, Math.round(raw.fpsLimit)));
+    else if (raw.limitFps === false) out.fpsLimit = 0; // migrate the old checkbox
     if (raw.keys && typeof raw.keys === 'object') {
       for (const [action] of ACTIONS) {
         const slots = raw.keys[action];
@@ -291,7 +293,7 @@
   const FRAME_LIMIT = 1000; // the server drops connections that send frames above 1 KB
   const TIMEOUTS = { ready: 4000, answer: 4000, load: 20000, create: 15000 };
   const UNREACHABLE = "Can't reach the server.";
-  const LOST = 'Connection lost. Press Refresh.';
+  const LOST = 'Connection lost. Press Reconnect.';
   const MAPS_FAILED = "Couldn't load the maps.";
 
   /** Keep only well-formed generator entries; the list comes from outside this file. */
@@ -531,6 +533,8 @@
     const connected = lobbyOpen() && lobbyPhase === 'ready';
     $('#maps-blocked').hidden = !blocked;
     $('#join-btn').disabled = busy || lobbyPhase === 'connecting' || !serverWorld;
+    // Reconnect only matters once the lobby connection is gone; it never touches the running map.
+    $('#refresh-btn').hidden = lobbyPhase !== 'failed' && lobbyPhase !== 'closed';
     $('#refresh-btn').disabled = busy;
     $('#map-submit').disabled = busy;
     for (const b of $$('#map-list .map-actions button')) {
@@ -800,7 +804,7 @@
     }
   }
 
-  /** Open the lobby for the Host screens, unless a working one is already there. */
+  /** Open the lobby for the Maps screens, unless a working one is already there. */
   function enterWorlds() {
     hideMapsError();
     if (lobby && (lobbyPhase === 'ready' || lobbyPhase === 'connecting')) renderServerState();
@@ -817,7 +821,7 @@
   function loadMap(mapId, slot) {
     if (busy) return;
     hideMapsError();
-    if (!lobbyOpen() || lobbyPhase !== 'ready') { showMapsError('Not connected to the server. Press Refresh to reconnect.'); return; }
+    if (!lobbyOpen() || lobbyPhase !== 'ready') { showMapsError('Not connected to the server. Press Reconnect.'); return; }
     busy = true;
     $('#maps-status').textContent = slot === 'new' ? 'Creating a new save…' : 'Loading the save…';
     pending = {
@@ -906,7 +910,7 @@
     S.generator = gen.id;
     S.seed = seed;
     changed();
-    if (!lobbyOpen() || lobbyPhase !== 'ready') return showMapError('Not connected to the server. Press Refresh on the Host screen.');
+    if (!lobbyOpen() || lobbyPhase !== 'ready') return showMapError('Not connected to the server. Press Reconnect on the Maps screen.');
 
     busy = true;
     pending = {
@@ -950,7 +954,7 @@
     syncControls();
     renderServerPicker();
     refreshStatus();
-    // The lobby connection lives only while the Host screens are open.
+    // The lobby connection lives only while the Maps screens are open.
     if (name !== 'worlds' && name !== 'newmap') closeLobby();
     if (name !== 'worlds') highlightMap = null;
     if (name === 'worlds') enterWorlds();
@@ -1067,6 +1071,9 @@
     else if (el.type === 'range') {
       const [lo, hi] = RANGES[key] || [0, 1];
       S[key] = Math.min(hi, Math.max(lo, Number(el.value) / (Number(el.dataset.scale) || 1)));
+    } else if (el.type === 'number') {
+      const n = Math.round(Number(el.value));
+      if (Number.isFinite(n) && el.value !== '') S[key] = Math.min(1000, Math.max(0, n));
     } else {
       S[key] = key === 'playerName' ? el.value.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, NAME_MAX) : el.value.slice(0, 200);
       for (const other of $$(`[data-setting="${key}"]`, menu)) if (other !== el) other.value = S[key];

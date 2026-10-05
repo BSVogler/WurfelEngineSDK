@@ -1,8 +1,13 @@
 /*
  * Tab player list: hold the "players" key (default Tab) in the game to see everybody on the
  * server with their ping. The wasm client publishes `window.wurfelPlayers` (a list of
- * { id, name, color, pingMs, me }, pingMs null until known) and `window.wurfelStatus.map` about
- * twice a second; this file only draws them. The key is the `players` action of
+ * { id, name, color, pingMs, me, friend, invited, invitesMe }, pingMs null until known) and
+ * `window.wurfelStatus.map` about twice a second; this file only draws them.
+ *
+ * Every other player has a heart. Clicking it (the mouse works while the key is held) invites
+ * that player to be friends, or accepts their invite; clicking it again withdraws, declines or
+ * ends. The page sets `window.wurfelScoreboardOpen` meanwhile so the click does not also place a
+ * block, and sends the click through `window.wurfelNet.heart(id, on)`. The key is the `players` action of
  * `window.wurfelSettings.keys` (rebindable in the menu), a lowercased KeyboardEvent.key.
  */
 (function () {
@@ -41,6 +46,14 @@
     return el;
   }
 
+  // What a heart shows and what clicking it asks for, per relationship.
+  function heartState(p) {
+    if (p.friend) return { cls: 'friend', glyph: '\u2665', title: 'Friends. Click to end', on: false };
+    if (p.invitesMe) return { cls: 'accept', glyph: '\u2665', title: 'Wants to be friends. Click to accept', on: true };
+    if (p.invited) return { cls: 'sent', glyph: '\u2661', title: 'Invite sent. Click to withdraw', on: false };
+    return { cls: 'none', glyph: '\u2661', title: 'Invite to be friends', on: true };
+  }
+
   function render() {
     var players = Array.isArray(window.wurfelPlayers) ? window.wurfelPlayers : [];
     var map = (window.wurfelStatus && window.wurfelStatus.map) || '';
@@ -67,8 +80,22 @@
       var ping = document.createElement('span');
       ping.className = 'ping ' + pingClass(p.pingMs);
       ping.textContent = p.pingMs === null || p.pingMs === undefined ? '–' : p.pingMs + ' ms';
+      var heart = document.createElement('span');
+      if (p.me) {
+        heart.className = 'heart none';
+        heart.style.visibility = 'hidden';
+        heart.textContent = '\u2661';
+      } else {
+        var h = heartState(p);
+        heart.className = 'heart ' + h.cls;
+        heart.textContent = h.glyph;
+        heart.title = h.title;
+        heart.dataset.player = String(p.id);
+        heart.dataset.on = h.on ? '1' : '0';
+      }
       li.appendChild(swatch);
       li.appendChild(name);
+      li.appendChild(heart);
       li.appendChild(ping);
       list.appendChild(li);
     });
@@ -80,12 +107,25 @@
     if (timer !== null) return;
     render();
     ensure().hidden = false;
+    window.wurfelScoreboardOpen = true;
     timer = setInterval(render, 250);
   }
   function hide() {
+    window.wurfelScoreboardOpen = false;
     if (timer !== null) { clearInterval(timer); timer = null; }
     if (el) el.hidden = true;
   }
+
+  // The list is rebuilt several times a second, so act on the press (not on a click, which needs
+  // the same element to still be there on release).
+  document.addEventListener('mousedown', function (e) {
+    if (timer === null || e.button !== 0) return;
+    var t = e.target;
+    if (!t || !t.dataset || !t.dataset.player) return;
+    e.preventDefault();
+    var net = window.wurfelNet;
+    if (net && typeof net.heart === 'function') net.heart(Number(t.dataset.player), t.dataset.on === '1');
+  });
 
   window.addEventListener('keydown', function (e) {
     if (e.ctrlKey || e.altKey || e.metaKey || typing(e)) return;

@@ -169,6 +169,10 @@ struct State {
     roster: HashMap<u32, PlayerInfo>,
     /// Everybody's ping in ms as the server last told us (the Tab player list).
     pings: HashMap<u32, u32>,
+    /// Hearts in the Tab list: friends (both agreed), players we invited, players who invited us.
+    friends: HashSet<u32>,
+    invited: HashSet<u32>,
+    invited_by: HashSet<u32>,
     map_name: String,
     /// Real time not yet consumed by fixed physics steps.
     accumulator: f32,
@@ -386,6 +390,9 @@ async fn run() -> Result<(), String> {
         remotes: HashMap::new(),
         roster: HashMap::new(),
         pings: HashMap::new(),
+        friends: HashSet::new(),
+        invited: HashSet::new(),
+        invited_by: HashSet::new(),
         map_name: String::new(),
         accumulator: 0.0,
         history: InputHistory::new(),
@@ -571,9 +578,18 @@ fn export_players(s: &State, window: &web_sys::Window) {
         set("color", format!("#{:02x}{:02x}{:02x}", p.color[0], p.color[1], p.color[2]).into());
         set("pingMs", ping.map_or(JsValue::NULL, JsValue::from));
         set("me", me.into());
+        set("friend", s.friends.contains(&p.id).into());
+        set("invited", s.invited.contains(&p.id).into());
+        set("invitesMe", s.invited_by.contains(&p.id).into());
         players.push(&entry);
     }
     let _ = js_sys::Reflect::set(window, &JsValue::from_str("wurfelPlayers"), &players);
+}
+
+fn clear_friends(s: &mut State) {
+    s.friends.clear();
+    s.invited.clear();
+    s.invited_by.clear();
 }
 
 // --------------------------------------------------------------------------------- status banner
@@ -582,6 +598,8 @@ fn export_players(s: &State, window: &web_sys::Window) {
 enum Tone {
     Info,
     Ok,
+    /// News the player has to read and act on: stays a little longer than `Ok`.
+    Invite,
     Error,
 }
 
@@ -606,6 +624,7 @@ fn show_banner(text: &str, tone: Tone) {
     let (background, color) = match tone {
         Tone::Info => ("rgba(20,28,48,0.92)", "#dfe8ff"),
         Tone::Ok => ("rgba(24,74,40,0.92)", "#dcffe6"),
+        Tone::Invite => ("rgba(92,28,70,0.94)", "#ffe0f3"),
         Tone::Error => ("rgba(110,24,24,0.95)", "#ffe3e3"),
     };
     let _ = element.set_attribute(
@@ -622,7 +641,12 @@ fn show_banner(text: &str, tone: Tone) {
     // A newer message must not be hidden by an older timer.
     let seq = element.get_attribute("data-seq").and_then(|v| v.parse::<u32>().ok()).unwrap_or(0) + 1;
     let _ = element.set_attribute("data-seq", &seq.to_string());
-    if tone == Tone::Ok {
+    let hide_after_ms = match tone {
+        Tone::Ok => Some(2500),
+        Tone::Invite => Some(7000),
+        Tone::Info | Tone::Error => None,
+    };
+    if let Some(hide_after_ms) = hide_after_ms {
         let hide = Closure::once_into_js(move || {
             if let Some(el) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.get_element_by_id("statusbanner")) {
                 if el.get_attribute("data-seq").and_then(|v| v.parse::<u32>().ok()) == Some(seq) {
@@ -630,7 +654,7 @@ fn show_banner(text: &str, tone: Tone) {
                 }
             }
         });
-        let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(hide.unchecked_ref(), 2500);
+        let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(hide.unchecked_ref(), hide_after_ms);
     }
 }
 
@@ -688,6 +712,7 @@ fn end_session(s: &mut State) {
     s.entities = Entities::new();
     s.remotes.clear();
     s.roster.clear();
+    clear_friends(s);
     s.history = InputHistory::new();
     s.visual_offset.clear();
     s.render_clock = RenderClock::default();
@@ -883,6 +908,7 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
             hud("closeDialog", &JsValue::UNDEFINED);
             s.roster = roster.into_iter().map(|p| (p.id, p)).collect();
             s.pings.clear();
+            clear_friends(s);
             s.map_name = map.clone();
             // The server sends the terrain as chunks: this world has no generator of its own and
             // fills up as they arrive.
@@ -962,6 +988,19 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
         ServerMsg::Pong { client_time, .. } => s.net.on_pong(client_time, now),
         ServerMsg::Stats(stats) => s.net.on_server_stats(stats),
         ServerMsg::Pings { list } => s.pings = list.into_iter().collect(),
+        ServerMsg::Friends { player, friends, sent, received } if Some(player) == s.my_id => {
+            let name = |s: &State, id: u32| s.roster.get(&id).map_or_else(|| "Somebody".to_string(), |p| p.name.clone());
+            for &id in received.iter().filter(|id| !s.invited_by.contains(id)) {
+                show_banner(&format!("{} wants to be friends. Hold Tab and click ♥ to accept", name(s, id)), Tone::Invite);
+            }
+            for &id in friends.iter().filter(|id| !s.friends.contains(id)) {
+                show_banner(&format!("You and {} are friends now", name(s, id)), Tone::Ok);
+            }
+            s.friends = friends.into_iter().collect();
+            s.invited = sent.into_iter().collect();
+            s.invited_by = received.into_iter().collect();
+        }
+        ServerMsg::Friends { .. } => {} // somebody else's
         ServerMsg::Things { things, .. } => s.things = things,
         ServerMsg::Rules { kind, data } => handle_rules(s, &kind, &data),
     }
@@ -1173,7 +1212,8 @@ fn install_menu_events(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
 }
 
 /// What the page's HUD and console send to the server: `wurfelNet.action(name, arg)` answers a
-/// dialog or offer, `wurfelNet.command(line)` is a console line of the game mode.
+/// dialog or offer, `wurfelNet.command(line)` is a console line of the game mode,
+/// `wurfelNet.heart(playerId, on)` is the heart in the Tab player list.
 fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     let net = js_sys::Object::new();
     let s = state.clone();
@@ -1218,6 +1258,12 @@ fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     });
     let _ = js_sys::Reflect::set(&net, &"editorBlock".into(), editor_block.as_ref());
     editor_block.forget();
+    let s = state.clone();
+    let heart = Closure::<dyn FnMut(u32, bool)>::new(move |to: u32, on: bool| {
+        send(&mut s.borrow_mut(), &ClientMsg::Heart { to, on });
+    });
+    let _ = js_sys::Reflect::set(&net, &"heart".into(), heart.as_ref());
+    heart.forget();
     let _ = js_sys::Reflect::set(window, &"wurfelNet".into(), &net);
 }
 
@@ -1306,7 +1352,8 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     listen(window, "mousedown", move |e: MouseEvent| {
         let mut s = s.borrow_mut();
         s.pointer = Some((e.client_x() as f32 * s.dpr, e.client_y() as f32 * s.dpr));
-        if input_blocked() {
+        // Clicking a heart in the Tab list must not also place a block behind it.
+        if input_blocked() || window_flag("wurfelScoreboardOpen") {
             return;
         }
         s.keys.insert(format!("mouse{}", e.button()));
@@ -1434,8 +1481,17 @@ fn hovered(s: &State) -> Option<Pick> {
 fn start_frame_loop(state: Rc<RefCell<State>>) {
     let callback: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
     let next = callback.clone();
+    let mut last_frame = f64::NEG_INFINITY;
     *next.borrow_mut() = Some(Closure::new(move |now_ms: f64| {
-        frame(&mut state.borrow_mut(), now_ms);
+        // `fpsLimit` from the menu: 0 is unlimited. Skip callbacks that arrive too early; the 1 ms slack
+        // keeps a 60 FPS cap from dropping to 30 on a 60 Hz display whose callbacks jitter.
+        let limit = web_sys::window()
+            .and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "fpsLimit").as_f64())
+            .unwrap_or(60.0);
+        if limit < 1.0 || now_ms - last_frame >= 1000.0 / limit - 1.0 {
+            last_frame = now_ms;
+            frame(&mut state.borrow_mut(), now_ms);
+        }
         request_animation_frame(callback.borrow().as_ref().unwrap());
     }));
     request_animation_frame(next.borrow().as_ref().unwrap());

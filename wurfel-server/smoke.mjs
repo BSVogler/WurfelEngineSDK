@@ -86,6 +86,25 @@ check(stats && stats.players === 1 && stats.loaded_chunks >= 9, 'Stats arrive ab
 const pings = a.find('Pings');
 check(pings && pings.list.some(([id, ms]) => id === a.find('Welcome').your_id && ms === 37), 'the ping a client reports is shared with everybody in a Pings list');
 
+// ---- hearts in the Tab list: invite, accept, end
+const aid = a.find('Welcome').your_id;
+const pal = client(); await pal.ready; await pal.wait('Lobby');
+pal.send({ type: 'Join', name: 'Friend', color: [1, 2, 3] });
+const fid = (await pal.wait('Welcome')).your_id;
+const friendsOf = (c, id) => c.log.filter(m => m.type === 'Friends' && m.player === id).at(-1);
+a.send({ type: 'Heart', to: fid, on: true });
+await sleep(300 + lag);
+check(friendsOf(pal, fid)?.received.includes(aid) && friendsOf(a, aid)?.sent.includes(fid), 'a heart is an invite: the other player sees it, the sender sees it as sent');
+pal.send({ type: 'Heart', to: aid, on: true });
+await sleep(300 + lag);
+check(friendsOf(a, aid)?.friends.includes(fid) && friendsOf(pal, fid)?.friends.includes(aid) && friendsOf(a, aid).sent.length === 0, 'hearting back accepts: both are friends and the invite is gone');
+a.send({ type: 'Heart', to: 9999, on: true });
+await sleep(200 + lag);
+check(!friendsOf(a, aid)?.sent.includes(9999), 'a heart for nobody is ignored');
+pal.ws.close();
+await sleep(400 + lag);
+check(friendsOf(a, aid)?.friends.length === 0, 'a friend who leaves is removed from the list');
+
 // ---- movement, jumping, blocks
 const start = [...a.me().pos];
 a.send(keys({ right: true })); await sleep(700 + lag); a.send(keys()); await sleep(400 + lag);

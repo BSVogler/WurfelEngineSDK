@@ -7,6 +7,7 @@ mod caveland_client;
 mod editor;
 mod interp;
 mod lighting;
+mod locator;
 mod mesh;
 mod minimap;
 mod netstats;

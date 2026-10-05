@@ -131,6 +131,7 @@ html.menu-open #info { display: none; }
 .status { margin: 8px 0 14px; min-height: 1.2em; color: var(--muted); font-size: 0.85rem; }
 .screen-title { margin: 4px 0 12px; font-size: 1.15rem; }
 .screen[hidden] { display: none; }
+.item[hidden] { display: none; }
 
 /* Buttons */
 .items { display: grid; gap: 8px; }
