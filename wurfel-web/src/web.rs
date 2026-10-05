@@ -793,6 +793,15 @@ fn connect(window: &web_sys::Window, state: &Rc<RefCell<State>>, url: &str) {
     }
 }
 
+/// A Caveland action of the local player: sent to the server, which decides, and played by the
+/// local animation at once.
+fn send_action(s: &mut State, name: &'static str, arg: i32) {
+    if let Some(me) = s.my_id {
+        s.actors.local_action(me, name);
+    }
+    send(s, &ClientMsg::Action { name: name.to_string(), arg });
+}
+
 fn send(s: &mut State, msg: &ClientMsg) {
     if let (true, Some(socket)) = (s.connected, &s.socket) {
         if let Ok(json) = serde_json::to_string(msg) {
@@ -982,6 +991,7 @@ fn handle_rules(s: &mut State, kind: &str, data: &serde_json::Value) {
                         s.particles.block_break(pos + Vec3::Z * 0.5, [0.3, 0.3, 0.3]);
                     }
                     Happening::Toast(text) => hud("toast", &JsValue::from_str(&text)),
+                    Happening::Action { player, name, ok } => s.actors.announced(player, player == me, &name, ok),
                     Happening::Died => {
                         show_banner("You died. Back at the start.", Tone::Error);
                         s.visual_offset.clear();
@@ -1173,7 +1183,7 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         s.keys.insert(format!("mouse{}", e.button()));
         if s.caveland.is_some() {
             if let Some((name, arg)) = caveland_client::mouse_action(e.button(), true) {
-                send(&mut s, &ClientMsg::Action { name: name.to_string(), arg });
+                send_action(&mut s, name, arg);
             }
         }
         if s.bindings.matches_button("place", e.button()) {
@@ -1188,7 +1198,7 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         s.keys.remove(&format!("mouse{}", e.button()));
         if s.caveland.is_some() {
             if let Some((name, arg)) = caveland_client::mouse_action(e.button(), false) {
-                send(&mut s, &ClientMsg::Action { name: name.to_string(), arg });
+                send_action(&mut s, name, arg);
             }
         }
     });
@@ -1239,7 +1249,7 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
             // Caveland keys: swing, throw, use, drop, craft...
             if !e.repeat() {
                 if let Some((name, arg)) = caveland_client::key_action(&key, true) {
-                    send(&mut s, &ClientMsg::Action { name: name.to_string(), arg });
+                    send_action(&mut s, name, arg);
                 }
             }
         } else if let Some(n) = key.parse::<usize>().ok().filter(|n| (1..=HOTBAR.len()).contains(n)) {
@@ -1260,7 +1270,7 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         let mut s = s.borrow_mut();
         if s.caveland.is_some() && s.keys.contains(&key) {
             if let Some((name, arg)) = caveland_client::key_action(&key, false) {
-                send(&mut s, &ClientMsg::Action { name: name.to_string(), arg });
+                send_action(&mut s, name, arg);
             }
         }
         s.keys.remove(&key);

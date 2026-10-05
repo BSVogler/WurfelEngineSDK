@@ -764,6 +764,34 @@ mod game_mode_tests {
     }
 
     #[test]
+    fn moves_are_announced_as_action_events_with_the_rules_outcome() {
+        let mut game = caveland_game();
+        let me = game.add_player();
+        run(&mut game, 120);
+        let actions = |msgs: Vec<ServerMsg>| -> Vec<(String, bool)> {
+            msgs.iter()
+                .filter_map(|m| match m {
+                    ServerMsg::Rules { kind, data } if kind == "events" => Some(data.as_array().unwrap().clone()),
+                    _ => None,
+                })
+                .flatten()
+                .filter(|e| e["t"] == "action" && e["player"] == me)
+                .map(|e| (e["name"].as_str().unwrap().to_string(), e["ok"].as_bool().unwrap()))
+                .collect()
+        };
+        game.handle(me, ClientMsg::Action { name: "attack".into(), arg: 0 });
+        game.handle(me, ClientMsg::Action { name: "attack".into(), arg: 0 });
+        game.handle(me, ClientMsg::Action { name: "throw".into(), arg: 0 });
+        game.handle(me, ClientMsg::Action { name: "nonsense".into(), arg: 0 });
+        let seen = actions(run(&mut game, 2));
+        assert_eq!(
+            seen,
+            [("attack".to_string(), true), ("attack".to_string(), true), ("throw".to_string(), false)],
+            "a throw without a prepared pose failed"
+        );
+    }
+
+    #[test]
     fn engine_games_ignore_actions() {
         let mut game = Game::island(1);
         let me = game.add_player();

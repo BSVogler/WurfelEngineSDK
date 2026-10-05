@@ -41,8 +41,8 @@ pub fn key_action(key: &str, pressed: bool) -> Option<(&'static str, i32)> {
     match (key, pressed) {
         ("f", true) => Some(("attack", 0)),
         ("f", false) => Some(("release_attack", 0)),
-        ("c", true) => Some(("prepare_throw", 0)),
-        ("c", false) => Some(("throw", 0)),
+        ("m", true) => Some(("prepare_throw", 0)),
+        ("m", false) => Some(("throw", 0)),
         ("g", true) => Some(("use", 0)),
         ("r", true) => Some(("interact", 0)),
         ("x", true) => Some(("drop", 0)),
@@ -59,9 +59,17 @@ pub fn craft_index(key: &str) -> Option<i32> {
     (1..=9).contains(&n).then_some(n - 1)
 }
 
-/// The mouse does the same as the attack key: the left button swings, holding it charges.
+/// The mouse does the same as the attack and throw keys (`MouseKeyboardListener.touchDown/Up`): the
+/// left button (0) swings, holding it charges; the right button (2) winds up a throw while held and
+/// throws when released, holding it long enough drops the item (the server times that).
 pub fn mouse_action(button: i16, pressed: bool) -> Option<(&'static str, i32)> {
-    (button == 0).then_some(if pressed { ("attack", 0) } else { ("release_attack", 0) })
+    match (button, pressed) {
+        (0, true) => Some(("attack", 0)),
+        (0, false) => Some(("release_attack", 0)),
+        (2, true) => Some(("prepare_throw", 0)),
+        (2, false) => Some(("throw", 0)),
+        _ => None,
+    }
 }
 
 /// How a thing is drawn: no sprites yet, so a coloured block of this size.
@@ -224,6 +232,10 @@ pub enum Happening {
     SoundStopped { name: String },
     /// The intro ship came down: it burns.
     ShipCrashed { pos: Vec3 },
+    /// A player did one of the moves that are animated (`attack`, `release_attack`, `prepare_throw`,
+    /// `throw`, `drop`); `ok` is whether the rules accepted it. Starts the animation of other
+    /// players and corrects ours when the server refused.
+    Action { player: u32, name: String, ok: bool },
 }
 
 fn position(v: &Value) -> Option<Vec3> {
@@ -257,6 +269,11 @@ pub fn parse_events(data: &Value, my_id: u32) -> Vec<Happening> {
                 _ => None,
             },
             "sound_stop" => Some(Happening::SoundStopped { name: text("name").to_string() }),
+            "action" => event.get("player").and_then(Value::as_u64).map(|player| Happening::Action {
+                player: player as u32,
+                name: text("name").to_string(),
+                ok: event.get("ok").and_then(Value::as_bool).unwrap_or(true),
+            }),
             "ship_crashed" => position(&event["pos"]).map(|pos| Happening::ShipCrashed { pos }),
             _ => None,
         };
@@ -300,8 +317,10 @@ mod tests {
     fn keys_map_to_actions_and_holding_keys_have_a_release() {
         assert_eq!(key_action("f", true), Some(("attack", 0)));
         assert_eq!(key_action("f", false), Some(("release_attack", 0)));
-        assert_eq!(key_action("c", true), Some(("prepare_throw", 0)));
-        assert_eq!(key_action("c", false), Some(("throw", 0)));
+        assert_eq!(key_action("m", true), Some(("prepare_throw", 0)));
+        assert_eq!(key_action("m", false), Some(("throw", 0)));
+        assert_eq!(key_action("c", true), None, "c is the crafting popup, no longer the throw");
+        assert_eq!(key_action("c", false), None);
         assert_eq!(key_action("g", true), Some(("use", 0)));
         assert_eq!(key_action("g", false), None, "using is a press, not a hold");
         assert_eq!(key_action("1", true), Some(("craft", 0)));
@@ -311,14 +330,35 @@ mod tests {
         assert_eq!(key_action("w", true), None, "walking is not an action");
         assert_eq!(mouse_action(0, true), Some(("attack", 0)));
         assert_eq!(mouse_action(0, false), Some(("release_attack", 0)));
-        assert_eq!(mouse_action(2, true), None);
+        assert_eq!(mouse_action(2, true), Some(("prepare_throw", 0)), "right button: hold to wind up");
+        assert_eq!(mouse_action(2, false), Some(("throw", 0)), "release throws");
+        assert_eq!(mouse_action(1, true), None);
+    }
+
+    #[test]
+    fn action_events_name_who_did_what_and_whether_the_rules_accepted_it() {
+        let data = json!([
+            {"t": "action", "player": 5, "name": "attack", "ok": true},
+            {"t": "action", "player": 2, "name": "throw", "ok": false},
+            {"t": "action", "player": 3, "name": "drop"},
+            {"t": "action", "name": "attack"},
+        ]);
+        assert_eq!(
+            parse_events(&data, 2),
+            [
+                Happening::Action { player: 5, name: "attack".into(), ok: true },
+                Happening::Action { player: 2, name: "throw".into(), ok: false },
+                Happening::Action { player: 3, name: "drop".into(), ok: true },
+            ],
+            "a missing ok counts as accepted; an event without a player is skipped"
+        );
     }
 
     #[test]
     fn every_key_action_is_one_the_server_understands() {
         // The names the server's `CavelandMode::act` accepts.
         let known = ["attack", "release_attack", "prepare_throw", "throw", "drop", "use", "interact", "switch_left", "switch_right", "craft"];
-        for key in ["f", "c", "g", "r", "x", "z", "v", "1", "5", "9"] {
+        for key in ["f", "m", "g", "r", "x", "z", "v", "1", "5", "9"] {
             for pressed in [true, false] {
                 if let Some((name, _)) = key_action(key, pressed) {
                     assert!(known.contains(&name), "{name}");

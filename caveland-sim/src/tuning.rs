@@ -16,6 +16,8 @@ pub struct Tuning {
     pub jetpack_power: f32,
     /// `jetpackMaxSpeed`: the jetpack stops accelerating above this rise speed (blocks per second).
     pub jetpack_max_speed: f32,
+    /// `playerItemDropTime`: holding the throw button this long drops the item instead.
+    pub item_drop_time: f32,
     /// `playerfriction`.
     pub player_friction: f32,
     /// `playerWalkingSpeed`, blocks per second.
@@ -30,6 +32,7 @@ impl Default for Tuning {
             jetpack_max_time: 0.4,
             jetpack_power: 30.0,
             jetpack_max_speed: 5.0,
+            item_drop_time: 0.6,
             player_friction: wurfel_sim::player::PLAYER_FRICTION,
             walking_speed: wurfel_sim::player::WALKING_SPEED,
         }
@@ -48,6 +51,7 @@ impl Tuning {
             // Java: blocks per second gained per millisecond of burning.
             jetpack_power: f("jetpackPower", d.jetpack_power / 1000.0) * 1000.0,
             jetpack_max_speed: f("jetpackMaxSpeed", d.jetpack_max_speed),
+            item_drop_time: f("playerItemDropTime", d.item_drop_time * 1000.0) / 1000.0,
             player_friction: f("playerfriction", d.player_friction),
             walking_speed: f("playerWalkingSpeed", d.walking_speed),
         }
@@ -62,6 +66,7 @@ pub fn register_cvars(cvars: &mut CVarSystem) {
     cvars.register("jetpackMaxTime", Value::Float(400.0), Flags::Archive);
     cvars.register("jetpackPower", Value::Float(0.03), Flags::Archive);
     cvars.register("jetpackMaxSpeed", Value::Float(5.0), Flags::Archive);
+    cvars.register("playerItemDropTime", Value::Float(600.0), Flags::Archive);
 }
 
 /// Register the Caveland save-slot CVars (the player's wallet).

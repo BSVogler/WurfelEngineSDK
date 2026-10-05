@@ -759,3 +759,55 @@ fn a_key_assumed_held_is_not_a_fresh_press() {
     g.step(3);
     assert!(g.position(id).z > 1.0, "a real press jumps");
 }
+
+// ---- the throw button's rules (the animation is the client's, see wurfel-web) ---------------
+
+#[test]
+fn an_attack_or_jump_cancels_a_prepared_throw() {
+    let mut g = Game::new();
+    let id = g.spawn_player_at(10, 40);
+    g.give(id, C::Stone);
+    g.seconds(0.3);
+    g.act(id, Action::PrepareThrow);
+    g.act(id, Action::Attack);
+    assert!(!g.caveland.player(id).unwrap().prepare_throw);
+    g.act(id, Action::ReleaseAttack);
+    g.act(id, Action::Throw);
+    assert_eq!(g.inventory_types(id), vec![C::Stone], "no throw after the pose was cancelled");
+
+    g.seconds(0.5);
+    g.act(id, Action::PrepareThrow);
+    g.controls(id, Controls { jump: true, ..Default::default() });
+    assert!(!g.caveland.player(id).unwrap().prepare_throw);
+}
+
+#[test]
+fn holding_the_throw_button_for_600_ms_drops_the_item_and_the_release_then_throws_nothing() {
+    let mut g = Game::new();
+    let id = g.spawn_player_at(10, 40);
+    g.give(id, C::Stone);
+    g.seconds(0.3);
+    g.act(id, Action::PrepareThrow);
+    g.seconds(0.5);
+    assert_eq!(g.inventory_types(id), vec![C::Stone], "not held long enough");
+    g.seconds(0.2);
+    assert!(g.inventory_types(id).is_empty(), "dropped");
+    assert!(!g.caveland.player(id).unwrap().prepare_throw);
+    g.events.clear();
+    g.act(id, Action::Throw);
+    assert!(g.saw(|e| matches!(e, GameEvent::Sound { name: "interactionFail", .. })), "the release has nothing to throw");
+}
+
+#[test]
+fn releasing_before_the_drop_time_throws() {
+    let mut g = Game::new();
+    let id = g.spawn_player_at(10, 40);
+    g.give(id, C::Stone);
+    g.seconds(0.3);
+    g.act(id, Action::PrepareThrow);
+    g.seconds(0.4);
+    g.act(id, Action::Throw);
+    g.seconds(1.0);
+    assert!(g.inventory_types(id).is_empty());
+    assert!(g.caveland.player(id).unwrap().throw_held.is_none(), "the hold ended with the release");
+}

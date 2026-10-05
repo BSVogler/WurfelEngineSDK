@@ -52,6 +52,8 @@ pub struct CavelandMode {
     caveland: Caveland,
     /// Messages for everybody, collected during a tick and sent by the server loop.
     outbox: Vec<ServerMsg>,
+    /// `action` happenings of the players' moves since the last tick.
+    action_happenings: Vec<Value>,
     /// What the last `state` message said, to send only changes.
     last_state: String,
     /// Where players (re)start.
@@ -87,6 +89,7 @@ impl CavelandMode {
         CavelandMode {
             caveland: Caveland::new(Tuning::default(), seed as i64),
             outbox: Vec::new(),
+            action_happenings: Vec::new(),
             last_state: String::new(),
             spawn: None,
             seeded: false,
@@ -249,7 +252,22 @@ impl CavelandMode {
             }
             _ => return,
         };
+        let packed = |c: &Caveland| c.player(id).map(|p| (p.inventory.items().len(), p.prepare_throw, p.time_till_impact.is_some()));
+        let before = packed(&self.caveland);
         self.caveland.act(entities, world, id, action);
+        // Tell everybody about the moves that clients animate (the animation is the clients' own;
+        // this is the one-shot trigger for the other players and the outcome for the actor). `ok`
+        // is false when the rules refused: no swing started, nothing prepared, nothing thrown.
+        if let (Some((had, _, _)), Some((has, preparing, swinging))) = (before, packed(&self.caveland)) {
+            let ok = match name {
+                "attack" => swinging,
+                "prepare_throw" => preparing,
+                "throw" => has < had,
+                "release_attack" | "drop" => true,
+                _ => return,
+            };
+            self.action_happenings.push(json!({"t": "action", "player": id, "name": name, "ok": ok}));
+        }
     }
 
     /// One fixed step of the rules. `tick` is the server's step counter after this step.
@@ -280,6 +298,7 @@ impl CavelandMode {
         for edit in edits {
             self.outbox.push(ServerMsg::BlockSet(edit));
         }
+        happenings.extend(self.action_happenings.drain(..));
         happenings.retain(|h| !h.is_null());
         if !happenings.is_empty() {
             self.outbox.push(ServerMsg::Rules { kind: "events".into(), data: Value::Array(happenings) });

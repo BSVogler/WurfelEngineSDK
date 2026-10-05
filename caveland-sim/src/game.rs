@@ -537,6 +537,7 @@ impl Caveland {
                 || is_on_ground(world, position - Vec3::Z * (20.0 * UNIT), dimension_z);
             state.bunny_hop_forced = false;
             if can_jump {
+                state.prepare_throw = false; // `playAnimation('j')` cancels the pose
                 if let Some(body) = entity.body.as_mut() {
                     body.movement.z = 0.0;
                     body.jump_with(wurfel_sim::player::JUMP_SPEED);
@@ -588,11 +589,14 @@ impl Caveland {
             Action::Attack => self.start_attack(entities, world, id, state, ATTACK_DAMAGE),
             Action::ReleaseAttack => self.release_attack(entities, world, id, state),
             Action::PrepareThrow => {
+                // The hold is timed even with nothing to throw: it ends in a drop (`throwDown`).
+                state.throw_held = Some(0.0);
                 if !state.inventory.is_empty() {
                     state.prepare_throw = true;
                 }
             }
             Action::Throw => {
+                state.throw_held = None;
                 let item = if state.prepare_throw { state.inventory.retrieve(0) } else { None };
                 match item {
                     Some(item) => {
@@ -606,13 +610,7 @@ impl Caveland {
                     None => self.events.push(GameEvent::Sound { name: "interactionFail", position }),
                 }
             }
-            Action::Drop => {
-                state.prepare_throw = false;
-                if let Some(item) = state.inventory.retrieve(0) {
-                    let eid = self.spawn_collectible(entities, item, position + Vec3::Z * (0.1));
-                    self.block_pickup(eid, id, DROP_PICKUP_BLOCK);
-                }
-            }
+            Action::Drop => self.drop_item(entities, id, state, position),
             Action::UseItem => self.use_item(entities, world, id, state, position),
             Action::Interact => self.interact(entities, world, state, position),
             Action::SwitchItems { left } => state.inventory.switch_items(left),
@@ -632,6 +630,17 @@ impl Caveland {
                 }
             }
         }
+    }
+
+    /// Lay the item in hand down (`Ejira.dropItem`).
+    fn drop_item(&mut self, entities: &mut Entities, id: EntityId, state: &mut PlayerState, position: Vec3) {
+        state.prepare_throw = false;
+        state.throw_held = None;
+        if let Some(item) = state.inventory.retrieve(0) {
+            let eid = self.spawn_collectible(entities, item, position + Vec3::Z * (0.1));
+            self.block_pickup(eid, id, DROP_PICKUP_BLOCK);
+        }
+        state.performing_power_attack = false;
     }
 
     fn block_pickup(&mut self, collectible: EntityId, parent: EntityId, seconds: f32) {
@@ -803,6 +812,7 @@ impl Caveland {
             return;
         }
         state.performing_power_attack = false;
+        state.prepare_throw = false; // a swing cancels a prepared throw (`playAnimation('h')`)
         let position = entities.get(id).map(|e| e.position).unwrap_or(Vec3::ZERO);
         self.events.push(GameEvent::Sound { name: "sword", position });
         if let Some(entity) = entities.get_mut(id) {
@@ -1022,6 +1032,15 @@ impl Caveland {
             state.aim = slerp(state.aim, target, turn.min(1.0));
         }
 
+        // The throw button's hold is timed.
+        if let Some(held) = state.throw_held.as_mut() {
+            *held += dt;
+            if *held >= tuning.item_drop_time {
+                // Held that long it is a drop; the release then finds nothing prepared.
+                self.drop_item(entities, id, state, position);
+            }
+        }
+
         // Swing and charge.
         if let Some(left) = state.time_till_impact.as_mut() {
             *left -= dt;
@@ -1037,13 +1056,14 @@ impl Caveland {
         }
         if let Some(charge) = state.load_attack.as_mut() {
             *charge += dt;
-            if *charge > LOAD_THRESHOLD {
-                // Charging slows falling to a fifth.
+            let charge = *charge;
+            if charge > LOAD_THRESHOLD {
+                // Charging slows falling to a quarter per step.
                 if let Some(body) = entities.get_mut(id).and_then(|e| e.body.as_mut()) {
                     body.movement.z /= 4.0;
                 }
             }
-            if *charge >= LOAD_ATTACK_TIME {
+            if charge >= LOAD_ATTACK_TIME {
                 self.release_attack(entities, world, id, state);
             }
         }
