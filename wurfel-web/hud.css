@@ -17,12 +17,19 @@
 .clhud-slot.clhud-hand { border-color: #f2c14e; }
 .clhud-slot.clhud-empty { opacity: 0.45; }
 
-.clhud-craft { position: absolute; right: 16px; top: 16px; padding: 8px 10px; border-radius: 6px; background: rgba(0, 0, 0, 0.55); min-width: 150px; }
 .clhud-title { font-weight: 600; margin-bottom: 4px; }
-.clhud-recipes { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.clhud-recipes li { display: flex; gap: 6px; align-items: baseline; }
-.clhud-cannot { opacity: 0.4; }
 .clhud-can { color: #b9f5a8; }
+.clhud-dim { opacity: 0.3; }
+
+/* Crafting popup (C): one recipe at a time. The backdrop takes the clicks. */
+.clhud-craftmenu { position: absolute; inset: 0; pointer-events: auto; display: flex; align-items: center; justify-content: center; }
+.clhud-craftmenu[hidden] { display: none; }
+.clhud-craftpanel { min-width: 260px; max-width: calc(100vw - 32px); padding: 12px 16px; border-radius: 8px; text-align: center;
+  background: rgba(20, 16, 12, 0.92); border: 2px solid #f2c14e; }
+.clhud-craftrow { display: flex; gap: 8px; justify-content: center; align-items: baseline; flex-wrap: wrap; font-size: 15px; }
+.clhud-craftop { opacity: 0.7; }
+.clhud-craftmore { height: 16px; font-size: 12px; opacity: 0.7; letter-spacing: 2px; }
+.clhud-craftempty { padding: 8px 0; }
 
 .clhud-hints { position: absolute; right: 16px; bottom: 16px; display: grid; gap: 1px; font-size: 11px; opacity: 0.75; text-align: right; }
 .clhud-hint { display: flex; gap: 6px; justify-content: flex-end; }
