@@ -5,14 +5,16 @@
 
 use wurfel_sim::entity::{Entities, EntityId};
 
+use crate::blocks::ids;
 use crate::collectible::{CollectibleType, Item};
 use crate::game::{cell_floor, Caveland, Cell};
 
 /// The commands and their manuals (`getCommandName`, `getManual`).
-pub const COMMANDS: [(&str, &str); 3] = [
+pub const COMMANDS: [(&str, &str); 4] = [
     ("give", "gives you a collectible\nParameters: [name of collectible]"),
     ("tpplayer", "teleports the player: <x> <y> <z> <id>"),
     ("portaltarget", "Sets the target of the portal.\nParameters: [x][y][z]"),
+    ("place", "puts a finished machine down in front of you\nParameters: catapult | cannon"),
 ];
 
 /// A command that was understood.
@@ -23,6 +25,8 @@ pub enum Command {
     TeleportPlayer { cell: Cell, player: u8 },
     /// Set the target of the selected portal.
     PortalTarget(Cell),
+    /// Put a finished machine (a block id) down in front of the player.
+    Place(u8),
 }
 
 /// What running a command did.
@@ -32,6 +36,8 @@ pub enum CommandOutcome {
     Done(&'static str),
     /// The host has to apply it to the portal the user selected: it knows what is selected.
     PortalTarget(Cell),
+    /// The host puts the block down where the player faces: it knows the world.
+    Place(u8),
 }
 
 fn number(token: Option<&str>) -> Result<i32, String> {
@@ -61,6 +67,11 @@ pub fn parse(line: &str) -> Result<Command, String> {
             Ok(Command::TeleportPlayer { cell, player })
         }
         "portaltarget" => Ok(Command::PortalTarget((number(tokens.next())?, number(tokens.next())?, number(tokens.next())?))),
+        "place" => match tokens.next().map(str::to_ascii_lowercase).as_deref() {
+            Some("catapult") => Ok(Command::Place(ids::CATAPULT)),
+            Some("cannon") => Ok(Command::Place(ids::CANNON)),
+            _ => Err(manual("place")),
+        },
         other => Err(format!("unknown command '{other}'")),
     }
 }
@@ -98,6 +109,7 @@ impl Caveland {
                 Ok(CommandOutcome::Done("teleported"))
             }
             Command::PortalTarget(cell) => Ok(CommandOutcome::PortalTarget(cell)),
+            Command::Place(block) => Ok(CommandOutcome::Place(block)),
         }
     }
 }
@@ -133,6 +145,14 @@ mod tests {
     }
 
     #[test]
+    fn place_takes_a_launcher() {
+        assert_eq!(parse("place catapult"), Ok(Command::Place(ids::CATAPULT)));
+        assert_eq!(parse("place Cannon"), Ok(Command::Place(ids::CANNON)));
+        assert!(parse("place").unwrap_err().contains("catapult"));
+        assert!(parse("place oven").is_err());
+    }
+
+    #[test]
     fn unknown_commands_are_refused() {
         assert!(parse("dance").unwrap_err().contains("unknown command"));
         assert!(parse("   ").is_err());
@@ -142,7 +162,7 @@ mod tests {
     fn every_command_has_a_manual() {
         for (name, text) in COMMANDS {
             assert!(!text.is_empty(), "{name}");
-            assert!(parse(&format!("{name} 1 2 3")).is_ok() || name == "give");
+            assert!(parse(&format!("{name} 1 2 3")).is_ok() || name == "give" || name == "place");
         }
     }
 

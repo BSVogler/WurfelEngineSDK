@@ -20,6 +20,8 @@ pub struct Tuning {
     pub player_friction: f32,
     /// `playerWalkingSpeed`, blocks per second.
     pub walking_speed: f32,
+    /// Do a cannon's shells hurt the players and their friendly robots? Off by default.
+    pub friendly_fire: bool,
 }
 
 impl Default for Tuning {
@@ -32,6 +34,7 @@ impl Default for Tuning {
             jetpack_max_speed: 5.0,
             player_friction: wurfel_sim::player::PLAYER_FRICTION,
             walking_speed: wurfel_sim::player::WALKING_SPEED,
+            friendly_fire: false,
         }
     }
 }
@@ -50,6 +53,7 @@ impl Tuning {
             jetpack_max_speed: f("jetpackMaxSpeed", d.jetpack_max_speed),
             player_friction: f("playerfriction", d.player_friction),
             walking_speed: f("playerWalkingSpeed", d.walking_speed),
+            friendly_fire: d.friendly_fire,
         }
     }
 }

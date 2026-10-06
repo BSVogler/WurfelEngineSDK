@@ -356,7 +356,7 @@ impl Game {
                 // Only the host (the lowest id still here) may use cheats.
                 let host = self.inputs.keys().min() == Some(&player);
                 if let Some(mode) = self.mode.as_mut() {
-                    mode.command(&mut self.entities, player, &line, host);
+                    mode.command(&mut self.entities, &mut self.world, player, &line, host);
                 }
                 None
             }

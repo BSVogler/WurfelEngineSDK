@@ -269,7 +269,7 @@ fn horizontal(a: Vec3, b: Vec3) -> f32 {
 
 /// What the shopkeeper sells and for how much money. The Java `Shopkeeper` is a stub that shows one
 /// selection called "test"; these goods and prices are new.
-pub const SHOP_STOCK: [(CollectibleType, u32); 7] = [
+pub const SHOP_STOCK: [(CollectibleType, u32); 8] = [
     (CollectibleType::Torch, 3),
     (CollectibleType::Wood, 2),
     (CollectibleType::Stone, 2),
@@ -277,6 +277,7 @@ pub const SHOP_STOCK: [(CollectibleType, u32); 7] = [
     (CollectibleType::Explosives, 12),
     (CollectibleType::Rails, 8),
     (CollectibleType::Toolkit, 25),
+    (CollectibleType::Gunpowder, 6),
 ];
 
 /// The price of a good, if the shopkeeper sells it.

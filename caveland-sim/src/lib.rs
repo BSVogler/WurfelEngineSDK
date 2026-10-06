@@ -36,6 +36,7 @@
 //! | `LiftBasket`, `LiftLogic`, `LiftLogicGround` | [`lift`] |
 //! | `Portal`, `ExitPortal`, `CaveEntryBlockLogic` | [`portal`] |
 //! | `Spaceship` | [`spaceship`] |
+//! | (new, not in Java) the catapult and the cannon, with gunpowder | [`launcher`] |
 //! | the glue of the four above: updates, boarding, teleporting, logic blocks | [`transport`] |
 //!
 //! # Not ported yet
@@ -63,8 +64,10 @@ pub mod enemy;
 pub mod extras;
 pub mod game;
 pub mod lift;
+pub mod launcher;
 pub mod logic;
 pub mod minecart;
+pub mod movement;
 pub mod npc;
 pub mod portal;
 pub mod player;

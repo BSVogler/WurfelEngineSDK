@@ -35,6 +35,7 @@ pub fn recipes() -> Vec<Recipe> {
         Recipe::new("Power Cable", &[Iron, Iron], Item(Powercable)),
         Recipe::new("Minecart", &[Iron, Iron, Wood], MineCart),
         Recipe::new("Drop Space Flag", &[Iron], Item(DropSpaceFlagConstructionKit)),
+        Recipe::new("Gunpowder", &[Sulfur, Coal, Coal], Item(Gunpowder)),
     ]
 }
 
@@ -104,9 +105,10 @@ mod tests {
     }
 
     #[test]
-    fn there_are_seven_recipes_with_the_java_ingredients() {
+    fn there_are_the_java_recipes_and_gunpowder_with_their_ingredients() {
         let all = recipes();
-        assert_eq!(all.len(), 7);
+        assert_eq!(all.len(), 8);
+        assert_eq!(recipe("Gunpowder").ingredients, vec![Sulfur, Coal, Coal]);
         assert_eq!(recipe("Minecart").ingredients, vec![Iron, Iron, Wood]);
         assert_eq!(recipe("Torch").ingredients, vec![Wood, Coal]);
     }
@@ -154,7 +156,7 @@ mod tests {
     fn craftable_recipes_are_listed_first() {
         let inv = inventory(&[Sulfur, Coal]);
         let ordered = ordered_recipes(&inv);
-        assert_eq!(ordered.len(), 7);
+        assert_eq!(ordered.len(), 8);
         assert_eq!(ordered[0].name, "TFlint");
         assert_eq!(matching_recipes(&inv).len(), 1);
         // Nothing craftable keeps the plain order.

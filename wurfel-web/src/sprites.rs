@@ -250,6 +250,7 @@ pub fn entity_art(kind: &str) -> Option<EntityArt> {
         "Rails" => item(16),
         "Wood" => item(46),
         "Explosives" => item(47),
+        "Gunpowder" => item(56),
         "Ironore" => item(48),
         "Coal" => item(49),
         "Cristall" => item(50),
@@ -395,7 +396,7 @@ mod tests {
         let sprites = real();
         for kind in [
             "robot", "friendly_robot", "money", "minecart", "Rails", "Wood", "Explosives", "Ironore", "Coal", "Cristall",
-            "Sulfur", "Stone", "Toolkit", "Torch", "Iron", "Powercable",
+            "Sulfur", "Stone", "Toolkit", "Torch", "Iron", "Powercable", "Gunpowder",
         ] {
             let art = entity_art(kind).unwrap_or_else(|| panic!("{kind} has no art"));
             assert!(sprites.entity(art.id, 0).is_some(), "{kind}: e{}-0", art.id);

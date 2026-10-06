@@ -21,6 +21,7 @@ use crate::enemy::{
     self, drops_loot_at, factory_options, nearby_resources, variant_for_option, RobotFactory, RobotVariant, Spider, SPIDER_CHARGE, SPIDER_FLAG_SIGHT, SPIDER_REACH, SPIDER_SCAN_EVERY, SPIDER_WORK,
 };
 use crate::game::{cell_center, cell_floor, Caveland, Cell, EntityKind, GameEvent, Kind};
+use crate::launcher::{Launcher, LauncherKind, Shell};
 use crate::logic::OvenLogic;
 use crate::npc::{self, Bird, Vanya, SHOP_STOCK, VANYA_DUPLICATE_RADIUS, VANYA_LOOK_RADIUS};
 use crate::player::{PlayerState, INTERACT_RADIUS};
@@ -64,6 +65,9 @@ pub enum ExtraEvent {
     PowerChanged { cell: Cell, powered: bool },
     /// A turret fired: draw a tracer from `from` to `to`.
     TurretShot { turret: Cell, from: Vec3, to: Vec3 },
+    /// A player was thrown by a catapult or cannon (or told to fly by the server): where from and
+    /// how fast. Clients run the same arc from this start.
+    Launched { entity: EntityId, position: Vec3, velocity: Vec3 },
     /// The tutorial's guide moved on to a new step.
     TutorialStep { step: u8 },
     /// The robots of the end fight appeared.
@@ -114,6 +118,10 @@ pub(crate) struct Extras {
     /// Friendships between players as `(smaller id, larger id)`, told by the server.
     pub friends: HashSet<(EntityId, EntityId)>,
     pub factories: HashMap<Cell, RobotFactory>,
+    /// Catapults and cannons: how they are aimed and what they hold.
+    pub launchers: HashMap<Cell, Launcher>,
+    /// Cannon shells in the air.
+    pub shells: HashMap<EntityId, Shell>,
     pub flagpoles: HashMap<Cell, EntityId>,
     pub variants: HashMap<EntityId, RobotVariant>,
     pub spiders: HashMap<EntityId, Spider>,
@@ -143,6 +151,9 @@ pub struct SaveData {
     pub end_fight_started: bool,
     /// Flag poles with the team their flag belongs to (team id).
     pub flags: Vec<(Cell, u8)>,
+    /// Catapults and cannons with their aim and the gunpowder in the barrel.
+    #[serde(default)]
+    pub launchers: Vec<(Cell, Launcher)>,
 }
 
 impl Caveland {
@@ -346,7 +357,7 @@ impl Caveland {
 
     // ---- dialogs --------------------------------------------------------------------------
 
-    fn open(&mut self, player: EntityId, dialog: Dialog, source: Source) {
+    pub(crate) fn open(&mut self, player: EntityId, dialog: Dialog, source: Source) {
         self.x.events.push(ExtraEvent::DialogOpened { player, dialog: dialog.clone() });
         self.x.dialogs.insert(player, OpenDialog { dialog, source });
     }
@@ -357,7 +368,7 @@ impl Caveland {
         }
     }
 
-    fn sound(&mut self, name: &'static str, position: Vec3) {
+    pub(crate) fn sound(&mut self, name: &'static str, position: Vec3) {
         self.events.push(GameEvent::Sound { name, position });
     }
 
@@ -375,6 +386,7 @@ impl Caveland {
             Source::Site(cell) => self.site_choice(entities, world, id, state, cell, answer),
             Source::Factory(cell) => self.factory_choice(entities, id, cell, answer, &open.dialog),
             Source::Turret(cell) => self.turret_choice(cell, answer),
+            Source::Launcher(cell) => self.launcher_choice(entities, world, id, state, cell, answer),
             Source::Toolkit => self.toolkit_build(entities, world, state, position, answer),
             Source::LineKit => self.line_kit_lay(entities, world, id, state, answer),
         }
@@ -411,6 +423,7 @@ impl Caveland {
             Site(Cell),
             Factory(Cell),
             Turret(Cell),
+            Launcher(Cell),
             Entity(EntityId),
         }
         let mut best: Option<(f32, Target)> = None;
@@ -429,6 +442,7 @@ impl Caveland {
                         ids::CONSTRUCTION_SITE => Target::Site(cell),
                         ids::ROBOT_FACTORY => Target::Factory(cell),
                         ids::TURRET if self.x.turrets.contains_key(&cell) => Target::Turret(cell),
+                        ids::CATAPULT | ids::CANNON if self.x.launchers.contains_key(&cell) => Target::Launcher(cell),
                         _ => continue,
                     };
                     let d = cell_center(cell).distance(position + Vec3::Z * 0.5);
@@ -463,6 +477,7 @@ impl Caveland {
             Target::Site(cell) => self.open_site(id, state, cell, world),
             Target::Factory(cell) => self.open_factory_dialog(entities, id, cell),
             Target::Turret(cell) => self.open_turret_dialog(id, cell),
+            Target::Launcher(cell) => self.open_launcher_dialog(id, state, cell, ""),
             Target::Entity(eid) => self.use_entity(entities, id, state, eid),
         }
         true
@@ -821,6 +836,7 @@ impl Caveland {
             self.scan_machines(entities, world);
         }
         self.update_turrets(entities, world, dt);
+        self.update_launchers(entities, dt);
         self.update_others(entities, world, dt);
         self.update_spiders(entities, world, dt);
         self.update_scenario(entities, world);
@@ -829,7 +845,7 @@ impl Caveland {
 
     /// Look at the world's blocks: find the machines, keep their state in step, work out the power.
     fn scan_machines(&mut self, entities: &mut Entities, world: &mut World) {
-        const WATCHED: [u8; 8] = [
+        const WATCHED: [u8; 10] = [
             ids::CONSTRUCTION_SITE,
             ids::ROBOT_FACTORY,
             ids::FLAG_POLE,
@@ -838,12 +854,15 @@ impl Caveland {
             ids::POWER_STATION,
             ids::TORCH,
             ids::OVEN,
+            ids::CATAPULT,
+            ids::CANNON,
         ];
         let found = find_blocks(world, &WATCHED);
         let mut sites = HashSet::new();
         let mut factories = HashSet::new();
         let mut poles = HashSet::new();
         let mut turrets = HashSet::new();
+        let mut launchers = HashSet::new();
         for &(cell, id) in &found {
             match id {
                 ids::CONSTRUCTION_SITE => {
@@ -868,6 +887,12 @@ impl Caveland {
                     turrets.insert(cell);
                     self.x.turrets.entry(cell).or_insert_with(Turret::new);
                 }
+                ids::CATAPULT | ids::CANNON => {
+                    launchers.insert(cell);
+                    if let Some(kind) = LauncherKind::from_block(id) {
+                        self.x.launchers.entry(cell).or_insert_with(|| Launcher::new(kind));
+                    }
+                }
                 _ => {}
             }
         }
@@ -877,6 +902,17 @@ impl Caveland {
             if let Some(mut site) = self.x.sites.remove(&cell) {
                 for item in site.consume() {
                     self.spawn_sparkling(entities, item, cell_floor(cell));
+                }
+            }
+        }
+        // A launcher that was broken gives back its gunpowder. Cells in chunks that are not in
+        // memory are not gone, just not seen.
+        let broken: Vec<Cell> =
+            self.x.launchers.keys().filter(|c| !launchers.contains(*c) && world.is_loaded_at(c.0, c.1)).copied().collect();
+        for cell in broken {
+            if let Some(launcher) = self.x.launchers.remove(&cell) {
+                for _ in 0..launcher.loaded {
+                    self.spawn_sparkling(entities, Item::new(CollectibleType::Gunpowder), cell_floor(cell));
                 }
             }
         }
@@ -1165,7 +1201,7 @@ impl Caveland {
         }
     }
 
-    fn set_pickup_allowed(&mut self, collectible: EntityId, allowed: bool) {
+    pub(crate) fn set_pickup_allowed(&mut self, collectible: EntityId, allowed: bool) {
         if let Some(Kind::Collectible(c)) = self.kinds.get_mut(&collectible) {
             c.no_pickup = !allowed;
         }
@@ -1319,6 +1355,8 @@ impl Caveland {
             })
             .collect();
         flags.sort_by_key(|(c, _)| *c);
+        let mut launchers: Vec<(Cell, Launcher)> = self.x.launchers.iter().map(|(&c, l)| (c, *l)).collect();
+        launchers.sort_by_key(|(c, _)| *c);
         let data = SaveData {
             money: self.money,
             respawn: self.x.respawn,
@@ -1327,6 +1365,7 @@ impl Caveland {
             tutorial_step: self.tutorial_step(entities).unwrap_or(0),
             end_fight_started: self.x.scenario.end_fight_started,
             flags,
+            launchers,
         };
         serde_json::to_string(&data).expect("plain data")
     }
@@ -1339,6 +1378,7 @@ impl Caveland {
         self.ovens = data.ovens.into_iter().collect();
         self.x.sites = data.sites.into_iter().collect();
         self.x.scenario.end_fight_started = data.end_fight_started;
+        self.x.launchers = data.launchers.into_iter().collect();
         self.x.pole_teams = data.flags.into_iter().map(|(c, t)| (c, Team::from_id(t))).collect();
         if data.tutorial_step > 0 {
             self.set_tutorial_step(entities, data.tutorial_step);
