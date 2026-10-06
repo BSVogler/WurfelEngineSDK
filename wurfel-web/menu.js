@@ -12,7 +12,6 @@
  *     servers          up to 8 remembered servers (strings, most recent first, no duplicates); a server is
  *                      remembered after its lobby answered once.
  *     masterVolume, musicVolume, effectsVolume   0..1
- *     renderScale      0.5..1   (advisory: fraction of the native canvas resolution to render at)
  *     zoom             0.2..2   default camera zoom (1 = the engine's native 100 px per block)
  *     generator        string: id of the generator last used in the "Create map" form
  *     seed             integer >= 0: the seed last used in that form
@@ -38,9 +37,10 @@
  *                      this fires (the menu did the POST); the game must not POST anything.
  *     wurfel:pause     the pause overlay opened while playing (release held keys, stop the player).
  *     wurfel:resume    the pause overlay closed, back to the game.
+ *     wurfel:debug     the HUD's Debug button was pressed: toggle the debug display (same as F3).
  *     wurfel:leave     the player left the game; connection should be closed (menu shows main screen).
  *     wurfel:error     (game -> menu) detail { message }: joining or creating a world failed, or the
- *                      connection was lost for good (the game retries for about a minute first, keeping the
+ *                      connection was lost for good (the game retries for about five minutes first, keeping the
  *                      world on screen). The menu shows the message on the main menu.
  *     window.wurfelUpdate.show(serverBuild)   (game -> page) the server runs another build than this page:
  *                      shows a small "Update available - Reload" notice. Does not block input.
@@ -119,7 +119,7 @@
     jump: [' ', ''], players: ['tab', ''],
   };
   const RANGES = {
-    masterVolume: [0, 1], musicVolume: [0, 1], effectsVolume: [0, 1], renderScale: [0.5, 1], zoom: [0.2, 2],
+    masterVolume: [0, 1], musicVolume: [0, 1], effectsVolume: [0, 1], zoom: [0.2, 2],
   };
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -129,7 +129,7 @@
       playerColor: SWATCHES[Math.floor(Math.random() * SWATCHES.length)][1],
       serverUrl: DEFAULT_SERVER, servers: [DEFAULT_SERVER],
       masterVolume: 0.8, musicVolume: 0.6, effectsVolume: 0.8,
-      renderScale: 1, zoom: 0.5,
+      zoom: 0.5,
       generator: 'island', seed: Math.floor(Math.random() * 1000000),
       fpsLimit: 60, ambientOcclusion: false, showFps: false, showHelp: true,
       keys: clone(DEFAULT_KEYS),
@@ -1024,6 +1024,29 @@
     blip(300);
   }
 
+  // A page reload (the dev server reloads on every client rebuild) must not throw the player out
+  // of the game: the join request survives in sessionStorage and is replayed at startup.
+  const SESSION_KEY = 'wurfel.session';
+  function rememberSession(request) {
+    try {
+      if (request) window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(request));
+      else window.sessionStorage.removeItem(SESSION_KEY);
+    } catch (_) { /* storage blocked: a reload goes back to the menu */ }
+  }
+  function resumeSession() {
+    try {
+      const request = JSON.parse(window.sessionStorage.getItem(SESSION_KEY) || 'null');
+      if (!request || typeof request.server !== 'string') return false;
+      request.create = false; // the world exists by now
+      playing = true;
+      previous = [];
+      setMenuOpen(false);
+      window.wurfelPlayRequest = request;
+      emit('wurfel:play', request);
+      return true;
+    } catch (_) { return false; }
+  }
+
   /** Join the server's world. Fires wurfel:play and closes the menu. */
   function startGame({ generator, seed, create }) {
     const server = resolveServer(S.serverUrl);
@@ -1045,6 +1068,7 @@
     const request = { name, color: S.playerColor, server, generator, seed, create: !!create };
     // Remembered so a game that is still starting up (wasm not loaded yet) can pick it up.
     window.wurfelPlayRequest = request;
+    rememberSession(request);
     emit('wurfel:play', request);
     blip(520);
   }
@@ -1052,6 +1076,7 @@
   function leave() {
     playing = false;
     window.wurfelPlayRequest = null;
+    rememberSession(null);
     emit('wurfel:leave');
     openMenu('main');
     blip(260);
@@ -1188,6 +1213,7 @@
     menuError = String((e.detail && e.detail.message) || 'Could not join.');
     playing = false;
     window.wurfelPlayRequest = null;
+    rememberSession(null);
     openMenu('main');
     blip(260);
   });
@@ -1240,6 +1266,7 @@
   let fps = 0;
   function refreshHud() {
     $('#menubtn').hidden = !(playing && !menuOpen);
+    $('#debugbtn').hidden = !(playing && !menuOpen);
     applySettings();
     const fpsEl = $('#fps');
     const st2 = status();
@@ -1373,6 +1400,8 @@
   $('#player-toggle').addEventListener('click', () => setPlayerPanelOpen(!$('#player-panel').classList.contains('open')));
   menu.addEventListener('click', onClick);
   $('#menubtn').addEventListener('click', () => openMenu('pause'));
+  // Debug display (sun and moon position, light, network, minimap): the game toggles it, F3 does too.
+  $('#debugbtn').addEventListener('click', () => { emit('wurfel:debug'); $('#debugbtn').blur(); });
   menu.addEventListener('input', onSettingInput);
   document.addEventListener('fullscreenchange', syncControls);
 
@@ -1501,6 +1530,7 @@
   syncControls();
   setMenuOpen(true);
   showScreen('main', { push: false });
+  resumeSession();
   saveSettings(); // also reveals whether storage is usable
   emit('wurfel:settings', S);
   requestAnimationFrame(tick);

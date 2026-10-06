@@ -136,6 +136,9 @@ async fn main() {
         }
     };
     eprintln!("wurfel-server: world '{}' (save {}), maps in {maps_dir}", game.spec().map, game.spec().slot);
+    if arg("--generator").is_none() {
+        store.remember_active(&game.spec().map_id, game.spec().slot);
+    }
     let (tx, _) = broadcast::channel(256);
     let (lobby_tx, _) = broadcast::channel(16);
     let shared = Shared {
@@ -252,7 +255,13 @@ fn default_maps_dir() -> String {
 
 /// The first map of the store, in its newest save (or a new one if it has none).
 fn initial_world(store: &MapStore) -> Result<Game, String> {
-    let map = store.list().map_err(|e| e.to_string())?.into_iter().next().ok_or("the maps folder has no maps")?;
+    // A restart (an update) comes back with the world that was running, so reconnecting players land in it.
+    if let Some((map, slot)) = store.last_active() {
+        if let Ok(opened) = store.open_world(&map, slot) {
+            return Ok(Game::from_opened(opened));
+        }
+    }
+    let map =store.list().map_err(|e| e.to_string())?.into_iter().next().ok_or("the maps folder has no maps")?;
     let slot = match map.saves.last() {
         Some(save) => save.slot,
         None => store.new_save_slot(&map.id).map_err(|e| e.to_string())?,
@@ -327,6 +336,7 @@ fn lobby_request(shared: &Shared, msg: ClientMsg) -> Option<Arc<str>> {
                         eprintln!("wurfel-server: saving the old world failed: {e}");
                     }
                     *game = Game::from_opened(opened);
+                    shared.maps.remember_active(&game.spec().map_id, game.spec().slot);
                     let changed = encode(&ServerMsg::WorldChanged { world: game.info() });
                     eprintln!("wurfel-server: loaded '{}' save {}", game.spec().map, game.spec().slot);
                     let _ = shared.lobby_tx.send(changed.clone());

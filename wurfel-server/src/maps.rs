@@ -66,6 +66,8 @@ pub const MAX_DESCRIPTION_CHARS: usize = 500;
 /// Shown when a map has no name, like Java's `MapButton`.
 pub const NO_NAME: &str = "no map name set";
 const META_FILE: &str = "meta.wecvar";
+/// In the maps folder: the map and save slot the server had loaded, for the next start.
+const ACTIVE_FILE: &str = ".active_world";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SaveInfo {
@@ -339,6 +341,22 @@ impl MapStore {
         }
         cvars.save(dir.join(format!("save{slot}")).join(META_FILE))?;
         Ok(())
+    }
+
+    /// Remember which world is loaded, so a restarted server comes back with the same one.
+    pub fn remember_active(&self, map_id: &str, slot: u32) {
+        if let Err(e) = fs::write(self.root.join(ACTIVE_FILE), format!("{map_id}\n{slot}\n")) {
+            eprintln!("wurfel-server: cannot remember the active world: {e}");
+        }
+    }
+
+    /// The world that was loaded when the server last ran, if it still exists.
+    pub fn last_active(&self) -> Option<(String, u32)> {
+        let text = fs::read_to_string(self.root.join(ACTIVE_FILE)).ok()?;
+        let mut lines = text.lines();
+        let map = lines.next()?.to_string();
+        let slot: u32 = lines.next()?.trim().parse().ok()?;
+        self.save_slot_exists(&map, slot).then_some((map, slot))
     }
 
     /// A fresh server has no maps: make the default island so there is something to load. Returns

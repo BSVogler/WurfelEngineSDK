@@ -7,7 +7,7 @@
 const FIRST_DELAY_MS: f64 = 500.0;
 const MAX_DELAY_MS: f64 = 5000.0;
 /// After this long without getting back in, the connection counts as lost for good.
-pub const GIVE_UP_MS: f64 = 60_000.0;
+pub const GIVE_UP_MS: f64 = 300_000.0;
 
 /// How long to wait before try number `attempt` (0 is the first one after the connection broke).
 pub fn backoff_ms(attempt: u32) -> f64 {
