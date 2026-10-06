@@ -1,0 +1,76 @@
+name: Build and deploy to k3s
+
+on:
+  push:
+    branches: [master, rust-port-wip]
+    paths-ignore: ['legacy/**', 'core/**', 'docs/**', '**/*.md']
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/bsvogler/wurfel-server
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false   # never interrupt a rollout half way
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p wurfel-sim -p caveland-sim -p wurfel-server
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=sha,prefix=${{ github.ref_name }}-,format=short
+          flavor: latest=false
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.K3S_KUBECONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+      - name: Apply
+        working-directory: deploy/k3s
+        run: |
+          sed -i "s|newTag: .*|newTag: ${{ needs.build.outputs.tag }}|" kustomization.yaml
+          kubectl apply -k .
+      - name: Wait for rollout
+        run: kubectl -n wurfel rollout status deployment/wurfel-server --timeout=300s
