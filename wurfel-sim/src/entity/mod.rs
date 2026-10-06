@@ -16,7 +16,10 @@
 //!   original impulse formula (see `Entities::resolve_entity_collisions`).
 
 pub mod ai;
+pub mod animation;
+pub mod benchmark;
 pub mod physics;
+pub mod shadow;
 
 #[cfg(test)]
 mod tests;

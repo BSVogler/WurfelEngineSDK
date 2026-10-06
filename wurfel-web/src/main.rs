@@ -14,6 +14,7 @@ mod minimap;
 mod model;
 mod netstats;
 mod pick;
+mod shadow;
 mod sprites;
 mod particles;
 mod peel;

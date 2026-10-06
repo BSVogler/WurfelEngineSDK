@@ -3,6 +3,7 @@
 //! Nothing in this crate knows about graphics, windows or the browser, so the same code can run
 //! in a headless server and in a wasm client.
 
+pub mod animation;
 pub mod block;
 pub mod caveland;
 pub mod chunk;
