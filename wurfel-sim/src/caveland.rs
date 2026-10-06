@@ -48,6 +48,10 @@ pub mod blocks {
     pub const POWER_CABLE: u8 = 54;
     pub const RAILS: u8 = 55;
     pub const BOOSTER_RAILS: u8 = 56;
+    /// Throws players and items along an arc, reloads over time (not in the Java game).
+    pub const CATAPULT: u8 = 57;
+    /// Fires players, items and explosive shells with gunpowder (not in the Java game).
+    pub const CANNON: u8 = 58;
     pub const FLAG_POLE: u8 = 60;
     pub const TREE: u8 = 72;
     /// Java's `UNDEFINED`, the byte -1.

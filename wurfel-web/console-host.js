@@ -7,7 +7,7 @@
 (function () {
   'use strict';
   const COMMANDS = {
-    give: 'give <item>: puts a collectible into your pack (Wood, Coal, Torch, Explosives, Iron...)',
+    give: 'give <item>: puts a collectible into your pack (Wood, Coal, Torch, Explosives, Gunpowder, Iron...)',
     tpplayer: 'tpplayer <x> <y> <z> [player]: teleports a player to a block',
     portaltarget: 'portaltarget <x> <y> <z>: sets where the nearest portal leads',
   };

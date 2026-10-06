@@ -47,6 +47,8 @@ const THINGS_EVERY: u64 = 2;
 const STATE_EVERY: u64 = 6;
 /// Most things sent at once. A cave full of items would otherwise swamp the connection.
 const MAX_THINGS: usize = 256;
+/// Most catapults and cannons described at once.
+const MAX_LAUNCHERS: usize = 64;
 
 pub struct CavelandMode {
     caveland: Caveland,
@@ -56,6 +58,8 @@ pub struct CavelandMode {
     action_happenings: Vec<Value>,
     /// What the last `state` message said, to send only changes.
     last_state: String,
+    /// What the last `launchers` message said.
+    last_launchers: String,
     /// Where players (re)start.
     spawn: Option<Vec3>,
     /// The first player finds a few things lying around.
@@ -91,6 +95,7 @@ impl CavelandMode {
             outbox: Vec::new(),
             action_happenings: Vec::new(),
             last_state: String::new(),
+            last_launchers: String::new(),
             spawn: None,
             seeded: false,
             numbers: HashMap::new(),
@@ -319,6 +324,11 @@ impl CavelandMode {
             self.outbox.push(ServerMsg::Rules { kind: "power".into(), data: json!({ "cells": cells }) });
         }
         if tick % STATE_EVERY == 0 {
+            let launchers = self.launchers().to_string();
+            if launchers != self.last_launchers {
+                self.outbox.push(ServerMsg::Rules { kind: "launchers".into(), data: serde_json::from_str(&launchers).expect("just made") });
+                self.last_launchers = launchers;
+            }
             let state = self.state(entities).to_string();
             if state != self.last_state {
                 self.outbox.push(ServerMsg::Rules { kind: "state".into(), data: serde_json::from_str(&state).expect("just made") });
@@ -371,6 +381,9 @@ impl CavelandMode {
                 self.powered_dirty |= changed;
             }
             ExtraEvent::TurretShot { from, to, .. } => happenings.push(json!({"t": "shot", "from": pos(from), "to": pos(to)})),
+            ExtraEvent::Launched { entity, position, velocity } => {
+                happenings.push(json!({"t": "launched", "player": entity, "pos": pos(position), "vel": pos(velocity)}))
+            }
             ExtraEvent::TutorialStep { step } => happenings.push(json!({"t": "tutorial", "step": step})),
             ExtraEvent::EndFightStarted => happenings.push(json!({"t": "end_fight"})),
         }
@@ -399,7 +412,7 @@ impl CavelandMode {
 
     /// A console line of a player. Only the host (the player who has been here longest) may run
     /// them: `give` and `tpplayer` are cheats.
-    pub fn command(&mut self, entities: &mut Entities, player: EntityId, line: &str, host: bool) {
+    pub fn command(&mut self, entities: &mut Entities, world: &mut World, player: EntityId, line: &str, host: bool) {
         let line = line.trim().trim_start_matches(['/', ':']);
         let name = line.split_whitespace().next().unwrap_or("");
         let reply = if !COMMANDS.iter().any(|(n, _)| *n == name) {
@@ -422,6 +435,24 @@ impl CavelandMode {
                     match nearest {
                         Some((_, id)) if self.caveland.transport_mut().set_portal_target(&[id], cell) => Ok("portal target set".to_string()),
                         _ => Err("no portal nearby".to_string()),
+                    }
+                }
+                Ok(CommandOutcome::Place(block)) => {
+                    // One block in front of the player, on the floor they stand on.
+                    let at = entities.get(player).map(|e| {
+                        let facing = e.body.as_ref().map_or(glam::Vec2::X, |b| b.orientation());
+                        (e.position + facing.extend(0.0) * 1.5, e.position.z)
+                    });
+                    match at {
+                        Some((p, z)) => {
+                            let (x, y) = from_iso(p.x, p.y);
+                            if self.caveland.place_machine(world, (x, y, z.floor() as i32), block) {
+                                Ok("placed".to_string())
+                            } else {
+                                Err("there is no free space in front of you".to_string())
+                            }
+                        }
+                        None => Err("you are not in the world".to_string()),
                     }
                 }
                 Err(e) => Err(e),
@@ -500,6 +531,30 @@ impl CavelandMode {
             );
         }
         Value::Object(players)
+    }
+
+    /// The catapults and cannons with their aim, for the client's aiming preview:
+    /// `{"launchers": [{cell, kind, heading, elevation, power, loaded, ready}]}`.
+    fn launchers(&self) -> Value {
+        let list: Vec<Value> = self
+            .caveland
+            .launcher_views()
+            .iter()
+            .take(MAX_LAUNCHERS)
+            .map(|v| {
+                let l = &v.launcher;
+                json!({
+                    "cell": [v.cell.0, v.cell.1, v.cell.2],
+                    "kind": l.kind.name(),
+                    "heading": l.heading,
+                    "elevation": l.elevation,
+                    "power": l.power,
+                    "loaded": l.loaded,
+                    "ready": l.ready(),
+                })
+            })
+            .collect();
+        json!({ "launchers": list })
     }
 
     /// Take what the last steps want to tell everybody.
@@ -755,6 +810,32 @@ mod tests {
         assert!(s.entities.get(s.player).is_none());
     }
 
+    #[test]
+    fn the_host_places_a_catapult_and_firing_it_tells_the_clients_the_launch() {
+        let mut s = Setup::new();
+        s.sent.clear();
+        s.mode.command(&mut s.entities, &mut s.world, s.player, "place catapult", true);
+        s.mode.command(&mut s.entities, &mut s.world, s.player, "place cannon", false);
+        s.run(8);
+        let answers: Vec<&Value> = rules(&s.sent, "console").collect();
+        assert_eq!(answers[0]["text"], "placed");
+        assert_eq!(answers[1]["ok"], false, "only the host places machines");
+        let launchers: Vec<&Value> = rules(&s.sent, "launchers").collect();
+        let list = launchers.last().expect("the aim is announced")["launchers"].as_array().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0]["kind"], "Catapult");
+        assert_eq!(list[0]["ready"], true);
+
+        s.sent.clear();
+        s.act("interact");
+        s.mode.act(&mut s.entities, &mut s.world, s.player, "choose", 0);
+        s.run(2);
+        let launched: Vec<Value> = s.events().into_iter().filter(|e| e["t"] == "launched").collect();
+        assert_eq!(launched.len(), 1, "{:?}", s.events());
+        assert_eq!(launched[0]["player"], json!(s.player));
+        assert!(launched[0]["vel"][2].as_f64().unwrap() > 0.0, "thrown upwards");
+    }
+
     fn rules<'a>(sent: &'a [ServerMsg], kind: &'a str) -> impl Iterator<Item = &'a Value> + 'a {
         sent.iter().filter_map(move |m| match m {
             ServerMsg::Rules { kind: k, data } if k == kind => Some(data),
@@ -827,10 +908,10 @@ mod tests {
     fn commands_are_for_the_host_only_and_answer_privately() {
         let mut s = Setup::new();
         s.sent.clear();
-        s.mode.command(&mut s.entities, s.player, "give Torch", false);
-        s.mode.command(&mut s.entities, s.player, "fly", true);
-        s.mode.command(&mut s.entities, s.player, "/give Torch", true);
-        s.mode.command(&mut s.entities, s.player, "give Unobtainium", true);
+        s.mode.command(&mut s.entities, &mut s.world, s.player, "give Torch", false);
+        s.mode.command(&mut s.entities, &mut s.world, s.player, "fly", true);
+        s.mode.command(&mut s.entities, &mut s.world, s.player, "/give Torch", true);
+        s.mode.command(&mut s.entities, &mut s.world, s.player, "give Unobtainium", true);
         s.sent.extend(s.mode.drain_outbox());
         let answers: Vec<&Value> = rules(&s.sent, "console").collect();
         assert_eq!(answers.len(), 4);

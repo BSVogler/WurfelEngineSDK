@@ -22,6 +22,9 @@ pub fn needed_items(result: u8) -> Vec<(CollectibleType, usize)> {
             (CollectibleType::Powercable, 1),
             (CollectibleType::Stone, 1),
         ],
+        // Not in the Java game: a wooden throwing arm, and an iron barrel.
+        ids::CATAPULT => vec![(CollectibleType::Wood, 3), (CollectibleType::Stone, 1)],
+        ids::CANNON => vec![(CollectibleType::Iron, 3), (CollectibleType::Wood, 1)],
         _ => vec![(CollectibleType::Iron, 2), (CollectibleType::Wood, 1)],
     }
 }
@@ -34,6 +37,8 @@ pub fn site_value(result: u8) -> u8 {
         ids::LIFT => 2,
         ids::ROBOT_FACTORY => 3,
         ids::TURRET => 4,
+        ids::CATAPULT => 5,
+        ids::CANNON => 6,
         _ => 0,
     }
 }
@@ -45,6 +50,8 @@ pub fn site_result(value: u8) -> u8 {
         1 => ids::POWER_STATION,
         2 => ids::LIFT,
         3 => ids::ROBOT_FACTORY,
+        5 => ids::CATAPULT,
+        6 => ids::CANNON,
         _ => ids::TURRET,
     }
 }
@@ -111,6 +118,8 @@ pub fn toolkit_options() -> Vec<DialogOption> {
         (ids::ROBOT_FACTORY, "Robot factory"),
         (ids::POWER_STATION, "Power Station"),
         (ids::TURRET, "Turret"),
+        (ids::CATAPULT, "Catapult"),
+        (ids::CANNON, "Cannon"),
     ]
     .into_iter()
     .map(|(id, name)| option(id, name))
@@ -243,11 +252,13 @@ mod tests {
         for other in [ids::POWER_STATION, ids::LIFT, ids::TURRET] {
             assert_eq!(needed_items(other), vec![(CollectibleType::Iron, 2), (CollectibleType::Wood, 1)]);
         }
+        assert_eq!(needed_items(ids::CATAPULT), vec![(CollectibleType::Wood, 3), (CollectibleType::Stone, 1)]);
+        assert_eq!(needed_items(ids::CANNON), vec![(CollectibleType::Iron, 3), (CollectibleType::Wood, 1)]);
     }
 
     #[test]
     fn a_site_remembers_what_it_becomes_in_its_block_value() {
-        for result in [ids::OVEN, ids::POWER_STATION, ids::LIFT, ids::ROBOT_FACTORY, ids::TURRET] {
+        for result in [ids::OVEN, ids::POWER_STATION, ids::LIFT, ids::ROBOT_FACTORY, ids::TURRET, ids::CATAPULT, ids::CANNON] {
             assert_eq!(site_result(site_value(result)), result);
             assert_eq!(ConstructionSite::from_value(site_value(result)).result, result);
         }
@@ -297,9 +308,12 @@ mod tests {
     }
 
     #[test]
-    fn the_toolkit_offers_four_machines() {
+    fn the_toolkit_offers_the_machines_and_the_two_launchers() {
         let ids_offered: Vec<u8> = toolkit_options().iter().map(|o| o.id).collect();
-        assert_eq!(ids_offered, vec![ids::OVEN, ids::ROBOT_FACTORY, ids::POWER_STATION, ids::TURRET]);
+        assert_eq!(
+            ids_offered,
+            vec![ids::OVEN, ids::ROBOT_FACTORY, ids::POWER_STATION, ids::TURRET, ids::CATAPULT, ids::CANNON]
+        );
     }
 
     #[test]

@@ -123,6 +123,9 @@ fn base_color(block: Block) -> [f32; 3] {
         cl::POWER_CABLE => [0.30, 0.26, 0.20],
         cl::RAILS => [0.55, 0.50, 0.45],
         cl::BOOSTER_RAILS => [0.85, 0.60, 0.25],
+        // No art yet for the two launchers: plain colours (wood, and dark iron).
+        cl::CATAPULT => [0.62, 0.45, 0.28],
+        cl::CANNON => [0.25, 0.27, 0.32],
         cl::FLAG_POLE => [0.75, 0.75, 0.78],
         cl::TREE => [0.20, 0.45, 0.20],
         // Every other id the engine knows (the "block test" and "solid block" maps show them all)
@@ -322,7 +325,7 @@ mod tests {
         // The ids the generators and Caveland use explicitly are all different from each other.
         let named = [
             id::GRASS, id::DIRT, id::STONE, id::SAND, id::WATER, 4, 11, 12, 13, 14, 15, 16, 17, 18, 41, 42, 43, 44,
-            52, 53, 54, 55, 56, 60, 72,
+            52, 53, 54, 55, 56, 57, 58, 60, 72,
         ];
         let colours: HashSet<[u32; 3]> = named.iter().map(|&i| base_color(Block::new(i, 0)).map(f32::to_bits)).collect();
         assert_eq!(colours.len(), named.len(), "two named blocks share a colour");

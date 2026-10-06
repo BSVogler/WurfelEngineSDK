@@ -8,6 +8,7 @@
 use std::collections::{HashMap, HashSet};
 
 use caveland_sim::blocks::ids;
+use caveland_sim::launcher::{preview_arc, Launcher, LauncherKind, PreviewDot};
 use caveland_sim::{Caveland, Controls, Tuning};
 use glam::Vec3;
 use serde_json::Value;
@@ -95,6 +96,7 @@ pub fn thing_style(kind: &str) -> ThingStyle {
         "Coal" => item([0.12, 0.12, 0.14]),
         "Torch" => item([1.0, 0.6, 0.1]),
         "Explosives" => item([0.8, 0.1, 0.1]),
+        "Gunpowder" => item([0.3, 0.3, 0.25]),
         "Iron" => item([0.78, 0.78, 0.82]),
         "Ironore" => item([0.6, 0.35, 0.25]),
         "Cristall" => item([0.4, 0.9, 0.95]),
@@ -274,6 +276,8 @@ pub enum Happening {
     /// `throw`, `drop`); `ok` is whether the rules accepted it. Starts the animation of other
     /// players and corrects ours when the server refused.
     Action { player: u32, name: String, ok: bool },
+    /// A player was thrown by a catapult or cannon: where from and how fast.
+    Launched { player: u32, pos: Vec3, vel: Vec3 },
 }
 
 fn position(v: &Value) -> Option<Vec3> {
@@ -313,11 +317,98 @@ pub fn parse_events(data: &Value, my_id: u32) -> Vec<Happening> {
                 ok: event.get("ok").and_then(Value::as_bool).unwrap_or(true),
             }),
             "ship_crashed" => position(&event["pos"]).map(|pos| Happening::ShipCrashed { pos }),
+            "launched" => match (event.get("player").and_then(Value::as_u64), position(&event["pos"]), position(&event["vel"])) {
+                (Some(player), Some(pos), Some(vel)) => Some(Happening::Launched { player: player as u32, pos, vel }),
+                _ => None,
+            },
             _ => None,
         };
         out.extend(happening);
     }
     out
+}
+
+// ---- catapults and cannons -----------------------------------------------------------------
+
+/// A catapult or cannon as the server last described it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LauncherInfo {
+    pub cell: (i32, i32, i32),
+    pub launcher: Launcher,
+}
+
+/// The cells of a `launchers` message: `{"launchers": [{cell, kind, heading, elevation, power, loaded}]}`.
+pub fn parse_launchers(data: &Value) -> Vec<LauncherInfo> {
+    let number = |v: &Value, key: &str| v.get(key).and_then(Value::as_u64).map(|n| n.min(255) as u8);
+    data.get("launchers")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|v| {
+            let cell = v.get("cell")?.as_array()?;
+            let cell = (cell.first()?.as_i64()? as i32, cell.get(1)?.as_i64()? as i32, cell.get(2)?.as_i64()? as i32);
+            let kind = match v.get("kind")?.as_str()? {
+                "Catapult" => LauncherKind::Catapult,
+                "Cannon" => LauncherKind::Cannon,
+                _ => return None,
+            };
+            let mut launcher = Launcher::new(kind);
+            launcher.heading = number(v, "heading")?;
+            launcher.elevation = number(v, "elevation")?;
+            launcher.power = number(v, "power")?;
+            launcher.loaded = number(v, "loaded").unwrap_or(0);
+            Some(LauncherInfo { cell, launcher })
+        })
+        .collect()
+}
+
+/// Is this dialog the aiming menu of a catapult or cannon? (The preview is shown while it is open.)
+pub fn is_aiming_dialog(title: &str) -> bool {
+    title == LauncherKind::Catapult.name() || title == LauncherKind::Cannon.name()
+}
+
+/// The launcher the player is aiming: the nearest one within reach of the menu.
+pub fn aimed_launcher(list: &[LauncherInfo], at: Vec3) -> Option<&LauncherInfo> {
+    list.iter()
+        .map(|l| (cell_distance(l.cell, at), l))
+        .filter(|(d, _)| *d <= 4.0)
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, l)| l)
+}
+
+fn cell_distance(cell: (i32, i32, i32), at: Vec3) -> f32 {
+    let (gx, gy) = to_iso(cell.0, cell.1);
+    Vec3::new(gx, gy, cell.2 as f32 + 0.5).distance(at)
+}
+
+/// What the aiming preview was computed for; it is only computed again when this changes.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // only the browser build aims
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PreviewKey {
+    cell: (i32, i32, i32),
+    heading: u8,
+    elevation: u8,
+    power: u8,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // only the browser build aims
+pub fn preview_key(info: &LauncherInfo) -> PreviewKey {
+    PreviewKey { cell: info.cell, heading: info.launcher.heading, elevation: info.launcher.elevation, power: info.launcher.power }
+}
+
+/// The dots of the aiming preview, from the shared rules: only the first part of the flight.
+pub fn preview_dots(world: &World, info: &LauncherInfo) -> Vec<PreviewDot> {
+    preview_arc(world, Launcher::muzzle(info.cell), info.launcher.velocity())
+}
+
+/// Draw the preview as small blocks that shrink as the arc fades.
+pub fn push_preview(out: &mut Vec<Vertex>, dots: &[PreviewDot]) {
+    for dot in dots {
+        let half = 0.04 + 0.08 * dot.strength.clamp(0.0, 1.0);
+        let shade = 0.5 + 0.5 * dot.strength.clamp(0.0, 1.0);
+        let [x, y, z] = dot.position.to_array();
+        mesh::cuboid(out, [shade, shade, 0.4 * shade], [x - half, x + half, y - half, y + half], [z + 0.5 - half, z + 0.5 + half]);
+    }
 }
 
 /// Where the server would have our player after `plan` (the inputs it has not acknowledged yet),
@@ -493,6 +584,35 @@ mod tests {
         assert_eq!(flags[&5], PlayerFlags { hidden: false, riding: true });
         assert_eq!(flags[&6], PlayerFlags::default(), "an older server says nothing: nobody is hidden");
         assert_eq!(flags.len(), 3, "a key that is not a player id is skipped");
+    }
+
+    #[test]
+    fn launchers_and_launches_are_read_and_the_preview_is_only_a_start() {
+        let data = json!({"launchers": [
+            {"cell": [3, 4, 1], "kind": "Cannon", "heading": 2, "elevation": 6, "power": 8, "loaded": 3, "ready": true},
+            {"cell": [9, 9, 1], "kind": "Trebuchet", "heading": 0, "elevation": 0, "power": 1},
+            {"cell": [1, 1], "kind": "Catapult", "heading": 0, "elevation": 0, "power": 1},
+        ]});
+        let list = parse_launchers(&data);
+        assert_eq!(list.len(), 1, "unknown kinds and broken entries are skipped");
+        assert_eq!(list[0].launcher.kind, LauncherKind::Cannon);
+        assert_eq!((list[0].launcher.heading, list[0].launcher.power, list[0].launcher.loaded), (2, 8, 3));
+        assert!(is_aiming_dialog("Cannon") && is_aiming_dialog("Catapult") && !is_aiming_dialog("Turret"));
+
+        let (gx, gy) = to_iso(3, 4);
+        assert!(aimed_launcher(&list, Vec3::new(gx, gy, 1.0)).is_some());
+        assert!(aimed_launcher(&list, Vec3::new(gx + 30.0, gy, 1.0)).is_none(), "too far away to be aiming it");
+
+        let world = floor();
+        let dots = preview_dots(&world, &list[0]);
+        let flight = caveland_sim::launcher::simulate_flight(&world, Launcher::muzzle(list[0].cell), list[0].launcher.velocity());
+        assert!(dots.last().unwrap().tick as usize * 2 <= flight.points.len(), "no more than about half the flight");
+        let mut out = Vec::new();
+        push_preview(&mut out, &dots);
+        assert_eq!(out.len(), dots.len() * 18);
+
+        let launched = parse_events(&json!([{"t": "launched", "player": 4, "pos": [1.0, 2.0, 3.0], "vel": [4.0, 5.0, 6.0]}, {"t": "launched", "player": 4}]), 4);
+        assert_eq!(launched, vec![Happening::Launched { player: 4, pos: Vec3::new(1.0, 2.0, 3.0), vel: Vec3::new(4.0, 5.0, 6.0) }]);
     }
 
     #[test]

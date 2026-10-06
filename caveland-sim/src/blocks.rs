@@ -25,6 +25,8 @@ pub enum LogicKind {
     PowerCable,
     BoosterRails,
     FlagPole,
+    Catapult,
+    Cannon,
 }
 
 /// The Java `CLBlocks` enum.
@@ -48,13 +50,15 @@ pub enum ClBlock {
     Rails,
     BoosterRails,
     FlagPole,
+    Catapult,
+    Cannon,
     Tree,
     /// Everything else, including the engine's blocks 0 to 9 (Java quirk: `valueOf` does not know them).
     Undefined,
 }
 
 impl ClBlock {
-    pub const ALL: [ClBlock; 19] = [
+    pub const ALL: [ClBlock; 21] = [
         ClBlock::ConstructionSite,
         ClBlock::Oven,
         ClBlock::Torch,
@@ -73,6 +77,8 @@ impl ClBlock {
         ClBlock::Rails,
         ClBlock::BoosterRails,
         ClBlock::FlagPole,
+        ClBlock::Catapult,
+        ClBlock::Cannon,
         ClBlock::Tree,
     ];
 
@@ -96,6 +102,8 @@ impl ClBlock {
             ClBlock::Rails => ids::RAILS,
             ClBlock::BoosterRails => ids::BOOSTER_RAILS,
             ClBlock::FlagPole => ids::FLAG_POLE,
+            ClBlock::Catapult => ids::CATAPULT,
+            ClBlock::Cannon => ids::CANNON,
             ClBlock::Tree => ids::TREE,
             ClBlock::Undefined => ids::UNDEFINED,
         }
@@ -126,6 +134,8 @@ impl ClBlock {
             ClBlock::Rails => "rails",
             ClBlock::BoosterRails => "booster rails",
             ClBlock::FlagPole => "flag pole",
+            ClBlock::Catapult => "Catapult",
+            ClBlock::Cannon => "Cannon",
             ClBlock::Tree => "tree",
             ClBlock::Undefined => "undefined",
         }
@@ -159,6 +169,8 @@ impl ClBlock {
             ClBlock::PowerCable => LogicKind::PowerCable,
             ClBlock::BoosterRails => LogicKind::BoosterRails,
             ClBlock::FlagPole => LogicKind::FlagPole,
+            ClBlock::Catapult => LogicKind::Catapult,
+            ClBlock::Cannon => LogicKind::Cannon,
             _ => return None,
         })
     }
@@ -199,7 +211,7 @@ impl BlockConfig for CavelandBlocks {
             ids::OVEN | ids::POWER_STATION | ids::INDESTRUCTIBLE_OBSTACLE | ids::LIFT_GROUND => true,
             ids::ENTRY => value == 1,
             ids::CRYSTAL | ids::SULFUR | ids::IRON_ORE | ids::COAL => true,
-            ids::TREE | 46 | ids::TURRET | ids::FLAG_POLE => true,
+            ids::TREE | 46 | ids::TURRET | ids::FLAG_POLE | ids::CATAPULT | ids::CANNON => true,
             _ => false,
         }
     }
@@ -222,6 +234,8 @@ impl BlockConfig for CavelandBlocks {
             | ids::RAILS
             | ids::BOOSTER_RAILS
             | ids::FLAG_POLE
+            | ids::CATAPULT
+            | ids::CANNON
             | ids::TREE => true,
             _ => false,
         }

@@ -282,7 +282,7 @@ fn the_toolkit_offers_four_machines_and_builds_a_site_where_you_stand() {
     g.act(player, Action::UseItem);
     let dialog = g.caveland.open_dialog(player).unwrap().clone();
     let offered: Vec<u8> = dialog.options.iter().map(|o| o.id).collect();
-    assert_eq!(offered, vec![ids::OVEN, ids::ROBOT_FACTORY, ids::POWER_STATION, ids::TURRET]);
+    assert_eq!(offered, vec![ids::OVEN, ids::ROBOT_FACTORY, ids::POWER_STATION, ids::TURRET, ids::CATAPULT, ids::CANNON]);
     assert_eq!(g.pack(player), vec![C::Toolkit], "the kit stays while choosing");
 
     g.act(player, Action::Choose(ids::TURRET));

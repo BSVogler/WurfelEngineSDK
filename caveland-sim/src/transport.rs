@@ -308,6 +308,18 @@ impl Transport {
         }
     }
 
+    /// How fast the platform under `id` moves (the cart or lift basket that carries them); zero when
+    /// they stand on the ground.
+    pub(crate) fn platform_velocity(&self, entities: &Entities, id: EntityId) -> Vec3 {
+        let carrier = self
+            .carts
+            .iter()
+            .find(|(_, c)| c.passenger == Some(id))
+            .map(|(&cart, _)| cart)
+            .or_else(|| self.baskets.iter().find(|(_, b)| b.passenger == Some(id)).map(|(&basket, _)| basket));
+        carrier.and_then(|c| entities.get(c)).and_then(|e| e.body.as_ref()).map_or(Vec3::ZERO, |b| b.movement)
+    }
+
     /// Is the entity currently carried by a cart or a basket?
     pub(crate) fn is_carried(&self, id: EntityId) -> bool {
         self.carts.values().any(|c| c.passenger == Some(id)) || self.baskets.values().any(|b| b.passenger == Some(id))

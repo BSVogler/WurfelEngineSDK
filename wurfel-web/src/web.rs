@@ -137,6 +137,12 @@ struct State {
     hidden: HashSet<u32>,
     /// Cells of power blocks (torches, turrets, stations) that have power.
     powered: HashSet<(i32, i32, i32)>,
+    /// Catapults and cannons as the server last described them.
+    launchers: Vec<caveland_client::LauncherInfo>,
+    /// The aiming menu of one of them is open: the arc preview is drawn.
+    aiming: bool,
+    /// The preview dots and what they were computed for.
+    preview: Option<(caveland_client::PreviewKey, Vec<caveland_sim::launcher::PreviewDot>)>,
     /// Sounds of the game mode that go on until the server says they stop (a cart rolling), by name.
     sound_loops: HashMap<String, crate::audio::LoopHandle>,
     /// Sprites for the players and the things, once the atlas has loaded (`?flat=1` never loads it).
@@ -386,6 +392,9 @@ async fn run() -> Result<(), String> {
         riding: false,
         hidden: HashSet::new(),
         powered: HashSet::new(),
+        launchers: Vec::new(),
+        aiming: false,
+        preview: None,
         sound_loops: HashMap::new(),
         actors: Actors::default(),
         name_tags: NameTags::new(&document),
@@ -1129,6 +1138,9 @@ fn reset_mode_state(s: &mut State) {
     s.riding = false;
     s.hidden.clear();
     s.powered.clear();
+    s.launchers.clear();
+    s.aiming = false;
+    s.preview = None;
     s.emitters.clear();
     for (_, handle) in s.sound_loops.drain() {
         s.audio.logic_mut().stop_loop(handle);
@@ -1148,8 +1160,15 @@ fn handle_rules(s: &mut State, kind: &str, data: &serde_json::Value) {
             s.riding = flags.get(&me).is_some_and(|f| f.riding);
         }
         // Private news (the broadcast reaches everybody; `to` names who it is for).
-        "dialog" if caveland_client::addressed_to(data, me) => hud("dialog", &JsValue::from_str(&data.to_string())),
-        "dialog_closed" if caveland_client::addressed_to(data, me) => hud("closeDialog", &JsValue::UNDEFINED),
+        "dialog" if caveland_client::addressed_to(data, me) => {
+            s.aiming = data.get("title").and_then(|t| t.as_str()).is_some_and(caveland_client::is_aiming_dialog);
+            hud("dialog", &JsValue::from_str(&data.to_string()))
+        }
+        "dialog_closed" if caveland_client::addressed_to(data, me) => {
+            s.aiming = false;
+            hud("closeDialog", &JsValue::UNDEFINED)
+        }
+        "launchers" => s.launchers = caveland_client::parse_launchers(data),
         "lift_offer" if caveland_client::addressed_to(data, me) => hud("liftOffer", &JsValue::from_str(&data.to_string())),
         "console" if caveland_client::addressed_to(data, me) => call_js("wurfelConsoleHost", "reply", &JsValue::from_str(&data.to_string())),
         "power" => s.powered = caveland_client::parse_power(data),
@@ -1183,6 +1202,18 @@ fn handle_rules(s: &mut State, kind: &str, data: &serde_json::Value) {
                         }
                         s.visual_offset.clear();
                     }
+                    // Thrown by a catapult or cannon: only a position and a velocity, then the same
+                    // movement rules as the server (control by speed, bounces) run the flight.
+                    Happening::Launched { player, pos, vel } if player == me => {
+                        if let Some(entity) = s.local_id.and_then(|id| s.entities.get_mut(id)) {
+                            entity.position = pos;
+                            if let Some(body) = entity.body.as_mut() {
+                                body.set_movement(vel);
+                            }
+                        }
+                        s.visual_offset.clear();
+                    }
+                    Happening::Launched { .. } => {} // others are interpolated from the snapshots
                     Happening::Teleported { .. } => {} // others are interpolated, a big jump counts as a teleport there
                     Happening::ShipCrashed { pos } => {
                         // The wreck burns (`ParticleType.FIRE`) and lights its surroundings.
@@ -1965,6 +1996,22 @@ fn upload_dynamic_mesh(s: &mut State, target: Option<Pick>) {
     for thing in s.things.iter().filter(|t| !crate::sprites::is_invisible(&t.kind)) {
         if !s.actors.push_thing(&mut vertices, thing) {
             caveland_client::push_thing(&mut vertices, thing);
+        }
+    }
+    // The dotted arc of the machine being aimed: only the start of the flight.
+    if s.aiming {
+        let aimed = local_position(s).and_then(|at| caveland_client::aimed_launcher(&s.launchers, at)).copied();
+        match aimed {
+            Some(info) => {
+                let key = caveland_client::preview_key(&info);
+                if s.preview.as_ref().is_none_or(|(k, _)| *k != key) {
+                    s.preview = Some((key, caveland_client::preview_dots(&s.world, &info)));
+                }
+                if let Some((_, dots)) = &s.preview {
+                    caveland_client::push_preview(&mut vertices, dots);
+                }
+            }
+            None => s.preview = None,
         }
     }
     if let Some(Pick { hit: (x, y, z), .. }) = target {

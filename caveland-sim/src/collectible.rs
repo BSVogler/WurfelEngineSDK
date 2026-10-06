@@ -23,10 +23,12 @@ pub enum CollectibleType {
     Iron,
     Powercable,
     DropSpaceFlagConstructionKit,
+    /// Loaded into a cannon, one unit per shot (not in the Java game).
+    Gunpowder,
 }
 
 impl CollectibleType {
-    pub const ALL: [CollectibleType; 13] = [
+    pub const ALL: [CollectibleType; 14] = [
         CollectibleType::Rails,
         CollectibleType::Wood,
         CollectibleType::Explosives,
@@ -40,6 +42,7 @@ impl CollectibleType {
         CollectibleType::Iron,
         CollectibleType::Powercable,
         CollectibleType::DropSpaceFlagConstructionKit,
+        CollectibleType::Gunpowder,
     ];
 
     /// Sprite id (`getId`).
@@ -58,6 +61,8 @@ impl CollectibleType {
             CollectibleType::Iron => 55,
             CollectibleType::Powercable => 57,
             CollectibleType::DropSpaceFlagConstructionKit => 23,
+            // The Java atlas has an unused item sprite 56; no art of its own yet.
+            CollectibleType::Gunpowder => 56,
         }
     }
 
@@ -65,7 +70,7 @@ impl CollectibleType {
     pub fn animation_steps(self) -> u32 {
         match self {
             CollectibleType::Rails | CollectibleType::Torch => 2,
-            CollectibleType::Explosives | CollectibleType::Toolkit => 8,
+            CollectibleType::Explosives | CollectibleType::Toolkit | CollectibleType::Gunpowder => 8,
             CollectibleType::Iron => 4,
             CollectibleType::Powercable | CollectibleType::DropSpaceFlagConstructionKit => 1,
             _ => 5,
@@ -88,6 +93,7 @@ impl CollectibleType {
             CollectibleType::Iron => "Iron",
             CollectibleType::Powercable => "Powercable",
             CollectibleType::DropSpaceFlagConstructionKit => "DropSpaceFlagConstructionKit",
+            CollectibleType::Gunpowder => "Gunpowder",
         }
     }
 

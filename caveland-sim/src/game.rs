@@ -22,6 +22,7 @@ use crate::blocks::{self, ids, CavelandBlocks};
 use crate::collectible::{CollectibleType, Item};
 use crate::crafting::{self, RecipeResult};
 use crate::logic::{OvenEvent, OvenLogic};
+use crate::movement;
 use crate::player::*;
 use crate::team::Team;
 use crate::tuning::Tuning;
@@ -199,7 +200,11 @@ pub struct Caveland {
     pub(crate) rng: JavaRandom,
     pub(crate) events: Vec<GameEvent>,
     explosions: Vec<Vec3>,
-    engine_events: Vec<Event>,
+    /// Where cannon shells came down this step; they spare friends unless the tuning says otherwise.
+    pub(crate) shell_blasts: Vec<Vec3>,
+    /// What bounced in the last step (cannon shells go off on their first impact).
+    pub(crate) bounced: Vec<EntityId>,
+    pub(crate) engine_events: Vec<Event>,
     transport: Transport,
     /// Dialogs, construction sites, power, turrets, flags, spiders and the tutorial.
     pub(crate) x: Extras,
@@ -208,6 +213,13 @@ pub struct Caveland {
 fn cell_of(p: Vec3) -> Cell {
     let (x, y) = from_iso(p.x, p.y);
     (x, y, p.z.floor() as i32)
+}
+
+/// Caves have a ceiling one block below the top of the world.
+pub(crate) fn clamp_to_cave_ceiling(entity: &mut Entity) {
+    if from_iso(entity.position.x, entity.position.y).1 > wurfel_sim::caveland::CAVES_BORDER && entity.position.z > CAVE_CEILING {
+        entity.position.z = CAVE_CEILING;
+    }
 }
 
 /// Centre of a block cell.
@@ -232,6 +244,8 @@ impl Caveland {
             rng: JavaRandom::new(seed),
             events: Vec::new(),
             explosions: Vec::new(),
+            shell_blasts: Vec::new(),
+            bounced: Vec::new(),
             engine_events: Vec::new(),
             transport: Transport::new(seed),
             x: Extras::default(),
@@ -500,6 +514,12 @@ impl Caveland {
     /// An explosion (`Explosion`): damages blocks and entities around `center`, falling off with the
     /// square of the distance. Radius in blocks.
     pub fn explode(&mut self, world: &mut World, entities: &mut Entities, center: Vec3, radius: i32, damage: i32) {
+        self.explode_sparing(world, entities, center, radius, damage, false);
+    }
+
+    /// The same explosion; with `spare_friends` the players and their friendly robots are not hurt
+    /// (the blocks still are).
+    fn explode_sparing(&mut self, world: &mut World, entities: &mut Entities, center: Vec3, radius: i32, damage: i32, spare_friends: bool) {
         self.events.push(GameEvent::Explosion { position: center, radius, damage });
         self.events.push(GameEvent::Sound { name: "explosion", position: center });
         let r2 = (radius * radius) as f32;
@@ -520,6 +540,7 @@ impl Caveland {
         let hit: Vec<(EntityId, f32)> = entities
             .iter()
             .filter(|e| e.body.is_some())
+            .filter(|e| !(spare_friends && self.team_of(e.id()) == Team::Player))
             .map(|e| (e.id(), e.position.distance_squared(center)))
             .filter(|&(_, d2)| d2 < r2)
             .collect();
@@ -535,6 +556,7 @@ impl Caveland {
     /// Set what a player is holding down for the next step: walking, jumping and the jetpack.
     pub fn set_controls(&mut self, entities: &mut Entities, world: &World, id: EntityId, controls: Controls) {
         let walking_speed = self.tuning.walking_speed;
+        let platform = self.transport.platform_velocity(entities, id);
         let Some(Kind::Player(state)) = self.kinds.get_mut(&id) else { return };
         let Some(entity) = entities.get_mut(id) else { return };
         let last = state.last_controls;
@@ -542,7 +564,17 @@ impl Caveland {
 
         let any_direction = controls.up || controls.down || controls.left || controls.right;
         if any_direction && !state.movement_locked() {
+            // The steering is scaled by how fast the player is going, measured against what they
+            // stand on (see `movement`): a launch leaves a player only a little control.
+            let before = entity.body.as_ref().map(|b| b.movement);
             entity.walk(controls.up, controls.down, controls.left, controls.right, walking_speed);
+            if let (Some(before), Some(body)) = (before, entity.body.as_mut()) {
+                let control = movement::control_factor((before - platform).length(), walking_speed);
+                if control < 1.0 {
+                    let desired = body.hor_movement();
+                    body.set_hor_movement(movement::steer(before.truncate(), desired, control));
+                }
+            }
         }
 
         if controls.jump && !last.jump {
@@ -660,7 +692,7 @@ impl Caveland {
         state.performing_power_attack = false;
     }
 
-    fn block_pickup(&mut self, collectible: EntityId, parent: EntityId, seconds: f32) {
+    pub(crate) fn block_pickup(&mut self, collectible: EntityId, parent: EntityId, seconds: f32) {
         if let Some(Kind::Collectible(c)) = self.kinds.get_mut(&collectible) {
             c.last_parent = Some(parent);
             c.blocked_for = seconds;
@@ -928,6 +960,7 @@ impl Caveland {
             }
         }
 
+        self.bounce_pass(entities, world, dt);
         let engine_events = entities.update(world, dt);
         self.handle_engine_events(entities, &engine_events);
         self.engine_events = engine_events;
@@ -975,7 +1008,35 @@ impl Caveland {
         for position in std::mem::take(&mut self.explosions) {
             self.explode(world, entities, position, EXPLOSIVE_RADIUS, EXPLOSIVE_DAMAGE);
         }
+        // A cannon shell is that same explosion, which spares the players and their robots unless
+        // friendly fire is on.
+        let spare = !self.tuning.friendly_fire;
+        for position in std::mem::take(&mut self.shell_blasts) {
+            self.explode_sparing(world, entities, position, EXPLOSIVE_RADIUS, EXPLOSIVE_DAMAGE, spare);
+        }
         self.drain_events()
+    }
+
+    /// Fast things that are about to hit something bounce (see [`movement::bounce`]). Entities the
+    /// transport code moves (carts, baskets, the ship, riders) and the ones that float are left alone.
+    fn bounce_pass(&mut self, entities: &mut Entities, world: &World, dt: f32) {
+        let walking_speed = self.tuning.walking_speed;
+        self.bounced.clear();
+        let mut bounced = Vec::new();
+        for entity in entities.iter_mut() {
+            let id = entity.id();
+            if entity.is_disposed() || self.transport.kind_of(id).is_some() || self.transport.is_hidden(id) || self.transport.is_carried(id) {
+                continue;
+            }
+            // The dash of a swing is the player's own doing, not a collision to bounce off.
+            if matches!(self.kinds.get(&id), Some(Kind::Player(p)) if p.time_till_impact.is_some() || p.performing_power_attack || p.load_attack.is_some()) {
+                continue;
+            }
+            if movement::bounce(world, entity, walking_speed, dt) {
+                bounced.push(id);
+            }
+        }
+        self.bounced = bounced;
     }
 
     fn handle_engine_events(&mut self, entities: &mut Entities, events: &[Event]) {
@@ -1010,28 +1071,18 @@ impl Caveland {
             let entity = entities.get_mut(id).expect("checked by the caller");
             let body = entity.body.as_mut().expect("players move");
 
-            // In the air the engine applies no friction; the player slows down anyway.
-            if !on_ground {
-                if body.speed_hor() > 0.1 {
-                    let factor = 1.0 / (dt * 1000.0 * body.friction + 1.0);
-                    let hor = body.hor_movement() * factor;
-                    body.set_hor_movement(hor);
-                } else {
-                    body.set_hor_movement(Vec2::ZERO);
-                }
-            } else {
+            // The engine applies friction on the ground only; in the air the player is only
+            // lightly slowed (`movement::air_drag`), so a throw keeps its speed.
+            if on_ground {
                 if state.used_load_attack_in_air {
                     body.friction = tuning.player_friction;
                 }
                 state.used_load_attack_in_air = false;
+            } else {
+                movement::air_drag(body, dt);
             }
 
-            // Caves have a ceiling one block below the top of the world.
-            if from_iso(entity.position.x, entity.position.y).1 > wurfel_sim::caveland::CAVES_BORDER
-                && entity.position.z > CAVE_CEILING
-            {
-                entity.position.z = CAVE_CEILING;
-            }
+            clamp_to_cave_ceiling(entity);
         }
 
         // The character turns smoothly towards where it walks.
