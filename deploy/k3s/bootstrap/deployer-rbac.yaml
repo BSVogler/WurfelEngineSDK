@@ -1,0 +1,65 @@
+# One-time, applied by a cluster admin (NOT by CI): the namespace plus a service account that CI
+# uses, allowed to manage only the wurfel namespace. See ../README.md for the kubeconfig step.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wurfel
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ci-deployer
+  namespace: wurfel
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ci-deployer-token
+  namespace: wurfel
+  annotations:
+    kubernetes.io/service-account.name: ci-deployer
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ci-deployer
+  namespace: wurfel
+rules:
+  - apiGroups: [""]
+    resources: [services, persistentvolumeclaims, pods]
+    verbs: [get, list, watch, create, patch, update]
+  - apiGroups: ["apps"]
+    resources: [deployments, replicasets]
+    verbs: [get, list, watch, create, patch, update]
+  - apiGroups: ["networking.k8s.io"]
+    resources: [ingresses]
+    verbs: [get, list, watch, create, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ci-deployer
+  namespace: wurfel
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: ci-deployer}
+subjects:
+  - {kind: ServiceAccount, name: ci-deployer, namespace: wurfel}
+---
+# `kubectl apply` of the namespace manifest needs to read and patch that one namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: wurfel-ci-namespace
+rules:
+  - apiGroups: [""]
+    resources: [namespaces]
+    resourceNames: [wurfel]
+    verbs: [get, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: wurfel-ci-namespace
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: wurfel-ci-namespace}
+subjects:
+  - {kind: ServiceAccount, name: ci-deployer, namespace: wurfel}

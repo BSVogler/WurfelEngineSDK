@@ -1,0 +1,27 @@
+# k3s overlay on ../k8s: Traefik ingress with a cert-manager certificate, local-path storage (the
+# cluster default). CI sets the image tag with `kustomize edit set image` before applying.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../k8s
+images:
+  - name: REGISTRY/wurfel-server   # what ../k8s already renamed the image to
+    newName: ghcr.io/bsvogler/wurfel-server
+    newTag: latest
+patches:
+  - target: {kind: Ingress, name: wurfel-server}
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: wurfel.example.com   # TODO: the real hostname (DNS must point at the cluster)
+      - op: add
+        path: /spec/ingressClassName
+        value: traefik
+      - op: add
+        path: /metadata/annotations/cert-manager.io~1cluster-issuer
+        value: letsencrypt-prod
+      - op: add
+        path: /spec/tls
+        value:
+          - hosts: [wurfel.example.com]   # keep in sync with the host above
+            secretName: wurfel-tls
