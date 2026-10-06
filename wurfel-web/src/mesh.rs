@@ -16,7 +16,7 @@
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 use wurfel_sim::block::id;
-use wurfel_sim::grid::to_iso;
+use wurfel_sim::grid::{from_iso, to_iso};
 use wurfel_sim::light::{bake_point_lights_with, face_vertex_ao_with, Face, PointLight};
 use wurfel_sim::{Block, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z};
 
@@ -58,7 +58,16 @@ pub const FACE_RIGHT: f32 = 2.0;
 /// Not lit by the light engine: shown in its own colour (the hover marker).
 pub const FACE_UNLIT: f32 = 3.0;
 /// A sprite standing in the world (entities, trees...): lit by the average of the three faces.
+/// Its vertices are all the anchor point (`position`) with the screen offset in `point`
+/// (`[dx, dy, bias]`, see `sprites::billboard_point`): the shader builds the picture's rectangle
+/// facing the camera, however the free camera is turned.
 pub const FACE_SPRITE: f32 = 4.0;
+/// The side of a block that looks towards `-y` (opposite of the left face). Only meshed for the free camera.
+pub const FACE_BACK_Y: f32 = 5.0;
+/// The side of a block that looks towards `-x` (opposite of the right face). Only meshed for the free camera.
+pub const FACE_BACK_X: f32 = 6.0;
+/// A flat coloured square facing the camera, not lit (particles): positioned like [`FACE_SPRITE`].
+pub const FACE_BILLBOARD: f32 = 7.0;
 
 /// Brightness per face of the old flat look, used when lighting is switched off (left, top, right).
 pub const FLAT_SHADES: [f32; 3] = [0.78, 1.0, 0.58];
@@ -88,6 +97,9 @@ pub struct MeshContext<'a> {
     /// The sprite atlas, once loaded. Blocks without a sprite, and everything while this is `None`
     /// (the flat look, `?flat=1`), show their flat colour.
     pub sprites: Option<&'a Sprites>,
+    /// Also mesh the sides that look away from the fixed camera (`-x`, `-y`), so the free camera
+    /// can look at the world from behind. Costs about a third more triangles.
+    pub all_faces: bool,
 }
 
 /// Colour of a block, for things that break off it.
@@ -164,7 +176,9 @@ pub fn build_chunk(chunk: &RenderChunk, ctx: &MeshContext) -> Vec<Vertex> {
             let (x0, x1, y0, y1) = (gx - 0.5, gx + 0.5, gy - 0.5, gy + 0.5);
             for z in 0..CHUNK_SIZE_Z {
                 let cell = chunk.cell(lx, ly, z).expect("index is inside the chunk");
-                if cell.block.is_air() || cell.is_fully_clipped() {
+                // A cell whose three front sides are covered can still show its back sides to the
+                // free camera (the far slope of a hill), so it is only skipped for the fixed one.
+                if cell.block.is_air() || (cell.is_fully_clipped() && !ctx.all_faces) {
                     continue;
                 }
                 let look = ctx.sprites.and_then(|s| s.block(cell.block.id(), cell.block.value()).map(|look| (s, look)));
@@ -172,6 +186,9 @@ pub fn build_chunk(chunk: &RenderChunk, ctx: &MeshContext) -> Vec<Vertex> {
                 let at = (x, y, z);
                 if let Some((sprites, BlockLook::Single(index))) = look {
                     // A single picture (a tree, a torch...) standing on the cell.
+                    if cell.is_fully_clipped() {
+                        continue;
+                    }
                     let region = sprites.region(index);
                     let anchor = Vec3::new(gx, gy, z0);
                     sprites::billboard(&mut vertices, &sprites.atlas, region, anchor, sprites::FOOTPRINT_TIP, false, [cell.top_light; 3]);
@@ -202,6 +219,22 @@ pub fn build_chunk(chunk: &RenderChunk, ctx: &MeshContext) -> Vec<Vertex> {
                 if cell.clipping & CLIP_RIGHT == 0 {
                     let corners = [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]];
                     lit_quad(&mut vertices, ctx, at, Face::Right, color, corners, sprite_of(Face::Right));
+                }
+                if ctx.all_faces {
+                    // The hidden sides: not covered by the next block towards -y or -x. They wear the
+                    // pictures of their opposite sides (a face's picture only depends on its shape).
+                    let covered = |dx: f32, dy: f32| {
+                        let (nx, ny) = from_iso(gx + dx, gy + dy);
+                        (ctx.opaque)(nx, ny, z)
+                    };
+                    if !covered(0.0, -1.0) {
+                        let corners = [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]];
+                        back_quad(&mut vertices, FACE_BACK_Y, color, corners, sprite_of(Face::Left));
+                    }
+                    if !covered(-1.0, 0.0) {
+                        let corners = [[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]];
+                        back_quad(&mut vertices, FACE_BACK_X, color, corners, sprite_of(Face::Right));
+                    }
                 }
             }
         }
@@ -253,6 +286,20 @@ fn lit_quad(
     }
 }
 
+/// A side that looks away from the fixed camera: no occlusion and no baked lights.
+fn back_quad(out: &mut Vec<Vertex>, face: f32, color: [f32; 3], corners: [[f32; 3]; 4], sprite: Option<Sprite>) {
+    let first = out.len();
+    quad(out, face, color, corners, [0.0; 4], [[0.0; 3]; 4]);
+    if let Some(Sprite { atlas, region }) = sprite {
+        let uvs = sprites::face_uvs(atlas, region, corners);
+        for vertex in &mut out[first..] {
+            let corner = corners.iter().position(|c| *c == vertex.position).expect("a vertex is one of the corners");
+            vertex.uv = uvs[corner];
+            vertex.layer = region.page as f32;
+        }
+    }
+}
+
 fn face_id(face: Face) -> f32 {
     match face {
         Face::Left => FACE_LEFT,
@@ -281,11 +328,15 @@ pub fn right_face(out: &mut Vec<Vertex>, color: [f32; 3], x: f32, [y0, y1]: [f32
     quad(out, FACE_RIGHT, color, [[x, y0, z0], [x, y1, z0], [x, y1, z1], [x, y0, z1]], [0.0; 4], [[0.0; 3]; 4]);
 }
 
-/// A free-standing box, e.g. a player. Only the three camera-facing sides.
+/// A free-standing box, e.g. a player or a thing without a picture: the top and the four sides.
+/// The two sides that look away from the fixed camera are hidden by the shader until the free
+/// camera turns far enough to see them.
 pub fn cuboid(out: &mut Vec<Vertex>, color: [f32; 3], [x0, x1, y0, y1]: [f32; 4], [z0, z1]: [f32; 2]) {
     top_face(out, color, [x0, x1, y0, y1], z1);
     left_face(out, color, [x0, x1], y1, [z0, z1]);
     right_face(out, color, x1, [y0, y1], [z0, z1]);
+    quad(out, FACE_BACK_Y, color, [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], [0.0; 4], [[0.0; 3]; 4]);
+    quad(out, FACE_BACK_X, color, [[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]], [0.0; 4], [[0.0; 3]; 4]);
 }
 
 /// Two triangles. The diagonal is chosen so that a single dark corner does not smear across the
@@ -377,10 +428,10 @@ mod tests {
     }
 
     #[test]
-    fn cuboid_is_three_quads() {
+    fn cuboid_is_five_quads_so_it_is_closed_from_every_side() {
         let mut out = Vec::new();
         cuboid(&mut out, [1.0; 3], [0.0, 1.0, 0.0, 1.0], [0.0, 1.0]);
-        assert_eq!(out.len(), 18);
+        assert_eq!(out.len(), 30);
     }
 
     #[test]
@@ -419,7 +470,7 @@ mod tests {
         let mut out = Vec::new();
         cuboid(&mut out, [1.0; 3], [0.0, 1.0, 0.0, 1.0], [0.0, 1.0]);
         let ids: Vec<f32> = out.chunks(6).map(|q| q[0].shade[0]).collect();
-        assert_eq!(ids, vec![FACE_TOP, FACE_LEFT, FACE_RIGHT]);
+        assert_eq!(ids, vec![FACE_TOP, FACE_LEFT, FACE_RIGHT, FACE_BACK_Y, FACE_BACK_X]);
         assert!(out.iter().all(|v| v.shade[1] == 0.0 && v.point == [0.0; 3] && v.color == [1.0; 3]));
 
         let mut marker = Vec::new();

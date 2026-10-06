@@ -28,6 +28,9 @@ pub struct Actors {
     /// The attack, throw and jump animation of each player: the client's own, see `animation`.
     performers: HashMap<u32, Tracker>,
     things: HashMap<u32, ThingAnim>,
+    /// The turn of the free camera (`View::yaw`): the pictures are drawn from the front, so which one
+    /// shows depends on the way the actor faces *relative to the camera*.
+    yaw: f32,
 }
 
 /// A player's [`Performer`] with what is needed to feed it from the movement seen: whether it is
@@ -90,6 +93,19 @@ struct ThingAnim {
 impl Actors {
     pub fn set_sprites(&mut self, sprites: Option<Rc<Sprites>>) {
         self.sprites = sprites;
+    }
+
+    /// The camera's turn in radians. Walking away from a camera that has gone round the player shows
+    /// the picture that walks towards it.
+    pub fn set_yaw(&mut self, yaw: f32) {
+        self.yaw = yaw;
+    }
+
+    /// A facing (a unit vector of `sprites::facing_of`'s space, which is the ground frame turned by a
+    /// fixed 45 degrees) as the turned camera sees it: it turns with the world.
+    fn seen(&self, facing: [f32; 2]) -> [f32; 2] {
+        let (sin, cos) = self.yaw.sin_cos();
+        [cos * facing[0] - sin * facing[1], sin * facing[0] + cos * facing[1]]
     }
 
     /// Which way the player's sprite faces (a unit vector of `sprites::facing_of`'s space; south
@@ -158,11 +174,12 @@ impl Actors {
     pub fn push_player(&self, out: &mut Vec<Vertex>, id: u32, pos: Vec3, color: [f32; 3]) -> bool {
         let Some(sprites) = &self.sprites else { return false };
         let anim = self.players.get(&id).cloned().unwrap_or_default();
+        let facing = self.seen(anim.facing);
         // A swing, throw or jump of the sheet replaces the walk cycle; a player that stands still
         // while it plays keeps facing where it last moved, which is where it aims.
-        let pose = self.performers.get(&id).map(|t| t.performer.pose(Vec2::from(anim.facing)));
+        let pose = self.performers.get(&id).map(|t| t.performer.pose(Vec2::from(facing)));
         let special = pose.filter(|p| p.action != Move::Walk).and_then(|pose| sprites.player_sheet(pose.action.glyph(), pose.frame()));
-        let Some(region) = special.or_else(|| sprites.player(sprites::player_frame(anim.facing, anim.cycle))) else { return false };
+        let Some(region) = special.or_else(|| sprites.player(sprites::player_frame(facing, anim.cycle))) else { return false };
         let tint = color.map(|c| 1.0 + (c - 1.0) * TINT_STRENGTH);
         sprites::billboard(out, &sprites.atlas, region, pos, sprites::PLAYER_BOX_BOTTOM, false, tint);
         // The charge filling up and the power attack's glow, drawn on top.
@@ -178,7 +195,7 @@ impl Actors {
         let Some(sprites) = &self.sprites else { return false };
         let Some(art) = sprites::entity_art(&thing.kind) else { return false };
         let anim = self.things.get(&thing.id).map(|t| t.anim.clone()).unwrap_or_default();
-        let value = if art.walks { sprites::robot_value(anim.facing, anim.cycle, art.steps) } else { art.value };
+        let value = if art.walks { sprites::robot_value(self.seen(anim.facing), anim.cycle, art.steps) } else { art.value };
         let Some(region) = sprites.entity(art.id, value).or_else(|| sprites.entity(art.id, 0)) else { return false };
         sprites::billboard(out, &sprites.atlas, region, Vec3::from(thing.pos), sprites::FOOTPRINT_TIP, false, art.tint);
         true
@@ -238,6 +255,29 @@ mod tests {
         assert!(frames.len() >= 6, "{} different frames over 3 cycles", frames.len());
         let anim = &actors.players[&1];
         assert_eq!(sprites::player_frame(anim.facing, 0.0), 6 * 8 + 1, "west");
+    }
+
+    #[test]
+    fn a_camera_turned_half_way_round_shows_the_opposite_direction_of_the_sprite() {
+        let mut actors = actors();
+        let mut pos = Vec3::ZERO;
+        for _ in 0..30 {
+            pos += Vec3::new(-0.05, 0.05, 0.0);
+            actors.update(1.0 / 60.0, [(1, pos)], &[]);
+        }
+        let frame_with_yaw = |actors: &mut Actors, yaw: f32| {
+            actors.set_yaw(yaw);
+            let mut out = Vec::new();
+            actors.push_player(&mut out, 1, pos, [1.0; 3]);
+            out[0].uv.map(f32::to_bits)
+        };
+        let west = frame_with_yaw(&mut actors, 0.0);
+        let east = frame_with_yaw(&mut actors, std::f32::consts::PI);
+        assert_ne!(west, east, "from the other side the player walks the other way");
+        assert_eq!(frame_with_yaw(&mut actors, std::f32::consts::TAU), west, "a full turn changes nothing");
+        // The direction a quarter turn shows is the one 90 degrees round: neither west nor east.
+        let quarter = frame_with_yaw(&mut actors, std::f32::consts::FRAC_PI_2);
+        assert!(quarter != west && quarter != east);
     }
 
     fn drawn(actors: &Actors, id: u32) -> Vec<[u32; 2]> {

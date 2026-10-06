@@ -48,7 +48,7 @@ pub fn project(p: [f32; 3]) -> [f32; 2] {
 }
 
 /// How much one block of height counts in the depth the shader sorts by.
-const DEPTH_Z: f32 = 0.82;
+pub const DEPTH_Z: f32 = 0.82;
 
 /// The depth the shader sorts by: larger is closer to the viewer.
 #[cfg(test)]
@@ -168,6 +168,7 @@ pub fn face_uvs(atlas: &Atlas, region: &Region, corners: [[f32; 3]; 4]) -> [[f32
 ///
 /// `toward_camera` moves the wall that much (in depth units) closer to the viewer without moving it
 /// on screen, so the picture's bottom edge is not cut by the ground it touches.
+#[cfg_attr(not(test), allow(dead_code))] // the shader has its own copy; this is the tested reference
 pub fn billboard_point(anchor: Vec3, dx: f32, dy: f32, toward_camera: f32) -> [f32; 3] {
     // On the wall x + y = s; right on screen is (+x, -y): one block per 2 * SCREEN_X pixels.
     let s = anchor.x + anchor.y + 1.0;
@@ -179,6 +180,13 @@ pub fn billboard_point(anchor: Vec3, dx: f32, dy: f32, toward_camera: f32) -> [f
     let e = 2.0 * SCREEN_Y / SCREEN_Z;
     let d = toward_camera / (2.0 + DEPTH_Z * e);
     [(s + across) / 2.0 + d, (s - across) / 2.0 + d, z + e * d]
+}
+
+/// Where a vertex of a billboard (`FACE_SPRITE`, `FACE_BILLBOARD`) stands for the fixed camera:
+/// [`billboard_point`] of its anchor and offsets. The shader does this for the camera it has.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn billboard_corner(v: &Vertex) -> [f32; 3] {
+    billboard_point(Vec3::from(v.position), v.point[0], v.point[1], v.point[2])
 }
 
 /// The two triangles of a sprite standing in the world, anchored at `anchor`.
@@ -206,11 +214,14 @@ pub fn billboard_biased(out: &mut Vec<Vertex>, atlas: &Atlas, region: &Region, a
     let (u0, u1) = (region.x as f32 / page.width as f32, (region.x + region.w) as f32 / page.width as f32);
     let (v0, v1) = (region.y as f32 / page.height as f32, (region.y + region.h) as f32 / page.height as f32);
     let (u_left, u_right) = if mirror { (u1, u0) } else { (u0, u1) };
+    // The vertex is the anchor with its screen offset: the shader puts the corner on the wall facing
+    // the camera (`billboard_point` is the fixed-camera twin of that), so the picture keeps facing
+    // it when the free camera turns the world.
     let vertex = |dx: f32, dy: f32, u: f32, v: f32| Vertex {
-        position: billboard_point(anchor, dx, dy, bias),
+        position: anchor.to_array(),
         color: tint,
         shade: [FACE_SPRITE, 0.0],
-        point: [0.0; 3],
+        point: [dx, dy, bias],
         uv: [u, v],
         layer: region.page as f32,
     };
@@ -724,7 +735,7 @@ mod tests {
         let mut out = Vec::new();
         billboard(&mut out, &sprites.atlas, region, anchor, FOOTPRINT_TIP, false, [1.0; 3]);
         assert_eq!(out.len(), 6);
-        let screen: Vec<[f32; 2]> = out.iter().map(|v| project(v.position)).collect();
+        let screen: Vec<[f32; 2]> = out.iter().map(|v| project(billboard_corner(v))).collect();
         let min_y = screen.iter().map(|p| p[1]).fold(f32::MAX, f32::min);
         let max_y = screen.iter().map(|p| p[1]).fold(f32::MIN, f32::max);
         let min_x = screen.iter().map(|p| p[0]).fold(f32::MAX, f32::min);
@@ -759,7 +770,7 @@ mod tests {
             let region = sprites.player(frame).unwrap();
             let mut out = Vec::new();
             billboard(&mut out, &sprites.atlas, region, Vec3::ZERO, PLAYER_BOX_BOTTOM, false, [1.0; 3]);
-            let bottom = out.iter().map(|v| project(v.position)[1]).fold(f32::MIN, f32::max);
+            let bottom = out.iter().map(|v| project(billboard_corner(v))[1]).fold(f32::MIN, f32::max);
             // a raised foot or a bob moves the lowest pixel of some frames up to a quarter of the body above the feet
             assert!((-20.0..=60.0).contains(&bottom), "frame {frame}: feet {bottom}px below the centre");
         }

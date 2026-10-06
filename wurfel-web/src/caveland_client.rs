@@ -500,7 +500,7 @@ mod tests {
         assert!(thing_style("robot").height > thing_style("Torch").height, "robots are taller than items");
         let mut out = Vec::new();
         push_thing(&mut out, &ThingState { id: 1, kind: "never-heard-of".into(), pos: [1.0, 2.0, 3.0] });
-        assert_eq!(out.len(), 18, "the three faces that can be seen, two triangles each");
+        assert_eq!(out.len(), 30, "top and four sides, two triangles each");
         let mut again = Vec::new();
         push_thing(&mut again, &ThingState { id: 1, kind: "never-heard-of".into(), pos: [1.0, 2.0, 3.0] });
         assert_eq!(out.len(), again.len());
@@ -609,7 +609,7 @@ mod tests {
         assert!(dots.last().unwrap().tick as usize * 2 <= flight.points.len(), "no more than about half the flight");
         let mut out = Vec::new();
         push_preview(&mut out, &dots);
-        assert_eq!(out.len(), dots.len() * 18);
+        assert_eq!(out.len(), dots.len() * 30);
 
         let launched = parse_events(&json!([{"t": "launched", "player": 4, "pos": [1.0, 2.0, 3.0], "vel": [4.0, 5.0, 6.0]}, {"t": "launched", "player": 4}]), 4);
         assert_eq!(launched, vec![Happening::Launched { player: 4, pos: Vec3::new(1.0, 2.0, 3.0), vel: Vec3::new(4.0, 5.0, 6.0) }]);

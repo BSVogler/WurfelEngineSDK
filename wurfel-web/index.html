@@ -32,6 +32,10 @@
     <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
   </button>
 
+  <button id="debugbtn" class="hud hud-debugbtn" type="button" aria-label="Toggle debug display (L or F3)" aria-pressed="false" title="Debug display (L or F3): sun and moon position, light, network, minimap" hidden>
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+  </button>
+
   <!-- Menu: covers the game while open; the game keeps rendering underneath as the backdrop. -->
   <div id="menu" class="menu" role="dialog" aria-modal="true" aria-labelledby="menu-title" hidden>
     <div class="panel">
@@ -169,7 +173,6 @@
 
           <fieldset>
             <legend>Graphics</legend>
-            <label class="row"><span>Render scale</span><input type="range" data-nav data-setting="renderScale" data-scale="100" min="50" max="100" step="5" /><output></output></label>
             <label class="row"><span>FPS limit <small>(0 = unlimited)</small></span><input type="number" data-nav data-setting="fpsLimit" min="0" max="1000" step="1" /></label>
             <label class="row check"><input type="checkbox" data-nav data-setting="ambientOcclusion" /><span>Ambient occlusion <small>(used once lighting is ported)</small></span></label>
             <div class="row check"><button class="item compact" type="button" data-nav data-action="fullscreen" id="fullscreen-btn"><span class="label">Enter fullscreen</span></button></div>

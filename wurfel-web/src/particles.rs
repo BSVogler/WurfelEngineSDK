@@ -10,7 +10,8 @@ use glam::Vec3;
 use wurfel_sim::light::PointLight;
 use wurfel_sim::particle::{Particle, ParticleEmitter, Particles};
 
-use crate::mesh::{Vertex, FACE_UNLIT};
+use crate::mesh::{Vertex, FACE_BILLBOARD};
+use crate::sprites;
 
 /// Draw fading particles smaller instead of transparent (the pipeline has no blending).
 pub const SHRINK_WITH_ALPHA: bool = true;
@@ -18,7 +19,6 @@ pub const SHRINK_WITH_ALPHA: bool = true;
 /// Screen width of one block in the projection, and the height of one block on screen: a square
 /// on screen needs `WIDTH / HEIGHT` times its width as vertical extent in `z`.
 const BLOCK_WIDTH_PX: f32 = 200.0;
-const BLOCK_HEIGHT_PX: f32 = 122.0;
 
 /// Ejira's jetpack: two emitters attached behind the player, left and right of the back
 /// (`Ejira.update`). They burn while the jetpack is on, spray against the direction the player
@@ -94,22 +94,26 @@ impl Jetpack {
     }
 }
 
-/// The six vertices (two triangles) of one particle.
+/// Depth units that put a billboard's wall (see `sprites::billboard_point`) back to the depth of its
+/// anchor at a zero offset: a particle sits in the world where it is, not in front of it.
+const DEPTH_BIAS: f32 = -(1.0 + sprites::DEPTH_Z * sprites::SCREEN_Y / sprites::SCREEN_Z);
+
+/// The six vertices (two triangles) of one particle: a [`FACE_BILLBOARD`] square. Its vertices are
+/// the particle's position with the corner's screen offset in pixels, and the shader makes the
+/// square face the camera, so particles stay flat on the screen when the free camera turns.
 pub fn quad(p: &Particle) -> [Vertex; 6] {
     let alpha = p.color()[3].clamp(0.0, 1.0);
     let half = 0.5 * p.size() * if SHRINK_WITH_ALPHA { alpha.sqrt() } else { 1.0 };
     let (sin, cos) = p.rotation().to_radians().sin_cos();
     let c = p.position;
-    // Corner in screen units (1 = a block's width), rotated; screen right is (+x, -y) in the
-    // ground frame and screen up is +z.
+    // Corner in screen units (1 = a block's width), rotated, as pixels from the centre (y down).
     let corner = |u: f32, v: f32| {
         let (ru, rv) = (u * cos - v * sin, u * sin + v * cos);
-        let k = ru * half;
         Vertex::flat(
-            [c.x + k, c.y - k, c.z + rv * half * BLOCK_WIDTH_PX / BLOCK_HEIGHT_PX],
+            c.to_array(),
             [p.color()[0], p.color()[1], p.color()[2]],
-            [FACE_UNLIT, 0.0],
-            [0.0; 3],
+            [FACE_BILLBOARD, 0.0],
+            [ru * half * BLOCK_WIDTH_PX, -rv * half * BLOCK_WIDTH_PX, DEPTH_BIAS],
         )
     };
     let (a, b, cc, d) = (corner(-1.0, -1.0), corner(1.0, -1.0), corner(1.0, 1.0), corner(-1.0, 1.0));
@@ -138,6 +142,7 @@ mod tests {
     use wurfel_sim::particle::{ParticleSpec, ParticleType};
 
     use super::*;
+    use crate::mesh::FACE_BILLBOARD;
 
     fn spawn(spec: ParticleSpec, at: Vec3) -> Particles {
         let mut particles = Particles::new(8, 1);
@@ -146,7 +151,7 @@ mod tests {
     }
 
     fn screen(v: &Vertex) -> (f32, f32) {
-        let [x, y, z] = v.position;
+        let [x, y, z] = sprites::billboard_corner(v);
         ((x - y) * 100.0, (x + y) * 50.0 - z * 122.0)
     }
 
@@ -241,8 +246,7 @@ mod tests {
         let particles = spawn(spec, Vec3::ZERO);
         for v in quad(particles.iter().next().unwrap()) {
             assert_eq!(v.color, [0.1, 0.2, 0.3]);
-            assert_eq!(v.shade, [FACE_UNLIT, 0.0]);
-            assert_eq!(v.point, [0.0; 3]);
+            assert_eq!(v.shade, [FACE_BILLBOARD, 0.0]);
         }
     }
 
@@ -273,7 +277,7 @@ mod tests {
         let full = spawn(spec, Vec3::ZERO);
         let width = |p: &Particles| {
             let q = quad(p.iter().next().unwrap());
-            ((q[1].position[0] - q[0].position[0]).powi(2) * 2.0 + (q[1].position[2] - q[0].position[2]).powi(2)).sqrt()
+            ((q[1].point[0] - q[0].point[0]).powi(2) + (q[1].point[1] - q[0].point[1]).powi(2)).sqrt()
         };
         assert!(width(&faded) < width(&full) * 0.6);
     }

@@ -6,6 +6,7 @@ mod bindings;
 mod caveland_client;
 mod editor;
 mod interp;
+mod lightdebug;
 mod lighting;
 mod locator;
 mod mesh;
@@ -21,6 +22,7 @@ mod prediction;
 mod reconnect;
 mod render_storage;
 mod texture;
+mod view;
 
 #[cfg(target_arch = "wasm32")]
 mod web;

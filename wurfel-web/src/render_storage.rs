@@ -154,7 +154,15 @@ pub struct RenderStorage {
     static_lights: Vec<PointLight>,
     /// The sprite atlas the meshes are textured with, `None` for the flat colours.
     sprites: Option<Rc<Sprites>>,
+    /// The free camera is on: the render set is the whole surface around the player, seen from any
+    /// side (see [`RenderStorage::set_free_view`]), not what the fixed camera can see.
+    all_faces: bool,
 }
+
+/// Chunks from the middle to the edge of the render window of the fixed camera (3x3 chunks).
+pub const FIXED_WINDOW_RADIUS: i32 = 1;
+/// The same for the free camera (5x5 chunks, the radius the server sends around a player).
+pub const FREE_WINDOW_RADIUS: i32 = 2;
 
 /// Chunks whose cells depend on the cells of chunk `(cx, cy)`: they have to be clipped and meshed
 /// again when it changes.
@@ -171,13 +179,14 @@ impl RenderStorage {
         Self::default()
     }
 
-    /// Keep the 3x3 chunks around `center` up to date. Call this every frame (it does nothing when
+    /// Keep the chunks around `center` up to date: 3x3 for the fixed camera, 5x5 for the free one. Call this every frame (it does nothing when
     /// nothing changed): it loads the chunks that came into range and drops the ones that left,
     /// picks up block changes from the world, and recomputes clipping where it could have changed.
     // Part of the window API (a camera that follows the player); the app currently renders a fixed area.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn update(&mut self, world: &mut World, center: (i32, i32)) {
-        self.update_area(world, (center.0 - 1, center.1 - 1), (center.0 + 1, center.1 + 1));
+        let radius = self.window_radius();
+        self.update_area(world, (center.0 - radius, center.1 - radius), (center.0 + radius, center.1 + radius));
     }
 
     /// Like [`RenderStorage::update`] for any rectangle of chunks, both corners inclusive.
@@ -306,6 +315,27 @@ impl RenderStorage {
         }
     }
 
+    /// Chunks from the centre to the edge of the window.
+    pub fn window_radius(&self) -> i32 {
+        if self.all_faces { FREE_WINDOW_RADIUS } else { FIXED_WINDOW_RADIUS }
+    }
+
+    /// Switch between the two render sets. The 2.5D one is what the fixed camera can see: a window
+    /// that covers the screen of the one fixed view, and the three sides of a block that face the
+    /// camera (a block whose three sides are covered is skipped). The free camera can look from any
+    /// side, so its set is the whole surface: a bigger window (`FREE_WINDOW_RADIUS`, what the server
+    /// sends) and every side of every block that no neighbour covers, left to the shader to cull
+    /// the ones that turn away. Every chunk is meshed again when this changes, and the window is
+    /// adjusted by the next [`update`](Self::update).
+    pub fn set_free_view(&mut self, free: bool) {
+        if self.all_faces != free {
+            self.all_faces = free;
+            for chunk in self.chunks.values_mut() {
+                chunk.mesh_dirty = true;
+            }
+        }
+    }
+
     /// Is the block at these block coordinates opaque? Cells outside the window count as open.
     fn is_opaque(&self, x: i32, y: i32, z: i32) -> bool {
         self.cell(x, y, z).is_some_and(|cell| cell.hides_past_block())
@@ -318,7 +348,7 @@ impl RenderStorage {
             let mesh = {
                 let this = &*self;
                 let opaque = |x: i32, y: i32, z: i32| this.is_opaque(x, y, z);
-                let ctx = MeshContext { opaque: &opaque, lights: &this.static_lights, sprites: this.sprites.as_deref() };
+                let ctx = MeshContext { opaque: &opaque, lights: &this.static_lights, sprites: this.sprites.as_deref(), all_faces: this.all_faces };
                 mesh::build_chunk(&this.chunks[&pos], &ctx)
             };
             let chunk = self.chunks.get_mut(&pos).expect("listed above");
@@ -353,6 +383,21 @@ mod tests {
         let mut p: Vec<_> = storage.chunks().map(|c| c.pos()).collect();
         p.sort_unstable();
         p
+    }
+
+    #[test]
+    fn the_free_camera_renders_a_5x5_window_and_the_fixed_one_a_3x3_window() {
+        let mut world = World::new(IslandGenerator::new(1));
+        let mut storage = RenderStorage::new();
+        storage.update(&mut world, (0, 0));
+        assert_eq!(positions(&storage).len(), 9);
+        storage.set_free_view(true);
+        storage.update(&mut world, (0, 0));
+        assert_eq!(positions(&storage).len(), 25);
+        assert_eq!((positions(&storage)[0], positions(&storage)[24]), ((-2, -2), (2, 2)));
+        storage.set_free_view(false);
+        storage.update(&mut world, (0, 0));
+        assert_eq!(positions(&storage).len(), 9, "back to what the fixed camera sees");
     }
 
     #[test]
@@ -406,6 +451,30 @@ mod tests {
         assert_eq!(flags(&storage, llx, lly, 0), 0);
         assert_eq!(flags(&storage, lrx, lry, 0), 0);
         assert_eq!(flags(&storage, 5, 5, 1), 0);
+    }
+
+    #[test]
+    fn a_block_with_its_front_covered_still_shows_its_back_to_the_free_camera() {
+        use crate::mesh::{FACE_BACK_X, FACE_BACK_Y};
+        let (llx, lly) = lower_left(5, 5);
+        let (lrx, lry) = lower_right(5, 5);
+        let mut world = World::new(Blocks(vec![
+            ((5, 5, 0), id::STONE),
+            ((llx, lly, 0), id::STONE),
+            ((lrx, lry, 0), id::STONE),
+            ((5, 5, 1), id::STONE),
+        ]));
+        let back_faces = |storage: &mut RenderStorage| {
+            storage.vertices().iter().filter(|v| v.shade[0] == FACE_BACK_X || v.shade[0] == FACE_BACK_Y).count()
+        };
+        let mut storage = RenderStorage::new();
+        storage.update(&mut world, (0, 0));
+        assert_eq!(back_faces(&mut storage), 0, "the fixed camera never meshes them");
+        storage.set_free_view(true);
+        // The block at (5, 5, 0) is fully clipped (its front is covered) but its two back sides are open.
+        assert!(back_faces(&mut storage) >= 12, "{} back vertices", back_faces(&mut storage));
+        storage.set_free_view(false);
+        assert_eq!(back_faces(&mut storage), 0, "and switching back removes them");
     }
 
     #[test]

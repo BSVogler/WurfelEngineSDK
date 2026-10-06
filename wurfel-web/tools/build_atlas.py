@@ -11,7 +11,9 @@ The 4096x4096 sheets hold much empty space and the browser's WebGL2 baseline onl
 sprite gets a border of its own edge pixels so linear filtering never reads a neighbour.
 
 Usage: python3 tools/build_atlas.py [path/to/caveland/resources/com/bombinggames/caveland]
-Needs Pillow. Normal maps are not used by the client and are not converted.
+Needs Pillow. The normal sheets (SpritesheetNormal.png, playerSheetNormal.png) have the layout of their
+diffuse sheets; they are cut and placed the same way and written as `normals<N>.png`, so one atlas
+file and one uv serve both, like in the Java engine (fragment_NM.fs).
 """
 import os
 import sys
@@ -31,7 +33,7 @@ PLAYER_ACTIONS = ("w", "h", "l", "i", "o", "s", "t", "j")
 SOURCES = [
     ("Spritesheet", lambda name: name != "error"),
     # Ejira's frames: w walking, h hit, l loaded hit, i power attack, o its overlay, s the charge
-    # overlay, t throw, j jump. Everything of the diffuse sheet; the normal maps are not converted.
+    # overlay, t throw, j jump. Everything of the diffuse sheet; the normal sheet is cut the same way.
     ("playerSheet", lambda name: name.startswith("diff/") and name.split("/")[1] in PLAYER_ACTIONS),
 ]
 
@@ -96,24 +98,33 @@ def extruded(image):
 def main():
     src = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else DEFAULT_SRC)
     sprites = []  # (name, cropped image, meta)
+    normals = []  # the same crops from the normal sheet, in the same order
     for sheet, keep in SOURCES:
         image = Image.open(os.path.join(src, sheet + ".png")).convert("RGBA")
+        normal_image = Image.open(os.path.join(src, sheet + "Normal.png")).convert("RGBA")
+        if normal_image.size != image.size:
+            raise SystemExit(f"{sheet}Normal.png is {normal_image.size}, {sheet}.png is {image.size}")
         for name, r in parse_atlas(os.path.join(src, sheet + ".txt")).items():
             if keep(name):
                 x, y = r["xy"]
                 w, h = r["size"]
                 sprites.append((name, image.crop((x, y, x + w, y + h)), r))
+                normals.append(normal_image.crop((x, y, x + w, y + h)))
     placements, pages = pack(sprites)
 
     os.makedirs(OUT, exist_ok=True)
     images = [Image.new("RGBA", (PAGE, PAGE)) for _ in range(pages)]
-    for (name, crop, meta), (page, x, y) in zip(sprites, placements):
+    normal_images = [Image.new("RGBA", (PAGE, PAGE)) for _ in range(pages)]
+    for (name, crop, meta), normal, (page, x, y) in zip(sprites, normals, placements):
         images[page].paste(extruded(crop), (x - PAD, y - PAD))
+        normal_images[page].paste(extruded(normal), (x - PAD, y - PAD))
     for old in os.listdir(OUT):
-        if old.startswith("sprites") and old.endswith(".png"):
+        if old.startswith(("sprites", "normals")) and old.endswith(".png"):
             os.remove(os.path.join(OUT, old))
     for i, image in enumerate(images):
         image.save(os.path.join(OUT, f"sprites{i}.png"), optimize=True)
+    for i, image in enumerate(normal_images):
+        image.save(os.path.join(OUT, f"normals{i}.png"), optimize=True)
 
     lines = []
     for page in range(pages):

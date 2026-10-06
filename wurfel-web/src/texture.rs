@@ -35,6 +35,18 @@ pub fn decode_png(bytes: &[u8]) -> Result<Image, String> {
     Ok(Image { width: info.width, height: info.height, rgba })
 }
 
+/// The normal map page that belongs to a diffuse atlas page: `sprites3.png` has `normals3.png`
+/// (`tools/build_atlas.py` cuts both with the same placement, so one uv serves both, like the
+/// Java `Spritesheet.png` and `SpritesheetNormal.png`).
+#[cfg_attr(not(any(test, target_arch = "wasm32")), allow(dead_code))]
+pub fn normal_page_file(page: &str) -> Option<String> {
+    page.strip_prefix("sprites").map(|rest| format!("normals{rest}"))
+}
+
+/// The normal that means "facing the viewer, no relief" in the texture encoding (`rgb * 2 - 1`).
+#[cfg_attr(not(any(test, target_arch = "wasm32")), allow(dead_code))]
+pub const FLAT_NORMAL: [u8; 4] = [128, 128, 255, 255];
+
 #[cfg(target_arch = "wasm32")]
 pub use web::*;
 
@@ -71,6 +83,17 @@ mod web {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                // The normal map pages, same shape as the atlas (sampled with its sampler).
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         })
     }
@@ -89,8 +112,12 @@ mod web {
         })
     }
 
-    fn bind_group(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, texture: &wgpu::Texture) -> wgpu::BindGroup {
+    fn bind_group(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, texture: &wgpu::Texture, normals: &wgpu::Texture) -> wgpu::BindGroup {
         let view = texture.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        });
+        let normal_view = normals.create_view(&wgpu::TextureViewDescriptor {
             dimension: Some(wgpu::TextureViewDimension::D2Array),
             ..Default::default()
         });
@@ -107,8 +134,17 @@ mod web {
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&normal_view) },
             ],
         })
+    }
+
+    /// One flat normal, for what has no normal map (the placeholder, models). The shader only reads
+    /// it where `Lighting::misc.w` asks for normal maps, and models are never lit that way.
+    fn flat_normals(device: &wgpu::Device, queue: &wgpu::Queue) -> wgpu::Texture {
+        let texture = array_texture(device, 1, 1, 1);
+        upload(queue, &texture, 0, 1, 1, &super::FLAT_NORMAL);
+        texture
     }
 
     fn upload(queue: &wgpu::Queue, texture: &wgpu::Texture, layer: u32, width: u32, height: u32, rgba: &[u8]) {
@@ -129,7 +165,7 @@ mod web {
     pub fn placeholder(device: &wgpu::Device, queue: &wgpu::Queue, layout: &wgpu::BindGroupLayout) -> wgpu::BindGroup {
         let texture = array_texture(device, 1, 1, 1);
         upload(queue, &texture, 0, 1, 1, &[255, 0, 255, 255]);
-        bind_group(device, layout, &texture)
+        bind_group(device, layout, &texture, &flat_normals(device, queue))
     }
 
     /// The atlas keeps its file names when its content changes, so the browser must ask the server
@@ -185,6 +221,7 @@ mod web {
             level = Some(image::imageops::resize(image, (width / 2).max(1), (height / 2).max(1), image::imageops::FilterType::Triangle));
         }
         let view = gpu.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
+        let normal_view = flat_normals(device, queue).create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("model sampler"),
             address_mode_u: wgpu::AddressMode::Repeat,
@@ -200,12 +237,28 @@ mod web {
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&normal_view) },
             ],
         })
     }
 
-    /// Fetch the atlas and its pages, upload them, and return the sprites with the bind group.
-    pub async fn load(device: &wgpu::Device, queue: &wgpu::Queue, layout: &wgpu::BindGroupLayout) -> Result<(Sprites, wgpu::BindGroup), String> {
+    /// The normal map pages of the atlas as a texture array of the same shape.
+    async fn load_normals(device: &wgpu::Device, queue: &wgpu::Queue, atlas: &Atlas, base: &str, width: u32, height: u32) -> Result<wgpu::Texture, String> {
+        let texture = array_texture(device, width, height, atlas.pages.len() as u32);
+        for (layer, page) in atlas.pages.iter().enumerate() {
+            let file = super::normal_page_file(&page.file).ok_or_else(|| format!("{} has no normal page name", page.file))?;
+            let image = decode_png(&fetch_bytes(&format!("{base}/{file}")).await?).map_err(|e| format!("{file}: {e}"))?;
+            if (image.width, image.height) != (width, height) {
+                return Err(format!("{file} is {}x{}, the atlas pages are {width}x{height}", image.width, image.height));
+            }
+            upload(queue, &texture, layer as u32, width, height, &image.rgba);
+        }
+        Ok(texture)
+    }
+
+    /// Fetch the atlas, upload them, and return the sprites with the bind group and
+    /// whether the normal map pages came with them (without them the sprites are lit per vertex).
+    pub async fn load(device: &wgpu::Device, queue: &wgpu::Queue, layout: &wgpu::BindGroupLayout) -> Result<(Sprites, wgpu::BindGroup, bool), String> {
         let text = fetch_bytes(ATLAS_URL).await?;
         let atlas = Atlas::parse(&String::from_utf8(text).map_err(|_| "the atlas is not text")?)?;
         let first = atlas.pages.first().ok_or("the atlas has no pages")?;
@@ -226,8 +279,16 @@ mod web {
             }
             upload(queue, &texture, layer as u32, width, height, &image.rgba);
         }
-        let group = bind_group(device, layout, &texture);
-        Ok((Sprites::new(atlas), group))
+        // The normal pages are optional: an atlas built before they existed still works.
+        let (normals, has_normals) = match load_normals(device, queue, &atlas, base, width, height).await {
+            Ok(texture) => (texture, true),
+            Err(message) => {
+                web_sys::console::warn_1(&format!("sprites: no normal maps ({message}); lighting the sprites per vertex").into());
+                (flat_normals(device, queue), false)
+            }
+        };
+        let group = bind_group(device, layout, &texture, &normals);
+        Ok((Sprites::new(atlas), group, has_normals))
     }
 }
 
@@ -297,6 +358,43 @@ mod tests {
                 assert!(opaque > 0 || ["i10-0", "diff/s/49"].contains(&region.name.as_str()), "{} is empty on its page", region.name);
             }
         }
+    }
+
+    #[test]
+    fn every_atlas_page_has_a_normal_page_of_the_same_size_with_usable_normals() {
+        let text = String::from_utf8(shipped("sprites.atlas")).unwrap();
+        let atlas = Atlas::parse(&text).unwrap();
+        for page in &atlas.pages {
+            let file = normal_page_file(&page.file).unwrap();
+            let diffuse = decode_png(&shipped(&page.file)).unwrap();
+            let normal = decode_png(&shipped(&file)).unwrap();
+            assert_eq!((normal.width, normal.height), (diffuse.width, diffuse.height), "{file}");
+            // Where the sprite is opaque the normal map holds a usable direction (`rgb * 2 - 1`): the
+            // shader normalizes it, so the authored length (often 0.75..1) does not matter, but a
+            // zero vector (a hole in the sheet) would.
+            let (mut checked, mut bad) = (0u32, 0u32);
+            for (d, n) in diffuse.rgba.chunks_exact(4).zip(normal.rgba.chunks_exact(4)).step_by(7) {
+                if d[3] == 255 {
+                    checked += 1;
+                    let v = [0, 1, 2].map(|c| n[c] as f32 / 255.0 * 2.0 - 1.0);
+                    let length = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+                    if !(0.5..=1.5).contains(&length) {
+                        bad += 1;
+                    }
+                }
+            }
+            assert!(checked > 1000, "{file}: only {checked} opaque pixels sampled");
+            assert!(bad * 50 < checked, "{file}: {bad} of {checked} pixels are not usable normals");
+        }
+    }
+
+    #[test]
+    fn normal_pages_are_named_after_the_sprite_pages() {
+        assert_eq!(normal_page_file("sprites0.png").as_deref(), Some("normals0.png"));
+        assert_eq!(normal_page_file("sprites12.png").as_deref(), Some("normals12.png"));
+        assert_eq!(normal_page_file("other.png"), None);
+        let flat = FLAT_NORMAL.map(|c| c as f32 / 255.0 * 2.0 - 1.0);
+        assert!(flat[0].abs() < 0.01 && flat[1].abs() < 0.01 && flat[2] > 0.99, "{flat:?}");
     }
 
     #[test]

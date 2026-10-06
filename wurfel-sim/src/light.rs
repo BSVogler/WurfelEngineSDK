@@ -52,11 +52,29 @@ pub const K_SPEC: f32 = 1.0 - K_DIFF;
 /// Specular exponent (`n_spec`).
 pub const N_SPEC: i32 = 12;
 /// CVar `worldSpinAngle` default.
-pub const DEFAULT_WORLD_SPIN_ANGLE: i32 = -40;
+pub const DEFAULT_WORLD_SPIN_ANGLE: i32 = 50;
 /// CVar `LEazimutSpeed` default, in degrees per millisecond.
 pub const DEFAULT_AZIMUTH_SPEED: f32 = 0.000_781_25;
 /// Java `Moon.getAzimuthSpeed`: the moon moves at 85 % of the sun's speed.
 const MOON_SPEED_FACTOR: f32 = 0.85;
+/// Golden hour: below this sun height (degrees) the sun's light starts turning gold, ...
+const GOLDEN_START: f32 = 40.0;
+/// ... is at its strongest from this height down to the horizon, ...
+const GOLDEN_FULL: f32 = 10.0;
+/// ... and fades out again this far below the horizon, as the sky goes dark.
+const GOLDEN_END: f32 = -12.0;
+/// The colour the low sun's light turns to, and how much brighter than the plain tone it is, so
+/// that the sides facing the sun glow instead of just getting dimmer.
+const GOLDEN_COLOR: Vec3 = Vec3::new(1.0, 0.42, 0.08);
+const GOLDEN_GAIN: f32 = 1.6;
+/// The moon rises as the sun sets: once the sun's phase (azimuth plus world spin, which makes its
+/// height `amplitude * sin(phase)`) has passed this many degrees, i.e. it is at half its height and
+/// going down, a moon that is below the horizon jumps ...
+const SUN_SETTING_PHASE: f32 = 150.0;
+/// ... to this phase, where it is just about to rise: its power is still 0 there (below -7.5
+/// degrees), so the jump is not seen in the lighting. It is far enough on that the moon has cleared
+/// the horizon when the sun reaches it (30 degrees of sun phase, 25.5 of the moon's, are left).
+const MOON_RISING_PHASE: f32 = 342.0;
 
 /// The three sides of a block the camera sees.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -104,6 +122,16 @@ fn finite_or_zero(v: Vec3) -> Vec3 {
 }
 
 // ------------------------------------------------------------------------------------- sun and moon
+
+fn smoothstep(from: f32, to: f32, x: f32) -> f32 {
+    let t = ((x - from) / (to - from)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// How golden the sun's light is at this height: 0 high up and in the night, 1 around the horizon.
+pub fn golden_hour(sun_height: f32) -> f32 {
+    smoothstep(GOLDEN_START, GOLDEN_FULL, sun_height) * smoothstep(GOLDEN_END, 0.0, sun_height)
+}
 
 /// A light that is infinitely far away: the sun or the moon (Java `GlobalLightSource`).
 #[derive(Debug, Clone)]
@@ -258,6 +286,13 @@ impl GlobalLightSource {
         value.max(0.0)
     }
 
+    /// Lambert term for a face with any horizontal or vertical `normal` (isometric ground frame),
+    /// for the faces the fixed camera never saw (`-x`, `-y`). Agrees with [`lambert`](Self::lambert)
+    /// on the three faces it knows.
+    pub fn lambert_toward(&self, normal: Vec3) -> f32 {
+        self.direction().dot(normal).max(0.0)
+    }
+
     /// The Java `I_spec1`: the specular highlight, which only the top face can show.
     pub fn specular_top(&self) -> f32 {
         let (az, h) = (self.azimuth.to_radians(), self.height.to_radians());
@@ -284,12 +319,20 @@ pub struct LightState {
     /// Diffuse intensity per face (left, top, right), `power * k_diff * lambert`.
     pub sun_faces: [f32; 3],
     pub moon_faces: [f32; 3],
+    /// Diffuse intensity of the faces that look away from the fixed camera, for the free camera:
+    /// `[-y, -x]` (the opposites of left and right).
+    pub sun_back: [f32; 2],
+    pub moon_back: [f32; 2],
     /// Specular intensity of the top face.
     pub sun_spec: f32,
     pub moon_spec: f32,
     /// Unit directions towards the light, isometric frame.
     pub sun_direction: Vec3,
     pub moon_direction: Vec3,
+    /// The Java `getNormal()` of the sun and the moon (`u_sunNormal`, `u_moonNormal`), in the Java
+    /// screen-aligned frame: what the normal map shader dots the sampled normal with. Zero without a moon.
+    pub sun_normal_game: Vec3,
+    pub moon_normal_game: Vec3,
     /// 0 by day, 1 at night: how far the night colour grading is applied.
     pub night_mix: f32,
     /// `[0, 1)`: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight (with the default spin angle).
@@ -311,7 +354,7 @@ impl LightEngine {
     /// CVars of the same name.
     pub fn new(world_spin_angle: i32, azimuth_speed: f32) -> Self {
         let spin = world_spin_angle as f32;
-        LightEngine {
+        let mut engine = LightEngine {
             sun: GlobalLightSource::new(-spin, 0.0, Vec3::new(1.0, 0.8, 0.3), Vec3::new(0.5, 0.5, 0.4), 1.0, 60.0),
             moon: Some(GlobalLightSource::moon(
                 180.0 - spin,
@@ -323,7 +366,10 @@ impl LightEngine {
             )),
             world_spin_angle,
             azimuth_speed,
-        }
+        };
+        engine.place_moon();
+        engine.refresh();
+        engine
     }
 
     /// Read the engine CVars (`worldSpinAngle`, `LEazimutSpeed`) from the root system and restore the
@@ -362,17 +408,31 @@ impl LightEngine {
     /// Advance the day by `dt_ms` milliseconds (`LightEngine.update`).
     pub fn update(&mut self, dt_ms: f32) {
         self.sun.update(dt_ms, self.azimuth_speed, self.world_spin_angle);
-        let time_of_day = self.time_of_day();
         if let Some(moon) = self.moon.as_mut() {
-            // The moon rises as the sun sets, and is pulled back to its rising point if it drifted.
-            if time_of_day > 0.25
-                && time_of_day < 0.3
-                && ((moon.azimuth() - 210.0 - self.world_spin_angle as f32) % 360.0).abs() > 10.0
-            {
-                moon.set_azimuth(210.0 + self.world_spin_angle as f32);
+            // The sun and the moon move at different speeds (the moon at 85 %), so they drift apart
+            // and the moon would sometimes be down while the sun is down too. A body must always be
+            // in the sky: when the sun is setting or gone and the moon is below the horizon (power
+            // 0), the moon jumps to just before its rising point.
+            let sun_phase = (self.sun.azimuth() + self.world_spin_angle as f32).rem_euclid(360.0);
+            if sun_phase >= SUN_SETTING_PHASE && moon.height() < -moon.amplitude() / 2.0 - 0.01 {
+                moon.set_azimuth(MOON_RISING_PHASE - self.world_spin_angle as f32);
+                moon.set_height(moon.amplitude() * MOON_RISING_PHASE.to_radians().sin());
             }
             moon.update(dt_ms, self.azimuth_speed, self.world_spin_angle);
         }
+    }
+
+    /// Put the sun at `azimuth` degrees, like dragging the sun in the Java debug view. The moon is
+    /// turned by the same amount, so the offset between them (which drifts during a day because the
+    /// moon is slower) stays as it is. Java put the moon exactly opposite the sun, which made the
+    /// moon rise just as the sun set. Height and power follow from the azimuths.
+    pub fn set_azimuth(&mut self, azimuth: f32) {
+        let turn = azimuth - self.sun.azimuth();
+        self.sun.set_azimuth(azimuth);
+        if let Some(moon) = self.moon.as_mut() {
+            moon.set_azimuth(moon.azimuth() + turn);
+        }
+        self.refresh();
     }
 
     /// 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight (for the default spin angle).
@@ -380,20 +440,45 @@ impl LightEngine {
         (self.sun.azimuth() + self.world_spin_angle as f32).rem_euclid(360.0) / 360.0
     }
 
+    /// Azimuth 90, where the left and right faces are lit equally (as in Java; with the default
+    /// spin the sun is then at 38 degrees, not at its highest).
     pub fn set_to_noon(&mut self) {
         self.sun.set_azimuth(90.0);
-        if let Some(moon) = self.moon.as_mut() {
-            moon.set_azimuth(270.0);
-        }
+        self.place_moon();
         self.refresh();
     }
 
     pub fn set_to_night(&mut self) {
         self.sun.set_azimuth(270.0);
-        if let Some(moon) = self.moon.as_mut() {
-            moon.set_azimuth(90.0);
-        }
+        self.place_moon();
         self.refresh();
+    }
+
+    /// Put the moon where it is in the running day cycle for the sun's current position. The moon
+    /// is slower than the sun and jumps once a day (see [`LightEngine::update`]), so it is only
+    /// opposite the sun at one moment of the day; Java started it exactly opposite, which looked
+    /// like the moon always rising as the sun sets.
+    fn place_moon(&mut self) {
+        let spin = self.world_spin_angle as f32;
+        let sun_phase = (self.sun.azimuth() + spin).rem_euclid(360.0);
+        // Since its jump at the sun's phase SUN_SETTING_PHASE the moon has turned 85 % of what the
+        // sun has turned since then.
+        let since_jump = (sun_phase - SUN_SETTING_PHASE).rem_euclid(360.0);
+        let phase = MOON_RISING_PHASE + MOON_SPEED_FACTOR * since_jump;
+        if let Some(moon) = self.moon.as_mut() {
+            moon.set_azimuth(phase - spin);
+        }
+    }
+
+    /// The sun's light with the golden hour applied. It is only the sun's colour, so only the faces
+    /// that look at the sun turn gold; the ambient light stays as it is.
+    fn sun_light(&self) -> Vec3 {
+        let plain = self.sun.light();
+        let gold = golden_hour(self.sun.height());
+        if gold <= 0.0 {
+            return plain;
+        }
+        plain.lerp(GOLDEN_COLOR * (self.sun.power() * GOLDEN_GAIN), gold)
     }
 
     /// Recompute heights and powers for the current azimuths without moving time.
@@ -429,9 +514,14 @@ impl LightEngine {
         let faces = |source: Option<&GlobalLightSource>| {
             source.map_or([0.0; 3], |s| [Face::Left, Face::Top, Face::Right].map(|f| Self::diffuse(s, f)))
         };
+        let back = |source: Option<&GlobalLightSource>| {
+            source.map_or([0.0; 2], |s| [Vec3::NEG_Y, Vec3::NEG_X].map(|n| s.power() * K_DIFF * s.lambert_toward(n)))
+        };
         LightState {
+            sun_back: back(Some(&self.sun)),
+            moon_back: back(moon),
             ambient: self.ambient(),
-            sun_color: self.sun.light(),
+            sun_color: self.sun_light(),
             moon_color: moon.map_or(Vec3::ZERO, |m| m.light()),
             sun_faces: faces(Some(&self.sun)),
             moon_faces: faces(moon),
@@ -439,6 +529,8 @@ impl LightEngine {
             moon_spec: moon.map_or(0.0, |m| m.specular_top()),
             sun_direction: self.sun.direction(),
             moon_direction: moon.map_or(Vec3::ZERO, |m| m.direction()),
+            sun_normal_game: self.sun.normal_game(),
+            moon_normal_game: moon.map_or(Vec3::ZERO, |m| m.normal_game()),
             // The Java shader: clamp(u_sunNormal.z / -0.2, 0, 1).
             night_mix: (self.sun.normal_game().z / -0.2).clamp(0.0, 1.0),
             time_of_day: self.time_of_day(),
@@ -619,13 +711,40 @@ pub struct Shading {
     pub min_light: f32,
     /// Night colour grading (desaturation and contrast) like the Java shader.
     pub night_grading: bool,
+    /// Fog of the Java shader: what is far behind the camera's centre gets [`Shading::fog_color`] added.
+    pub fog: bool,
+    /// CVars `fogR`, `fogG`, `fogB`.
+    pub fog_color: Vec3,
 }
 
 impl Default for Shading {
     fn default() -> Self {
-        Shading { exposure: 1.45, ambient_weight: 0.35, ao_strength: 0.5, point_gain: 25.0, min_light: 0.15, night_grading: true }
+        Shading { exposure: 1.45, ambient_weight: 0.35, ao_strength: 0.5, point_gain: 25.0, min_light: 0.15, night_grading: true, fog: true, fog_color: Vec3::new(0.3, 0.4, 1.0) }
     }
 }
+
+/// How far a colour is blended towards the fog colour at a point `behind` the camera's centre, in
+/// Java game units (one block row is 100, so `(centre - (x + y)) * 100` in the ground frame;
+/// negative is nearer), 0 to [`FOG_MAX`].
+///
+/// The distance curve is the Java shader's `min(exp(max(behind - 40.8, 0) * 0.001), 2.5) - 1`:
+/// nothing up to 40.8, then growing to at most 1.5. The Java shader *added* that much of the colour,
+/// which brightens the distance; here it is a blend (`mix(colour, fog, t)`), so far things lose their
+/// saturation and contrast like in real fog. `fog_mix` in `shader.wgsl` is the same formula.
+pub fn fog_mix(behind: f32) -> f32 {
+    let java = ((behind - 40.8).max(0.0) * 0.001).exp().min(2.5) - 1.0;
+    java / 1.5 * FOG_MAX
+}
+
+/// The colour that distant things fade to: the fog colour lightened towards white (haze is a light
+/// veil; the saturated CVar colour itself is darker than most lit surfaces and would only darken the
+/// distance), and dimmed at night (`night_mix` 1). `haze` in `shader.wgsl` is the same formula.
+pub fn fog_haze(fog_color: Vec3, night_mix: f32) -> Vec3 {
+    fog_color.lerp(Vec3::ONE, 0.6) * (1.0 - 0.75 * night_mix.clamp(0.0, 1.0))
+}
+
+/// The most a colour is blended towards the fog colour (what is very far away still shows through).
+pub const FOG_MAX: f32 = 0.6;
 
 const LUMA: Vec3 = Vec3::new(0.222, 0.707, 0.071);
 

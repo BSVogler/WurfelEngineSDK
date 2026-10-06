@@ -41,8 +41,21 @@ pub struct Lighting {
     pub grading: [f32; 4],
     /// x left, y top, z right: brightness of the flat look.
     pub flat_shades: [f32; 4],
-    /// x: number of dynamic point lights. y: time of day. z: minimum light. w: unused.
+    /// x: number of dynamic point lights. y: time of day. z: minimum light. w: 1 when the sprites are
+    /// lit per pixel with their normal map (`fragment_NM.fs`), 0 for the vertex lighting alone.
     pub misc: [f32; 4],
+    /// rgb: fog colour. w: 1 when fog is on.
+    pub fog: [f32; 4],
+    /// x: sun diffuse intensity on the -y face, y: on the -x face (the free camera's sides).
+    pub sun_back: [f32; 4],
+    pub moon_back: [f32; 4],
+    /// xyz: the Java `u_sunNormal` / `u_moonNormal` (the Java screen-aligned frame), for the normal maps.
+    pub sun_normal: [f32; 4],
+    pub moon_normal: [f32; 4],
+    /// xyz: the Java `u_ambientColor`, unweighted (`ambient` above is scaled for the vertex path).
+    pub pixel_ambient: [f32; 4],
+    /// xyz: the Java `u_localLightPos` and `u_playerpos` (the focus entity, in blocks), w: 1 when there is one.
+    pub local_light: [f32; 4],
     /// xyz: position in blocks, w: radius.
     pub lights: [[f32; 4]; MAX_POINT_LIGHTS],
     /// rgb: colour, w: brightness.
@@ -72,6 +85,13 @@ impl Lighting {
             ],
             flat_shades: [FLAT_SHADES[0], FLAT_SHADES[1], FLAT_SHADES[2], 0.0],
             misc: [0.0, state.time_of_day, shading.min_light, 0.0],
+            fog: rgb(shading.fog_color, if shading.fog && lit { 1.0 } else { 0.0 }),
+            sun_back: [state.sun_back[0], state.sun_back[1], 0.0, 0.0],
+            moon_back: [state.moon_back[0], state.moon_back[1], 0.0, 0.0],
+            sun_normal: rgb(state.sun_normal_game, 0.0),
+            moon_normal: rgb(state.moon_normal_game, 0.0),
+            pixel_ambient: rgb(state.ambient, 0.0),
+            local_light: [0.0; 4],
             lights: [[0.0; 4]; MAX_POINT_LIGHTS],
             light_colors: [[0.0; 4]; MAX_POINT_LIGHTS],
         };
@@ -95,6 +115,11 @@ pub struct LightingController {
     pub ambient_occlusion: bool,
     /// The strength used while ambient occlusion is on (the CVar `ambientOcclusion`).
     pub ao_strength: f32,
+    /// Light the sprites per pixel with their normal maps. Only has an effect while the normal pages
+    /// are loaded (`texture::load`), which `web.rs` records here.
+    pub normal_maps: bool,
+    /// The focus entity (the local player): the one light the normal map shader lights per pixel.
+    pub local_light: Option<Vec3>,
     /// Time passes this many times faster than the Java day length (7.7 minutes). 0 stops the clock.
     pub time_scale: f32,
     dynamic: Vec<PointLight>,
@@ -117,6 +142,8 @@ impl LightingController {
             enabled: true,
             ambient_occlusion: true,
             ao_strength: DEFAULT_AO_STRENGTH,
+            normal_maps: false,
+            local_light: None,
             time_scale: 1.0,
             dynamic: Vec::new(),
         };
@@ -154,7 +181,13 @@ impl LightingController {
 
     /// The uniform for this frame.
     pub fn uniform(&self) -> Lighting {
-        Lighting::new(&self.engine.state(), &self.shading, self.enabled, &self.dynamic)
+        let mut uniform = Lighting::new(&self.engine.state(), &self.shading, self.enabled, &self.dynamic);
+        // Without the light engine there is nothing to light the pixels with.
+        uniform.misc[3] = if self.normal_maps && self.enabled { 1.0 } else { 0.0 };
+        if let Some(p) = self.local_light.filter(|p| p.is_finite()) {
+            uniform.local_light = [p.x, p.y, p.z, 1.0];
+        }
+        uniform
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
@@ -197,7 +230,7 @@ mod tests {
 
     #[test]
     fn the_uniform_is_all_vec4_so_it_has_no_padding() {
-        assert_eq!(size_of::<Lighting>(), 8 * 16 + 2 * MAX_POINT_LIGHTS * 16);
+        assert_eq!(size_of::<Lighting>(), 15 * 16 + 2 * MAX_POINT_LIGHTS * 16);
         assert_eq!(size_of::<Lighting>() % 16, 0, "uniform buffers want 16-byte multiples");
         for offset in [
             offset_of!(Lighting, ambient),
@@ -208,6 +241,13 @@ mod tests {
             offset_of!(Lighting, grading),
             offset_of!(Lighting, flat_shades),
             offset_of!(Lighting, misc),
+            offset_of!(Lighting, fog),
+            offset_of!(Lighting, sun_back),
+            offset_of!(Lighting, moon_back),
+            offset_of!(Lighting, sun_normal),
+            offset_of!(Lighting, moon_normal),
+            offset_of!(Lighting, pixel_ambient),
+            offset_of!(Lighting, local_light),
             offset_of!(Lighting, lights),
             offset_of!(Lighting, light_colors),
         ] {
@@ -252,6 +292,7 @@ mod tests {
                 (0, 1, "lighting".to_string()),
                 (1, 0, "atlas".to_string()),
                 (1, 1, "atlas_sampler".to_string()),
+                (1, 2, "normals".to_string()),
                 (2, 0, "peel".to_string()),
                 (2, 1, "previous_depth".to_string()),
             ]
@@ -282,6 +323,13 @@ mod tests {
             ("grading", offset_of!(Lighting, grading)),
             ("flat_shades", offset_of!(Lighting, flat_shades)),
             ("misc", offset_of!(Lighting, misc)),
+            ("fog", offset_of!(Lighting, fog)),
+            ("sun_back", offset_of!(Lighting, sun_back)),
+            ("moon_back", offset_of!(Lighting, moon_back)),
+            ("sun_normal", offset_of!(Lighting, sun_normal)),
+            ("moon_normal", offset_of!(Lighting, moon_normal)),
+            ("pixel_ambient", offset_of!(Lighting, pixel_ambient)),
+            ("local_light", offset_of!(Lighting, local_light)),
             ("lights", offset_of!(Lighting, lights)),
             ("light_colors", offset_of!(Lighting, light_colors)),
         ];
@@ -291,9 +339,9 @@ mod tests {
     }
 
     #[test]
-    fn the_camera_struct_is_still_32_bytes_like_camera_uniform_in_web_rs() {
+    fn the_camera_struct_is_48_bytes_like_camera_uniform_in_web_rs() {
         let (members, size) = wgsl_struct(&parse_shader(), "Camera");
-        assert_eq!(size, 32);
+        assert_eq!(size, 48);
         assert_eq!(members.iter().map(|(n, o)| (n.as_str(), *o)).take(3).collect::<Vec<_>>(), [("center", 0), ("scale", 8), ("center_depth", 16)]);
     }
 
@@ -350,6 +398,29 @@ mod tests {
         let weight = Shading::default().ambient_weight;
         assert!((u.ambient[0] - state.ambient.x * weight).abs() < 1e-6, "the ambient colour is pre-weighted");
         assert!(u.sun_faces[1] > u.sun_faces[0], "the top is lit most at noon");
+    }
+
+    #[test]
+    fn the_normal_map_inputs_are_the_java_uniforms() {
+        let mut controller = LightingController::new();
+        let state = controller.engine.state();
+        let off = controller.uniform();
+        assert_eq!(off.misc[3], 0.0, "off until the normal pages have loaded");
+        assert_eq!(off.local_light, [0.0; 4]);
+        assert_eq!(&off.pixel_ambient[..3], &state.ambient.to_array(), "unweighted, like u_ambientColor");
+        assert_eq!(&off.sun_normal[..3], &state.sun_normal_game.to_array());
+        assert!((Vec3::from_slice(&off.sun_normal[..3]).length() - 1.0).abs() < 1e-5, "u_sunNormal is a unit vector");
+
+        controller.normal_maps = true;
+        controller.local_light = Some(Vec3::new(3.0, 4.0, 5.0));
+        let on = controller.uniform();
+        assert_eq!(on.misc[3], 1.0);
+        assert_eq!(on.local_light, [3.0, 4.0, 5.0, 1.0]);
+
+        controller.local_light = Some(Vec3::splat(f32::NAN));
+        assert_eq!(controller.uniform().local_light, [0.0; 4], "a bad position is no light");
+        controller.enabled = false;
+        assert_eq!(controller.uniform().misc[3], 0.0, "lighting off means the flat look, not normal maps");
     }
 
     #[test]

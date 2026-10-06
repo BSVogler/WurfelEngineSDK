@@ -65,6 +65,13 @@ html.menu-open #info { display: none; }
   right: 10px; top: 28px; width: 40px; height: 40px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(10, 14, 22, 0.55); color: #e8edf6; display: grid; place-items: center; cursor: pointer; padding: 0;
 }
+.hud-debugbtn {
+  right: 10px; top: 76px; width: 40px; height: 40px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(10, 14, 22, 0.55); color: #e8edf6; display: grid; place-items: center; cursor: pointer; padding: 0;
+}
+.hud-debugbtn:hover { background: rgba(10, 14, 22, 0.8); }
+.hud-debugbtn[aria-pressed="true"] { background: rgba(60, 110, 200, 0.75); border-color: rgba(160, 200, 255, 0.7); }
+.hud-debugbtn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .hud-menubtn:hover { background: rgba(10, 14, 22, 0.8); }
 .hud-menubtn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .hud[hidden] { display: none; }

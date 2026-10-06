@@ -150,7 +150,8 @@ fn a_new_engine_starts_at_sunrise_with_the_java_values() {
     let e = LightEngine::new(-40, DEFAULT_AZIMUTH_SPEED);
     assert!(approx(e.time_of_day(), 0.0));
     assert_eq!(e.sun().azimuth(), 40.0);
-    assert!(approx(e.moon().unwrap().azimuth(), 220.0));
+    // Not opposite the sun (that would be 220): where the moon is in the running day cycle.
+    assert!(approx(e.moon().unwrap().azimuth(), 200.5), "{}", e.moon().unwrap().azimuth());
     assert!(approx(e.sun().amplitude(), 60.0) && approx(e.moon().unwrap().amplitude(), 45.0));
 }
 
@@ -219,24 +220,80 @@ fn ambient_follows_the_power_and_stays_in_range() {
     assert!(both.ambient().max_element() <= 1.0);
 }
 
+/// Run the engine for `days` days in 16 ms steps, calling `check` after every step.
+fn run_days(e: &mut LightEngine, days: f32, mut check: impl FnMut(&LightEngine)) {
+    let day_ms = 360.0 / DEFAULT_AZIMUTH_SPEED;
+    for _ in 0..(days * day_ms / 16.0) as u32 {
+        e.update(16.0);
+        check(e);
+    }
+}
+
 #[test]
-fn the_moon_rise_rule_moves_the_moon_back_to_its_rising_point() {
+fn a_body_is_always_in_the_sky() {
+    let mut e = LightEngine::new(DEFAULT_WORLD_SPIN_ANGLE, DEFAULT_AZIMUTH_SPEED);
+    let mut dark = 0;
+    run_days(&mut e, 12.0, |e| {
+        // Up means above the horizon: the sun at night is down and the moon is not yet risen.
+        if e.sun().height() < 0.0 && e.moon().unwrap().height() < 0.0 {
+            dark += 1;
+        }
+    });
+    assert_eq!(dark, 0, "frames without sun and moon in the sky");
+}
+
+#[test]
+fn the_moon_jumps_unseen_and_slower_than_the_sun() {
+    let mut e = LightEngine::new(DEFAULT_WORLD_SPIN_ANGLE, DEFAULT_AZIMUTH_SPEED);
+    let mut jumps = 0;
+    let mut last = e.moon().unwrap().azimuth();
+    run_days(&mut e, 6.0, |e| {
+        let moon = e.moon().unwrap();
+        let step = (moon.azimuth() - last + 540.0).rem_euclid(360.0) - 180.0;
+        if step.abs() > 1.0 {
+            jumps += 1;
+            assert_eq!(moon.power(), 0.0, "the jump must not change the light");
+        }
+        last = moon.azimuth();
+    });
+    // About once a day, never more.
+    assert!((4..=7).contains(&jumps), "{jumps} jumps in 6 days");
+    // The moon is slower: after a day it has turned less than the sun.
+    // From sunrise, before the sun reaches its setting phase (where the moon jumps).
+    let mut e = LightEngine::new(DEFAULT_WORLD_SPIN_ANGLE, DEFAULT_AZIMUTH_SPEED);
+    let (sun0, moon0) = (e.sun().azimuth(), e.moon().unwrap().azimuth());
+    e.update(100_000.0);
+    let turned = |from: f32, to: f32| (to - from).rem_euclid(360.0);
+    assert!(turned(moon0, e.moon().unwrap().azimuth()) < turned(sun0, e.sun().azimuth()));
+}
+
+#[test]
+fn the_moon_rises_as_the_sun_goes_down() {
     let mut e = LightEngine::new(-40, DEFAULT_AZIMUTH_SPEED);
-    // Quarter past noon: time of day 0.27, moon far from 210 + spin.
-    e.sun_mut().set_azimuth(0.27 * 360.0 + 40.0);
-    e.moon.as_mut().unwrap().set_azimuth(300.0);
-    e.update(0.0);
-    assert!(approx(e.moon().unwrap().azimuth(), 170.0), "{}", e.moon().unwrap().azimuth());
+    // Phase = azimuth + spin. Sun at phase 130 (still high), moon at phase 260 (well below).
+    e.sun_mut().set_azimuth(130.0 + 40.0);
+    e.moon.as_mut().unwrap().set_azimuth(260.0 + 40.0);
+    e.update(16.0);
+    assert!(approx(e.moon().unwrap().azimuth(), 300.0 + 0.85 * DEFAULT_AZIMUTH_SPEED * 16.0), "not before the sun sets");
+    // Sun at phase 160: setting. The moon jumps to phase 342 = azimuth 382 = 22.
+    e.sun_mut().set_azimuth(160.0 + 40.0);
+    e.update(16.0);
+    let moon = e.moon().unwrap();
+    assert!(approx(moon.azimuth(), 22.0 + 0.85 * DEFAULT_AZIMUTH_SPEED * 16.0), "{}", moon.azimuth());
+    assert!(moon.height() < 0.0 && moon.power() == 0.0, "{} {}", moon.height(), moon.power());
 }
 
 #[test]
 fn set_to_noon_and_night_use_the_java_azimuths() {
     let mut e = LightEngine::new(-40, DEFAULT_AZIMUTH_SPEED);
     e.set_to_night();
-    assert_eq!((e.sun().azimuth(), e.moon().unwrap().azimuth()), (270.0, 90.0));
+    assert_eq!(e.sun().azimuth(), 270.0);
+    assert!(approx(e.moon().unwrap().azimuth(), 90.0), "{}", e.moon().unwrap().azimuth());
+    assert!(e.moon().unwrap().height() > 0.0, "the moon is up at night");
     assert_eq!(e.sun().power(), 0.0, "the sun is below the horizon at night");
     e.set_to_noon();
-    assert_eq!((e.sun().azimuth(), e.moon().unwrap().azimuth()), (90.0, 270.0));
+    assert_eq!(e.sun().azimuth(), 90.0);
+    assert!(approx(e.moon().unwrap().azimuth(), 243.0), "not opposite (270): {}", e.moon().unwrap().azimuth());
     assert!(e.sun().power() > 1.4);
 }
 
@@ -628,4 +685,85 @@ fn the_night_is_bluish_not_black() {
     let c = shade_vertex(&e.state(), &Shading::default(), Vec3::splat(0.5), Face::Top, 0.0, Vec3::ZERO);
     assert!(c.z > c.x * 1.1, "blue dominates, {c:?}");
     assert!(c.min_element() > 0.2, "the base colour stays visible, {c:?}");
+}
+
+#[test]
+fn fog_only_starts_behind_the_centre_and_is_capped() {
+    assert_eq!(fog_mix(-500.0), 0.0, "nearer than the centre: no fog");
+    assert_eq!(fog_mix(40.8), 0.0);
+    assert!(fog_mix(300.0) > 0.0 && fog_mix(300.0) < fog_mix(600.0));
+    assert!((fog_mix(1e6) - FOG_MAX).abs() < 1e-6, "capped");
+}
+
+#[test]
+fn fog_pulls_a_colour_towards_a_light_haze_instead_of_darkening_or_brightening_it_blindly() {
+    let fog = Vec3::new(0.3, 0.4, 1.0);
+    let haze = fog_haze(fog, 0.0);
+    let saturation = |c: Vec3| c.max_element() - c.min_element();
+    assert!(haze.dot(LUMA) > fog.dot(LUMA), "haze is lighter than the raw fog colour: {haze:?}");
+    assert!(haze.z > haze.x, "still bluish: {haze:?}");
+    for grass in [Vec3::new(0.36, 0.64, 0.25), Vec3::new(0.2, 0.35, 0.15)] {
+        let far = grass.lerp(haze, fog_mix(600.0));
+        assert!(saturation(far) < saturation(grass), "less saturated: {far:?}");
+        assert!(far.dot(LUMA) >= grass.dot(LUMA) - 0.02, "not darker: {far:?} from {grass:?}");
+    }
+    assert!(fog_haze(fog, 1.0).dot(LUMA) < 0.4 * haze.dot(LUMA), "dim at night");
+}
+
+#[test]
+fn lambert_toward_agrees_with_the_three_known_faces_and_lights_the_opposite_ones() {
+    for (azimuth, height) in [(90.0, 50.0), (30.0, 20.0), (200.0, 60.0), (300.0, 10.0)] {
+        let sun = source(azimuth, height);
+        for (face, normal) in [(Face::Left, Vec3::Y), (Face::Right, Vec3::X), (Face::Top, Vec3::Z)] {
+            assert!((sun.lambert(face) - sun.lambert_toward(normal)).abs() < 1e-4, "{face:?} at {azimuth}/{height}");
+        }
+        // A face and its opposite are never both lit.
+        assert!(sun.lambert_toward(Vec3::Y) * sun.lambert_toward(Vec3::NEG_Y) == 0.0);
+        assert!(sun.lambert_toward(Vec3::X) * sun.lambert_toward(Vec3::NEG_X) == 0.0);
+    }
+}
+
+#[test]
+fn set_azimuth_keeps_the_offset_between_sun_and_moon() {
+    let mut e = LightEngine::new(DEFAULT_WORLD_SPIN_ANGLE, DEFAULT_AZIMUTH_SPEED);
+    e.sun_mut().set_azimuth(100.0);
+    e.moon.as_mut().unwrap().set_azimuth(250.0); // 150 degrees ahead, not opposite
+    e.set_azimuth(10.0);
+    assert!(approx(e.sun().azimuth(), 10.0));
+    assert!(approx(e.moon().unwrap().azimuth(), 160.0), "{}", e.moon().unwrap().azimuth());
+    e.set_azimuth(350.0); // across the wrap
+    assert!(approx(e.moon().unwrap().azimuth(), 140.0), "{}", e.moon().unwrap().azimuth());
+}
+
+#[test]
+fn the_low_sun_is_golden_and_the_high_sun_is_not() {
+    let high = fixed_engine((90.0, 60.0), None);
+    let low = fixed_engine((90.0, 8.0), None);
+    let night = fixed_engine((90.0, -50.0), None);
+    let (h, l) = (high.state().sun_color, low.state().sun_color);
+    assert_eq!(h, high.sun().light(), "no tint at noon");
+    // Gold means a high red to blue ratio, much more than at noon, and the light is not dimmer.
+    assert!(l.x / l.z > 3.0 * (h.x / h.z), "{h:?} {l:?}");
+    assert!(l.x >= h.x * 0.9, "{h:?} {l:?}");
+    assert_eq!(night.state().sun_color, Vec3::ZERO);
+    assert!(golden_hour(60.0) == 0.0 && golden_hour(8.0) == 1.0 && golden_hour(-50.0) == 0.0);
+    // It builds up smoothly while the sun goes down.
+    let mut last = 0.0;
+    for h in (0..=40).rev() {
+        let g = golden_hour(h as f32);
+        assert!(g >= last - 1e-6, "not monotonic at {h}");
+        last = g;
+    }
+}
+
+#[test]
+fn the_start_matches_the_running_day_cycle() {
+    // Placing the moon for a sun position gives what the engine reaches by running to it.
+    let mut run = LightEngine::new(DEFAULT_WORLD_SPIN_ANGLE, DEFAULT_AZIMUTH_SPEED);
+    run_days(&mut run, 3.0, |_| {});
+    let mut placed = LightEngine::new(DEFAULT_WORLD_SPIN_ANGLE, DEFAULT_AZIMUTH_SPEED);
+    placed.sun_mut().set_azimuth(run.sun().azimuth());
+    placed.place_moon();
+    let diff = (placed.moon().unwrap().azimuth() - run.moon().unwrap().azimuth() + 540.0).rem_euclid(360.0) - 180.0;
+    assert!(diff.abs() < 3.0, "{diff}");
 }

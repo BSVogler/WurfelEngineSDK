@@ -37,7 +37,7 @@
  *                      this fires (the menu did the POST); the game must not POST anything.
  *     wurfel:pause     the pause overlay opened while playing (release held keys, stop the player).
  *     wurfel:resume    the pause overlay closed, back to the game.
- *     wurfel:debug     the HUD's Debug button was pressed: toggle the debug display (same as F3).
+ *     wurfel:debug     the HUD's Debug button was pressed: toggle the debug display (same as L or F3).
  *     wurfel:leave     the player left the game; connection should be closed (menu shows main screen).
  *     wurfel:error     (game -> menu) detail { message }: joining or creating a world failed, or the
  *                      connection was lost for good (the game retries for about five minutes first, keeping the
@@ -1400,7 +1400,7 @@
   $('#player-toggle').addEventListener('click', () => setPlayerPanelOpen(!$('#player-panel').classList.contains('open')));
   menu.addEventListener('click', onClick);
   $('#menubtn').addEventListener('click', () => openMenu('pause'));
-  // Debug display (sun and moon position, light, network, minimap): the game toggles it, F3 does too.
+  // Debug display (sun and moon position, light, network, minimap): the game toggles it, L and F3 do too.
   $('#debugbtn').addEventListener('click', () => { emit('wurfel:debug'); $('#debugbtn').blur(); });
   menu.addEventListener('input', onSettingInput);
   document.addEventListener('fullscreenchange', syncControls);

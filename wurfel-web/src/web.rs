@@ -31,6 +31,7 @@ use crate::pick::{pick, Pick};
 use crate::reconnect::{Closed, Reconnect};
 use crate::render_storage::RenderStorage;
 use crate::texture;
+use crate::view::{CameraMode, View};
 
 /// Seed of the island shown behind the menu, before a world has been joined.
 const DEFAULT_SEED: u64 = 1;
@@ -95,6 +96,8 @@ struct CameraUniform {
     scale: [f32; 2],
     center_depth: f32,
     _pad: [f32; 3],
+    /// The free camera, see `View::uniform`.
+    view: [f32; 4],
 }
 
 struct Camera {
@@ -167,6 +170,13 @@ struct State {
     backend: wgpu::Backend,
     camera: Camera,
     dpr: f32,
+    /// The menu's default zoom last applied to the camera, so only a change of the setting resets
+    /// the zoom (not every other setting, nor the mouse wheel).
+    menu_zoom: Option<f64>,
+    /// The free camera (F8): the world turns about the player with the mouse. `View::default()` is
+    /// the fixed camera.
+    view: View,
+    camera_mode: CameraMode,
 
     // --- game
     world: World,
@@ -225,6 +235,9 @@ struct State {
     // --- debug overlays
     net: NetStats,
     net_overlay: Option<web_sys::HtmlElement>,
+    light_overlay: Option<web_sys::HtmlElement>,
+    light_diagram: Option<LightDiagram>,
+    /// The debug display (F3 or the page's Debug button): network, light and minimap overlays.
     show_net: bool,
     minimap: Option<Minimap>,
     next_ping_ms: f64,
@@ -308,7 +321,7 @@ async fn run() -> Result<(), String> {
     });
     let uniform_entry = |binding: u32| wgpu::BindGroupLayoutEntry {
         binding,
-        visibility: wgpu::ShaderStages::VERTEX,
+        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
         ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
         count: None,
     };
@@ -369,11 +382,16 @@ async fn run() -> Result<(), String> {
     let (peak_x, peak_y) = IslandGenerator::new(DEFAULT_SEED).peak();
     let (gx, gy) = to_iso(peak_x, peak_y);
     let net_overlay = create_net_overlay(&document);
+    let light_overlay = create_light_overlay(&document);
+    let light_diagram = LightDiagram::new(&document, dpr.round().max(1.0) as u32);
     let minimap = Minimap::new(&document, MINIMAP_SIZE.0, MINIMAP_SIZE.1, dpr.round().max(1.0) as u32).ok();
     let state = Rc::new(RefCell::new(State {
         peeling,
         camera: Camera { center: [(gx - gy) * 100.0, (gx + gy) * 50.0 - 4.0 * 122.0], zoom: 0.5 * dpr },
         dpr,
+        menu_zoom: None,
+        view: View::default(),
+        camera_mode: CameraMode::Fixed,
         canvas,
         surface,
         config,
@@ -440,6 +458,8 @@ async fn run() -> Result<(), String> {
         editor_ui: String::new(),
         net: NetStats::new(),
         net_overlay,
+        light_overlay,
+        light_diagram,
         show_net: false,
         minimap,
         next_ping_ms: 0.0,
@@ -450,6 +470,16 @@ async fn run() -> Result<(), String> {
         info_text: String::new(),
     }));
 
+    // The camera mode: `CameraMode::DEFAULT`, or `?camera=free` / `?camera=fixed`. `?yaw=40` (for
+    // trying it out) means the free camera, already turned by that many degrees.
+    {
+        let yaw = query_value("yaw").and_then(|v| v.parse::<f32>().ok());
+        let mode = query_value("camera").and_then(|v| CameraMode::parse(&v)).or(yaw.map(|_| CameraMode::Free)).unwrap_or(CameraMode::DEFAULT);
+        let mut s = state.borrow_mut();
+        s.camera_mode = mode;
+        s.render.set_free_view(mode.is_free());
+        s.view.yaw = yaw.unwrap_or(0.0).to_radians();
+    }
     install_input(&window, &state);
     install_menu_events(&window, &state);
     install_net_bridge(&window, &state);
@@ -469,6 +499,13 @@ async fn run() -> Result<(), String> {
     Ok(())
 }
 
+/// `?normals=0` in the page address lights the sprites per vertex even when the normal maps have
+/// loaded (the Java cvar `LEnormalMapRendering`, which is on here by default).
+fn normal_maps_wanted() -> bool {
+    let search = web_sys::window().and_then(|w| w.location().search().ok()).unwrap_or_default();
+    !search.trim_start_matches('?').split('&').any(|part| part == "normals=0")
+}
+
 /// `?flat=1` in the page address keeps the old look: solid coloured blocks, no sprites.
 fn flat_look() -> bool {
     let search = web_sys::window().and_then(|w| w.location().search().ok()).unwrap_or_default();
@@ -480,7 +517,7 @@ fn flat_look() -> bool {
 async fn load_sprites(state: Rc<RefCell<State>>, device: wgpu::Device, queue: wgpu::Queue, layout: wgpu::BindGroupLayout) {
     let started = now_ms();
     match texture::load(&device, &queue, &layout).await {
-        Ok((sprites, group)) => {
+        Ok((sprites, group, has_normals)) => {
             let sprites = Rc::new(sprites);
             web_sys::console::log_1(&format!("sprites: {} sprites loaded in {:.0} ms", sprites.atlas.len(), now_ms() - started).into());
             let missing = sprites.missing_player_sheets();
@@ -491,6 +528,7 @@ async fn load_sprites(state: Rc<RefCell<State>>, device: wgpu::Device, queue: wg
             }
             let mut s = state.borrow_mut();
             s.atlas_bind_group = group;
+            s.lighting.normal_maps = has_normals && normal_maps_wanted();
             s.actors.set_sprites(Some(sprites.clone()));
             s.render.set_sprites(Some(sprites));
             s.remesh = true;
@@ -644,6 +682,120 @@ fn create_net_overlay(document: &web_sys::Document) -> Option<web_sys::HtmlEleme
         .ok()?;
     document.body()?.append_child(&element).ok()?;
     Some(element)
+}
+
+fn create_light_overlay(document: &web_sys::Document) -> Option<web_sys::HtmlElement> {
+    let element: web_sys::HtmlElement = document.create_element("pre").ok()?.dyn_into().ok()?;
+    element.set_id("lightinfo");
+    element.set_attribute("aria-hidden", "true").ok()?;
+    element
+        .set_attribute(
+            "style",
+            "position:fixed;top:10px;left:12px;margin:0;padding:6px 8px;border-radius:6px;\
+             background:rgba(10,12,18,0.72);color:#cfd6e4;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;\
+             pointer-events:none;white-space:pre;display:none;z-index:5",
+        )
+        .ok()?;
+    document.body()?.append_child(&element).ok()?;
+    Some(element)
+}
+
+/// The sun and moon circle of the Java light engine's debug view, drawn on a small canvas.
+struct LightDiagram {
+    canvas: web_sys::HtmlCanvasElement,
+    context: web_sys::CanvasRenderingContext2d,
+    pixel_ratio: f64,
+}
+
+impl LightDiagram {
+    fn new(document: &web_sys::Document, pixel_ratio: u32) -> Option<Self> {
+        let size = crate::lightdebug::DIAGRAM_SIZE;
+        let canvas: web_sys::HtmlCanvasElement = document.create_element("canvas").ok()?.dyn_into().ok()?;
+        canvas.set_width((size * pixel_ratio as f32) as u32);
+        canvas.set_height((size * pixel_ratio as f32) as u32);
+        canvas
+            .set_attribute(
+                "style",
+                &format!(
+                    "position:fixed;left:12px;bottom:12px;width:{size}px;height:{size}px;border-radius:6px;\
+                     background:rgba(10,12,18,0.72);pointer-events:none;display:none;z-index:5"
+                ),
+            )
+            .ok()?;
+        canvas.set_attribute("aria-hidden", "true").ok()?;
+        document.body()?.append_child(&canvas).ok()?;
+        let context: web_sys::CanvasRenderingContext2d = canvas.get_context("2d").ok()??.dyn_into().ok()?;
+        Some(LightDiagram { canvas, context, pixel_ratio: pixel_ratio as f64 })
+    }
+
+    fn set_visible(&self, visible: bool) {
+        let _ = self.canvas.style().set_property("display", if visible { "block" } else { "none" });
+    }
+
+    fn draw(&self, diagram: &crate::lightdebug::Diagram) {
+        let c = &self.context;
+        let size = crate::lightdebug::DIAGRAM_SIZE as f64;
+        let (cx, cy) = (size / 2.0, size / 2.0);
+        let _ = c.reset_transform();
+        let _ = c.scale(self.pixel_ratio, self.pixel_ratio);
+        c.clear_rect(0.0, 0.0, size, size);
+        c.set_line_width(2.0);
+        let r = diagram.radius as f64;
+        // The sphere seen from the front, and the ground circle (squashed to half height).
+        c.set_stroke_style_str("#000000");
+        c.set_line_width(3.0);
+        c.begin_path();
+        let _ = c.arc(cx, cy, r, 0.0, std::f64::consts::TAU);
+        c.stroke();
+        c.set_stroke_style_str("#cfd6e4");
+        c.set_line_width(1.0);
+        c.begin_path();
+        let _ = c.arc(cx, cy, r, 0.0, std::f64::consts::TAU);
+        c.stroke();
+        c.begin_path();
+        let _ = c.ellipse(cx, cy, r, r / 2.0, 0.0, 0.0, std::f64::consts::TAU);
+        c.stroke();
+        c.set_line_width(2.0);
+        for ring in &diagram.rings {
+            c.set_stroke_style_str(ring.color);
+            c.begin_path();
+            let _ = c.ellipse(cx, cy + ring.centre_y as f64, ring.rx as f64, ring.ry as f64, 0.0, 0.0, std::f64::consts::TAU);
+            c.stroke();
+        }
+        for segment in &diagram.segments {
+            c.set_stroke_style_str(segment.color);
+            c.begin_path();
+            c.move_to(cx + segment.from.0 as f64, cy + segment.from.1 as f64);
+            c.line_to(cx + segment.to.0 as f64, cy + segment.to.1 as f64);
+            c.stroke();
+        }
+        c.set_fill_style_str("#ffffff");
+        c.set_font("11px ui-monospace, Menlo, Consolas, monospace");
+        c.set_text_align("center");
+        for (text, (x, y)) in &diagram.labels {
+            let _ = c.fill_text(text, cx + *x as f64, cy + *y as f64 - 6.0);
+        }
+    }
+}
+
+/// Turn the whole debug display on or off and tell the page's Debug button.
+fn set_debug(s: &mut State, on: bool) {
+    s.show_net = on;
+    if on {
+        s.net.reset_prediction_peak();
+        s.next_overlay_ms = 0.0;
+    }
+    set_overlay_visible(&s.net_overlay, on);
+    set_overlay_visible(&s.light_overlay, on);
+    if let Some(diagram) = &s.light_diagram {
+        diagram.set_visible(on);
+    }
+    if let Some(minimap) = s.minimap.as_mut() {
+        minimap.set_visible(on);
+    }
+    if let Some(button) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.get_element_by_id("debugbtn")) {
+        let _ = button.set_attribute("aria-pressed", if on { "true" } else { "false" });
+    }
 }
 
 fn set_overlay_visible(element: &Option<web_sys::HtmlElement>, visible: bool) {
@@ -1045,7 +1197,8 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
                     };
                     s.entities.get_mut(id).and_then(|e| e.body.as_mut()).expect("players move").movement = Vec3::from(p.vel);
                     s.local_id = Some(id);
-                    s.camera.center = screen_position((pos.x, pos.y), pos.z + 0.7);
+                    s.view.pivot = (pos.x, pos.y);
+                    s.camera.center = s.view.screen_position((pos.x, pos.y), pos.z + 0.7);
                     let (bx, by) = from_iso(pos.x, pos.y);
                     s.view_chunk = chunk_of(bx, by);
                 } else {
@@ -1324,7 +1477,11 @@ fn install_menu_events(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     listen(window, "wurfel:settings", move |_: web_sys::Event| {
         let mut s = s.borrow_mut();
         s.bindings = read_bindings();
+        if let Some(on) = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "ambientOcclusion").as_bool()) {
+            s.lighting.ambient_occlusion = on;
+        }
         s.lighting.apply_settings();
+        apply_menu_zoom(&mut s);
     });
 
     let s = state.clone();
@@ -1335,6 +1492,13 @@ fn install_menu_events(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         start_from_menu(state, &pending);
     }
 
+    // The page's Debug button.
+    let s = state.clone();
+    listen(window, "wurfel:debug", move |_: web_sys::Event| {
+        let mut s = s.borrow_mut();
+        let on = !s.show_net;
+        set_debug(&mut s, on);
+    });
     let s = state.clone();
     listen(window, "wurfel:leave", move |_: web_sys::Event| end_session(&mut s.borrow_mut()));
     let s = state.clone();
@@ -1397,6 +1561,17 @@ fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     let _ = js_sys::Reflect::set(window, &"wurfelNet".into(), &net);
 }
 
+/// The menu's default zoom (1 is the engine's native 100 px per block), applied when it changed.
+fn apply_menu_zoom(s: &mut State) {
+    let Some(window) = web_sys::window() else { return };
+    let Some(zoom) = js_get(&js_get(&window, "wurfelSettings"), "zoom").as_f64() else { return };
+    if s.menu_zoom == Some(zoom) {
+        return;
+    }
+    s.menu_zoom = Some(zoom);
+    s.camera.zoom = (zoom as f32 * s.dpr).clamp(0.1 * s.dpr, 4.0 * s.dpr);
+}
+
 /// Join the world described by the menu's `wurfel:play` detail.
 fn start_from_menu(state: &Rc<RefCell<State>>, detail: &JsValue) {
     let text = |key: &str| js_get(detail, key).as_string().unwrap_or_default();
@@ -1404,12 +1579,8 @@ fn start_from_menu(state: &Rc<RefCell<State>>, detail: &JsValue) {
     {
         let mut s = state.borrow_mut();
         s.bindings = read_bindings();
-        // The menu's default zoom (1 is the engine's native 100 px per block).
-        if let Some(window) = web_sys::window() {
-            if let Some(zoom) = js_get(&js_get(&window, "wurfelSettings"), "zoom").as_f64() {
-                s.camera.zoom = (zoom as f32 * s.dpr).clamp(0.1 * s.dpr, 4.0 * s.dpr);
-            }
-        }
+        s.menu_zoom = None;
+        apply_menu_zoom(&mut s);
     }
     begin_session(state, join);
 }
@@ -1433,6 +1604,9 @@ fn set_editor(s: &mut State, on: bool) -> Result<(), &'static str> {
     }
     if on && s.caveland.is_some() {
         return Err("The editor is not available in Caveland maps.");
+    }
+    if on && s.camera_mode.is_free() {
+        set_camera_mode(s, CameraMode::Fixed);
     }
     if s.editor.active() != on {
         s.editor.set_active(on);
@@ -1477,6 +1651,9 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     listen(window, "mousemove", move |e: MouseEvent| {
         let mut s = s.borrow_mut();
         s.pointer = Some((e.client_x() as f32 * s.dpr, e.client_y() as f32 * s.dpr));
+        if s.camera_mode.is_free() && !input_blocked() {
+            s.view.turn(e.movement_x() as f32);
+        }
     });
     let s = state.clone();
     listen(window, "mousedown", move |e: MouseEvent| {
@@ -1487,6 +1664,10 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
             return;
         }
         s.keys.insert(format!("mouse{}", e.button()));
+        // While the debug display is on the left button turns the sun instead of acting in the game.
+        if s.show_net && e.button() == 0 {
+            return;
+        }
         if s.caveland.is_some() {
             if let Some((name, arg)) = caveland_client::mouse_action(e.button(), true) {
                 send_action(&mut s, name, arg);
@@ -1528,17 +1709,27 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         match key.as_str() {
             "f3" if !window_flag("wurfelMenuOpen") => {
                 e.prevent_default();
-                s.show_net = !s.show_net;
-                if s.show_net {
-                    s.net.reset_prediction_peak();
-                }
-                set_overlay_visible(&s.net_overlay, s.show_net);
+                let on = !s.show_net;
+                set_debug(&mut s, on);
+                return;
+            }
+            "l" if !input_blocked() && !e.repeat() && !e.ctrl_key() && !e.meta_key() && !e.alt_key() => {
+                let on = !s.show_net;
+                set_debug(&mut s, on);
                 return;
             }
             "f2" if !window_flag("wurfelMenuOpen") => {
                 e.prevent_default();
                 if !e.repeat() {
                     toggle_editor(&mut s);
+                }
+                return;
+            }
+            "f8" if !window_flag("wurfelMenuOpen") => {
+                e.prevent_default();
+                if !e.repeat() {
+                    let mode = s.camera_mode.toggled();
+                    set_camera_mode(&mut s, mode);
                 }
                 return;
             }
@@ -1585,14 +1776,36 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
 
 fn read_input(s: &State) -> PlayerInput {
     let held = |action: &str| s.bindings.held(action, &s.keys);
-    PlayerInput { up: held("up"), down: held("down"), left: held("left"), right: held("right"), jump: held("jump") }
+    // With a turned camera the keys still mean directions on the screen.
+    s.view.walk_input(PlayerInput { up: held("up"), down: held("down"), left: held("left"), right: held("right"), jump: held("jump") })
 }
 
 // ------------------------------------------------------------------------------------- game loop
 
-/// Screen-space position (px at zoom 1, y down) of an isometric point.
-fn screen_position((gx, gy): (f32, f32), z: f32) -> [f32; 2] {
-    [(gx - gy) * 100.0, (gx + gy) * 50.0 - z * 122.0]
+/// Switch between the fixed and the free camera (F8). The free camera meshes the world with all its
+/// sides and lets the mouse turn it about the player; the fixed one is the 2.5D view again. Not
+/// together with the editor, whose picking assumes the fixed projection.
+fn set_camera_mode(s: &mut State, mode: CameraMode) {
+    if mode.is_free() && s.editor.active() {
+        show_banner("The free camera and the editor do not go together: leave the editor first.", Tone::Info);
+        return;
+    }
+    if s.camera_mode == mode {
+        return;
+    }
+    s.camera_mode = mode;
+    s.render.set_free_view(mode.is_free());
+    s.remesh = true;
+    if mode.is_free() {
+        // Moving the mouse turns the camera: lock the pointer so it never reaches the screen edge.
+        s.canvas.request_pointer_lock();
+        show_banner("Free camera: move the mouse to turn it, F8 to leave", Tone::Info);
+    } else {
+        s.view.yaw = 0.0;
+        if let Some(document) = web_sys::window().and_then(|w| w.document()) {
+            document.exit_pointer_lock();
+        }
+    }
 }
 
 /// Where our player is drawn: the simulation plus the correction that is still fading out.
@@ -1715,6 +1928,8 @@ fn frame(s: &mut State, now_ms: f64) {
     };
     s.jetpack.update(dt, &mut s.particles, flame_at);
     let focus = local_position(s).unwrap_or(Vec3::ZERO);
+    // The Java Camera's u_localLightPos: the one light the normal maps are lit with per pixel.
+    s.lighting.local_light = local_position(s);
     let lamps = caveland_client::lamps(&s.world, &s.powered, &s.things);
     s.lighting.set_dynamic_lights(s.emitters.iter().filter_map(|e| e.light()).chain(s.jetpack.lights()).chain(lamps), focus);
 
@@ -1732,11 +1947,13 @@ fn frame(s: &mut State, now_ms: f64) {
         .into_iter()
         .chain(s.remotes.iter().map(|(&id, remote)| (id, remote.pos)))
         .collect();
+    s.actors.set_yaw(s.view.yaw);
     s.actors.update(dt, drawn, &s.things);
 
     // The camera follows us (or stays on the island while offline).
     if let Some(p) = local_position(s) {
-        let target = screen_position((p.x, p.y), p.z + 0.7);
+        s.view.pivot = (p.x, p.y);
+        let target = s.view.screen_position((p.x, p.y), p.z + 0.7);
         let k = ease(8.0);
         s.camera.center[0] += (target[0] - s.camera.center[0]) * k;
         s.camera.center[1] += (target[1] - s.camera.center[1]) * k;
@@ -1759,6 +1976,14 @@ fn frame(s: &mut State, now_ms: f64) {
     }
 
     s.lighting.update(dt * 1000.0);
+    // Debug display on: holding the left button sets the sun's position from the pointer's x, like
+    // the Java light engine's debug mode (the moon turns with it, the day clock is paused meanwhile).
+    if s.show_net && s.keys.contains("mouse0") {
+        if let Some((px, _)) = s.pointer {
+            let azimuth = (px / s.config.width as f32).clamp(0.0, 1.0) * 360.0;
+            s.lighting.engine.set_azimuth(azimuth);
+        }
+    }
 
     // Latency probe.
     if s.connected && now_ms >= s.next_ping_ms {
@@ -1850,7 +2075,7 @@ fn update_name_tags(s: &mut State) {
     for (&id, remote) in s.remotes.iter().filter(|(id, _)| !s.hidden.contains(id)) {
         let Some(info) = s.roster.get(&id) else { continue };
         let head = (remote.pos.x, remote.pos.y, remote.pos.z + PLAYER_HEIGHT + 0.1);
-        let screen = screen_position((head.0, head.1), head.2);
+        let screen = s.view.screen_position((head.0, head.1), head.2);
         let x = ((screen[0] - s.camera.center[0]) * s.camera.zoom + width / 2.0) / s.dpr;
         let y = ((screen[1] - s.camera.center[1]) * s.camera.zoom + height / 2.0) / s.dpr;
         if x > -100.0 && y > -50.0 && x < width / s.dpr + 100.0 && y < height / s.dpr + 50.0 {
@@ -1926,7 +2151,7 @@ fn update_friend_markers(s: &mut State) {
             let Some(remote) = s.remotes.get(&id).filter(|_| !s.hidden.contains(&id)) else { continue };
             let Some(info) = s.roster.get(&id) else { continue };
             let middle = remote.pos + Vec3::Z * (PLAYER_HEIGHT / 2.0);
-            let screen = screen_position((middle.x, middle.y), middle.z);
+            let screen = s.view.screen_position((middle.x, middle.y), middle.z);
             let x = ((screen[0] - s.camera.center[0]) * s.camera.zoom + width / 2.0) / s.dpr;
             let y = ((screen[1] - s.camera.center[1]) * s.camera.zoom + height / 2.0) / s.dpr;
             let Some(marker) = locator::edge_marker((x, y), (css_width, css_height), (70.0, 44.0)) else { continue };
@@ -2027,13 +2252,21 @@ fn upload_dynamic_mesh(s: &mut State, target: Option<Pick>) {
     }
 }
 
-/// The network overlay (F3), the minimap (F4) and the status the menu reads.
+/// The network and light overlays (F3, the Debug button), the minimap (F4) and the status the menu reads.
 fn update_overlays(s: &mut State, now_ms: f64) {
+    if s.show_net {
+        if let Some(diagram) = &s.light_diagram {
+            diagram.draw(&crate::lightdebug::engine_diagram(&s.lighting.engine));
+        }
+    }
     if s.show_net && now_ms >= s.next_overlay_ms {
         s.next_overlay_ms = now_ms + NET_OVERLAY_EVERY_MS;
         let report = s.net.report(now_ms);
         if let Some(element) = &s.net_overlay {
             element.set_text_content(Some(&format_report(&report, s.connected)));
+        }
+        if let Some(element) = &s.light_overlay {
+            element.set_text_content(Some(&crate::lightdebug::format_report(&s.lighting.engine)));
         }
     }
 
@@ -2096,6 +2329,7 @@ fn render(s: &mut State) {
         // At ground level the screen row is (gx + gy) * 50.
         center_depth: s.camera.center[1] / 50.0,
         _pad: [0.0; 3],
+        view: s.view.uniform(),
     };
     s.queue.write_buffer(&s.camera_buffer, 0, bytemuck::bytes_of(&uniform));
     s.queue.write_buffer(&s.lighting_buffer, 0, bytemuck::bytes_of(&s.lighting.uniform()));

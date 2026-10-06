@@ -15,7 +15,10 @@ art of the Java game with `python3 tools/build_atlas.py` (needs Pillow), from
   shows when is `src/animation.rs` of the client.
 
 The result is 857 sprites on five 2048x2048 pages (WebGL2 only guarantees 2048 pixel textures), 14 MB.
-The normal maps of the Java game are not used. The engine's own `spritesheet.png` (80 pixel blocks
+`normals0..4.png` are the Java normal maps (`SpritesheetNormal.png`, `playerSheetNormal.png`) cut and placed
+exactly like the diffuse pages, so one atlas file and one uv serve both; `src/shader.wgsl` lights the sprites
+with them per pixel, a port of the Java `fragment_NM.fs` (add `?normals=0` to the page address for the vertex
+lighting alone). The engine's own `spritesheet.png` (80 pixel blocks
 of the old demo art) is not used either: its scale differs from the 200 pixel blocks of Caveland.
 
 Add `?flat=1` to the page address to see the old look (solid colours, no sprites).
