@@ -17,3 +17,9 @@ target/
 nbactions-*.xml
 WeaponOfChoice symlink
 maps/
+
+# Claude Code: personal settings and the git worktrees it creates for background jobs stay local.
+# Shared project config (.claude/settings.json, agents/, commands/, skills/) can be committed.
+.claude/settings.local.json
+.claude/worktrees/
+CLAUDE.local.md
