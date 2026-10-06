@@ -8,7 +8,7 @@ use wurfel_sim::entity::physics::occupied_cells;
 use wurfel_sim::entity::{Entities, EntityId, Event};
 use wurfel_sim::grid::to_iso;
 use wurfel_sim::player::{apply_input, new_player, spawn_points, PlayerInput, TICK_DT, TICK_RATE};
-use wurfel_sim::protocol::{ClientMsg, Edit, PlayerState, ServerMsg};
+use wurfel_sim::protocol::{ClientMsg, Edit, PlayerState, ServerMsg, MAX_FILL_CELLS};
 use wurfel_sim::generator::{create_generator, generators, Generator};
 use wurfel_sim::grid::{chunk_of, from_iso};
 use wurfel_sim::protocol::{clean_name, encode_chunk, PlayerInfo, WorldInfo};
@@ -366,7 +366,10 @@ impl Game {
             }
             // Only from the editor, and a game mode has its own rules for changing blocks (digging).
             ClientMsg::SetBlock { x, y, z, block } if self.mode.is_none() && self.editors.contains(&player) => self.set_block(player, Edit { x, y, z, block }),
-            ClientMsg::SetBlock { .. } => None,
+            ClientMsg::FillBlocks { x1, y1, x2, y2, z, block } if self.mode.is_none() && self.editors.contains(&player) => {
+                self.fill_blocks(player, (x1, y1, x2, y2), z, block)
+            }
+            ClientMsg::SetBlock { .. } | ClientMsg::FillBlocks { .. } => None,
             ClientMsg::Command { line } => {
                 // Only the host (the lowest id still here) may use cheats.
                 let host = self.inputs.keys().min() == Some(&player);
@@ -393,6 +396,27 @@ impl Game {
     }
 
     fn set_block(&mut self, player: u32, edit: Edit) -> Option<ServerMsg> {
+        self.apply_edit(player, edit).map(ServerMsg::BlockSet)
+    }
+
+    /// The editor's bucket: every column of the rectangle on one layer, each checked like a single
+    /// `SetBlock` (reach, placeable, nobody inside). Nothing happens for a rectangle over the limit.
+    fn fill_blocks(&mut self, player: u32, (x1, y1, x2, y2): (i32, i32, i32, i32), z: i32, block: u16) -> Option<ServerMsg> {
+        let (xs, ys) = (x1.abs_diff(x2) as usize + 1, y1.abs_diff(y2) as usize + 1);
+        if xs.saturating_mul(ys) > MAX_FILL_CELLS {
+            return None;
+        }
+        let mut edits = Vec::new();
+        for y in y1.min(y2)..=y1.max(y2) {
+            for x in x1.min(x2)..=x1.max(x2) {
+                edits.extend(self.apply_edit(player, Edit { x, y, z, block }));
+            }
+        }
+        (!edits.is_empty()).then_some(ServerMsg::BlocksSet { edits })
+    }
+
+    /// Change one block if the rules allow it; returns what changed.
+    fn apply_edit(&mut self, player: u32, edit: Edit) -> Option<Edit> {
         let body_centre = self.entities.get(player)?.position + Vec3::new(0.0, 0.0, 0.7);
         let wanted = Block::from_raw(edit.block);
         let allowed = wanted.value() == 0 && (wanted.is_air() || PLACEABLE.contains(&wanted.id()));
@@ -413,7 +437,7 @@ impl Game {
             return None;
         }
         self.world.set(edit.x, edit.y, edit.z, wanted);
-        Some(ServerMsg::BlockSet(edit))
+        Some(edit)
     }
 }
 
@@ -596,6 +620,32 @@ mod tests {
 
         assert!(game.handle(id, ClientMsg::SetBlock { x, y, z, block: 0 }).is_some());
         assert!(game.world.get(x, y, z).is_air());
+    }
+
+    #[test]
+    fn the_bucket_fills_a_rectangle_and_skips_what_a_single_edit_would_refuse() {
+        let mut game = Game::island(1);
+        let (plain, editor) = (game.add_player(), game.add_editor());
+        let (x, y) = neighbour(&game, editor);
+        let z = 9;
+        let stone = Block::new(id::STONE, 0).raw();
+        let fill = |x1, y1, x2, y2, block| ClientMsg::FillBlocks { x1, y1, x2, y2, z, block };
+
+        assert!(game.handle(plain, fill(x, y, x + 1, y, stone)).is_none(), "not in the editor");
+        // Corners may come in any order; both are included.
+        let Some(ServerMsg::BlocksSet { edits }) = game.handle(editor, fill(x + 1, y + 1, x, y, stone)) else { panic!("no answer") };
+        assert_eq!(edits.len(), 4);
+        assert!(edits.iter().all(|e| e.z == z && e.block == stone));
+        assert!(edits.iter().all(|e| game.world.get(e.x, e.y, z) == Block::new(id::STONE, 0)));
+        // Filling again changes nothing, so there is nothing to tell.
+        assert!(game.handle(editor, fill(x, y, x + 1, y + 1, stone)).is_none());
+        // Cells out of reach are skipped, the rest is still done.
+        let Some(ServerMsg::BlocksSet { edits }) = game.handle(editor, fill(x, y, x + 40, y, 0)) else { panic!("no answer") };
+        assert!(edits.len() >= 2 && edits.len() < 41, "{}", edits.len());
+        // Over the size limit, invalid blocks and invalid layers do nothing.
+        assert!(game.handle(editor, fill(x, y, x + 20, y + 20, stone)).is_none(), "too big (441 columns)");
+        assert!(game.handle(editor, fill(x, y, x, y, Block::new(id::WATER, 0).raw())).is_none());
+        assert!(game.handle(editor, ClientMsg::FillBlocks { x1: x, y1: y, x2: x, y2: y, z: CHUNK_SIZE_Z, block: stone }).is_none());
     }
 
     #[test]

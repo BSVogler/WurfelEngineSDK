@@ -2,29 +2,31 @@
 // click does) lives in the wasm client (src/editor.rs); this file only shows its state and forwards
 // toolbar clicks:
 //
-//   wurfelEditor.update(json)  {"active", "tool", "selected", "tools": [...], "blocks": [...], "cursor"}
+//   wurfelEditor.update(json)  {"active", "tool", "selected", "tools": [...], "blocks": [...], "cursor", "undo", "redo"}
 //                              pushed by the client whenever one of them changes
 //   wurfelEditor.active        true while the editor is on
 //   wurfelEditor.toggle(mode)  "on" | "off" | anything else toggles; returns a message when it is
 //                              refused (offline, Caveland), else "". Used by the console `editor` command.
 //
-// Calls into the client: wurfelNet.editor(mode), wurfelNet.editorTool(name), wurfelNet.editorBlock(index).
-// F2 toggles the editor (handled by the client). Mouse use: left button = the selected tool, right
-// button = erase, middle button = pick, number keys = block.
+// Calls into the client: wurfelNet.editor(mode), wurfelNet.editorTool(name), wurfelNet.editorBlock(index),
+// wurfelNet.editorHistory(undo). F2 toggles the editor (handled by the client). Mouse use: left button
+// = the selected tool (hold to paint), right button = erase, middle button or Alt + left = pick,
+// number keys = block, Ctrl/Cmd+Z = undo, plus Shift = redo.
 (function () {
   "use strict";
 
-  const TOOLS = { draw: "Draw", replace: "Replace", erase: "Erase", pick: "Pick" };
+  const TOOLS = { draw: "Draw", bucket: "Bucket", replace: "Replace", erase: "Erase", pick: "Pick" };
   const TOOL_HINTS = {
     draw: "Place the block next to the one you click",
+    bucket: "Press, drag and release to fill the rectangle",
     replace: "Overwrite the block you click",
     erase: "Remove the block you click",
     pick: "Take the kind of the block you click",
   };
   const BLOCK_COLORS = { stone: "#8a8f98", dirt: "#8b5a2b", grass: "#5aa83c", sand: "#e0cf8a" };
 
-  let root = null, toolRow = null, blockRow = null, cursorLine = null, hintLine = null;
-  let state = { active: false, tool: "draw", selected: 0, tools: [], blocks: [], cursor: "" };
+  let root = null, toolRow = null, blockRow = null, cursorLine = null, hintLine = null, undoButton = null, redoButton = null;
+  let state = { active: false, tool: "draw", selected: 0, tools: [], blocks: [], cursor: "", undo: false, redo: false };
   let built = { tools: "", blocks: "" };
 
   function el(tag, className, text) {
@@ -60,8 +62,18 @@
     bar.setAttribute("aria-label", "Editor tools");
     toolRow = el("div", "ed-row");
     blockRow = el("div", "ed-row");
+    const historyRow = el("div", "ed-row");
+    undoButton = el("button", "ed-tool", "Undo");
+    redoButton = el("button", "ed-tool", "Redo");
+    undoButton.title = "Ctrl/Cmd+Z";
+    redoButton.title = "Ctrl/Cmd+Shift+Z";
+    for (const [button, undo] of [[undoButton, true], [redoButton, false]]) {
+      button.type = "button";
+      button.addEventListener("click", () => net("editorHistory", undo));
+      historyRow.append(button);
+    }
     hintLine = el("div", "ed-hint");
-    bar.append(toolRow, blockRow, hintLine);
+    bar.append(toolRow, blockRow, historyRow, hintLine);
 
     cursorLine = el("div", "ed-cursor");
     root.append(badge, bar, cursorLine);
@@ -101,7 +113,9 @@
     }
     for (const b of toolRow.children) b.classList.toggle("ed-on", b.dataset.tool === state.tool);
     for (const b of blockRow.children) b.classList.toggle("ed-on", Number(b.dataset.index) === state.selected);
-    hintLine.textContent = `Left: ${TOOL_HINTS[state.tool] || state.tool} · Right: erase · Middle: pick`;
+    undoButton.disabled = !state.undo;
+    redoButton.disabled = !state.redo;
+    hintLine.textContent = `Left: ${TOOL_HINTS[state.tool] || state.tool} · Right: erase · Middle or Alt: pick`;
     cursorLine.textContent = state.cursor || "";
     cursorLine.hidden = !state.cursor;
   }

@@ -21,6 +21,9 @@ pub enum Channel {
     Unreliable,
 }
 
+/// The most columns one [`ClientMsg::FillBlocks`] may cover.
+pub const MAX_FILL_CELLS: usize = 400;
+
 /// A block that differs from what the generator would produce.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Edit {
@@ -233,6 +236,11 @@ pub enum ClientMsg {
     Editor { on: bool },
     /// Place a block, or remove it with `block == 0`. Only accepted from a player in the editor.
     SetBlock { x: i32, y: i32, z: i32, block: u16 },
+    /// The editor's bucket: fill the rectangle of columns between `(x1, y1)` and `(x2, y2)` (either
+    /// corner order, both included) on layer `z` with `block` (`0` clears). Cells the server would
+    /// refuse for a `SetBlock` are skipped, and so is everything when the rectangle is larger than
+    /// [`MAX_FILL_CELLS`]. The answer is one [`ServerMsg::BlocksSet`].
+    FillBlocks { x1: i32, y1: i32, x2: i32, y2: i32, z: i32, block: u16 },
     /// A one-off action of the game mode (for Caveland: `attack`, `throw`, `craft`...). The engine
     /// does not interpret it; unknown actions are ignored.
     Action {
@@ -263,6 +271,7 @@ impl ClientMsg {
         match self {
             ClientMsg::Input { .. } | ClientMsg::Ping { .. } => Channel::Unreliable,
             ClientMsg::SetBlock { .. }
+            | ClientMsg::FillBlocks { .. }
             | ClientMsg::Editor { .. }
             | ClientMsg::Action { .. }
             | ClientMsg::Command { .. }
@@ -321,6 +330,8 @@ pub enum ServerMsg {
     /// State of all players, sent several times per second. `tick` counts server physics steps.
     Snapshot { tick: u64, players: Vec<PlayerState> },
     BlockSet(Edit),
+    /// Several blocks changed at once (the editor's bucket). Applied like that many `BlockSet`s.
+    BlocksSet { edits: Vec<Edit> },
     PlayerLeft { id: u32 },
     /// The server stopped sending this chunk because the player moved away: forget it.
     ChunkUnload { cx: i32, cy: i32 },
@@ -363,6 +374,7 @@ impl ServerMsg {
             ServerMsg::Welcome { .. }
             | ServerMsg::ServerRestarting
             | ServerMsg::BlockSet(_)
+            | ServerMsg::BlocksSet { .. }
             | ServerMsg::PlayerLeft { .. }
             | ServerMsg::PlayerJoined { .. }
             | ServerMsg::Friends { .. }
@@ -520,6 +532,8 @@ mod tests {
         assert_eq!(ServerMsg::PlayerLeft { id: 1 }.channel(), Channel::Reliable);
         assert_eq!(ServerMsg::Pings { list: vec![] }.channel(), Channel::Unreliable);
         assert_eq!(ServerMsg::BlockSet(Edit { x: 0, y: 0, z: 0, block: 0 }).channel(), Channel::Reliable);
+        assert_eq!(ServerMsg::BlocksSet { edits: vec![] }.channel(), Channel::Reliable);
+        assert_eq!(ClientMsg::FillBlocks { x1: 0, y1: 0, x2: 1, y2: 1, z: 0, block: 3 }.channel(), Channel::Reliable);
     }
 
     #[test]
@@ -554,6 +568,7 @@ mod tests {
             ServerMsg::ChunkUnload { cx: -3, cy: 7 },
             ServerMsg::Snapshot { tick: 99, players: vec![player] },
             ServerMsg::BlockSet(Edit { x: 0, y: 0, z: 1, block: 3 }),
+            ServerMsg::BlocksSet { edits: vec![Edit { x: 0, y: 0, z: 1, block: 3 }, Edit { x: 1, y: 0, z: 1, block: 3 }] },
             ServerMsg::PlayerLeft { id: 2 },
             ServerMsg::Pong { client_time: 1234.5, tick: 7 },
             ServerMsg::Pings { list: vec![(1, 20), (4, 135)] },
