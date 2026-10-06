@@ -4,6 +4,10 @@
 // (a texture array, one layer per page) only multiply that light; a vertex without a sprite shows its
 // flat colour instead.
 //
+// The fragment stage peels the scene: it is drawn once per layer (see peel.rs, after the Java
+// engine's depth peeling in GameView.depthPeelingRendering), and layer n keeps only the nearest
+// fragment that lies behind the one layer n - 1 kept. That depth comes in as a texture.
+//
 // All uniform structs use vec4 (or scalars) only. A WGSL vec3 has 16-byte alignment, which would
 // pad the structs differently from the plain f32 arrays on the Rust side (lighting.rs checks the
 // layout against this file in a test).
@@ -37,7 +41,20 @@ struct Lighting {
 @group(1) @binding(0) var atlas: texture_2d_array<f32>;
 @group(1) @binding(1) var atlas_sampler: sampler;
 
+// One peeling layer's settings; the same four floats as `PeelUniform` in peel.rs.
+struct Peel {
+    // x: 1 when an earlier layer exists (so `previous_depth` counts), y: the depth margin,
+    // z: fragments with an alpha at or below this are discarded, w: unused.
+    params: vec4<f32>,
+};
+
+@group(2) @binding(0) var<uniform> peel: Peel;
+// The depth the previous layer kept (cleared to 1 where it kept nothing).
+@group(2) @binding(1) var previous_depth: texture_depth_2d;
+
 const LUMA = vec3<f32>(0.222, 0.707, 0.071);
+// wurfel_sim::light::NIGHT_FLOOR: the bluish least light at night.
+const NIGHT_FLOOR = vec3<f32>(0.6, 0.7, 0.95);
 // Per-side constants of the Java PointLightSource: 0.15 + k * 0.005 for k = 0.1, 0.2, 0.25.
 const POINT_SIDE = vec3<f32>(0.1505, 0.151, 0.15125);
 
@@ -51,10 +68,9 @@ struct VertexIn {
 };
 
 struct VertexOut {
+    // In the fragment stage this is the window position: clip.xy in pixels, clip.z the depth.
     @builtin(position) clip: vec4<f32>,
     @location(0) color: vec3<f32>,
-// wurfel_sim::light::NIGHT_FLOOR: the bluish least light at night.
-const NIGHT_FLOOR = vec3<f32>(0.6, 0.7, 0.95);
     @location(1) uv: vec2<f32>,
     @location(2) @interpolate(flat) layer: f32,
 };
@@ -68,7 +84,6 @@ fn pick3(v: vec4<f32>, face: i32) -> f32 {
     if (face == 1) {
         return v.y;
     }
-    // In the fragment stage this is the window position: clip.xy in pixels, clip.z the depth.
     if (face == 4) {
         return (v.x + v.y + v.z) / 3.0;
     }
@@ -123,6 +138,11 @@ fn shade(v: VertexIn) -> vec3<f32> {
         sun = sun + lighting.sun_color.w;
         moon = moon + lighting.moon_color.w;
     }
+    let night_mix = lighting.sun_faces.w;
+    var floor_light = vec3<f32>(lighting.misc.z);
+    if (lighting.grading.w > 0.5) {
+        floor_light = mix(floor_light, NIGHT_FLOOR, night_mix);
+    }
     let lit = max(
         (lighting.ambient.xyz + lighting.sun_color.xyz * sun + lighting.moon_color.xyz * moon) * lighting.grading.x,
         floor_light,
@@ -137,11 +157,6 @@ fn shade(v: VertexIn) -> vec3<f32> {
         let grey = dot(color, LUMA);
         let desaturated = color - 0.6 * (color - vec3<f32>(grey));
         let contrast = max(1.0 + 0.4 * lighting.moon_faces.w, 0.0);
-    let night_mix = lighting.sun_faces.w;
-    var floor_light = vec3<f32>(lighting.misc.z);
-    if (lighting.grading.w > 0.5) {
-        floor_light = mix(floor_light, NIGHT_FLOOR, night_mix);
-    }
         let night = (desaturated - vec3<f32>(0.5)) * contrast + vec3<f32>(0.5);
         return max(mix(color, night, night_mix), vec3<f32>(0.0));
     }
@@ -174,16 +189,23 @@ fn vs_main(v: VertexIn) -> VertexOut {
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     // Sampled for every fragment (a level sample may sit in non-uniform control flow) and only used
-    // when the vertex has a sprite. The sprites are cut out: pixels that are nearly transparent are
-    // discarded, so the depth buffer still sorts everything.
+    // when the vertex has a sprite. The sprites are cut out: pixels that are (nearly) transparent are
+    // discarded, the rest keep their alpha, which the compositing of the layers blends.
     let texel = textureSampleLevel(atlas, atlas_sampler, in.uv, i32(max(in.layer, 0.0) + 0.5), 0.0);
-    if (in.layer < -0.5) {
-        return vec4<f32>(in.color, 1.0);
+    var color = vec4<f32>(in.color, 1.0);
+    if (in.layer > -0.5) {
+        color = vec4<f32>(texel.rgb * in.color, texel.a);
     }
-    // A low threshold keeps the anti-aliased edge pixels of the art, which closes the hairline gaps
-    // between neighbouring faces that a 0.5 cut would leave.
-    if (texel.a < 0.2) {
+    if (color.a <= peel.params.z) {
         discard;
     }
-    return vec4<f32>(texel.rgb * in.color, 1.0);
+    // Peeling: drop what this or a nearer layer already shows. The margin keeps the surface
+    // of the last layer from showing up again through rounding.
+    if (peel.params.x > 0.5) {
+        let behind = textureLoad(previous_depth, vec2<i32>(in.clip.xy), 0);
+        if (in.clip.z - peel.params.y <= behind) {
+            discard;
+        }
+    }
+    return color;
 }

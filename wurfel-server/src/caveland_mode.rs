@@ -159,7 +159,7 @@ impl CavelandMode {
             None => {
                 let (x, y) = from_iso(spot.x + SHIP_TARGET.x, spot.y + SHIP_TARGET.y);
                 let start = spot + SHIP_OFFSET;
-                let start = Vec3::new(start.x, start.y, start.z.min(CHUNK_SIZE_Z as f32 - 2.0));
+                let start = Vec3::new(start.x, start.y, start.z.min(wurfel_sim::caveland::HEIGHT as f32 - 2.0));
                 let ship = self.caveland.transport_mut().spawn_spaceship(entities, start);
                 self.caveland.transport_mut().enable_crash(entities, ship, (x, y, spot.z.floor() as i32));
                 self.ship = Some(ship);

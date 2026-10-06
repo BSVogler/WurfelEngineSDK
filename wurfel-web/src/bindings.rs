@@ -5,7 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-pub const ACTIONS: [&str; 9] = ["up", "down", "left", "right", "jump", "place", "break", "zoomIn", "zoomOut"];
+pub const ACTIONS: [&str; 7] = ["up", "down", "left", "right", "jump", "place", "break"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bindings {
@@ -15,7 +15,7 @@ pub struct Bindings {
 impl Default for Bindings {
     /// The same defaults as the menu, used until it reports its settings.
     fn default() -> Self {
-        let defaults: [(&str, [&str; 2]); 9] = [
+        let defaults: [(&str, [&str; 2]); 7] = [
             ("up", ["w", "arrowup"]),
             ("down", ["s", "arrowdown"]),
             ("left", ["a", "arrowleft"]),
@@ -23,8 +23,6 @@ impl Default for Bindings {
             ("jump", [" ", ""]),
             ("place", ["mouse0", ""]),
             ("break", ["mouse2", ""]),
-            ("zoomIn", ["e", ""]),
-            ("zoomOut", ["q", ""]),
         ];
         Bindings {
             slots: defaults.iter().map(|(a, keys)| (a.to_string(), keys.iter().map(|k| k.to_string()).collect())).collect(),
@@ -90,7 +88,8 @@ mod tests {
         assert!(!b.held("up", &held(&["s"])));
         assert!(b.matches_button("place", 0) && b.matches_button("break", 2));
         assert!(!b.matches_button("place", 2));
-        assert!(b.matches_key("zoomIn", "E"), "event keys arrive in either case");
+        assert!(b.matches_key("jump", " ") && b.matches_key("up", "W"), "event keys arrive in either case");
+        assert!(!b.matches_key("zoomIn", "e"), "zoom is the scroll wheel only");
     }
 
     #[test]

@@ -61,10 +61,6 @@ html.menu-open #info { display: none; }
 /* HUD */
 .hud { position: fixed; z-index: 6; font: 12px/1 var(--mono); color: #e8edf6; text-shadow: 0 1px 2px #000; }
 .hud-fps { right: 12px; top: 10px; pointer-events: none; }
-.hud-net {
-  right: 12px; bottom: 10px; padding: 6px 10px; border-radius: 999px;
-  background: rgba(10, 14, 22, 0.6); pointer-events: none;
-}
 .hud-menubtn {
   right: 10px; top: 28px; width: 40px; height: 40px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(10, 14, 22, 0.55); color: #e8edf6; display: grid; place-items: center; cursor: pointer; padding: 0;
@@ -115,6 +111,7 @@ html.menu-open #info { display: none; }
 .status { margin: 8px 0 14px; min-height: 1.2em; color: var(--muted); font-size: 0.85rem; }
 .screen-title { margin: 4px 0 12px; font-size: 1.15rem; }
 .screen[hidden] { display: none; }
+.item[hidden] { display: none; }
 
 /* Buttons */
 .items { display: grid; gap: 8px; }
@@ -302,3 +299,10 @@ kbd {
   .menu > .panel { max-height: none; }
   .menu > .panel:first-child, .menu > .player-panel { width: min(520px, 100%); }
 }
+
+/* Create map: the generator picker with its preview image next to it. */
+.gen-row { display: flex; gap: 12px; align-items: flex-start; }
+.gen-pick { display: grid; gap: 6px; flex: 1 1 auto; min-width: 0; }
+.gen-preview { flex: none; width: 120px; height: 120px; image-rendering: pixelated; border-radius: 6px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.18); }
+
+.map-hint { margin: 4px 0; font-weight: 600; color: #ffd966; }

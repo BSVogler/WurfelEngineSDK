@@ -313,7 +313,7 @@ fn glyph(ch: char) -> [u8; 5] {
 
 /// A colour representing the block. The Java engine samples its sprite; the browser client draws
 /// flat colours, so these are the colours of `mesh.rs`.
-fn block_color(block: Block) -> [u8; 3] {
+pub(crate) fn block_color(block: Block) -> [u8; 3] {
     match block.id() {
         id::GRASS => [92, 163, 64],
         id::DIRT => [135, 94, 61],
@@ -845,8 +845,8 @@ mod tests {
         assert_eq!(at(&pixels, (mid_x, top)), GREEN);
 
         // White rectangle: the same view, shifted forward by the world height. It starts where
-        // the green one ends in y here (600 < 10 * 122), so check its own top edge.
-        let (mid_x, white_top) = layout.from_screen(center[0], center[1] - 300.0 + 10.0 * VIEW_HEIGHT);
+        // the green one ends in y here (600 < 32 * 122), so check its own top edge.
+        let (mid_x, white_top) = layout.from_screen(center[0], center[1] - 300.0 + CHUNK_SIZE_Z as f32 * VIEW_HEIGHT);
         assert!(white_top > top, "the top-of-world view lies further to the front");
         if (white_top.round() as u32) < H {
             assert_eq!(at(&pixels, (mid_x, white_top)), WHITE);

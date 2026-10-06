@@ -307,7 +307,7 @@ mod tests {
         assert_eq!(key_action("1", true), Some(("craft", 0)));
         assert_eq!(key_action("7", true), Some(("craft", 6)));
         assert_eq!(key_action("0", true), None);
-        assert_eq!(key_action("e", true), None, "e and q belong to the camera zoom");
+        assert_eq!(key_action("e", true), None, "zoom is the scroll wheel only");
         assert_eq!(key_action("w", true), None, "walking is not an action");
         assert_eq!(mouse_action(0, true), Some(("attack", 0)));
         assert_eq!(mouse_action(0, false), Some(("release_attack", 0)));

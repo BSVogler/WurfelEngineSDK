@@ -26,7 +26,6 @@
 
   <!-- HUD shown while playing -->
   <div id="fps" class="hud hud-fps" hidden></div>
-  <div id="netpill" class="hud hud-net" hidden></div>
   <button id="menubtn" class="hud hud-menubtn" type="button" aria-label="Open pause menu" hidden>
     <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
   </button>
@@ -59,7 +58,7 @@
           </form>
           <p class="server-state" id="server-state" role="status" aria-live="polite"></p>
           <p id="server-error" class="error" role="alert" hidden></p>
-          <button class="item" type="button" data-nav data-action="goto" data-target="worlds"><span class="label">Host a map</span></button>
+          <button class="item" type="button" data-nav data-action="goto" data-target="worlds"><span class="label">Maps</span></button>
           <button class="item" type="button" data-nav data-action="goto" data-target="options"><span class="label">Options</span></button>
           <button class="item" type="button" data-nav data-action="goto" data-target="controls"><span class="label">Controls</span></button>
           <button class="item" type="button" data-nav data-action="goto" data-target="credits"><span class="label">Credits</span></button>
@@ -77,23 +76,24 @@
         </div>
       </section>
 
-      <!-- HOST: pick the map the server runs (map = world = save files) -->
-      <section class="screen" data-screen="worlds" aria-label="Host a map" hidden>
-        <h2 class="screen-title">Host a map</h2>
+      <!-- MAPS: pick the map the server runs (map = world = save files) -->
+      <section class="screen" data-screen="worlds" aria-label="Maps" hidden>
+        <h2 class="screen-title">Maps</h2>
         <p class="card-server" id="card-server"></p>
         <p id="worlds-status" class="note" role="status" aria-live="polite"></p>
 
-        <div class="world-card" id="world-card" role="group" aria-label="Running map">
+        <h3 class="sub-title" id="running-title">Running now</h3>
+        <div class="world-card" id="world-card" role="group" aria-labelledby="running-title">
           <p class="card-map" id="card-map"></p>
           <p class="card-detail" id="card-detail"></p>
           <p class="card-players" id="card-players"></p>
           <div class="buttons">
             <button class="item compact primary big" type="button" id="join-btn" data-nav data-action="join-world" disabled><span class="label">Join</span></button>
-            <button class="item compact" type="button" id="refresh-btn" data-nav data-action="worlds-refresh"><span class="label">Refresh</span></button>
+            <button class="item compact" type="button" id="refresh-btn" data-nav data-action="worlds-refresh" hidden><span class="label">Reconnect</span></button>
           </div>
         </div>
 
-        <h3 class="sub-title" id="maps-title">Maps</h3>
+        <h3 class="sub-title" id="maps-title">Load a different map</h3>
         <p id="maps-status" class="note" role="status" aria-live="polite"></p>
         <p id="maps-blocked" class="note blocked" role="note" hidden>Server in use. Try again when it is empty.</p>
         <p id="maps-error" class="error" role="alert" hidden></p>
@@ -108,20 +108,21 @@
       <section class="screen" data-screen="newmap" aria-label="Create map" hidden>
         <h2 class="screen-title">Create map</h2>
         <form class="form" id="map-form" novalidate>
-          <label class="field"><span>Id</span>
-            <input type="text" id="map-id" data-nav maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="map-id-help" />
-            <small class="help" id="map-id-help">The folder name: 1 to 32 characters, lowercase letters, digits, - and _.</small>
-          </label>
           <label class="field"><span>Name</span>
             <input type="text" id="map-name" data-nav maxlength="60" autocomplete="off" spellcheck="false" />
-            <small class="help">Shown in the list. Defaults to the id.</small>
+            <small class="help">Shown in the list. The map's folder id is derived from it.</small>
           </label>
           <label class="field"><span>Description <small>(optional)</small></span>
             <input type="text" id="map-desc" data-nav maxlength="200" autocomplete="off" />
           </label>
           <label class="field"><span>Generator</span>
-            <select id="gen-select" data-nav></select>
-            <small class="help" id="gen-desc" aria-live="polite"></small>
+            <div class="gen-row">
+              <div class="gen-pick">
+                <select id="gen-select" data-nav></select>
+                <small class="help" id="gen-desc" aria-live="polite"></small>
+              </div>
+              <canvas id="gen-preview" class="gen-preview" width="160" height="160" role="img" aria-label="Preview of the generated map" hidden></canvas>
+            </div>
           </label>
           <label class="field"><span>Game mode</span>
             <select id="mode-select" data-nav>
@@ -167,7 +168,7 @@
           <fieldset>
             <legend>Graphics</legend>
             <label class="row"><span>Render scale</span><input type="range" data-nav data-setting="renderScale" data-scale="100" min="50" max="100" step="5" /><output></output></label>
-            <label class="row check"><input type="checkbox" data-nav data-setting="limitFps" /><span>Limit FPS to 60 (recommended)</span></label>
+            <label class="row"><span>FPS limit <small>(0 = unlimited)</small></span><input type="number" data-nav data-setting="fpsLimit" min="0" max="1000" step="1" /></label>
             <label class="row check"><input type="checkbox" data-nav data-setting="ambientOcclusion" /><span>Ambient occlusion <small>(used once lighting is ported)</small></span></label>
             <div class="row check"><button class="item compact" type="button" data-nav data-action="fullscreen" id="fullscreen-btn"><span class="label">Enter fullscreen</span></button></div>
             <p class="note" id="backend-note">V-Sync is controlled by the browser. The graphics backend (WebGPU or WebGL2) is picked automatically.</p>

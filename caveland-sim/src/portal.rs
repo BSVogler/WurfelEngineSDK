@@ -7,7 +7,7 @@
 use glam::Vec3;
 use wurfel_sim::block::Block;
 use wurfel_sim::entity::{Entities, EntityId};
-use wurfel_sim::{World, CHUNK_SIZE_Z};
+use wurfel_sim::World;
 
 use crate::blocks::ids;
 use crate::game::{cell_floor, Caveland, Cell};
@@ -111,7 +111,7 @@ impl Transport {
         let existing = self.portals.iter().find(|(_, p)| p.exit && p.cell == target).map(|(&id, _)| id);
         let exit = match existing {
             Some(id) => id,
-            None => self.spawn_portal(entities, target, (0, 0, CHUNK_SIZE_Z - 1), true),
+            None => self.spawn_portal(entities, target, (0, 0, wurfel_sim::caveland::HEIGHT - 1), true),
         };
         if let Some(p) = self.portals.get_mut(&exit) {
             if p.target != back {

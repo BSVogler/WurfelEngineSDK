@@ -22,9 +22,11 @@ use crate::caveland_client::{self, Happening};
 use crate::interp::{RenderClock, Track};
 use crate::locator;
 use crate::mesh::{self, Vertex};
+use crate::model::Model;
 use crate::prediction::{classify, replay, Correction, InputHistory, VisualOffset};
 use crate::minimap::{CameraView, ChunkInfo, ChunkState, EntityDot, Minimap, MinimapData, Mode};
 use crate::netstats::{format_report, NetStats};
+use crate::peel::gpu::{Peeling, DEPTH_FORMAT};
 use crate::pick::{pick, Pick};
 use crate::render_storage::RenderStorage;
 use crate::texture;
@@ -47,7 +49,6 @@ const PLAYER_COLORS: [[f32; 3]; 6] = [
 const MARKER_COLOR: [f32; 3] = [1.0, 0.92, 0.25];
 /// Room for the players and the hover marker.
 const DYNAMIC_VERTICES: u64 = 24576;
-const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 /// How often the latency probe is sent, and how often the overlays refresh (milliseconds).
 const PING_EVERY_MS: f64 = 1000.0;
@@ -60,12 +61,27 @@ const CONNECT_TIMEOUT_MS: f64 = 8000.0;
 
 pub fn start() {
     console_error_panic_hook::set_once();
+    expose_generator_preview();
     wasm_bindgen_futures::spawn_local(async {
         if let Err(message) = run().await {
             web_sys::console::error_1(&message.clone().into());
             set_info(&format!("Failed to start: {message}"));
         }
     });
+}
+
+/// `window.wurfelGeneratorPreview(id, seed)` for the "Create map" screen (menu.js): the RGBA pixels
+/// of a `wurfelGeneratorPreviewSize` square top-down image of that generator, or `undefined`.
+fn expose_generator_preview() {
+    use crate::preview::{render, PREVIEW_SIZE};
+    let Some(window) = web_sys::window() else { return };
+    let preview = Closure::<dyn Fn(String, f64) -> JsValue>::new(|id: String, seed: f64| match render(&id, seed as u64, PREVIEW_SIZE) {
+        Some(pixels) => js_sys::Uint8Array::from(pixels.as_slice()).into(),
+        None => JsValue::UNDEFINED,
+    });
+    let _ = js_sys::Reflect::set(&window, &"wurfelGeneratorPreview".into(), preview.as_ref());
+    let _ = js_sys::Reflect::set(&window, &"wurfelGeneratorPreviewSize".into(), &PREVIEW_SIZE.into());
+    preview.forget();
 }
 
 fn set_info(text: &str) {
@@ -136,7 +152,12 @@ struct State {
     world_vertices: u32,
     dynamic_buffer: wgpu::Buffer,
     dynamic_vertices: u32,
-    depth_view: wgpu::TextureView,
+    /// A glTF model asked for with `?model=` (see [`load_model`]): loaded, then placed next to the
+    /// local player once there is one.
+    model_loaded: Option<LoadedModel>,
+    model_placed: Option<PlacedModel>,
+    /// Draws the scene in layers of depth peeling (see `peel.rs`) and blends them onto the canvas.
+    peeling: Peeling,
     backend: wgpu::Backend,
     camera: Camera,
     dpr: f32,
@@ -295,9 +316,10 @@ async fn run() -> Result<(), String> {
     });
     let atlas_layout = texture::bind_group_layout(&device);
     let atlas_bind_group = texture::placeholder(&device, &queue, &atlas_layout);
+    let peeling = Peeling::new(&device, &queue, config.format, config.width, config.height);
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("blocks"),
-        bind_group_layouts: &[Some(&bind_group_layout), Some(&atlas_layout)],
+        bind_group_layouts: &[Some(&bind_group_layout), Some(&atlas_layout), Some(peeling.peel_layout())],
         immediate_size: 0,
     });
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -334,7 +356,7 @@ async fn run() -> Result<(), String> {
     let net_overlay = create_net_overlay(&document);
     let minimap = Minimap::new(&document, MINIMAP_SIZE.0, MINIMAP_SIZE.1, dpr.round().max(1.0) as u32).ok();
     let state = Rc::new(RefCell::new(State {
-        depth_view: create_depth_view(&device, config.width, config.height),
+        peeling,
         camera: Camera { center: [(gx - gy) * 100.0, (gx + gy) * 50.0 - 4.0 * 122.0], zoom: 0.5 * dpr },
         dpr,
         canvas,
@@ -364,6 +386,8 @@ async fn run() -> Result<(), String> {
         world_vertices: world_vertices.len() as u32,
         dynamic_buffer,
         dynamic_vertices: 0,
+        model_loaded: None,
+        model_placed: None,
         backend,
         world,
         view_chunk: (0, 0),
@@ -413,7 +437,10 @@ async fn run() -> Result<(), String> {
             let s = state.borrow();
             (s.device.clone(), s.queue.clone())
         };
-        wasm_bindgen_futures::spawn_local(load_sprites(state.clone(), device, queue, atlas_layout));
+        wasm_bindgen_futures::spawn_local(load_sprites(state.clone(), device.clone(), queue.clone(), atlas_layout.clone()));
+        if let Some(url) = query_value("model") {
+            wasm_bindgen_futures::spawn_local(load_model(state.clone(), device, queue, atlas_layout, url));
+        }
     }
     start_frame_loop(state);
     Ok(())
@@ -443,6 +470,70 @@ async fn load_sprites(state: Rc<RefCell<State>>, device: wgpu::Device, queue: wg
     }
 }
 
+/// The value of `key` in the page address (`?key=value`), if present.
+fn query_value(key: &str) -> Option<String> {
+    let search = web_sys::window()?.location().search().ok()?;
+    search.trim_start_matches('?').split('&').find_map(|part| part.strip_prefix(key)?.strip_prefix('=')).map(str::to_string)
+}
+
+/// A model that is parsed and has its pictures on the GPU, waiting for a place in the world.
+struct LoadedModel {
+    model: Model,
+    /// One bind group per picture of the model, in the order of [`Model::textures`].
+    pictures: Vec<wgpu::BindGroup>,
+}
+
+/// The model's triangles in a buffer, with what to bind for each run of them.
+struct PlacedModel {
+    buffer: wgpu::Buffer,
+    draws: Vec<(Option<usize>, std::ops::Range<u32>)>,
+}
+
+/// Blocks per glTF metre when a model is placed in the world.
+const MODEL_SCALE: f32 = 0.6;
+
+/// `?model=assets/models/x.glb`: fetch a glTF binary, in the background. It is shown standing next
+/// to the local player (see [`place_model`]). Animations are not played yet: the file is posed at
+/// the middle of its first animation.
+async fn load_model(state: Rc<RefCell<State>>, device: wgpu::Device, queue: wgpu::Queue, layout: wgpu::BindGroupLayout, url: String) {
+    let started = now_ms();
+    let bytes = match texture::fetch_bytes(&url).await {
+        Ok(bytes) => bytes,
+        Err(message) => return web_sys::console::warn_1(&format!("model: {message}").into()),
+    };
+    let model = match Model::from_glb(&bytes) {
+        Ok(model) => model,
+        Err(message) => return web_sys::console::warn_1(&format!("model {url}: {message}").into()),
+    };
+    for warning in &model.warnings {
+        web_sys::console::warn_1(&format!("model {url}: {warning}").into());
+    }
+    let pictures = model.textures().iter().map(|t| texture::model_bind_group(&device, &queue, &layout, t)).collect();
+    web_sys::console::log_1(
+        &format!("model: {url}: {} triangles, {} pictures, {:.0} ms", model.triangle_count(), model.textures().len(), now_ms() - started).into(),
+    );
+    state.borrow_mut().model_loaded = Some(LoadedModel { model, pictures });
+}
+
+/// Put the loaded model on the ground beside the local player, once, and upload its triangles.
+fn place_model(s: &mut State) {
+    use wgpu::util::DeviceExt;
+    let Some(player) = local_position(s) else { return };
+    let Some(loaded) = s.model_loaded.as_ref() else { return };
+    // To the right of the player on the screen, standing on its lowest point.
+    let lowest = loaded.model.bounds().map_or(0.0, |(lo, _)| lo.z);
+    let position = Vec3::new(player.x + 1.5, player.y - 1.5, player.z - lowest * MODEL_SCALE);
+    let mut vertices = Vec::new();
+    let draws = loaded.model.append(&mut vertices, position, 0.0, MODEL_SCALE);
+    let buffer = s.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("model"),
+        contents: bytemuck::cast_slice(&vertices),
+        usage: wgpu::BufferUsages::VERTEX,
+    });
+    let draws = draws.into_iter().map(|d| (d.texture, d.vertices.start as u32..d.vertices.end as u32)).collect();
+    s.model_placed = Some(PlacedModel { buffer, draws });
+}
+
 fn vertex_buffer_with(device: &wgpu::Device, vertices: &[Vertex]) -> wgpu::Buffer {
     use wgpu::util::DeviceExt;
     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -460,21 +551,6 @@ fn fit_canvas(canvas: &HtmlCanvasElement) {
     let height = window.inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(600.0);
     canvas.set_width(((width * dpr) as u32).max(1));
     canvas.set_height(((height * dpr) as u32).max(1));
-}
-
-fn create_depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
-    device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some("depth"),
-            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: DEPTH_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        })
-        .create_view(&Default::default())
 }
 
 // ------------------------------------------------------------------------------------ JS helpers
@@ -1205,7 +1281,8 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         s.config.width = s.canvas.width().max(1);
         s.config.height = s.canvas.height().max(1);
         s.surface.configure(&s.device, &s.config);
-        s.depth_view = create_depth_view(&s.device, s.config.width, s.config.height);
+        let s = &mut *s;
+        s.peeling.resize(&s.device, s.config.width, s.config.height);
     });
 
     let s = state.clone();
@@ -1349,8 +1426,17 @@ fn hovered(s: &State) -> Option<Pick> {
 fn start_frame_loop(state: Rc<RefCell<State>>) {
     let callback: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
     let next = callback.clone();
+    let mut last_frame = f64::NEG_INFINITY;
     *next.borrow_mut() = Some(Closure::new(move |now_ms: f64| {
-        frame(&mut state.borrow_mut(), now_ms);
+        // `fpsLimit` from the menu: 0 is unlimited. Skip callbacks that arrive too early; the 1 ms slack
+        // keeps a 60 FPS cap from dropping to 30 on a 60 Hz display whose callbacks jitter.
+        let limit = web_sys::window()
+            .and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "fpsLimit").as_f64())
+            .unwrap_or(60.0);
+        if limit < 1.0 || now_ms - last_frame >= 1000.0 / limit - 1.0 {
+            last_frame = now_ms;
+            frame(&mut state.borrow_mut(), now_ms);
+        }
         request_animation_frame(callback.borrow().as_ref().unwrap());
     }));
     request_animation_frame(next.borrow().as_ref().unwrap());
@@ -1462,14 +1548,6 @@ fn frame(s: &mut State, now_ms: f64) {
         s.camera.center[0] += (target[0] - s.camera.center[0]) * k;
         s.camera.center[1] += (target[1] - s.camera.center[1]) * k;
     }
-    if !blocked {
-        if s.bindings.held("zoomOut", &s.keys) {
-            s.camera.zoom *= 1.0 - 1.5 * dt;
-        }
-        if s.bindings.held("zoomIn", &s.keys) {
-            s.camera.zoom *= 1.0 + 1.5 * dt;
-        }
-    }
     s.camera.zoom = s.camera.zoom.clamp(0.1 * s.dpr, 4.0 * s.dpr);
 
     // The server accepted the connection (or not) but never sent the world.
@@ -1506,6 +1584,9 @@ fn frame(s: &mut State, now_ms: f64) {
     }
 
     let target = hovered(s);
+    if s.model_placed.is_none() {
+        place_model(s);
+    }
     upload_dynamic_mesh(s, target);
     update_overlays(s, now_ms);
     update_info(s);
@@ -1781,12 +1862,7 @@ fn update_info(s: &mut State) {
         (true, None) => "connecting…".to_string(),
         (false, _) => "offline: showing a preview. Open the menu (Esc) to join a world".to_string(),
     };
-    let keys = if s.caveland.is_some() {
-        "WASD walk · Space jump · F swing · R talk/build/ride · 1-9 craft · Tab players · F3 network · F4 map".to_string()
-    } else {
-        format!("WASD walk · Space jump · left click place {} · right click break · 1-4 block · F3 network · F4 map", HOTBAR[s.selected].1)
-    };
-    let text = format!("Wurfel Engine · {:?} · {status}\n{keys}", s.backend);
+    let text = format!("Wurfel Engine · {:?} · {status}", s.backend);
     if text != s.info_text {
         set_info(&text);
         s.info_text = text;
@@ -1816,27 +1892,10 @@ fn render(s: &mut State) {
     };
     let view = output.texture.create_view(&Default::default());
     let mut encoder = s.device.create_command_encoder(&Default::default());
-    {
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("world"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.063, g: 0.075, b: 0.102, a: 1.0 }),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &s.depth_view,
-                depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Discard }),
-                stencil_ops: None,
-            }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
+    // The scene is drawn once per depth peeling layer, in any order, and the layers are blended
+    // onto the canvas (see `peel.rs`).
+    let background = wgpu::Color { r: 0.063, g: 0.075, b: 0.102, a: 1.0 };
+    s.peeling.render(&mut encoder, &view, background, |pass| {
         pass.set_pipeline(&s.pipeline);
         pass.set_bind_group(0, &s.bind_group, &[]);
         pass.set_bind_group(1, &s.atlas_bind_group, &[]);
@@ -1848,7 +1907,15 @@ fn render(s: &mut State) {
             pass.set_vertex_buffer(0, s.dynamic_buffer.slice(..));
             pass.draw(0..s.dynamic_vertices, 0..1);
         }
-    }
+        if let (Some(placed), Some(loaded)) = (&s.model_placed, &s.model_loaded) {
+            pass.set_vertex_buffer(0, placed.buffer.slice(..));
+            for (picture, range) in &placed.draws {
+                let group = picture.and_then(|i| loaded.pictures.get(i)).unwrap_or(&s.atlas_bind_group);
+                pass.set_bind_group(1, group, &[]);
+                pass.draw(range.clone(), 0..1);
+            }
+        }
+    });
     s.queue.submit(Some(encoder.finish()));
     s.queue.present(output);
 }

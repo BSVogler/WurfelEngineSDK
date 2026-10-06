@@ -551,7 +551,7 @@ impl CVarSystem {
         c.i("groundBlockID", 1);
         c.i("chunkBlocksX", 10);
         c.i("chunkBlocksY", 40);
-        c.i("chunkBlocksZ", 10);
+        c.i("chunkBlocksZ", 32);
         c.s("mapname", "");
         c.s("description", "");
         // Not in Java, where the generator was chosen in code. Which map generator this map uses (an

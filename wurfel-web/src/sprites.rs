@@ -7,11 +7,13 @@
 //!
 //! # How a sprite meets the world
 //!
-//! The Java engine draws every sprite as a screen-aligned picture. The three faces of a block are
-//! sheared pictures that exactly fill the screen bounding box of the face, so a face is textured by
-//! mapping its projected corners onto the sprite ([`face_uvs`]). Single pictures are placed with the
-//! rules of `GameSpaceSprite`: the picture's original box is centred on the anchor, and its bottom edge
-//! is the front tip of the footprint diamond ([`billboard`]).
+//! The three faces of a block are sheared pictures that exactly fill the screen bounding box of the
+//! face, so a face is textured by mapping its projected corners onto the sprite ([`face_uvs`]).
+//! Single pictures (entities, trees...) are placed with the rules of `GameSpaceSprite`: the picture's
+//! original box is centred on the anchor, and its bottom edge is the front tip of the footprint
+//! diamond. As in Java they are quads with real 3D vertices, a vertical wall through that tip
+//! ([`billboard`]), so the depth buffer sorts them against the blocks per pixel and not as one flat
+//! picture at a single depth.
 
 // The entity and player parts are only used by the browser build.
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
@@ -141,20 +143,25 @@ pub fn face_uvs(atlas: &Atlas, region: &Region, corners: [[f32; 3]; 4]) -> [[f32
 // ------------------------------------------------------------------------------- billboards
 
 /// Where the screen offset `(dx, dy)` (pixels at zoom 1, y down) from the anchor lies in the world,
-/// on the plane through the anchor that faces the camera, so that the whole sprite has the anchor's
-/// depth. `toward_camera` moves the plane that much (in depth units) closer to the viewer without
-/// moving it on screen, so a sprite is not cut by the ground it stands on.
+/// on the sprite's wall: the vertical plane through the front tip of the anchor's footprint
+/// (`x + y` is the anchor's plus one), the plane of `GameSpaceSprite.getVertices` without a side, where
+/// the quad has constant Java `y` and the picture's bottom edge sits on the tip (`FOOTPRINT_TIP`
+/// below the anchor on screen). Unlike a screen-parallel billboard its depth grows with height, like
+/// a real wall: a block in front of the feet covers the legs but not the head.
+///
+/// `toward_camera` moves the wall that much (in depth units) closer to the viewer without moving it
+/// on screen, so the picture's bottom edge is not cut by the ground it touches.
 pub fn billboard_point(anchor: Vec3, dx: f32, dy: f32, toward_camera: f32) -> [f32; 3] {
-    // Right on screen is (+x, -y) in the ground frame: one step of 2 * SCREEN_X pixels per block.
-    // Down on screen is -z, compensated by a step (t, t) along the ground diagonal that cancels the
-    // change of depth: 2t + 0.82 dz = 0, and then dsy = 2 * SCREEN_Y * t - SCREEN_Z * dz = dy.
-    let dz = -dy / (SCREEN_Z + 2.0 * SCREEN_Y * DEPTH_Z / 2.0);
-    let t = -DEPTH_Z / 2.0 * dz;
+    // On the wall x + y = s; right on screen is (+x, -y): one block per 2 * SCREEN_X pixels.
+    let s = anchor.x + anchor.y + 1.0;
+    let across = anchor.x - anchor.y + dx / SCREEN_X;
+    // Screen y of the wall point is s * SCREEN_Y - SCREEN_Z * z; solve for z.
+    let z = anchor.z + (SCREEN_Y - dy) / SCREEN_Z;
     // A step d along (1, 1, e) with e = 2 * SCREEN_Y / SCREEN_Z does not move on screen
     // (2 * SCREEN_Y * d = SCREEN_Z * e * d) but changes the depth by (2 + 0.82 e) d.
     let e = 2.0 * SCREEN_Y / SCREEN_Z;
     let d = toward_camera / (2.0 + DEPTH_Z * e);
-    [anchor.x + dx / (2.0 * SCREEN_X) + t + d, anchor.y - dx / (2.0 * SCREEN_X) + t + d, anchor.z + dz + e * d]
+    [(s + across) / 2.0 + d, (s - across) / 2.0 + d, z + e * d]
 }
 
 /// The two triangles of a sprite standing in the world, anchored at `anchor`.
@@ -170,7 +177,7 @@ pub fn billboard(out: &mut Vec<Vertex>, atlas: &Atlas, region: &Region, anchor: 
     let (u0, u1) = (region.x as f32 / page.width as f32, (region.x + region.w) as f32 / page.width as f32);
     let (v0, v1) = (region.y as f32 / page.height as f32, (region.y + region.h) as f32 / page.height as f32);
     let (u_left, u_right) = if mirror { (u1, u0) } else { (u0, u1) };
-    let bias = 0.3;
+    let bias = 0.05;
     let vertex = |dx: f32, dy: f32, u: f32, v: f32| Vertex {
         position: billboard_point(anchor, dx, dy, bias),
         color: tint,
@@ -563,20 +570,70 @@ mod tests {
     }
 
     #[test]
-    fn a_billboard_keeps_one_depth_and_spans_the_screen_rectangle_asked_for() {
+    fn a_billboard_is_a_vertical_wall_that_spans_the_screen_rectangle_asked_for() {
         let anchor = Vec3::new(3.0, 2.0, 5.0);
-        let base = depth(anchor);
-        let at_screen = |dx: f32, dy: f32| {
-            let p = billboard_point(anchor, dx, dy, 0.0);
-            (project(p), depth(Vec3::from(p)))
-        };
         let origin = project(anchor.to_array());
+        let mut walls = Vec::new();
         for (dx, dy) in [(-100.0, -200.0), (100.0, -200.0), (100.0, 40.0), (-100.0, 40.0), (0.0, 0.0)] {
-            let (screen, d) = at_screen(dx, dy);
+            let p = billboard_point(anchor, dx, dy, 0.0);
+            let screen = project(p);
             assert!((screen[0] - origin[0] - dx).abs() < 0.05, "x of ({dx}, {dy}): {}", screen[0] - origin[0]);
             assert!((screen[1] - origin[1] - dy).abs() < 0.05, "y of ({dx}, {dy}): {}", screen[1] - origin[1]);
-            assert!((d - base).abs() < 1e-3, "depth of ({dx}, {dy}) differs by {}", d - base);
+            walls.push(p[0] + p[1]);
         }
+        // Vertical: one value of x + y for the whole picture, the footprint's front tip.
+        assert!(walls.iter().all(|w| (w - (anchor.x + anchor.y + 1.0)).abs() < 1e-4), "{walls:?}");
+    }
+
+    #[test]
+    fn a_billboard_gets_nearer_with_height_like_a_wall() {
+        let anchor = Vec3::new(3.0, 2.0, 5.0);
+        let feet = depth(Vec3::from(billboard_point(anchor, 0.0, FOOTPRINT_TIP, 0.0)));
+        let head = depth(Vec3::from(billboard_point(anchor, 0.0, FOOTPRINT_TIP - SCREEN_Z, 0.0)));
+        // One block higher: 0.82 nearer, and the bottom edge is on the tip of the footprint.
+        assert!((head - feet - DEPTH_Z).abs() < 1e-4, "{}", head - feet);
+        let tip = billboard_point(anchor, 0.0, FOOTPRINT_TIP, 0.0);
+        assert!((tip[2] - anchor.z).abs() < 1e-4, "the bottom edge is at the height of the feet");
+    }
+
+    /// Is the point `p` hidden from the camera by the unit cube centred on `(cx, cy)`, from `z0` to
+    /// `z0 + 1`? The camera looks along (1, 1, e) in the ground frame (the direction that does not
+    /// move on screen), so the points nearer to the viewer are `p + t * (1, 1, e)` with `t > 0`.
+    fn hidden_by_cube(p: [f32; 3], (cx, cy, z0): (f32, f32, f32)) -> bool {
+        let e = 2.0 * SCREEN_Y / SCREEN_Z;
+        let dir = [1.0, 1.0, e];
+        let (lo, hi) = ([cx - 0.5, cy - 0.5, z0], [cx + 0.5, cy + 0.5, z0 + 1.0]);
+        let (mut t_in, mut t_out) = (1e-3_f32, f32::MAX);
+        for axis in 0..3 {
+            let (a, b) = ((lo[axis] - p[axis]) / dir[axis], (hi[axis] - p[axis]) / dir[axis]);
+            t_in = t_in.max(a.min(b));
+            t_out = t_out.min(a.max(b));
+        }
+        t_in < t_out
+    }
+
+    /// The nook of three blocks: the player stands in front of the back block and between two blocks
+    /// that touch its cell (the picture of the bug this fixes: head and sides were cut by them).
+    #[test]
+    fn a_sprite_in_a_nook_is_not_cut_by_the_blocks_it_stands_between() {
+        let (nx, ny, z0) = (10.0, 10.0, 4.0);
+        let anchor = Vec3::new(nx, ny, z0);
+        let neighbours = [(nx - 1.0, ny - 1.0, z0), (nx - 1.0, ny, z0), (nx, ny - 1.0, z0)];
+        let front = (nx + 1.0, ny + 1.0, z0);
+        let (mut covered_by_front, mut samples) = (0, 0);
+        // The whole picture from the feet (50 px below the anchor on screen) up to well over the head.
+        for dx in (-100..=100).step_by(10) {
+            for dy in (-260..=50).step_by(10) {
+                let p = billboard_point(anchor, dx as f32, dy as f32, 0.05);
+                samples += 1;
+                for cube in neighbours {
+                    assert!(!hidden_by_cube(p, cube), "pixel ({dx}, {dy}) is cut by the block at {cube:?}");
+                }
+                covered_by_front += hidden_by_cube(p, front) as i32;
+            }
+        }
+        // And a block that really is in front of the player does cover some of the picture.
+        assert!(covered_by_front > 0 && covered_by_front < samples, "{covered_by_front} of {samples}");
     }
 
     #[test]

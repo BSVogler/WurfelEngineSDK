@@ -1,8 +1,9 @@
 #!/bin/bash
 # Fast development loop. Starts the game server (port 3000) and the client dev server (port 8080).
 # The client rebuilds and reloads on every change to wurfel-web or wurfel-sim (about 1 s); the
-# server is restarted by running this script again. Open http://127.0.0.1:8080 in two tabs to
-# see two players.
+# server rebuilds and restarts on every change to wurfel-server, wurfel-sim or caveland-sim
+# (see devserver.sh; everybody is disconnected, pick the world again). Open
+# http://127.0.0.1:8080 in two tabs to see two players.
 #
 # Output is labelled [server] or [client]. A "Build failure" overlay in the browser always means
 # the CLIENT (wurfel-web, compiled to wasm) failed; the compiler messages are in the [client]
@@ -17,6 +18,6 @@ cd "$(dirname "$0")"
 echo
 
 trap 'kill 0 2>/dev/null' EXIT INT TERM
-(cd .. && cargo run -p wurfel-server -- --port 3000 ${SKIP_INTRO:+--skip-intro} 2>&1 | sed -u 's/^/[server] /') &
+./devserver.sh --port 3000 ${SKIP_INTRO:+--skip-intro} 2>&1 | sed -u 's/^/[server] /' &
 if [ -z "$NO_OPEN" ]; then OPEN=--open; fi
 trunk serve $OPEN "$@" 2>&1 | sed -u 's/^/[client] /'

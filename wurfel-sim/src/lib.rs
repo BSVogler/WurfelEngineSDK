@@ -27,5 +27,5 @@ pub const CHUNK_SIZE_X: i32 = 10;
 /// Blocks per chunk along y. Must be even: odd and even rows are staggered, see [`grid`].
 pub const CHUNK_SIZE_Y: i32 = 40;
 /// Blocks per chunk along z (the world height).
-pub const CHUNK_SIZE_Z: i32 = 10;
+pub const CHUNK_SIZE_Z: i32 = 32;
 

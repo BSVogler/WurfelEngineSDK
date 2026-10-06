@@ -8,7 +8,8 @@ Browser client for the Wurfel Engine prototype: a small multiplayer block world 
 
 | | |
 |---|---|
-| `./dev.sh` | Starts the game server (port 3000) and the client dev server (http://127.0.0.1:8080). A change to `wurfel-web` or `wurfel-sim` rebuilds and reloads the page in about 1 s. Open the URL in two tabs to see two players. `NO_OPEN=1 ./dev.sh` skips opening a browser. |
+| `./dev.sh` | Starts the game server (port 3000) and the client dev server (http://127.0.0.1:8080). A change to `wurfel-web` or `wurfel-sim` rebuilds and reloads the page in about 1 s. A change to `wurfel-server`, `wurfel-sim` or `caveland-sim` rebuilds and restarts the game server (`devserver.sh`); everybody is disconnected, so pick the world again. Open the URL in two tabs to see two players. `NO_OPEN=1 ./dev.sh` skips opening a browser. |
+| `./bluegreen.sh` | Blue/green for local testing. `run` keeps the last good build running at http://127.0.0.1:4000 (client and server on one port); `promote` copies the working folder, runs the tests, builds server and client, smoke-tests the new server, and only then switches blue to it, so a broken working folder never reaches the page you are testing; `rollback` goes back one build; `status` shows what runs. `./dev.sh` stays the hot-reload "green" side on its own ports. Blue keeps its own maps in `~/.wurfel-bluegreen/maps`. |
 | `./build.sh` | Runs all tests, then builds an optimised client into `dist/`. |
 | `cargo run --release -p wurfel-server -- --static wurfel-web/dist` | Serves the built client and the game from one port (default 3000). This is the thing to put on a VPS. |
 | `cargo test -p wurfel-sim -p wurfel-web -p wurfel-server` | Native tests, no browser needed. |
@@ -19,7 +20,7 @@ One-time setup: `rustup target add wasm32-unknown-unknown && cargo install trunk
 ## Controls
 
 WASD / arrows walk, left click places the selected block, right click breaks, `1`-`4` choose the
-block, wheel or Q/E zoom. Without a server the page shows a read-only preview of the island.
+block, wheel zoom. Without a server the page shows a read-only preview of the island.
 
 ## Where things are
 
@@ -41,18 +42,18 @@ The grid is the Java engine's staggered one (odd `y` rows shifted half a block),
 
 ## Menu (`index.html`, `menu.css`, `menu.js`)
 
-Plain HTML/CSS/JS, no framework. The game canvas keeps running behind the menu. Screens: main (**Connect**, a small Server field, Host a map, Options, Controls, Credits), **Host a map** (the running map, and every map on the server with its generator, seed and saves), Create map, Options, Controls, Credits and a pause overlay on Esc. A **Player panel** (name, colour swatches, custom colour, preview) sits to the right of the main panel on desktop and collapses below it on phones. Arrow keys/W/S and Enter/Space navigate, Esc goes back, a gamepad works too. Settings are saved in `localStorage` (the menu still works when it is blocked).
+Plain HTML/CSS/JS, no framework. The game canvas keeps running behind the menu. Screens: main (**Connect**, a small Server field, Maps, Options, Controls, Credits), **Maps** (the running map, and every map on the server with its generator, seed and saves), Create map, Options, Controls, Credits and a pause overlay on Esc. A **Player panel** (name, colour swatches, custom colour, preview) sits to the right of the main panel on desktop and collapses below it on phones. Arrow keys/W/S and Enter/Space navigate, Esc goes back, a gamepad works too. Settings are saved in `localStorage` (the menu still works when it is blocked).
 
-**Players** just press **Connect**: it joins the map the server is running. The small Server field (default `localhost`, remembered servers as suggestions, up to 8) overrides the address: empty = the server this page came from; a bare host gets the game server's port 3000 (`localhost` -> `ws://localhost:3000/ws`, `myserver.example.org` -> `ws://myserver.example.org:3000/ws`, or `wss://myserver.example.org/ws` on an https page); `host:port`, `ws(s)://` and `http(s)://` URLs are used as given. A **host** opens *Host a map*, picks a save or a new save of any map on that server (or creates a map), and the server switches to it while nobody is connected. Map, world and save files are one thing; the menu says "map". Nothing in the menu starts a server process.
+**Players** just press **Connect**: it joins the map the server is running. The small Server field (default `localhost`, remembered servers as suggestions, up to 8) overrides the address: empty = the server this page came from; a bare host gets the game server's port 3000 (`localhost` -> `ws://localhost:3000/ws`, `myserver.example.org` -> `ws://myserver.example.org:3000/ws`, or `wss://myserver.example.org/ws` on an https page); `host:port`, `ws(s)://` and `http(s)://` URLs are used as given. A **host** opens *Maps*, picks a save or a new save of any map on that server (or creates a map), and the server switches to it while nobody is connected. Map, world and save files are one thing; the menu says "map". Nothing in the menu starts a server process.
 
-**Lobby.** There is no REST API. Connect and Host a map each open its own short-lived WebSocket to the server (`ws(s)://host/ws`, JSON text frames, 4 s to connect and get a first answer; Refresh reconnects). It closes when the player leaves the Host screens or joins; the game then opens its own socket (the menu never sends `Join`).
+**Lobby.** There is no REST API. Connect and Maps each open its own short-lived WebSocket to the server (`ws(s)://host/ws`, JSON text frames, 4 s to connect and get a first answer; Reconnect re-opens it after a failure and never touches the running world). It closes when the player leaves the Maps screens or joins; the game then opens its own socket (the menu never sends `Join`).
 
 - server to menu: `Lobby { world: { map, map_id, slot, generator, seed, players }, generators }`, `Maps { maps: [{ id, name, description, generator, seed, saves: [{ slot, modified }] }] }`, `WorldChanged { world }`, `MapCreated { map }`, `Failed { request, message }`
 - menu to server: `ListMaps`, `GetWorld`, `LoadMap { map, slot: n | "new" }`, `CreateMap { id, name, description, generator, seed }` (frames stay under 1 KB)
 
 The contract with the game side (the full version is the comment at the top of `menu.js`):
 
-- `window.wurfelSettings`: live object with `playerName`, `playerColor` (`#rrggbb`), `serverUrl`, `servers`, `masterVolume`/`musicVolume`/`effectsVolume` (0..1), `renderScale` (0.5..1), `zoom` (0.2..2), `limitFps`, `ambientOcclusion`, `showFps`, `showHelp`, `generator`/`seed` (last used in the Create map form), and `keys`: `{ up, down, left, right, jump, place, break, zoomIn, zoomOut }`, each `[primary, alternate]` as lowercased `KeyboardEvent.key` or `"mouse0"`/`"mouse1"`/`"mouse2"`; an empty string means unbound.
+- `window.wurfelSettings`: live object with `playerName`, `playerColor` (`#rrggbb`), `serverUrl`, `servers`, `masterVolume`/`musicVolume`/`effectsVolume` (0..1), `renderScale` (0.5..1), `zoom` (0.2..2), `fpsLimit` (integer, 0 = unlimited, default 60), `ambientOcclusion`, `showFps`, `showHelp`, `generator`/`seed` (last used in the Create map form), and `keys`: `{ up, down, left, right, jump, place, break }`, each `[primary, alternate]` as lowercased `KeyboardEvent.key` or `"mouse0"`/`"mouse1"`/`"mouse2"`; an empty string means unbound.
 - Events on `window`: `wurfel:play` with `{ name, color, server, generator, seed, create }` (`server` is a full `ws(s)://` URL without a query string; `generator`/`seed` describe the world the server is running; `create` is true when a new save slot was created), `wurfel:pause`, `wurfel:resume`, `wurfel:leave`, `wurfel:settings` (detail is the settings object; fired at startup and after every change), and `wurfel:error` (game to menu, `{ message }`: shows the message on the main menu).
 - `window.wurfelPlayRequest` is the detail of the last `wurfel:play` (null after leaving), for a game that was not listening yet.
 - `window.wurfelMenuOpen` is true while a menu is open; the game must ignore gameplay input then. The menu also swallows keyboard, mouse and wheel events in the capture phase and dispatches `blur` when it opens so held keys are released.

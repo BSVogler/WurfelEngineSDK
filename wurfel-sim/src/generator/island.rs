@@ -1,6 +1,9 @@
 use super::{splitmix64, Generator};
 use crate::block::{id, Block};
-use crate::{CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z};
+use crate::{CHUNK_SIZE_X, CHUNK_SIZE_Y};
+
+/// The Java chunk height. The pyramid is as tall as the world was there; the world is taller now.
+const JAVA_HEIGHT: i32 = 10;
 
 /// A sand floor, a two-block deep sea and one pyramid-shaped mountain, ported from the Java
 /// `IslandGenerator`. The Java version picked the peak with `Math.random()`; here the seed does.
@@ -37,7 +40,7 @@ impl Generator for IslandGenerator {
             return Block::new(id::SAND, 0);
         }
 
-        let height = CHUNK_SIZE_Z - 1 - (self.peak_y - y).abs() - (self.peak_x - x).abs();
+        let height = JAVA_HEIGHT - 1 - (self.peak_y - y).abs() - (self.peak_x - x).abs();
         if height > 0 && z < height {
             return if height - 1 == z && z > 2 {
                 Block::new(id::GRASS, 0)

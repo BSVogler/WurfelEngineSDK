@@ -533,7 +533,7 @@ mod tests {
         let id = game.add_player();
         let (x, y) = neighbour(&game, id);
         let stone = Block::new(id::STONE, 0).raw();
-        let z = CHUNK_SIZE_Z - 1; // up in the air, nobody is there
+        let z = 9; // up in the air within reach of the island peak, nobody is there
 
         let sent = game.handle(id, ClientMsg::SetBlock { x, y, z, block: stone });
         assert_eq!(sent, Some(ServerMsg::BlockSet(Edit { x, y, z, block: stone })));

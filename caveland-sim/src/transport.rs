@@ -394,7 +394,7 @@ impl Transport {
         match spawn.kind {
             "ExitPortal" | "Portal" => {
                 let exit = spawn.kind == "ExitPortal";
-                let target = spawn.target.unwrap_or((0, 0, CHUNK_SIZE_Z - 1));
+                let target = spawn.target.unwrap_or((0, 0, wurfel_sim::caveland::HEIGHT - 1));
                 let id = self.spawn_portal(entities, spawn.cell, target, exit);
                 if spawn.extras.iter().any(|(k, v)| *k == "enemy_spawner" && v == "true") {
                     self.enable_enemy_spawner(id);

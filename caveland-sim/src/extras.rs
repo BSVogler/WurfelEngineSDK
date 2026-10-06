@@ -34,7 +34,7 @@ const SCAN_EVERY: f32 = 0.5;
 /// Where the tutorial's guide appears (`new Coordinate(-3, 8, 6)`).
 pub const VANYA_SPAWN: Cell = (-3, 8, 6);
 /// The place whose crossing starts the tutorial's end fight, corners of the cube.
-pub const FIGHT_ZONE: (Cell, Cell) = ((28, -5, 3), (30, 7, wurfel_sim::CHUNK_SIZE_Z));
+pub const FIGHT_ZONE: (Cell, Cell) = ((28, -5, 3), (30, 7, wurfel_sim::caveland::HEIGHT));
 /// Where the robots of the end fight come from: x 34 to 38, y 4 to 8, z 5.
 pub const FIGHT_ROBOTS: usize = 5;
 /// Where a player starts and comes back to until a flag says otherwise (`respawnX/Y/Z` defaults).

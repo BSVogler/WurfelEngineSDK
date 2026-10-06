@@ -2,7 +2,7 @@
 //!
 //! # Layout
 //!
-//! Same as the Java `Chunk.data[x][y][z * 3]`: three bytes per block, so a 10x40x10 chunk is 12 KB.
+//! Same as the Java `Chunk.data[x][y][z * 3]`: three bytes per block, so a 10x40x32 chunk is 38 KB (12 KB at the Java height of 10).
 //!
 //! | byte | meaning |
 //! |------|---------|
@@ -307,9 +307,9 @@ mod tests {
     const LAYER_CELLS: usize = (CHUNK_SIZE_X * CHUNK_SIZE_Y) as usize;
 
     #[test]
-    fn a_fresh_chunk_is_air_with_health_100_and_twelve_kilobytes() {
+    fn a_fresh_chunk_is_air_with_health_100_and_three_bytes_per_block() {
         let chunk = Chunk::new((0, 0));
-        assert_eq!(chunk.data.len(), 12_000);
+        assert_eq!(chunk.data.len(), (CHUNK_SIZE_X * CHUNK_SIZE_Y * CHUNK_SIZE_Z) as usize * 3);
         assert!(chunk.get(3, 4, 5).is_air());
         assert_eq!(chunk.health(3, 4, 5), 100);
         assert_eq!(chunk.health(-1, 0, 0), 0);
@@ -318,10 +318,10 @@ mod tests {
     #[test]
     fn get_and_set_respect_local_bounds() {
         let mut chunk = Chunk::new((2, -1));
-        assert!(chunk.set(9, 39, 9, Block::new(id::STONE, 4)));
-        assert_eq!(chunk.get(9, 39, 9), Block::new(id::STONE, 4));
+        assert!(chunk.set(9, 39, CHUNK_SIZE_Z - 1, Block::new(id::STONE, 4)));
+        assert_eq!(chunk.get(9, 39, CHUNK_SIZE_Z - 1), Block::new(id::STONE, 4));
         assert!(!chunk.set(10, 0, 0, Block::new(id::STONE, 0)));
-        assert!(!chunk.set(0, 0, 10, Block::new(id::STONE, 0)));
+        assert!(!chunk.set(0, 0, CHUNK_SIZE_Z, Block::new(id::STONE, 0)));
         assert!(chunk.get(10, 0, 0).is_air());
         assert!(chunk.has_coord(20, -40) && chunk.has_coord(29, -1));
         assert!(!chunk.has_coord(30, -40) && !chunk.has_coord(20, 0));
@@ -384,7 +384,7 @@ mod tests {
     fn the_file_is_much_smaller_than_the_chunk() {
         let chunk = Chunk::generate((5, 5), &IslandGenerator::new(1));
         let bytes = chunk.to_wec_bytes().unwrap();
-        assert!(bytes.len() < 12_000 / 2, "{} bytes", bytes.len());
+        assert!(bytes.len() < chunk.data.len() / 2, "{} bytes", bytes.len());
     }
 
     #[test]

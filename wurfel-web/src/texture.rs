@@ -132,7 +132,7 @@ mod web {
         bind_group(device, layout, &texture)
     }
 
-    async fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
+    pub async fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
         let window = web_sys::window().ok_or("no window")?;
         let response: web_sys::Response = JsFuture::from(window.fetch_with_str(url))
             .await
@@ -150,6 +150,53 @@ mod web {
 
     fn js_message(e: &JsValue) -> String {
         e.as_string().or_else(|| js_sys::Reflect::get(e, &"message".into()).ok().and_then(|m| m.as_string())).unwrap_or_else(|| "failed".into())
+    }
+
+    /// A model's picture as a one layer texture array with a mip chain, in the layout of the atlas
+    /// (bind group 1). The sampler repeats, because glTF models usually tile their textures; the
+    /// mips keep a large picture from shimmering when the model is small on the screen.
+    pub fn model_bind_group(device: &wgpu::Device, queue: &wgpu::Queue, layout: &wgpu::BindGroupLayout, texture: &crate::model::Texture) -> wgpu::BindGroup {
+        let levels = 32 - texture.width.max(texture.height).max(1).leading_zeros();
+        let gpu = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("model texture"),
+            size: wgpu::Extent3d { width: texture.width, height: texture.height, depth_or_array_layers: 1 },
+            mip_level_count: levels,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let mut level = image::RgbaImage::from_raw(texture.width, texture.height, texture.rgba.clone());
+        for mip in 0..levels {
+            let Some(image) = level.as_ref() else { break };
+            let (width, height) = image.dimensions();
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo { texture: &gpu, mip_level: mip, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+                image.as_raw(),
+                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(4 * width), rows_per_image: Some(height) },
+                wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            );
+            level = Some(image::imageops::resize(image, (width / 2).max(1), (height / 2).max(1), image::imageops::FilterType::Triangle));
+        }
+        let view = gpu.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("model sampler"),
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            ..Default::default()
+        });
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("model texture"),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
+            ],
+        })
     }
 
     /// Fetch the atlas and its pages, upload them, and return the sprites with the bind group.

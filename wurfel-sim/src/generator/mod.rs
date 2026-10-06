@@ -12,6 +12,7 @@
 //! | `fullmap` | `FullMapGenerator` | solid world of a single block type (the seed is the block id) |
 //! | `arena` | `ArenaGenerator` (Weapon of Choice demo) | sand floor with scattered pillars |
 //! | `caveland` | `ChunkGenerator` (Caveland) | flat overworld, a grid of diamond caves underneath |
+//! | `terrain` | none, new | terraced highlands with cliffs, lakes and natural arches (noise based) |
 //!
 //! Not ported: `MinecraftLoader`, which reads a Minecraft save from a hardcoded path on the
 //! author's machine through an external library, and the earlier noise-based Rust generators in
@@ -26,6 +27,7 @@ mod arena;
 mod blocktest;
 mod fullmap;
 mod island;
+mod terrain;
 pub mod java_random;
 
 pub use air::AirGenerator;
@@ -33,6 +35,7 @@ pub use arena::ArenaGenerator;
 pub use blocktest::{BlockTestGenerator, OBJECT_TYPES_NUM};
 pub use fullmap::FullMapGenerator;
 pub use island::IslandGenerator;
+pub use terrain::TerrainGenerator;
 
 use crate::caveland::CavelandGenerator;
 use crate::cvar::CVarSystem;
@@ -105,7 +108,7 @@ pub struct GeneratorInfo {
     pub uses_seed: bool,
 }
 
-static GENERATORS: [GeneratorInfo; 6] = [
+static GENERATORS: [GeneratorInfo; 7] = [
     GeneratorInfo {
         id: "island",
         name: "Island",
@@ -136,6 +139,12 @@ static GENERATORS: [GeneratorInfo; 6] = [
         description: "The whole world is one block type; the seed is the block id (1 is grass).",
         uses_seed: true,
     },
+    GeneratorInfo {
+        id: "terrain",
+        name: "Highlands",
+        description: "Terraced highlands with sheer cliffs, lakes and natural stone arches. Nothing floats.",
+        uses_seed: true,
+    },
     GeneratorInfo { id: "air", name: "Empty", description: "Nothing at all.", uses_seed: false },
 ];
 
@@ -158,6 +167,7 @@ pub fn create_generator(id: &str, seed: u64) -> Option<Box<dyn Generator>> {
         "arena" => Box::new(ArenaGenerator::new(seed)),
         "blocktest" => Box::new(BlockTestGenerator),
         "fullmap" => Box::new(FullMapGenerator::new(seed as u8)),
+        "terrain" => Box::new(TerrainGenerator::new(seed)),
         "air" => Box::new(AirGenerator),
         _ => return None,
     })
@@ -218,7 +228,7 @@ mod tests {
     #[test]
     fn the_registry_lists_every_generator_once_in_a_stable_order() {
         let ids: Vec<_> = generators().iter().map(|g| g.id).collect();
-        assert_eq!(ids, ["island", "caveland", "arena", "blocktest", "fullmap", "air"]);
+        assert_eq!(ids, ["island", "caveland", "arena", "blocktest", "fullmap", "terrain", "air"]);
         for info in generators() {
             assert!(create_generator(info.id, 5).is_some(), "{} cannot be created", info.id);
             assert!(!info.name.is_empty() && !info.description.is_empty());

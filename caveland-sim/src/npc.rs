@@ -9,7 +9,7 @@ use glam::{Vec2, Vec3};
 use wurfel_sim::entity::physics::is_on_ground;
 use wurfel_sim::entity::Entity;
 use wurfel_sim::generator::java_random::JavaRandom;
-use wurfel_sim::{World, CHUNK_SIZE_Z};
+use wurfel_sim::World;
 
 use crate::collectible::CollectibleType;
 use crate::game::{cell_floor, Cell};
@@ -244,7 +244,7 @@ impl Vanya {
             if horizontal(position, wp.goal) > wp.initial_distance / 2.0 {
                 // The first half climbs (limited to a little above the top of the world)...
                 d = d.normalize_or_zero();
-                if (position.z.floor() as i32) < CHUNK_SIZE_Z + 2 {
+                if (position.z.floor() as i32) < wurfel_sim::caveland::HEIGHT + 2 {
                     d.z = 1.0;
                 }
             } else {

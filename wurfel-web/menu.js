@@ -17,19 +17,19 @@
  *     generator        string: id of the generator last used in the "Create map" form
  *     seed             integer >= 0: the seed last used in that form
  *                      (both only remember the form; the world you play in is described by wurfel:play)
- *     limitFps         bool     cap at 60 FPS
+ *     fpsLimit         integer 0..1000: frame rate cap in FPS, 0 = unlimited (default 60)
  *     ambientOcclusion bool     for the light engine, once it exists
  *     showFps, showHelp bool    (JS handles the FPS counter and hides #info itself)
  *     keys             { action: [primary, alternate] } with actions
- *                      up, down, left, right, jump, place, break, zoomIn, zoomOut, players.
+ *                      up, down, left, right, jump, place, break, players.
  *                      Values are KeyboardEvent.key lowercased (" " is space, "arrowup"...), or
  *                      "mouse0" / "mouse1" / "mouse2" for mouse buttons. An empty string means
  *                      unbound: ignore it. Number keys 1-4 (hotbar) are fixed and not listed.
  *
  * Events dispatched on window (CustomEvent):
  *     wurfel:play      detail { name, color, server, generator, seed, create }
- *                      The player joined the server's world: "Connect" joins the one already running, "Host a
- *                      map" loads a save first. name / color = the player's name and "#rrggbb" colour, server =
+ *                      The player joined the server's world: "Connect" joins the one already running, "Maps"
+ *                      loads a save first. name / color = the player's name and "#rrggbb" colour, server =
  *                      ws(s):// URL to connect to (no
  *                      query string). generator / seed describe the world the server is running now (read
  *                      from the server, so the game can generate the same terrain). create is true when
@@ -50,16 +50,16 @@
  *     https page), "" is the server this page came from, ws(s):// and http(s):// URLs are used as given
  *     (http -> ws). A path defaults to /ws. Everything below belongs to the selected server.
  *
- * Connect, Host a map and the lobby WebSocket
+ * Connect, Maps and the lobby WebSocket
  *     The main menu has a "Connect" button and a small Server field (default localhost). Connect asks the
- *     server's lobby for the running world, then joins it. "Host a map" lists all maps on the server's disk with generator, seed and saves;
+ *     server's lobby for the running world, then joins it. "Maps" lists all maps on the server's disk with generator, seed and saves;
  *     loading one switches what the server runs, then joins it.
  *     The server holds exactly one (map, save slot) in memory, like the Java engine's single Map. It can
  *     only switch it while nobody is joined. The menu never starts a server process.
  *     For both, the menu opens its OWN short-lived WebSocket to the `server`
- *     URL (ws(s)://host/ws, no query string). It is closed when the player leaves the Host screens or
+ *     URL (ws(s)://host/ws, no query string). It is closed when the player leaves the Maps screens or
  *     joins; the game then opens a separate socket and joins there (the menu never sends
- *     Join). Refresh reconnects. Frames are JSON text with a "type" field. The menu must be able to
+ *     Join). Reconnect re-opens it (only shown after a failure; it does not affect the running world). Frames are JSON text with a "type" field. The menu must be able to
  *     connect, and receive a Lobby, within 4 s, else it shows "couldn't reach a game server".
  *     server -> menu
  *       Lobby         { world: { map (display name), map_id, slot, generator, seed, players, gamemode }, generators: [...] }
@@ -77,7 +77,7 @@
  *     Requests that get no answer give up after 20 s (LoadMap) and 15 s (CreateMap); the maps list after 4 s.
  *     window.wurfelGenerators   optional fallback list of { id, name, description, uses_seed }, used when the
  *                      lobby cannot be reached or sends no generators. Without it a built-in list is used:
- *                      island, air, blocktest, fullmap, arena, caveland.
+ *                      island, air, blocktest, fullmap, arena, caveland, terrain.
  *
  * State flags:
  *     window.wurfelMenuOpen   true while any menu is open. The game must ignore gameplay input then.
@@ -108,11 +108,11 @@
   const ACTIONS = [
     ['up', 'Walk up'], ['down', 'Walk down'], ['left', 'Walk left'], ['right', 'Walk right'],
     ['jump', 'Jump'], ['place', 'Place block'], ['break', 'Break block'],
-    ['zoomIn', 'Zoom in'], ['zoomOut', 'Zoom out'], ['players', 'Player list'],
+    ['players', 'Player list'],
   ];
   const DEFAULT_KEYS = {
     up: ['w', 'arrowup'], down: ['s', 'arrowdown'], left: ['a', 'arrowleft'], right: ['d', 'arrowright'],
-    jump: [' ', ''], place: ['mouse0', ''], break: ['mouse2', ''], zoomIn: ['e', ''], zoomOut: ['q', ''], players: ['tab', ''],
+    jump: [' ', ''], place: ['mouse0', ''], break: ['mouse2', ''], players: ['tab', ''],
   };
   const RANGES = {
     masterVolume: [0, 1], musicVolume: [0, 1], effectsVolume: [0, 1], renderScale: [0.5, 1], zoom: [0.2, 2],
@@ -127,7 +127,7 @@
       masterVolume: 0.8, musicVolume: 0.6, effectsVolume: 0.8,
       renderScale: 1, zoom: 0.5,
       generator: 'island', seed: Math.floor(Math.random() * 1000000),
-      limitFps: true, ambientOcclusion: false, showFps: false, showHelp: true,
+      fpsLimit: 60, ambientOcclusion: false, showFps: false, showHelp: true,
       keys: clone(DEFAULT_KEYS),
     };
   }
@@ -145,9 +145,11 @@
     for (const [key, [lo, hi]] of Object.entries(RANGES)) {
       if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) out[key] = Math.min(hi, Math.max(lo, raw[key]));
     }
-    for (const key of ['limitFps', 'ambientOcclusion', 'showFps', 'showHelp']) {
+    for (const key of ['ambientOcclusion', 'showFps', 'showHelp']) {
       if (typeof raw[key] === 'boolean') out[key] = raw[key];
     }
+    if (typeof raw.fpsLimit === 'number' && Number.isFinite(raw.fpsLimit)) out.fpsLimit = Math.min(1000, Math.max(0, Math.round(raw.fpsLimit)));
+    else if (raw.limitFps === false) out.fpsLimit = 0; // migrate the old checkbox
     if (raw.keys && typeof raw.keys === 'object') {
       for (const [action] of ACTIONS) {
         const slots = raw.keys[action];
@@ -280,6 +282,7 @@
     { id: 'air', name: 'Air', description: 'Nothing but air. Build everything yourself.', uses_seed: false },
     { id: 'blocktest', name: 'Block test', description: 'A single layer in which every row shows a different block type, for checking all blocks.', uses_seed: false },
     { id: 'fullmap', name: 'Full map', description: 'The whole world filled with one solid block type.', uses_seed: false },
+    { id: 'terrain', name: 'Highlands', description: 'Terraced highlands with sheer cliffs, lakes and natural stone arches.', uses_seed: true },
     { id: 'arena', name: 'Arena', description: 'A flat sand arena with scattered pillars.', uses_seed: true },
     { id: 'caveland', name: 'Caveland', description: 'An overworld with cave rooms underground.', uses_seed: true },
   ];
@@ -287,7 +290,7 @@
   const FRAME_LIMIT = 1000; // the server drops connections that send frames above 1 KB
   const TIMEOUTS = { ready: 4000, answer: 4000, load: 20000, create: 15000 };
   const UNREACHABLE = "Can't reach the server.";
-  const LOST = 'Connection lost. Press Refresh.';
+  const LOST = 'Connection lost. Press Reconnect.';
   const MAPS_FAILED = "Couldn't load the maps.";
 
   /** Keep only well-formed generator entries; the list comes from outside this file. */
@@ -370,7 +373,7 @@
   }
 
   const playersText = (n) => (n === 0 ? 'Empty' : `${n} player${n === 1 ? '' : 's'}`);
-  const mapTitle = (id, name) => (id ? `/${id}/ ${name || 'no map name set'}` : name || 'no map name set');
+  const mapTitle = (id, name) => name || id || 'no map name set';
 
   function generatorLine(generatorId, seed, mode) {
     const gen = generatorById(generatorId);
@@ -527,6 +530,8 @@
     const connected = lobbyOpen() && lobbyPhase === 'ready';
     $('#maps-blocked').hidden = !blocked;
     $('#join-btn').disabled = busy || lobbyPhase === 'connecting' || !serverWorld;
+    // Reconnect only matters once the lobby connection is gone; it never touches the running map.
+    $('#refresh-btn').hidden = lobbyPhase !== 'failed' && lobbyPhase !== 'closed';
     $('#refresh-btn').disabled = busy;
     $('#map-submit').disabled = busy;
     for (const b of $$('#map-list .map-actions button')) {
@@ -541,6 +546,7 @@
     row.dataset.mapId = m.id;
     if (m.id === highlightMap) { row.classList.add('highlight'); row.setAttribute('aria-current', 'true'); }
     row.append(el('h4', 'map-title', mapTitle(m.id, m.name)));
+    if (m.id === highlightMap) row.append(el('p', 'map-hint', 'Map created. Press “Start new save” to load it on the server and play.'));
     row.append(el('p', m.description ? 'map-desc' : 'map-desc fallback', m.description || 'no description found'));
     row.append(el('p', 'map-meta', generatorLine(m.generator, m.seed, m.gamemode)));
 
@@ -559,7 +565,7 @@
     for (const save of m.saves) {
       add(save.slot, `Continue save ${save.slot} · ${formatModified(save.modified)}`, `Continue save ${save.slot} of ${title}, last changed ${formatModified(save.modified)}`);
     }
-    add('new', 'New save', `Start a new save of ${title}`);
+    add('new', 'Start new save', `Start a new save of ${title} and load it on the server`);
     row.append(actions);
     return row;
   }
@@ -751,10 +757,10 @@
           busy = false;
           highlightMap = created.id;
           focusHighlight = true;
-          for (const field of ['#map-id', '#map-name', '#map-desc']) $(field).value = '';
+          for (const field of ['#map-name', '#map-desc']) $(field).value = '';
           if (previous[previous.length - 1] === 'worlds') previous.pop();
           showScreen('worlds', { push: false });
-          announce(`Map ${created.id} created.`);
+          announce(`Map ${created.id} created. Press Start new save to load it.`);
           blip(520);
         } else {
           renderServerState(); // created by someone else
@@ -796,7 +802,7 @@
     }
   }
 
-  /** Open the lobby for the Host screens, unless a working one is already there. */
+  /** Open the lobby for the Maps screens, unless a working one is already there. */
   function enterWorlds() {
     hideMapsError();
     if (lobby && (lobbyPhase === 'ready' || lobbyPhase === 'connecting')) renderServerState();
@@ -813,7 +819,7 @@
   function loadMap(mapId, slot) {
     if (busy) return;
     hideMapsError();
-    if (!lobbyOpen() || lobbyPhase !== 'ready') { showMapsError('Not connected to the server. Press Refresh to reconnect.'); return; }
+    if (!lobbyOpen() || lobbyPhase !== 'ready') { showMapsError('Not connected to the server. Press Reconnect.'); return; }
     busy = true;
     $('#maps-status').textContent = slot === 'new' ? 'Creating a new save…' : 'Loading the save…';
     pending = {
@@ -852,6 +858,22 @@
     $('#seed-random').disabled = !usesSeed;
     $('#seed-help').textContent = usesSeed ? 'The same seed always gives the same map. Whole numbers only.' : 'This generator does not use a seed.';
     if (document.activeElement !== seedInput) seedInput.value = String(S.seed);
+    drawPreview(gen, usesSeed);
+  }
+
+  /** Draws the generator's top-down preview (made by the wasm side) next to the picker. */
+  function drawPreview(gen, usesSeed) {
+    const canvas = $('#gen-preview');
+    const make = window.wurfelGeneratorPreview;
+    const size = Number(window.wurfelGeneratorPreviewSize) || 160;
+    let pixels = null;
+    if (gen && typeof make === 'function') {
+      try { pixels = make(gen.id, usesSeed ? S.seed : 0); } catch (_) { pixels = null; }
+    }
+    if (!pixels || pixels.length !== size * size * 4) { canvas.hidden = true; return; }
+    canvas.width = canvas.height = size;
+    canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(pixels), size, size), 0, 0);
+    canvas.hidden = false;
   }
 
   function randomSeed() {
@@ -877,16 +899,31 @@
 
   function onSeedInput() {
     const text = $('#seed-input').value.trim();
-    if (/^\d{1,15}$/.test(text)) { S.seed = Number(text); hideMapError(); changed(); }
+    if (/^\d{1,15}$/.test(text)) { S.seed = Number(text); hideMapError(); changed(); drawPreview(generatorById(S.generator), true); }
+  }
+
+  /** Folder id from a display name: lowercase ASCII slug, made unique against the known maps. */
+  function deriveMapId(name) {
+    const base = name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32).replace(/-+$/, '');
+    if (!base || !maps) return base;
+    const taken = new Set(maps.map((m) => m.id.toLowerCase()));
+    let id = base;
+    for (let n = 2; taken.has(id); n++) {
+      const suffix = '-' + n;
+      id = base.slice(0, 32 - suffix.length).replace(/-+$/, '') + suffix;
+    }
+    return id;
   }
 
   function submitMap(e) {
     e.preventDefault();
     if (busy) return;
     hideMapError();
-    const id = $('#map-id').value.trim();
-    if (!MAP_ID.test(id)) return showMapError('The id must be 1 to 32 characters: lowercase letters, digits, - and _.');
-    if (maps && maps.some((m) => m.id.toLowerCase() === id)) return showMapError('A map with that id already exists. Choose another id.');
+    const name = $('#map-name').value.trim().slice(0, 60);
+    if (!name) return showMapError('Please enter a name.');
+    const id = deriveMapId(name);
+    if (!MAP_ID.test(id)) return showMapError('The name must contain at least one letter or digit.');
     const gen = generatorById($('#gen-select').value);
     if (!gen) return showMapError('Please choose a generator.');
     let seed = S.seed;
@@ -895,14 +932,13 @@
       if (!/^\d{1,15}$/.test(text)) return showMapError('The seed must be a whole number, for example 12345.');
       seed = Number(text);
     }
-    const name = $('#map-name').value.trim().slice(0, 60) || id;
     const description = $('#map-desc').value.trim().slice(0, 200);
     const frame = { type: 'CreateMap', id, name, description, generator: gen.id, seed, gamemode: $('#mode-select').value };
     if (new TextEncoder().encode(JSON.stringify(frame)).length > FRAME_LIMIT) return showMapError('The name and description are too long for the server. Please shorten them.');
     S.generator = gen.id;
     S.seed = seed;
     changed();
-    if (!lobbyOpen() || lobbyPhase !== 'ready') return showMapError('Not connected to the server. Press Refresh on the Host screen.');
+    if (!lobbyOpen() || lobbyPhase !== 'ready') return showMapError('Not connected to the server. Press Reconnect on the Maps screen.');
 
     busy = true;
     pending = {
@@ -946,7 +982,7 @@
     syncControls();
     renderServerPicker();
     refreshStatus();
-    // The lobby connection lives only while the Host screens are open.
+    // The lobby connection lives only while the Maps screens are open.
     if (name !== 'worlds' && name !== 'newmap') closeLobby();
     if (name !== 'worlds') highlightMap = null;
     if (name === 'worlds') enterWorlds();
@@ -1063,6 +1099,9 @@
     else if (el.type === 'range') {
       const [lo, hi] = RANGES[key] || [0, 1];
       S[key] = Math.min(hi, Math.max(lo, Number(el.value) / (Number(el.dataset.scale) || 1)));
+    } else if (el.type === 'number') {
+      const n = Math.round(Number(el.value));
+      if (Number.isFinite(n) && el.value !== '') S[key] = Math.min(1000, Math.max(0, n));
     } else {
       S[key] = key === 'playerName' ? el.value.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, NAME_MAX) : el.value.slice(0, 200);
       for (const other of $$(`[data-setting="${key}"]`, menu)) if (other !== el) other.value = S[key];
@@ -1167,12 +1206,6 @@
   let fps = 0;
   function refreshHud() {
     $('#menubtn').hidden = !(playing && !menuOpen);
-    const pill = $('#netpill');
-    const st = status();
-    pill.hidden = !(playing && !menuOpen);
-    if (!pill.hidden) {
-      pill.textContent = st ? (st.connected ? `● online · ${st.players ?? 1} player${st.players === 1 ? '' : 's'}` : '○ connecting…') : '● playing';
-    }
     applySettings();
     const fpsEl = $('#fps');
     const st2 = status();
@@ -1256,7 +1289,7 @@
       case 'swatch': selectColor(target.dataset.color); break;
       case 'map-load': loadMap(target.dataset.map, target.dataset.slot === 'new' ? 'new' : Number(target.dataset.slot)); break;
       case 'worlds-refresh': blip(440); openLobby(); break;
-      case 'seed-random': S.seed = randomSeed(); $('#seed-input').value = String(S.seed); changed(); blip(440); break;
+      case 'seed-random': S.seed = randomSeed(); $('#seed-input').value = String(S.seed); changed(); drawPreview(generatorById(S.generator), true); blip(440); break;
       case 'goto': blip(440); showScreen(target.dataset.target); break;
       case 'back': back(); break;
       case 'resume': resume(); break;

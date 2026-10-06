@@ -54,6 +54,10 @@ pub mod blocks {
     pub const UNDEFINED: u8 = 255;
 }
 
+/// The world height Caveland was built for. The engine's chunks are taller now ([`crate::CHUNK_SIZE_Z`]),
+/// but the cave ceiling, the portal landing and the tutorial's places were tuned for these layers.
+pub const HEIGHT: i32 = 10;
+
 /// Every block with a smaller `y` is overworld, every block above is cave (`CAVESBORDER`).
 pub const CAVES_BORDER: i32 = 1000;
 /// Caves are generated from this `y` on (`GENERATORBORDER`).
