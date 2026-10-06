@@ -1994,6 +1994,9 @@ fn upload_dynamic_mesh(s: &mut State, target: Option<Pick>) {
         }
     }
     for thing in s.things.iter().filter(|t| !crate::sprites::is_invisible(&t.kind)) {
+        if crate::shadow::casts_shadow(&thing.kind) {
+            crate::shadow::push_under(&mut vertices, &s.world, Vec3::from(thing.pos));
+        }
         if !s.actors.push_thing(&mut vertices, thing) {
             caveland_client::push_thing(&mut vertices, thing);
         }
