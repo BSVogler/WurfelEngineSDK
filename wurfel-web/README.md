@@ -23,10 +23,15 @@ WASD / arrows walk, Space jumps, wheel zoom. Normal play never edits blocks with
 `F2` (or the console command `editor`, `editor on|off`) switches the map editor on and off, like the
 Java engine's editor: a red EDITOR badge and a toolbar appear, and only then does the mouse edit
 blocks. In the editor the left button uses the toolbar's tool (draw: place next to the clicked block,
-replace, erase, pick), the right button erases, the middle button picks the clicked block's kind,
-`1`-`4` choose stone/dirt/grass/sand, and the bottom-left line shows the cursor's position and block.
+bucket: fill the rectangle between press and release on the layer of the first block, replace, erase,
+pick) and keeps painting while held with draw or replace, the right button erases, the middle button
+(or Alt + left) picks the clicked block's kind, `1`-`4` choose stone/dirt/grass/sand, Ctrl/Cmd+Z
+undoes and Ctrl/Cmd+Shift+Z redoes (also the Undo/Redo buttons; the history is dropped when you leave),
+and the bottom-left line shows the cursor's position and block. Not ported from the Java editor: the
+entity tools (select, move, spawn), block values, the layer slider (wheel) and the free camera.
 The editor needs a joined world (not the offline preview) and is not available in Caveland maps. The
-server only applies block edits from players who are in the editor (`ClientMsg::Editor`).
+server only applies block edits from players who are in the editor (`ClientMsg::Editor`), each within
+reach; the bucket is one `FillBlocks` (at most 400 columns) answered by one `BlocksSet`.
 
 ## Where things are
 

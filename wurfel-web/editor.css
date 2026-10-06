@@ -14,7 +14,8 @@
 .ed-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .ed-tool, .ed-block { font: inherit; color: inherit; display: flex; align-items: center; gap: 6px; padding: 4px 10px; cursor: pointer;
   border-radius: 6px; background: rgba(255, 255, 255, 0.08); border: 2px solid transparent; }
-.ed-tool:hover, .ed-block:hover { background: rgba(255, 255, 255, 0.16); }
+.ed-tool:disabled { opacity: 0.4; cursor: default; }
+.ed-tool:hover:not(:disabled), .ed-block:hover { background: rgba(255, 255, 255, 0.16); }
 .ed-tool:focus-visible, .ed-block:focus-visible, .ed-leave:focus-visible { outline: 2px solid #f2c14e; outline-offset: 1px; }
 .ed-on { border-color: #f2c14e; background: rgba(242, 193, 78, 0.18); }
 .ed-swatch { width: 14px; height: 14px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5); }

@@ -18,7 +18,7 @@ use crate::actors::Actors;
 use crate::audio::{Audio, EntityInfo};
 use crate::bindings::{parse_hex_color, Bindings};
 use crate::caveland_client::{self, Happening};
-use crate::editor::{self, Button, Editor, Tool};
+use crate::editor::{self, Button, Edit, Editor, Tool};
 use crate::interp::{RenderClock, Track};
 use crate::locator;
 use crate::mesh::{self, Vertex};
@@ -1060,16 +1060,8 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
             s.net.on_snapshot(tick, now);
             apply_snapshot(s, tick, &players);
         }
-        ServerMsg::BlockSet(e) => {
-            let old = s.world.get(e.x, e.y, e.z);
-            if wurfel_sim::entity::physics::is_obstacle(old) && !wurfel_sim::entity::physics::is_obstacle(Block::from_raw(e.block)) {
-                let (gx, gy) = to_iso(e.x, e.y);
-                s.particles.block_break(Vec3::new(gx, gy, e.z as f32 + 0.5), crate::mesh::block_color(old));
-            }
-            s.world.set(e.x, e.y, e.z, Block::from_raw(e.block));
-            s.remesh = true;
-            s.terrain_version += 1;
-        }
+        ServerMsg::BlockSet(e) => apply_block_edit(s, e),
+        ServerMsg::BlocksSet { edits } => edits.into_iter().for_each(|e| apply_block_edit(s, e)),
         ServerMsg::PlayerJoined { player } => {
             if Some(player.id) != s.my_id {
                 show_banner(&format!("{} joined", player.name), Tone::Ok);
@@ -1389,6 +1381,12 @@ fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     let _ = js_sys::Reflect::set(&net, &"editorBlock".into(), editor_block.as_ref());
     editor_block.forget();
     let s = state.clone();
+    let editor_history_call = Closure::<dyn FnMut(bool)>::new(move |undo: bool| {
+        editor_history(&mut s.borrow_mut(), undo);
+    });
+    let _ = js_sys::Reflect::set(&net, &"editorHistory".into(), editor_history_call.as_ref());
+    editor_history_call.forget();
+    let s = state.clone();
     let heart = Closure::<dyn FnMut(u32, bool)>::new(move |to: u32, on: bool| {
         send(&mut s.borrow_mut(), &ClientMsg::Heart { to, on });
     });
@@ -1415,14 +1413,52 @@ fn start_from_menu(state: &Rc<RefCell<State>>, detail: &JsValue) {
 }
 
 /// A mouse button went down in the game view. Only the editor turns this into a block edit.
-fn editor_click(s: &mut State, button: i16) {
-    let Some(button) = Button::from_dom(button) else { return };
+/// Alt + left button is the eyedropper like the middle button (Java: `Keys.ALT_LEFT`).
+fn editor_click(s: &mut State, button: i16, alt: bool) {
+    let Some(mut button) = Button::from_dom(button) else { return };
+    if alt && button == Button::Left {
+        button = Button::Middle;
+    }
     let target = hovered(s);
     let world = &s.world;
-    let edit = s.editor.click(button, target, |(x, y, z)| world.get(x, y, z).id());
-    if let Some(edit) = edit {
+    let edit = s.editor.click(button, target, |(x, y, z)| world.get(x, y, z));
+    send_edits(s, edit);
+}
+
+/// The pointer moved: a held painting tool carries on.
+fn editor_drag(s: &mut State) {
+    if !s.editor.active() {
+        return;
+    }
+    let target = hovered(s);
+    let world = &s.world;
+    let edit = s.editor.drag(target, |(x, y, z)| world.get(x, y, z));
+    send_edits(s, edit);
+}
+
+/// A mouse button went up: ends a stroke, and the bucket fills now.
+fn editor_release(s: &mut State, button: i16) {
+    if button != 0 || !s.editor.active() {
+        return;
+    }
+    let target = hovered(s);
+    let world = &s.world;
+    if let Some(fill) = s.editor.release(target, |(x, y, z)| world.get(x, y, z)) {
+        let ((x1, y1), (x2, y2)) = (fill.from, fill.to);
+        send(s, &ClientMsg::FillBlocks { x1, y1, x2, y2, z: fill.z, block: fill.block });
+    }
+}
+
+fn send_edits(s: &mut State, edits: impl IntoIterator<Item = Edit>) {
+    for edit in edits {
         send(s, &ClientMsg::SetBlock { x: edit.x, y: edit.y, z: edit.z, block: edit.block });
     }
+}
+
+/// Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z in the editor (the toolbar buttons do the same).
+fn editor_history(s: &mut State, undo: bool) {
+    let edits = if undo { s.editor.undo() } else { s.editor.redo() };
+    send_edits(s, edits);
 }
 
 /// Enter or leave the editor (F2, the `editor` console command, the toolbar). Not available
@@ -1477,6 +1513,7 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     listen(window, "mousemove", move |e: MouseEvent| {
         let mut s = s.borrow_mut();
         s.pointer = Some((e.client_x() as f32 * s.dpr, e.client_y() as f32 * s.dpr));
+        editor_drag(&mut s);
     });
     let s = state.clone();
     listen(window, "mousedown", move |e: MouseEvent| {
@@ -1492,12 +1529,13 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
                 send_action(&mut s, name, arg);
             }
         }
-        editor_click(&mut s, e.button());
+        editor_click(&mut s, e.button(), e.alt_key());
     });
     let s = state.clone();
     listen(window, "mouseup", move |e: MouseEvent| {
         let mut s = s.borrow_mut();
         s.keys.remove(&format!("mouse{}", e.button()));
+        editor_release(&mut s, e.button());
         if s.caveland.is_some() {
             if let Some((name, arg)) = caveland_client::mouse_action(e.button(), false) {
                 send_action(&mut s, name, arg);
@@ -1561,6 +1599,10 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
                     send_action(&mut s, name, arg);
                 }
             }
+        } else if s.editor.active() && key == "z" && (e.ctrl_key() || e.meta_key()) {
+            e.prevent_default();
+            editor_history(&mut s, !e.shift_key());
+            return;
         } else if let Some(index) = Editor::index_for_key(&key) {
             // Number keys choose the block to build with, but only inside the editor.
             s.editor.select_block(index);
@@ -1606,6 +1648,18 @@ fn hovered(s: &State) -> Option<Pick> {
     let sx = s.camera.center[0] + (px - s.config.width as f32 / 2.0) / s.camera.zoom;
     let sy = s.camera.center[1] + (py - s.config.height as f32 / 2.0) / s.camera.zoom;
     pick(&s.world, sx, sy)
+}
+
+/// A block changed on the server: update the world, break particles, mesh again.
+fn apply_block_edit(s: &mut State, e: wurfel_sim::protocol::Edit) {
+    let old = s.world.get(e.x, e.y, e.z);
+    if wurfel_sim::entity::physics::is_obstacle(old) && !wurfel_sim::entity::physics::is_obstacle(Block::from_raw(e.block)) {
+        let (gx, gy) = to_iso(e.x, e.y);
+        s.particles.block_break(Vec3::new(gx, gy, e.z as f32 + 0.5), crate::mesh::block_color(old));
+    }
+    s.world.set(e.x, e.y, e.z, Block::from_raw(e.block));
+    s.remesh = true;
+    s.terrain_version += 1;
 }
 
 fn start_frame_loop(state: Rc<RefCell<State>>) {
