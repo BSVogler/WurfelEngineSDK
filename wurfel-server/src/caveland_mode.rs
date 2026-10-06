@@ -52,6 +52,8 @@ pub struct CavelandMode {
     caveland: Caveland,
     /// Messages for everybody, collected during a tick and sent by the server loop.
     outbox: Vec<ServerMsg>,
+    /// `action` happenings of the players' moves since the last tick.
+    action_happenings: Vec<Value>,
     /// What the last `state` message said, to send only changes.
     last_state: String,
     /// Where players (re)start.
@@ -87,6 +89,7 @@ impl CavelandMode {
         CavelandMode {
             caveland: Caveland::new(Tuning::default(), seed as i64),
             outbox: Vec::new(),
+            action_happenings: Vec::new(),
             last_state: String::new(),
             spawn: None,
             seeded: false,
@@ -254,7 +257,22 @@ impl CavelandMode {
             }
             _ => return,
         };
+        let packed = |c: &Caveland| c.player(id).map(|p| (p.inventory.items().len(), p.prepare_throw, p.time_till_impact.is_some()));
+        let before = packed(&self.caveland);
         self.caveland.act(entities, world, id, action);
+        // Tell everybody about the moves that clients animate (the animation is the clients' own;
+        // this is the one-shot trigger for the other players and the outcome for the actor). `ok`
+        // is false when the rules refused: no swing started, nothing prepared, nothing thrown.
+        if let (Some((had, _, _)), Some((has, preparing, swinging))) = (before, packed(&self.caveland)) {
+            let ok = match name {
+                "attack" => swinging,
+                "prepare_throw" => preparing,
+                "throw" => has < had,
+                "release_attack" | "drop" => true,
+                _ => return,
+            };
+            self.action_happenings.push(json!({"t": "action", "player": id, "name": name, "ok": ok}));
+        }
     }
 
     /// One fixed step of the rules. `tick` is the server's step counter after this step.
@@ -285,6 +303,7 @@ impl CavelandMode {
         for edit in edits {
             self.outbox.push(ServerMsg::BlockSet(edit));
         }
+        happenings.extend(self.action_happenings.drain(..));
         happenings.retain(|h| !h.is_null());
         if !happenings.is_empty() {
             self.outbox.push(ServerMsg::Rules { kind: "events".into(), data: Value::Array(happenings) });
@@ -457,7 +476,7 @@ impl CavelandMode {
         ServerMsg::Things { tick, things }
     }
 
-    /// Everybody's health and pack: `{"<player id>": {health, jetpack, items, recipes}}`.
+    /// Everybody's health and pack: `{"<player id>": {health, jetpack, items, recipes: [[name, can_craft, [ingredient, ...]], ...]}}`.
     pub fn state(&self, entities: &Entities) -> Value {
         let mut players = serde_json::Map::new();
         let mut ids: Vec<_> = self.numbers.keys().copied().collect();
@@ -470,7 +489,8 @@ impl CavelandMode {
                     "health": view.health.round(),
                     "jetpack": (view.jetpack * 100.0).round() / 100.0,
                     "items": view.items,
-                    "recipes": view.recipes.iter().map(|(name, ok)| json!([name, ok])).collect::<Vec<_>>(),
+                    // In the fixed order `craft` indexes; the client orders them for display.
+                    "recipes": view.recipes.iter().map(|r| json!([r.name, r.can_craft, r.ingredients])).collect::<Vec<_>>(),
                     // Hidden players (inside the spaceship) are not drawn; riders are moved by the
                     // server, so the client does not predict them.
                     "hidden": self.caveland.is_hidden(id),
@@ -682,8 +702,10 @@ mod tests {
         let mut s = Setup::new();
         s.give(&[CollectibleType::Wood, CollectibleType::Coal]);
         s.run(12);
-        assert_eq!(s.state_of(s.player)["recipes"][0], json!(["Torch", true]), "craftable recipes are listed first");
-        s.mode.act(&mut s.entities, &mut s.world, s.player, "craft", 0);
+        let recipes = s.state_of(s.player)["recipes"].clone();
+        let torch = recipes.as_array().unwrap().iter().position(|r| r[0] == "Torch").expect("the torch recipe");
+        assert_eq!(recipes[torch], json!(["Torch", true, ["Wood", "Coal"]]), "fixed order, with ingredients");
+        s.mode.act(&mut s.entities, &mut s.world, s.player, "craft", torch as i32);
         s.run(12);
         assert_eq!(s.state_of(s.player)["items"], json!(["Torch"]));
         assert!(s.events().iter().any(|e| e["t"] == "crafted" && e["item"] == "Torch"));

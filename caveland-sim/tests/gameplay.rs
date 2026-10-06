@@ -463,8 +463,9 @@ fn crafting_uses_up_ingredients() {
     g.give(id, C::Stone);
     g.give(id, C::Wood);
     g.give(id, C::Coal);
-    // Craftable recipes come first: the torch is the only one.
-    g.act(id, Action::Craft(0));
+    // The torch is the only one that can be made; the index is the fixed list's.
+    let torch = caveland_sim::crafting::recipes().iter().position(|r| r.name == "Torch").unwrap();
+    g.act(id, Action::Craft(torch));
     assert_eq!(g.inventory_types(id), vec![C::Stone, C::Torch]);
     assert!(g.saw(|e| matches!(e, GameEvent::Crafted { result: RecipeResult::Item(C::Torch), .. })));
 }
@@ -476,11 +477,7 @@ fn crafting_a_minecart_puts_one_in_the_world() {
     g.give(id, C::Iron);
     g.give(id, C::Iron);
     g.give(id, C::Wood);
-    let index = caveland_sim::crafting::ordered_recipes(&g.caveland.player(id).unwrap().inventory)
-        .iter()
-        .position(|r| r.result == RecipeResult::MineCart)
-        .unwrap();
-    assert!(index < 3, "craftable recipes are listed first");
+    let index = caveland_sim::crafting::recipes().iter().position(|r| r.result == RecipeResult::MineCart).unwrap();
     g.act(id, Action::Craft(index));
     assert!(g.inventory_types(id).is_empty());
     assert!(g.entities.iter().any(|e| g.caveland.kind_of(e.id()) == Some(EntityKind::MineCart)));
@@ -494,6 +491,9 @@ fn crafting_without_the_ingredients_fails_quietly() {
     g.act(id, Action::Craft(0));
     assert_eq!(g.inventory_types(id), vec![C::Stone]);
     assert!(!g.saw(|e| matches!(e, GameEvent::Crafted { .. })));
+    assert!(g.saw(|e| matches!(e, GameEvent::Sound { name: "interactionFail", .. })), "crafting without ingredients fails audibly");
+    g.act(id, Action::Craft(999)); // out of range: ignored
+    assert_eq!(g.inventory_types(id), vec![C::Stone]);
 }
 
 #[test]
@@ -725,7 +725,13 @@ fn things_lists_everything_but_players_and_the_view_shows_the_pack() {
     assert_eq!(view.health, 100.0);
     assert_eq!(view.jetpack, 1.0);
     assert_eq!(view.items, vec!["Wood", "Coal"]);
-    assert_eq!(view.recipes[0], ("Torch", true), "craftable recipes come first, like the crafting list");
+    let all = caveland_sim::crafting::recipes();
+    assert_eq!(view.recipes.len(), all.len());
+    assert!(view.recipes.iter().zip(&all).all(|(v, r)| v.name == r.name), "the fixed order of the recipe list");
+    let torch_recipe = view.recipes.iter().find(|r| r.name == "Torch").unwrap();
+    assert!(torch_recipe.can_craft);
+    assert_eq!(torch_recipe.ingredients, vec!["Wood", "Coal"]);
+    assert_eq!(view.recipes.iter().filter(|r| r.can_craft).count(), 1);
     assert!(g.caveland.player_view(&g.entities, torch).is_none(), "only players have a view");
 }
 
@@ -758,4 +764,56 @@ fn a_key_assumed_held_is_not_a_fresh_press() {
     g.controls(id, hold);
     g.step(3);
     assert!(g.position(id).z > 1.0, "a real press jumps");
+}
+
+// ---- the throw button's rules (the animation is the client's, see wurfel-web) ---------------
+
+#[test]
+fn an_attack_or_jump_cancels_a_prepared_throw() {
+    let mut g = Game::new();
+    let id = g.spawn_player_at(10, 40);
+    g.give(id, C::Stone);
+    g.seconds(0.3);
+    g.act(id, Action::PrepareThrow);
+    g.act(id, Action::Attack);
+    assert!(!g.caveland.player(id).unwrap().prepare_throw);
+    g.act(id, Action::ReleaseAttack);
+    g.act(id, Action::Throw);
+    assert_eq!(g.inventory_types(id), vec![C::Stone], "no throw after the pose was cancelled");
+
+    g.seconds(0.5);
+    g.act(id, Action::PrepareThrow);
+    g.controls(id, Controls { jump: true, ..Default::default() });
+    assert!(!g.caveland.player(id).unwrap().prepare_throw);
+}
+
+#[test]
+fn holding_the_throw_button_for_600_ms_drops_the_item_and_the_release_then_throws_nothing() {
+    let mut g = Game::new();
+    let id = g.spawn_player_at(10, 40);
+    g.give(id, C::Stone);
+    g.seconds(0.3);
+    g.act(id, Action::PrepareThrow);
+    g.seconds(0.5);
+    assert_eq!(g.inventory_types(id), vec![C::Stone], "not held long enough");
+    g.seconds(0.2);
+    assert!(g.inventory_types(id).is_empty(), "dropped");
+    assert!(!g.caveland.player(id).unwrap().prepare_throw);
+    g.events.clear();
+    g.act(id, Action::Throw);
+    assert!(g.saw(|e| matches!(e, GameEvent::Sound { name: "interactionFail", .. })), "the release has nothing to throw");
+}
+
+#[test]
+fn releasing_before_the_drop_time_throws() {
+    let mut g = Game::new();
+    let id = g.spawn_player_at(10, 40);
+    g.give(id, C::Stone);
+    g.seconds(0.3);
+    g.act(id, Action::PrepareThrow);
+    g.seconds(0.4);
+    g.act(id, Action::Throw);
+    g.seconds(1.0);
+    assert!(g.inventory_types(id).is_empty());
+    assert!(g.caveland.player(id).unwrap().throw_held.is_none(), "the hold ended with the release");
 }

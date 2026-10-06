@@ -1,6 +1,6 @@
 //! Server-side game state. No networking in here, so it can be unit tested directly.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use glam::Vec3;
 use wurfel_sim::block::id;
@@ -66,6 +66,8 @@ pub struct Game {
     entities: Entities,
     inputs: HashMap<EntityId, InputSlot>,
     roster: HashMap<EntityId, PlayerInfo>,
+    /// Players who switched the map editor on: only they may edit blocks.
+    editors: HashSet<EntityId>,
     spawned: usize,
     tick: u64,
     /// The rules the world is played by (`engine` or `caveland`).
@@ -108,6 +110,7 @@ impl Game {
             entities: Entities::new(),
             inputs: HashMap::new(),
             roster: HashMap::new(),
+            editors: HashSet::new(),
             spawned: 0,
             tick: 0,
             gamemode: "engine".to_string(),
@@ -241,6 +244,7 @@ impl Game {
         self.entities.remove(id);
         self.inputs.remove(&id);
         self.roster.remove(&id);
+        self.editors.remove(&id);
         if let Some(mode) = self.mode.as_mut() {
             mode.remove_player(id);
         }
@@ -274,6 +278,7 @@ impl Game {
             players: self.states(),
             roster: self.roster_list(),
             gamemode: self.gamemode.clone(),
+            build: wurfel_sim::protocol::build_id(),
         }
     }
 
@@ -349,8 +354,18 @@ impl Game {
                 }
                 None
             }
-            // A game mode has its own rules for changing blocks (digging), so clients cannot edit.
-            ClientMsg::SetBlock { x, y, z, block } if self.mode.is_none() => self.set_block(player, Edit { x, y, z, block }),
+            ClientMsg::Editor { on } => {
+                if self.mode.is_none() && self.inputs.contains_key(&player) {
+                    if on {
+                        self.editors.insert(player);
+                    } else {
+                        self.editors.remove(&player);
+                    }
+                }
+                None
+            }
+            // Only from the editor, and a game mode has its own rules for changing blocks (digging).
+            ClientMsg::SetBlock { x, y, z, block } if self.mode.is_none() && self.editors.contains(&player) => self.set_block(player, Edit { x, y, z, block }),
             ClientMsg::SetBlock { .. } => None,
             ClientMsg::Command { line } => {
                 // Only the host (the lowest id still here) may use cheats.
@@ -410,6 +425,36 @@ mod tests {
 
     fn run(game: &mut Game, ticks: u32) -> Vec<Event> {
         (0..ticks).flat_map(|_| game.tick()).collect()
+    }
+
+    /// A player who has switched the map editor on, the only kind that may edit blocks.
+    impl Game {
+        fn add_editor(&mut self) -> u32 {
+            let id = self.add_player();
+            self.handle(id, ClientMsg::Editor { on: true });
+            id
+        }
+    }
+
+    #[test]
+    fn only_players_in_the_editor_may_edit_blocks() {
+        let mut game = Game::island(1);
+        let (plain, editor) = (game.add_player(), game.add_editor());
+        let (x, y) = neighbour(&game, plain);
+        let z = 9; // in the air within reach, as in the test above (the world is taller than the reach)
+        let stone = Block::new(id::STONE, 0).raw();
+        assert!(game.handle(plain, ClientMsg::SetBlock { x, y, z, block: stone }).is_none(), "not in the editor");
+        assert!(game.world.get(x, y, z).is_air());
+        assert!(game.handle(editor, ClientMsg::SetBlock { x, y, z, block: stone }).is_some());
+        // Leaving the editor ends the permission; leaving the game forgets it.
+        game.handle(editor, ClientMsg::Editor { on: false });
+        assert!(game.handle(editor, ClientMsg::SetBlock { x, y, z, block: 0 }).is_none());
+        game.handle(editor, ClientMsg::Editor { on: true });
+        game.remove_player(editor);
+        assert!(!game.editors.contains(&editor));
+        // An unknown player id cannot register as an editor.
+        game.handle(99, ClientMsg::Editor { on: true });
+        assert!(!game.editors.contains(&99));
     }
 
     fn state(game: &Game, id: u32) -> PlayerState {
@@ -530,7 +575,7 @@ mod tests {
     #[test]
     fn placing_and_breaking_blocks_is_broadcast_and_remembered_for_joiners() {
         let mut game = Game::island(1);
-        let id = game.add_player();
+        let id = game.add_editor();
         let (x, y) = neighbour(&game, id);
         let stone = Block::new(id::STONE, 0).raw();
         let z = 9; // up in the air within reach of the island peak, nobody is there
@@ -556,7 +601,7 @@ mod tests {
     #[test]
     fn invalid_edits_are_rejected() {
         let mut game = Game::island(1);
-        let id = game.add_player();
+        let id = game.add_editor();
         let (x, y) = neighbour(&game, id);
         let stone = Block::new(id::STONE, 0).raw();
         let top = CHUNK_SIZE_Z - 1;
@@ -578,7 +623,7 @@ mod tests {
     #[test]
     fn nothing_can_be_placed_inside_a_player_but_beside_and_above_is_fine() {
         let mut game = Game::island(1);
-        let id = game.add_player();
+        let id = game.add_editor();
         let s = state(&game, id);
         let (x, y) = column_of(&s);
         let feet = s.pos[2] as i32;
@@ -595,7 +640,7 @@ mod tests {
     #[test]
     fn a_block_placed_under_a_player_does_not_teleport_them_but_physics_reacts() {
         let mut game = Game::island(1);
-        let id = game.add_player();
+        let id = game.add_editor();
         run(&mut game, 30);
         let s = state(&game, id);
         let (x, y) = column_of(&s);
@@ -769,6 +814,34 @@ mod game_mode_tests {
         let me = engine.add_player();
         assert_eq!(engine.handle(me, ClientMsg::Command { line: "give Torch".into() }), None);
         assert!(engine.drain_outbox().is_empty());
+    }
+
+    #[test]
+    fn moves_are_announced_as_action_events_with_the_rules_outcome() {
+        let mut game = caveland_game();
+        let me = game.add_player();
+        run(&mut game, 120);
+        let actions = |msgs: Vec<ServerMsg>| -> Vec<(String, bool)> {
+            msgs.iter()
+                .filter_map(|m| match m {
+                    ServerMsg::Rules { kind, data } if kind == "events" => Some(data.as_array().unwrap().clone()),
+                    _ => None,
+                })
+                .flatten()
+                .filter(|e| e["t"] == "action" && e["player"] == me)
+                .map(|e| (e["name"].as_str().unwrap().to_string(), e["ok"].as_bool().unwrap()))
+                .collect()
+        };
+        game.handle(me, ClientMsg::Action { name: "attack".into(), arg: 0 });
+        game.handle(me, ClientMsg::Action { name: "attack".into(), arg: 0 });
+        game.handle(me, ClientMsg::Action { name: "throw".into(), arg: 0 });
+        game.handle(me, ClientMsg::Action { name: "nonsense".into(), arg: 0 });
+        let seen = actions(run(&mut game, 2));
+        assert_eq!(
+            seen,
+            [("attack".to_string(), true), ("attack".to_string(), true), ("throw".to_string(), false)],
+            "a throw without a prepared pose failed"
+        );
     }
 
     #[test]

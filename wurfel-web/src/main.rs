@@ -1,8 +1,10 @@
 mod actors;
+mod animation;
 mod atlas;
 mod audio;
 mod bindings;
 mod caveland_client;
+mod editor;
 mod interp;
 mod lighting;
 mod locator;
@@ -16,6 +18,7 @@ mod particles;
 mod peel;
 mod preview;
 mod prediction;
+mod reconnect;
 mod render_storage;
 mod texture;
 

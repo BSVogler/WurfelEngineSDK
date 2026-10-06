@@ -33,6 +33,7 @@ const keys = (o = {}) => ({ type: 'Input', seq: ++inputSeq, input: { up: false, 
 const lobby = client(); await lobby.ready;
 const hello = await lobby.wait('Lobby');
 check(hello && hello.world.players === 0 && hello.generators.some(g => g.id === 'island') && hello.generators.length >= 6, 'a new connection starts in the lobby and learns the world and the generators');
+check(typeof hello.build === 'string' && /^\d+\.\d+\.\d+/.test(hello.build), `the lobby greeting carries the server build id (${hello.build})`);
 lobby.send({ type: 'ListMaps' });
 const maps = await lobby.wait('Maps');
 check(maps && maps.maps.length >= 1 && maps.maps.every(m => m.id && Array.isArray(m.saves)), 'ListMaps lists the maps with their saves');
@@ -57,6 +58,7 @@ check(changed && changed.world.map_id === 'smoke-map' && changed.world.generator
 const a = client(); await a.ready; await a.wait('Lobby');
 a.send({ type: 'Join', name: '  Ann  ', color: [10, 20, 30] });
 const welcome = await a.wait('Welcome');
+check(welcome && welcome.build === hello.build, 'Welcome repeats the build id');
 check(welcome && welcome.map === 'Smoke map' && welcome.generator === 'caveland' && welcome.tick_rate === 60 && !('edits' in welcome), 'Join answers with a Welcome for the loaded map');
 await sleep(2000);
 check(a.chunks.length >= 9 && a.chunks.every(c => c.kind === 1 && c.count === 4000), `terrain is streamed as binary chunks (${a.chunks.length} so far, each a full chunk)`);
@@ -117,7 +119,11 @@ const me = a.me();
 const gx = Math.round(me.pos[0]) + 1, gy = Math.round(me.pos[1]);
 const y = gx + gy, x = (gx - gy - ((y % 2) + 2) % 2) / 2;
 a.send({ type: 'SetBlock', x, y, z: 9, block: 3 });
-check((await a.wait('BlockSet', 1000 + lag))?.x === x, 'a block placement is broadcast');
+await sleep(300 + lag);
+check(!a.log.some(m => m.type === 'BlockSet'), 'block edits outside the editor are ignored');
+a.send({ type: 'Editor', on: true });
+a.send({ type: 'SetBlock', x, y, z: 9, block: 3 });
+check((await a.wait('BlockSet', 1000 + lag))?.x === x, 'a block placement from the editor is broadcast');
 
 // ---- robustness
 a.ws.send('not json'); a.ws.send('{"type":"Nonsense"}'); a.ws.send('{"type":"Input","seq":99,"input":{"upp":true}}');

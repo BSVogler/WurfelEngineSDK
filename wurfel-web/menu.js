@@ -21,10 +21,11 @@
  *     ambientOcclusion bool     for the light engine, once it exists
  *     showFps, showHelp bool    (JS handles the FPS counter and hides #info itself)
  *     keys             { action: [primary, alternate] } with actions
- *                      up, down, left, right, jump, place, break, players.
+ *                      up, down, left, right, jump, players.
  *                      Values are KeyboardEvent.key lowercased (" " is space, "arrowup"...), or
  *                      "mouse0" / "mouse1" / "mouse2" for mouse buttons. An empty string means
- *                      unbound: ignore it. Number keys 1-4 (hotbar) are fixed and not listed.
+ *                      unbound: ignore it. Block editing is not a binding: it only exists in the map
+ *                      editor (F2 / console `editor`), where the mouse buttons and keys 1-4 are fixed.
  *
  * Events dispatched on window (CustomEvent):
  *     wurfel:play      detail { name, color, server, generator, seed, create }
@@ -39,7 +40,10 @@
  *     wurfel:resume    the pause overlay closed, back to the game.
  *     wurfel:leave     the player left the game; connection should be closed (menu shows main screen).
  *     wurfel:error     (game -> menu) detail { message }: joining or creating a world failed, or the
- *                      connection was lost. The menu shows the message on the main menu.
+ *                      connection was lost for good (the game retries for about a minute first, keeping the
+ *                      world on screen). The menu shows the message on the main menu.
+ *     window.wurfelUpdate.show(serverBuild)   (game -> page) the server runs another build than this page:
+ *                      shows a small "Update available - Reload" notice. Does not block input.
  *     window.wurfelPlayRequest   the detail of the last wurfel:play (null after leaving). A game that
  *                      was not listening yet when the event fired reads this at startup.
  *     wurfel:settings  detail = window.wurfelSettings; fired once at startup and after every change.
@@ -107,12 +111,12 @@
   // ---------------------------------------------------------------------------------- settings
   const ACTIONS = [
     ['up', 'Walk up'], ['down', 'Walk down'], ['left', 'Walk left'], ['right', 'Walk right'],
-    ['jump', 'Jump'], ['place', 'Place block'], ['break', 'Break block'],
+    ['jump', 'Jump'],
     ['players', 'Player list'],
   ];
   const DEFAULT_KEYS = {
     up: ['w', 'arrowup'], down: ['s', 'arrowdown'], left: ['a', 'arrowleft'], right: ['d', 'arrowright'],
-    jump: [' ', ''], place: ['mouse0', ''], break: ['mouse2', ''], players: ['tab', ''],
+    jump: [' ', ''], players: ['tab', ''],
   };
   const RANGES = {
     masterVolume: [0, 1], musicVolume: [0, 1], effectsVolume: [0, 1], renderScale: [0.5, 1], zoom: [0.2, 2],
@@ -1188,6 +1192,36 @@
     blip(260);
   });
 
+  // The game calls this when the server runs another build than this page: a small banner offers a
+  // reload. It never takes focus or blocks input, and the game only asks once per server build.
+  window.wurfelUpdate = {
+    show(serverBuild) {
+      let box = $('#update-notice');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'update-notice';
+        box.className = 'update-notice';
+        box.setAttribute('role', 'status');
+        const text = document.createElement('span');
+        text.textContent = 'Update available – reload to get the new version.';
+        const reload = document.createElement('button');
+        reload.type = 'button';
+        reload.textContent = 'Reload';
+        reload.addEventListener('click', () => location.reload());
+        const dismiss = document.createElement('button');
+        dismiss.type = 'button';
+        dismiss.className = 'dismiss';
+        dismiss.setAttribute('aria-label', 'Dismiss');
+        dismiss.textContent = '×';
+        dismiss.addEventListener('click', () => { box.hidden = true; });
+        box.append(text, reload, dismiss);
+        document.body.appendChild(box);
+      }
+      box.title = serverBuild ? `Server build ${serverBuild}` : '';
+      box.hidden = false;
+    },
+  };
+
   // ---------------------------------------------------------------------------------- status / HUD
   function refreshStatus() {
     const st = status();
@@ -1392,7 +1426,7 @@
         swallow(e);
         return finishCapture('mouse' + e.button);
       }
-      if (menuOpen) swallow(e); // clicks on the menu must not place blocks underneath
+      if (menuOpen) swallow(e); // clicks on the menu must not reach the game underneath
     }, true);
   }
 

@@ -8,7 +8,6 @@ use glam::Vec3;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlCanvasElement, KeyboardEvent, MessageEvent, MouseEvent, WebSocket, WheelEvent};
-use wurfel_sim::block::id;
 use wurfel_sim::entity::{Entities, EntityId};
 use wurfel_sim::grid::{chunk_of, from_iso, to_iso};
 use wurfel_sim::player::{apply_input, new_player, PlayerInput, PLAYER_HEIGHT, TICK_DT, TICK_RATE};
@@ -19,6 +18,7 @@ use crate::actors::Actors;
 use crate::audio::{Audio, EntityInfo};
 use crate::bindings::{parse_hex_color, Bindings};
 use crate::caveland_client::{self, Happening};
+use crate::editor::{self, Button, Editor, Tool};
 use crate::interp::{RenderClock, Track};
 use crate::locator;
 use crate::mesh::{self, Vertex};
@@ -28,6 +28,7 @@ use crate::minimap::{CameraView, ChunkInfo, ChunkState, EntityDot, Minimap, Mini
 use crate::netstats::{format_report, NetStats};
 use crate::peel::gpu::{Peeling, DEPTH_FORMAT};
 use crate::pick::{pick, Pick};
+use crate::reconnect::{Closed, Reconnect};
 use crate::render_storage::RenderStorage;
 use crate::texture;
 
@@ -35,9 +36,6 @@ use crate::texture;
 const DEFAULT_SEED: u64 = 1;
 /// Most fires placed in the world at once (each costs a light and particles).
 const MAX_EMITTERS: usize = 8;
-/// Blocks selectable with the number keys.
-const HOTBAR: [(u8, &str); 4] =
-    [(id::STONE, "stone"), (id::DIRT, "dirt"), (id::GRASS, "grass"), (id::SAND, "sand")];
 const PLAYER_COLORS: [[f32; 3]; 6] = [
     [0.90, 0.30, 0.30],
     [0.95, 0.75, 0.20],
@@ -127,6 +125,8 @@ struct State {
     particles: wurfel_sim::particle::Particles,
     /// Fires and the like placed in the world; their light goes to the light engine.
     emitters: Vec<wurfel_sim::particle::ParticleEmitter>,
+    /// The exhaust of our own jetpack, lit while Caveland's rules say it burns.
+    jetpack: crate::particles::Jetpack,
     /// The Caveland ruleset, when the world is played by it (the local player is predicted with it).
     caveland: Option<caveland_sim::Caveland>,
     /// Items, robots... of the game mode, as the server last said.
@@ -176,6 +176,12 @@ struct State {
     connected: bool,
     /// When the current connection attempt started, until the server's welcome arrives.
     connecting_since: Option<f64>,
+    /// Rejoining after the connection broke (a server update): what to try next and when to stop.
+    reconnect: Reconnect,
+    /// The server address of this session, for reconnecting.
+    server_url: String,
+    /// The server build the "update available" notice was already shown for.
+    update_notified: Option<String>,
     my_id: Option<u32>,
     /// Holds just our own player, simulated locally with the same fixed steps as the server so
     /// that movement feels instant (prediction).
@@ -205,7 +211,10 @@ struct State {
     bindings: Bindings,
     /// Pointer position in canvas pixels.
     pointer: Option<(f32, f32)>,
-    selected: usize,
+    /// The map editor: the only mode in which the mouse edits blocks (see `editor.rs`).
+    editor: Editor,
+    /// Last toolbar state pushed to the page, to send it only when it changes.
+    editor_ui: String,
 
     // --- debug overlays
     net: NetStats,
@@ -371,6 +380,7 @@ async fn run() -> Result<(), String> {
         audio: Audio::new(),
         particles: wurfel_sim::particle::Particles::default(),
         emitters: Vec::new(),
+        jetpack: crate::particles::Jetpack::new(),
         caveland: None,
         things: Vec::new(),
         riding: false,
@@ -397,6 +407,9 @@ async fn run() -> Result<(), String> {
         socket: None,
         connected: false,
         connecting_since: None,
+        reconnect: Reconnect::new(),
+        server_url: String::new(),
+        update_notified: None,
         my_id: None,
         entities: Entities::new(),
         local_id: None,
@@ -414,7 +427,8 @@ async fn run() -> Result<(), String> {
         keys: HashSet::new(),
         bindings: read_bindings(),
         pointer: None,
-        selected: 0,
+        editor: Editor::default(),
+        editor_ui: String::new(),
         net: NetStats::new(),
         net_overlay,
         show_net: false,
@@ -460,6 +474,12 @@ async fn load_sprites(state: Rc<RefCell<State>>, device: wgpu::Device, queue: wg
         Ok((sprites, group)) => {
             let sprites = Rc::new(sprites);
             web_sys::console::log_1(&format!("sprites: {} sprites loaded in {:.0} ms", sprites.atlas.len(), now_ms() - started).into());
+            let missing = sprites.missing_player_sheets();
+            if !missing.is_empty() {
+                let sheets: String = missing.iter().collect();
+                web_sys::console::warn_1(&format!("sprites: the atlas has no frames for the player sheets '{sheets}'").into());
+                show_banner(&format!("The sprite atlas is out of date (no player animations '{sheets}'). Reload the page without its cache."), Tone::Error);
+            }
             let mut s = state.borrow_mut();
             s.atlas_bind_group = group;
             s.actors.set_sprites(Some(sprites.clone()));
@@ -783,6 +803,7 @@ fn end_session(s: &mut State) {
         socket.set_onmessage(None);
         let _ = socket.close();
     }
+    s.reconnect.stop(); // leaving (or giving up) is final
     s.connected = false;
     s.connecting_since = None;
     s.my_id = None;
@@ -807,7 +828,12 @@ fn end_session(s: &mut State) {
 
 fn begin_session(state: &Rc<RefCell<State>>, join: Join) {
     show_banner("Connecting to the server…", Tone::Info);
-    end_session(&mut state.borrow_mut());
+    {
+        let mut s = state.borrow_mut();
+        end_session(&mut s);
+        s.reconnect.begin();
+        s.server_url = join.server.clone();
+    }
     if let Some(window) = web_sys::window() {
         connect(&window, state, &join.server);
     }
@@ -818,7 +844,13 @@ fn connect(window: &web_sys::Window, state: &Rc<RefCell<State>>, url: &str) {
     let socket = match WebSocket::new(url) {
         Ok(socket) => socket,
         Err(_) => {
-            report_error(&format!("Cannot open {url}"));
+            // While reconnecting this is just another failed try.
+            if state.borrow().reconnect.active() {
+                handle_close(state, url);
+            } else {
+                state.borrow_mut().reconnect.stop();
+                report_error(&format!("Cannot open {url}"));
+            }
             return;
         }
     };
@@ -839,25 +871,7 @@ fn connect(window: &web_sys::Window, state: &Rc<RefCell<State>>, url: &str) {
 
     let s = state.clone();
     let url_for_message = url.to_string();
-    let on_close = Closure::<dyn FnMut()>::new(move || {
-        let mut s = s.borrow_mut();
-        let was_in_world = s.my_id.is_some();
-        s.connected = false;
-        s.connecting_since = None;
-        s.my_id = None;
-        s.local_id = None;
-        s.entities = Entities::new();
-        s.remotes.clear();
-        s.socket = None;
-        if was_in_world {
-            report_error("Connection to the server lost. Pick a world to join again.");
-        } else {
-            report_error(&format!(
-                "Could not join the world: the server at {url_for_message} refused or closed the connection. \
-                 Does the world still exist?"
-            ));
-        }
-    });
+    let on_close = Closure::<dyn FnMut()>::new(move || handle_close(&s, &url_for_message));
     socket.set_onclose(Some(on_close.as_ref().unchecked_ref()));
     on_close.forget();
 
@@ -898,6 +912,81 @@ fn connect(window: &web_sys::Window, state: &Rc<RefCell<State>>, url: &str) {
     }
 }
 
+/// A Caveland action of the local player: sent to the server, which decides, and played by the
+/// local animation at once.
+fn send_action(s: &mut State, name: &'static str, arg: i32) {
+    if let Some(me) = s.my_id {
+        s.actors.local_action(me, name);
+    }
+    send(s, &ClientMsg::Action { name: name.to_string(), arg });
+}
+
+/// The game socket closed. While playing that is most likely a server update: keep the world, the
+/// camera and the HUD as they are, say so, and try again with growing pauses (`reconnect.rs`). The
+/// server's fresh world replaces the old one when its welcome arrives.
+fn handle_close(state: &Rc<RefCell<State>>, url: &str) {
+    let mut s = state.borrow_mut();
+    match s.reconnect.on_closed(now_ms()) {
+        // The player left, or this is an old socket: nothing of ours.
+        Closed::Ignore => {}
+        Closed::Refused => {
+            end_session(&mut s);
+            report_error(&format!(
+                "Could not join the world: the server at {url} refused or closed the connection. \
+                 Does the world still exist?"
+            ));
+        }
+        Closed::GiveUp => {
+            end_session(&mut s);
+            report_error("Connection to the server lost. Pick a world to join again.");
+        }
+        Closed::Retry { delay_ms, epoch } => {
+            s.connected = false;
+            s.connecting_since = None;
+            s.socket = None;
+            s.keys.clear(); // do not walk on when the key is released while nobody is listening
+            let attempt = s.reconnect.attempt();
+            show_banner(
+                &if attempt > 2 {
+                    format!("Server updating, reconnecting… (try {attempt})")
+                } else {
+                    "Server updating, reconnecting…".to_string()
+                },
+                Tone::Info,
+            );
+            let retry_state = state.clone();
+            let retry = Closure::once_into_js(move || retry_connect(&retry_state, epoch));
+            if let Some(window) = web_sys::window() {
+                let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(retry.unchecked_ref(), delay_ms as i32);
+            }
+        }
+    }
+}
+
+/// The pause before a retry is over: open a new socket, unless the player left in the meantime.
+fn retry_connect(state: &Rc<RefCell<State>>, epoch: u32) {
+    let url = {
+        let mut s = state.borrow_mut();
+        if !s.reconnect.fire(epoch) {
+            return;
+        }
+        s.server_url.clone()
+    };
+    if let Some(window) = web_sys::window() {
+        connect(&window, state, &url);
+    }
+}
+
+/// Offer a reload when the server runs another build than this page (`wurfelUpdate` in `menu.js`).
+/// Once per server build, so it does not nag.
+fn check_build(s: &mut State, server: &str) {
+    if !wurfel_sim::protocol::build_mismatch(&wurfel_sim::protocol::build_id(), server) || s.update_notified.as_deref() == Some(server) {
+        return;
+    }
+    s.update_notified = Some(server.to_string());
+    call_js("wurfelUpdate", "show", &JsValue::from_str(server));
+}
+
 fn send(s: &mut State, msg: &ClientMsg) {
     if let (true, Some(socket)) = (s.connected, &s.socket) {
         if let Ok(json) = serde_json::to_string(msg) {
@@ -910,7 +999,12 @@ fn send(s: &mut State, msg: &ClientMsg) {
 
 fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
     match msg {
-        ServerMsg::Welcome { your_id, map, players, roster, gamemode, .. } => {
+        ServerMsg::Welcome { your_id, map, players, roster, gamemode, build, .. } => {
+            check_build(s, &build);
+            let rejoined = s.reconnect.active();
+            s.reconnect.on_welcome();
+            // Whatever a dialog of the old server asked is moot; the state below is the new server's.
+            hud("closeDialog", &JsValue::UNDEFINED);
             s.roster = roster.into_iter().map(|p| (p.id, p)).collect();
             s.pings.clear();
             clear_friends(s);
@@ -950,7 +1044,7 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
                 }
             }
             s.connecting_since = None;
-            show_banner(&format!("Joined '{map}'"), Tone::Ok);
+            show_banner(&if rejoined { format!("Reconnected to '{map}'") } else { format!("Joined '{map}'") }, Tone::Ok);
             s.audio.play_music("overworld");
         }
         ServerMsg::Snapshot { tick, players } => {
@@ -985,7 +1079,10 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
             s.terrain_version += 1;
         }
         // The lobby is the menu's business; the game socket only sees its greeting before it joins.
-        ServerMsg::Lobby { .. } | ServerMsg::Maps { .. } | ServerMsg::WorldChanged { .. } | ServerMsg::MapCreated { .. } => {}
+        ServerMsg::Lobby { build, .. } => check_build(s, &build),
+        ServerMsg::Maps { .. } | ServerMsg::WorldChanged { .. } | ServerMsg::MapCreated { .. } => {}
+        // The server saved and is going away; the socket closes next and the reconnect starts.
+        ServerMsg::ServerRestarting => show_banner("Server updating, reconnecting…", Tone::Info),
         ServerMsg::Failed { message, .. } => report_error(&message),
         ServerMsg::Pong { client_time, .. } => s.net.on_pong(client_time, now),
         ServerMsg::Stats(stats) => s.net.on_server_stats(stats),
@@ -1027,6 +1124,8 @@ fn hud(method: &str, arg: &JsValue) {
 
 /// What a game mode told us about the world and the people in it is only valid for one session.
 fn reset_mode_state(s: &mut State) {
+    // The server forgets the editor with the connection, so a new session starts outside it.
+    s.editor.set_active(false);
     s.riding = false;
     s.hidden.clear();
     s.powered.clear();
@@ -1101,6 +1200,7 @@ fn handle_rules(s: &mut State, kind: &str, data: &serde_json::Value) {
                         s.particles.block_break(pos + Vec3::Z * 0.5, [0.3, 0.3, 0.3]);
                     }
                     Happening::Toast(text) => hud("toast", &JsValue::from_str(&text)),
+                    Happening::Action { player, name, ok } => s.actors.announced(player, player == me, &name, ok),
                     Happening::Died => {
                         show_banner("You died. Back at the start.", Tone::Error);
                         s.visual_offset.clear();
@@ -1227,6 +1327,36 @@ fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     });
     let _ = js_sys::Reflect::set(&net, &"command".into(), command.as_ref());
     command.forget();
+    // The editor toolbar and the `editor` console command (editor.js, console-host.js).
+    let s = state.clone();
+    let editor_set = Closure::<dyn FnMut(String) -> String>::new(move |mode: String| {
+        let mut s = s.borrow_mut();
+        let on = match mode.as_str() {
+            "on" => true,
+            "off" => false,
+            _ => !s.editor.active(),
+        };
+        match set_editor(&mut s, on) {
+            Ok(()) => String::new(),
+            Err(message) => message.to_string(),
+        }
+    });
+    let _ = js_sys::Reflect::set(&net, &"editor".into(), editor_set.as_ref());
+    editor_set.forget();
+    let s = state.clone();
+    let editor_tool = Closure::<dyn FnMut(String)>::new(move |name: String| {
+        if let Some(tool) = Tool::parse(&name) {
+            s.borrow_mut().editor.select_tool(tool);
+        }
+    });
+    let _ = js_sys::Reflect::set(&net, &"editorTool".into(), editor_tool.as_ref());
+    editor_tool.forget();
+    let s = state.clone();
+    let editor_block = Closure::<dyn FnMut(u32)>::new(move |index: u32| {
+        s.borrow_mut().editor.select_block(index as usize);
+    });
+    let _ = js_sys::Reflect::set(&net, &"editorBlock".into(), editor_block.as_ref());
+    editor_block.forget();
     let s = state.clone();
     let heart = Closure::<dyn FnMut(u32, bool)>::new(move |to: u32, on: bool| {
         send(&mut s.borrow_mut(), &ClientMsg::Heart { to, on });
@@ -1253,23 +1383,50 @@ fn start_from_menu(state: &Rc<RefCell<State>>, detail: &JsValue) {
     begin_session(state, join);
 }
 
-fn place_block(s: &mut State) {
-    // In a game mode blocks change through its rules (digging), not by clicking.
-    if s.caveland.is_some() {
-        return;
-    }
-    if let Some(Pick { place: (x, y, z), .. }) = hovered(s) {
-        let block = Block::new(HOTBAR[s.selected].0, 0).raw();
-        send(s, &ClientMsg::SetBlock { x, y, z, block });
+/// A mouse button went down in the game view. Only the editor turns this into a block edit.
+fn editor_click(s: &mut State, button: i16) {
+    let Some(button) = Button::from_dom(button) else { return };
+    let target = hovered(s);
+    let world = &s.world;
+    let edit = s.editor.click(button, target, |(x, y, z)| world.get(x, y, z).id());
+    if let Some(edit) = edit {
+        send(s, &ClientMsg::SetBlock { x: edit.x, y: edit.y, z: edit.z, block: edit.block });
     }
 }
 
-fn break_block(s: &mut State) {
-    if s.caveland.is_some() {
-        return;
+/// Enter or leave the editor (F2, the `editor` console command, the toolbar). Not available
+/// offline (the preview is read-only) or in a game mode (it has its own rules for blocks).
+fn set_editor(s: &mut State, on: bool) -> Result<(), &'static str> {
+    if on && !s.connected {
+        return Err("The editor needs a world: join one from the menu first.");
     }
-    if let Some(Pick { hit: (x, y, z), .. }) = hovered(s) {
-        send(s, &ClientMsg::SetBlock { x, y, z, block: 0 });
+    if on && s.caveland.is_some() {
+        return Err("The editor is not available in Caveland maps.");
+    }
+    if s.editor.active() != on {
+        s.editor.set_active(on);
+        send(s, &ClientMsg::Editor { on });
+    }
+    Ok(())
+}
+
+fn toggle_editor(s: &mut State) {
+    let on = !s.editor.active();
+    if let Err(message) = set_editor(s, on) {
+        show_banner(message, Tone::Info);
+    }
+}
+
+/// Push the toolbar state (and the cursor line) to `editor.js` when it changed.
+fn update_editor_ui(s: &mut State, target: Option<Pick>) {
+    let cursor = match target {
+        Some(pick) => editor::cursor_text(Some(pick), s.world.get(pick.hit.0, pick.hit.1, pick.hit.2).id()),
+        None => String::new(),
+    };
+    let json = s.editor.ui_json(&cursor);
+    if json != s.editor_ui {
+        call_js("wurfelEditor", "update", &JsValue::from_str(&json));
+        s.editor_ui = json;
     }
 }
 
@@ -1301,14 +1458,10 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         s.keys.insert(format!("mouse{}", e.button()));
         if s.caveland.is_some() {
             if let Some((name, arg)) = caveland_client::mouse_action(e.button(), true) {
-                send(&mut s, &ClientMsg::Action { name: name.to_string(), arg });
+                send_action(&mut s, name, arg);
             }
         }
-        if s.bindings.matches_button("place", e.button()) {
-            place_block(&mut s);
-        } else if s.bindings.matches_button("break", e.button()) {
-            break_block(&mut s);
-        }
+        editor_click(&mut s, e.button());
     });
     let s = state.clone();
     listen(window, "mouseup", move |e: MouseEvent| {
@@ -1316,7 +1469,7 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         s.keys.remove(&format!("mouse{}", e.button()));
         if s.caveland.is_some() {
             if let Some((name, arg)) = caveland_client::mouse_action(e.button(), false) {
-                send(&mut s, &ClientMsg::Action { name: name.to_string(), arg });
+                send_action(&mut s, name, arg);
             }
         }
     });
@@ -1351,6 +1504,13 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
                 set_overlay_visible(&s.net_overlay, s.show_net);
                 return;
             }
+            "f2" if !window_flag("wurfelMenuOpen") => {
+                e.prevent_default();
+                if !e.repeat() {
+                    toggle_editor(&mut s);
+                }
+                return;
+            }
             "f4" if !window_flag("wurfelMenuOpen") => {
                 e.prevent_default();
                 if let Some(minimap) = s.minimap.as_mut() {
@@ -1367,18 +1527,12 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
             // Caveland keys: swing, throw, use, drop, craft...
             if !e.repeat() {
                 if let Some((name, arg)) = caveland_client::key_action(&key, true) {
-                    send(&mut s, &ClientMsg::Action { name: name.to_string(), arg });
+                    send_action(&mut s, name, arg);
                 }
             }
-        } else if let Some(n) = key.parse::<usize>().ok().filter(|n| (1..=HOTBAR.len()).contains(n)) {
-            s.selected = n - 1;
-        }
-        if !e.repeat() {
-            if s.bindings.matches_key("place", &key) {
-                place_block(&mut s);
-            } else if s.bindings.matches_key("break", &key) {
-                break_block(&mut s);
-            }
+        } else if let Some(index) = Editor::index_for_key(&key) {
+            // Number keys choose the block to build with, but only inside the editor.
+            s.editor.select_block(index);
         }
         s.keys.insert(key);
     });
@@ -1388,7 +1542,7 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         let mut s = s.borrow_mut();
         if s.caveland.is_some() && s.keys.contains(&key) {
             if let Some((name, arg)) = caveland_client::key_action(&key, false) {
-                send(&mut s, &ClientMsg::Action { name: name.to_string(), arg });
+                send_action(&mut s, name, arg);
             }
         }
         s.keys.remove(&key);
@@ -1451,7 +1605,8 @@ fn frame(s: &mut State, now_ms: f64) {
     s.last_frame_ms = Some(now_ms);
     s.net.on_frame(dt as f64 * 1000.0);
     let ease = |rate: f32| 1.0 - (-rate * dt).exp();
-    let blocked = input_blocked();
+    // While rejoining the world is frozen as it was: nobody is listening to our inputs.
+    let blocked = input_blocked() || s.reconnect.active();
 
     let wanted = if blocked { PlayerInput::default() } else { read_input(s) };
 
@@ -1521,9 +1676,16 @@ fn frame(s: &mut State, now_ms: f64) {
     for emitter in &mut s.emitters {
         emitter.update(dt, &mut s.particles);
     }
+    let burning = s.local_id.zip(s.caveland.as_ref()).and_then(|(id, c)| c.player(id)).is_some_and(|p| p.jetpack_on);
+    let flame_at = if burning {
+        local_position(s).map(|feet| (feet, s.local_id.map_or([0.0, 1.0], |id| s.actors.facing(id))))
+    } else {
+        None
+    };
+    s.jetpack.update(dt, &mut s.particles, flame_at);
     let focus = local_position(s).unwrap_or(Vec3::ZERO);
     let lamps = caveland_client::lamps(&s.world, &s.powered, &s.things);
-    s.lighting.set_dynamic_lights(s.emitters.iter().filter_map(|e| e.light()).chain(lamps), focus);
+    s.lighting.set_dynamic_lights(s.emitters.iter().filter_map(|e| e.light()).chain(s.jetpack.lights()).chain(lamps), focus);
 
     // Everyone else is drawn slightly in the past, between two snapshots.
     s.render_clock.advance(dt as f64 * 1000.0);
@@ -1552,9 +1714,17 @@ fn frame(s: &mut State, now_ms: f64) {
 
     // The server accepted the connection (or not) but never sent the world.
     if s.connecting_since.is_some_and(|since| now_ms - since > CONNECT_TIMEOUT_MS) {
-        end_session(s);
-        hide_banner();
-        report_error("The server did not answer in time. Check the address and try again.");
+        if s.reconnect.active() {
+            // This try hangs: close it, which schedules the next one.
+            s.connecting_since = None;
+            if let Some(socket) = &s.socket {
+                let _ = socket.close();
+            }
+        } else {
+            end_session(s);
+            hide_banner();
+            report_error("The server did not answer in time. Check the address and try again.");
+        }
     }
 
     s.lighting.update(dt * 1000.0);
@@ -1583,11 +1753,13 @@ fn frame(s: &mut State, now_ms: f64) {
         s.world_vertices = vertices.len() as u32;
     }
 
-    let target = hovered(s);
+    // The hover marker and the cursor info belong to the editor.
+    let target = if s.editor.active() { hovered(s) } else { None };
     if s.model_placed.is_none() {
         place_model(s);
     }
     upload_dynamic_mesh(s, target);
+    update_editor_ui(s, target);
     update_overlays(s, now_ms);
     update_info(s);
     update_name_tags(s);
@@ -1860,6 +2032,7 @@ fn update_info(s: &mut State) {
     let status = match (s.connected, s.my_id) {
         (true, Some(id)) => format!("online as player {id} · {} other(s)", s.remotes.len()),
         (true, None) => "connecting…".to_string(),
+        (false, _) if s.reconnect.active() => "server updating, reconnecting…".to_string(),
         (false, _) => "offline: showing a preview. Open the menu (Esc) to join a world".to_string(),
     };
     let text = format!("Wurfel Engine · {:?} · {status}", s.backend);

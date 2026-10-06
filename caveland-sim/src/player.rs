@@ -67,7 +67,7 @@ pub enum Action {
     Interact,
     /// Rotate the inventory slots.
     SwitchItems { left: bool },
-    /// Craft the n-th recipe of [`crate::crafting::ordered_recipes`].
+    /// Craft the n-th recipe of the fixed list [`crate::crafting::recipes`] (out of range is ignored).
     Craft(usize),
     /// Answer the open dialog (an NPC's line, a construction site, a shop...): the option's id. A
     /// plain "next" or "yes" is 1, "no" is 0; see [`crate::dialog::Dialog`].
@@ -95,6 +95,8 @@ pub struct PlayerState {
     pub performing_power_attack: bool,
     pub used_load_attack_in_air: bool,
     pub prepare_throw: bool,
+    /// Seconds the throw button has been held; long enough and the item is dropped instead.
+    pub throw_held: Option<f32>,
     /// The next jump works even in mid-air (set by bouncing off something).
     pub bunny_hop_forced: bool,
     /// Where the character looks and swings; turns smoothly towards the walking direction.
@@ -118,6 +120,7 @@ impl PlayerState {
             performing_power_attack: false,
             used_load_attack_in_air: false,
             prepare_throw: false,
+            throw_held: None,
             bunny_hop_forced: false,
             aim: facing,
             last_controls: Controls::default(),

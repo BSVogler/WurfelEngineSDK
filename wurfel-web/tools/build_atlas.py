@@ -3,7 +3,7 @@
 
 Reads the libGDX TexturePacker output of the Java game (Spritesheet.png/.txt with the blocks `b*`,
 entities `e*` and interface sprites `i*`, and playerSheet.png/.txt of which only the walking frames
-`diff/w/*` are kept) and writes `assets/sprites/sprites<N>.png` plus `assets/sprites/sprites.atlas`,
+`diff/<action>/*`, the player's frames, are kept) and writes `assets/sprites/sprites<N>.png` plus `assets/sprites/sprites.atlas`,
 in the same libGDX atlas text format, so `src/atlas.rs` parses the original files and these alike.
 
 The 4096x4096 sheets hold much empty space and the browser's WebGL2 baseline only guarantees
@@ -25,10 +25,14 @@ DEFAULT_SRC = os.path.join(
 )
 OUT = os.path.join(os.path.dirname(__file__), "..", "assets", "sprites")
 
+PLAYER_ACTIONS = ("w", "h", "l", "i", "o", "s", "t", "j")
+
 # (sheet name, predicate on the region name)
 SOURCES = [
     ("Spritesheet", lambda name: name != "error"),
-    ("playerSheet", lambda name: name.startswith("diff/w/")),
+    # Ejira's frames: w walking, h hit, l loaded hit, i power attack, o its overlay, s the charge
+    # overlay, t throw, j jump. Everything of the diffuse sheet; the normal maps are not converted.
+    ("playerSheet", lambda name: name.startswith("diff/") and name.split("/")[1] in PLAYER_ACTIONS),
 ]
 
 

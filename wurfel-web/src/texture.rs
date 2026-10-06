@@ -132,9 +132,14 @@ mod web {
         bind_group(device, layout, &texture)
     }
 
+    /// The atlas keeps its file names when its content changes, so the browser must ask the server
+    /// whether its copy is still good (`no-cache`) instead of reusing an old atlas: that one would
+    /// miss the newer animation frames and the player would only ever show the walking ones.
     pub async fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
         let window = web_sys::window().ok_or("no window")?;
-        let response: web_sys::Response = JsFuture::from(window.fetch_with_str(url))
+        let init = web_sys::RequestInit::new();
+        init.set_cache(web_sys::RequestCache::NoCache);
+        let response: web_sys::Response = JsFuture::from(window.fetch_with_str_and_init(url, &init))
             .await
             .map_err(|e| format!("{url}: {}", js_message(&e)))?
             .dyn_into()
@@ -276,16 +281,20 @@ mod tests {
             // not leave an empty hole), and the region right of a sprite's border is transparent
             // or a neighbour, never garbage: check the sprite itself.
             for region in atlas.regions().iter().filter(|r| r.page == index) {
+                // The player's charge and power overlays (`diff/s`, `diff/o`) are glows: translucent
+                // everywhere, so any visible pixel counts.
+                let glow = region.name.starts_with("diff/s/") || region.name.starts_with("diff/o/");
+                let threshold = if glow { 0 } else { 127 };
                 let mut opaque = 0;
                 for y in region.y..region.y + region.h {
                     for x in region.x..region.x + region.w {
-                        if image.rgba[((y * image.width + x) * 4 + 3) as usize] > 127 {
+                        if image.rgba[((y * image.width + x) * 4 + 3) as usize] > threshold {
                             opaque += 1;
                         }
                     }
                 }
-                // `i10-0` is a fully transparent sprite in the Java sheet too (an invisible marker).
-                assert!(opaque > 0 || region.name == "i10-0", "{} is empty on its page", region.name);
+                // `i10-0` and `diff/s/49` (one pixel) are fully transparent in the Java sheet too.
+                assert!(opaque > 0 || ["i10-0", "diff/s/49"].contains(&region.name.as_str()), "{} is empty on its page", region.name);
             }
         }
     }

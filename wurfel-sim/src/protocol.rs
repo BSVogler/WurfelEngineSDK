@@ -101,6 +101,24 @@ pub struct WorldInfo {
     pub gamemode: String,
 }
 
+/// Identifies this build: the crate version plus the git commit it was built from (`0.1.0+1a2b3c4d`,
+/// just the version outside a git checkout). Server and client both carry the one of `wurfel-sim`,
+/// so they match exactly when they were built from the same commit.
+pub fn build_id() -> String {
+    let hash = env!("WURFEL_GIT_HASH");
+    if hash.is_empty() {
+        env!("CARGO_PKG_VERSION").to_string()
+    } else {
+        format!("{}+{hash}", env!("CARGO_PKG_VERSION"))
+    }
+}
+
+/// Whether a server's build id means the client is out of date. A server that sends none (an older
+/// one) never counts as a mismatch.
+pub fn build_mismatch(client: &str, server: &str) -> bool {
+    !client.is_empty() && !server.is_empty() && client != server
+}
+
 /// The mode of a map that does not name one.
 pub fn default_game_mode() -> String {
     "engine".to_string()
@@ -209,7 +227,11 @@ pub enum ClientMsg {
     /// than the last one it applied, and echoes it in [`PlayerState::input_seq`]. A pressed jump is
     /// never lost, even if the next change arrives before the next tick.
     Input { seq: u32, input: PlayerInput },
-    /// Place a block, or remove it with `block == 0`.
+    /// Enter (`on`) or leave the map editor. Only a player in the editor may send `SetBlock`: the
+    /// server ignores block edits from everybody else. Not used in game modes (they have their own
+    /// rules for changing blocks). A new connection starts outside the editor.
+    Editor { on: bool },
+    /// Place a block, or remove it with `block == 0`. Only accepted from a player in the editor.
     SetBlock { x: i32, y: i32, z: i32, block: u16 },
     /// A one-off action of the game mode (for Caveland: `attack`, `throw`, `craft`...). The engine
     /// does not interpret it; unknown actions are ignored.
@@ -241,6 +263,7 @@ impl ClientMsg {
         match self {
             ClientMsg::Input { .. } | ClientMsg::Ping { .. } => Channel::Unreliable,
             ClientMsg::SetBlock { .. }
+            | ClientMsg::Editor { .. }
             | ClientMsg::Action { .. }
             | ClientMsg::Command { .. }
             | ClientMsg::Heart { .. }
@@ -258,7 +281,13 @@ impl ClientMsg {
 pub enum ServerMsg {
     // ----- lobby
     /// First message on every connection: what is running, and the generators a new map can use.
-    Lobby { world: WorldInfo, generators: Vec<GeneratorSummary> },
+    /// `build` is the server's [`build_id`] (empty from servers that predate it).
+    Lobby {
+        world: WorldInfo,
+        generators: Vec<GeneratorSummary>,
+        #[serde(default)]
+        build: String,
+    },
     Maps { maps: Vec<MapSummary> },
     /// A save was loaded: sent to every connection that is still in the lobby.
     WorldChanged { world: WorldInfo },
@@ -283,6 +312,9 @@ pub enum ServerMsg {
         /// The rules this world is played by (`engine`, `caveland`).
         #[serde(default = "default_game_mode")]
         gamemode: String,
+        /// The server's [`build_id`] (empty from servers that predate it).
+        #[serde(default)]
+        build: String,
     },
     /// Somebody joined (also sent for yourself, right after the welcome).
     PlayerJoined { player: PlayerInfo },
@@ -292,6 +324,9 @@ pub enum ServerMsg {
     PlayerLeft { id: u32 },
     /// The server stopped sending this chunk because the player moved away: forget it.
     ChunkUnload { cx: i32, cy: i32 },
+    /// The server is shutting down for an update (it has saved the world): sent to everybody just
+    /// before it closes their sockets. A client keeps its view and rejoins when the server is back.
+    ServerRestarting,
     /// Reply to [`ClientMsg::Ping`], to the sender only.
     Pong { client_time: f64, tick: u64 },
     Stats(ServerStats),
@@ -326,6 +361,7 @@ impl ServerMsg {
             | ServerMsg::Pings { .. }
             | ServerMsg::Things { .. } => Channel::Unreliable,
             ServerMsg::Welcome { .. }
+            | ServerMsg::ServerRestarting
             | ServerMsg::BlockSet(_)
             | ServerMsg::PlayerLeft { .. }
             | ServerMsg::PlayerJoined { .. }
@@ -436,7 +472,7 @@ mod tests {
     fn lobby_messages_round_trip_and_slots_accept_a_number_or_new() {
         let world = WorldInfo { map: "Island".into(), map_id: "island".into(), slot: 1, generator: "island".into(), seed: 4, players: 0, gamemode: "caveland".into() };
         let messages = [
-            ServerMsg::Lobby { world: world.clone(), generators: vec![GeneratorSummary { id: "island".into(), name: "Island".into(), description: "d".into(), uses_seed: true }] },
+            ServerMsg::Lobby { world: world.clone(), generators: vec![GeneratorSummary { id: "island".into(), name: "Island".into(), description: "d".into(), uses_seed: true }], build: build_id() },
             ServerMsg::Maps { maps: vec![MapSummary { id: "a".into(), name: "A".into(), description: "".into(), generator: "air".into(), seed: 1, gamemode: "engine".into(), saves: vec![SaveSummary { slot: 0, modified: None }] }] },
             ServerMsg::WorldChanged { world },
             ServerMsg::Failed { request: "LoadMap".into(), message: "nope".into() },
@@ -511,7 +547,9 @@ mod tests {
                 players: vec![player],
                 roster: vec![PlayerInfo { id: 4, name: "Ann".into(), color: [1, 2, 3] }],
                 gamemode: "caveland".to_string(),
+                build: build_id(),
             },
+            ServerMsg::ServerRestarting,
             ServerMsg::PlayerJoined { player: PlayerInfo { id: 5, name: "Bo".into(), color: [9, 9, 9] } },
             ServerMsg::ChunkUnload { cx: -3, cy: 7 },
             ServerMsg::Snapshot { tick: 99, players: vec![player] },
@@ -657,6 +695,35 @@ mod game_mode_tests {
         assert_eq!(action, ClientMsg::Action { name: "attack".into(), arg: 0 });
         let world: WorldInfo = serde_json::from_str(r#"{"map":"m","map_id":"m","slot":0,"generator":"air","seed":1,"players":0}"#).unwrap();
         assert_eq!(world.gamemode, "engine");
+    }
+
+    #[test]
+    fn the_build_id_is_optional_so_old_servers_still_parse() {
+        let lobby: ServerMsg = serde_json::from_str(
+            r#"{"type":"Lobby","world":{"map":"m","map_id":"m","slot":0,"generator":"air","seed":1,"players":0},"generators":[]}"#,
+        )
+        .unwrap();
+        assert!(matches!(lobby, ServerMsg::Lobby { build, .. } if build.is_empty()));
+        let welcome: ServerMsg = serde_json::from_str(
+            r#"{"type":"Welcome","your_id":1,"map":"m","slot":0,"generator":"air","seed":1,"tick_rate":60,"players":[],"roster":[]}"#,
+        )
+        .unwrap();
+        assert!(matches!(welcome, ServerMsg::Welcome { build, .. } if build.is_empty()));
+        assert!(build_id().starts_with(env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn only_a_known_different_build_counts_as_a_mismatch() {
+        assert!(!build_mismatch("0.1.0+a", "0.1.0+a"));
+        assert!(build_mismatch("0.1.0+a", "0.1.0+b"));
+        assert!(!build_mismatch("0.1.0+a", ""), "an old server sends no build id");
+        assert!(!build_mismatch("", "0.1.0+b"));
+    }
+
+    #[test]
+    fn the_restart_notice_is_a_reliable_message_without_fields() {
+        assert_eq!(serde_json::to_string(&ServerMsg::ServerRestarting).unwrap(), r#"{"type":"ServerRestarting"}"#);
+        assert_eq!(ServerMsg::ServerRestarting.channel(), Channel::Reliable);
     }
 
     #[test]

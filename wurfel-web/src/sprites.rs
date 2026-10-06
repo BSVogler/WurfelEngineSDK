@@ -36,6 +36,11 @@ pub const FOOTPRINT_TIP: f32 = 50.0;
 /// The bottom of the player's oversized picture lies 100 game units (86 pixels) below the feet; the
 /// character itself is drawn higher inside that box (`Ejira.render`).
 pub const PLAYER_BOX_BOTTOM: f32 = 86.0;
+/// The charge and power overlays (`diff/s`, `diff/o`) are placed by `Ejira.render` at
+/// `(x, y + DIAGLENGTH2, z + 100)` like an ordinary entity picture: 50 px down for the half
+/// diagonal, 86 px up for the 100 units of height, and the front tip of the footprint (50 px) below
+/// that. Derived from the Java code, not checked against a screenshot.
+pub const PLAYER_OVERLAY_BOX_BOTTOM: f32 = 50.0 - 86.0 + 50.0;
 
 /// The screen position (pixels at zoom 1, y down) of a point in the isometric ground frame.
 pub fn project(p: [f32; 3]) -> [f32; 2] {
@@ -88,7 +93,19 @@ impl Sprites {
 
     /// The player's walking sprite `diff/w/<n>` (1 to 64).
     pub fn player(&self, frame: u32) -> Option<&Region> {
-        self.atlas.region(&format!("diff/w/{frame}"))
+        self.player_sheet(b'w', frame)
+    }
+
+    /// The player sheets (`w h l i t j`) the atlas has no first frame for. An atlas that is out of
+    /// date misses the newer ones, and the player would show only the walking frames.
+    pub fn missing_player_sheets(&self) -> Vec<char> {
+        "whltij".chars().filter(|&glyph| self.player_sheet(glyph as u8, 1).is_none()).collect()
+    }
+
+    /// A frame of the player sheet: `diff/<glyph>/<n>` for the animations `w h l i t j` and the
+    /// overlays `s o` (see `caveland_sim::animation`).
+    pub fn player_sheet(&self, glyph: u8, frame: u32) -> Option<&Region> {
+        self.atlas.region(&format!("diff/{}/{frame}", glyph as char))
     }
 }
 
@@ -169,6 +186,18 @@ pub fn billboard_point(anchor: Vec3, dx: f32, dy: f32, toward_camera: f32) -> [f
 /// `box_bottom` is how many pixels below the anchor's screen position the bottom edge of the
 /// sprite's original box lies. `mirror` flips it left to right. `tint` multiplies the sprite.
 pub fn billboard(out: &mut Vec<Vertex>, atlas: &Atlas, region: &Region, anchor: Vec3, box_bottom: f32, mirror: bool, tint: [f32; 3]) {
+    billboard_biased(out, atlas, region, anchor, box_bottom, mirror, tint, BILLBOARD_BIAS);
+}
+
+/// Depth units a billboard is moved towards the viewer, see [`billboard_point`].
+pub const BILLBOARD_BIAS: f32 = 0.05;
+/// A picture that goes on top of another one at the same place (the player's overlays) needs to be
+/// nearer than it to pass the depth test.
+pub const OVERLAY_BIAS: f32 = 0.35;
+
+/// [`billboard`] with its own `bias` towards the viewer.
+#[allow(clippy::too_many_arguments)]
+pub fn billboard_biased(out: &mut Vec<Vertex>, atlas: &Atlas, region: &Region, anchor: Vec3, box_bottom: f32, mirror: bool, tint: [f32; 3], bias: f32) {
     let page = &atlas.pages[region.page];
     // The sprite's rectangle in pixels relative to the anchor: the original box is centred on it.
     let left = -(region.orig_w as f32) / 2.0 + region.offset_x as f32;
@@ -177,7 +206,6 @@ pub fn billboard(out: &mut Vec<Vertex>, atlas: &Atlas, region: &Region, anchor: 
     let (u0, u1) = (region.x as f32 / page.width as f32, (region.x + region.w) as f32 / page.width as f32);
     let (v0, v1) = (region.y as f32 / page.height as f32, (region.y + region.h) as f32 / page.height as f32);
     let (u_left, u_right) = if mirror { (u1, u0) } else { (u0, u1) };
-    let bias = 0.05;
     let vertex = |dx: f32, dy: f32, u: f32, v: f32| Vertex {
         position: billboard_point(anchor, dx, dy, bias),
         color: tint,
@@ -376,6 +404,15 @@ mod tests {
     }
 
     #[test]
+    fn the_shipped_atlas_has_every_player_sheet_and_an_old_one_is_noticed() {
+        assert!(real().missing_player_sheets().is_empty());
+        // An atlas from before the attack, charge, throw and jump sheets were added.
+        let old = "sprites0.png\nsize: 64, 64\nformat: RGBA8888\nfilter: Linear,Linear\nrepeat: none\ndiff/w/1\n  rotate: false\n  xy: 0, 0\n  size: 8, 8\n  orig: 8, 8\n  offset: 0, 0\n  index: -1\n";
+        let sprites = Sprites::new(Atlas::parse(old).unwrap());
+        assert_eq!(sprites.missing_player_sheets(), vec!['h', 'l', 't', 'i', 'j']);
+    }
+
+    #[test]
     fn blocks_with_three_faces_and_single_pictures_are_told_apart() {
         let sprites = real();
         let grass = sprites.block(1, 0).expect("grass");
@@ -458,6 +495,37 @@ mod tests {
         }
         for value in 0..40 {
             assert!(sprites.entity(45, value).is_some(), "robot sprite e45-{value}");
+        }
+    }
+
+    #[test]
+    fn every_frame_of_every_attack_throw_and_jump_animation_exists() {
+        use crate::animation::{frame_number, Move};
+        let sprites = real();
+        for action in [Move::Walk, Move::Hit, Move::Loaded, Move::Power, Move::Throw, Move::Jump] {
+            for dir in 0..8 {
+                for step in 0..action.frames_per_direction() {
+                    let n = frame_number(action, dir, step);
+                    assert!(sprites.player_sheet(action.glyph(), n).is_some(), "diff/{}/{n}", action.glyph() as char);
+                }
+            }
+        }
+        // the overlays: the charge is counted like the loaded stance, the glow like the power attack
+        for n in 1..=64 {
+            assert!(sprites.player_sheet(b's', n).is_some(), "diff/s/{n}");
+        }
+        for n in 1..=48 {
+            assert!(sprites.player_sheet(b'o', n).is_some(), "diff/o/{n}");
+        }
+    }
+
+    #[test]
+    fn the_walking_frames_follow_the_same_direction_numbering_as_the_simulation() {
+        use crate::animation::{direction, frame_number, Move};
+        use glam::Vec2;
+        for facing in [[0.0, 1.0], [0.8, 0.6], [1.0, 0.0], [0.7, -0.7], [0.0, -1.0], [-0.7, -0.7], [-1.0, 0.0], [-0.7, 0.7]] {
+            let dir = direction(Vec2::from(facing));
+            assert_eq!(player_frame(facing, 0.0), frame_number(Move::Walk, dir, 0), "{facing:?}");
         }
     }
 

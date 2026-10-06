@@ -42,6 +42,20 @@ impl ParticleEmitter {
         }
     }
 
+    /// One nozzle of Ejira's jetpack: starts switched off. The Java emitter holds 80 particles of
+    /// 1.8 s, so it spawns about one every 22 ms; the particles spread wide sideways and little
+    /// vertically. Set `velocity.z` to the exhaust speed and move it to the nozzle while it burns.
+    pub fn jetpack() -> Self {
+        ParticleEmitter {
+            active: false,
+            spec: ParticleSpec::jetpack(),
+            interval: 1.8 / 80.0,
+            velocity: Vec3::new(0.0, 0.0, -0.1),
+            spread: Vec3::new(0.8, 0.8, 0.2),
+            ..Self::new(Vec3::ZERO)
+        }
+    }
+
     /// Give the emitter a yellow point light of the given brightness, or remove it with a negative
     /// value (`ParticleEmitter.setBrightness`).
     pub fn set_brightness(&mut self, brightness: f32) {

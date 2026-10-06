@@ -11,6 +11,9 @@
 //! Everything goes over one WebSocket at `ws://host/ws`. A connection starts in the lobby (it can
 //! list maps, load a save while nobody is playing, create a map) and then sends `Join` to play.
 //!
+//! On Ctrl-C or SIGTERM the server saves, sends every player `ServerRestarting`, closes their sockets
+//! and exits; the browser client keeps its view and rejoins the next server (see wurfel-web/README.md).
+//!
 //! `--lag-ms` delays everything the server sends by that many milliseconds, to test how the client
 //! copes with a slow connection.
 
@@ -22,7 +25,7 @@ mod maps;
 mod pings;
 
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -32,7 +35,7 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
 use futures_util::{SinkExt, StreamExt};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, watch};
 use tower_http::services::ServeDir;
 use wurfel_sim::player::TICK_RATE;
 use wurfel_sim::protocol::{
@@ -45,6 +48,8 @@ use maps::{MapCreate, MapInfo, MapStore};
 
 /// Changed chunks are written to disk this often.
 const AUTOSAVE_EVERY: Duration = Duration::from_secs(30);
+/// After a shutdown signal the server waits this long for the connections to close, then exits.
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 
 const TICK: Duration = Duration::from_micros(1_000_000 / TICK_RATE as u64);
 /// Snapshots go out every this many ticks (30 per second at 60 ticks per second).
@@ -82,6 +87,10 @@ struct Shared {
     friends: Arc<Mutex<friends::Friends>>,
     lag: Duration,
     started: Instant,
+    /// Set to true when the server is shutting down: every connection says goodbye and closes.
+    closing: watch::Sender<bool>,
+    /// WebSocket connections that are still being served.
+    open_sockets: Arc<AtomicUsize>,
 }
 
 fn arg(name: &str) -> Option<String> {
@@ -139,6 +148,8 @@ async fn main() {
         friends: Arc::default(),
         lag,
         started: Instant::now(),
+        closing: watch::channel(false).0,
+        open_sockets: Arc::default(),
     };
 
     tokio::spawn(tick_loop(shared.clone()));
@@ -161,22 +172,50 @@ async fn main() {
             shutdown_signal().await;
             eprintln!("wurfel-server: shutting down, saving the world");
             save_world(&on_shutdown);
+            // The world is safe: tell the players and close their sockets, so they reconnect to the
+            // next server instead of seeing a dead connection.
+            let _ = on_shutdown.closing.send(true);
         })
         .await
         .expect("server error");
+    // axum does not wait for upgraded (WebSocket) connections: give them time to send their goodbye
+    // before the process exits. A client that does not answer must not keep the old server alive.
+    let deadline = Instant::now() + SHUTDOWN_GRACE;
+    while shared.open_sockets.load(Ordering::Relaxed) > 0 && Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
 }
 
-/// Resolves on Ctrl-C, or on SIGTERM (what Kubernetes and `docker stop` send) where that exists.
+/// Counts a WebSocket connection while it exists.
+struct OpenSocket(Arc<AtomicUsize>);
+
+impl OpenSocket {
+    fn new(counter: &Arc<AtomicUsize>) -> Self {
+        counter.fetch_add(1, Ordering::Relaxed);
+        OpenSocket(counter.clone())
+    }
+}
+
+impl Drop for OpenSocket {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+/// Resolves on Ctrl-C, and on SIGTERM (what `kill`, systemd and docker send) where there is one.
 async fn shutdown_signal() {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{signal, SignalKind};
-        if let Ok(mut term) = signal(SignalKind::terminate()) {
-            tokio::select! {
-                _ = tokio::signal::ctrl_c() => {}
-                _ = term.recv() => {}
+        match signal(SignalKind::terminate()) {
+            Ok(mut term) => {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = term.recv() => {}
+                }
+                return;
             }
-            return;
+            Err(e) => eprintln!("wurfel-server: cannot listen for SIGTERM: {e}"),
         }
     }
     let _ = tokio::signal::ctrl_c().await;
@@ -252,7 +291,7 @@ fn lobby_message(shared: &Shared) -> Arc<str> {
             uses_seed: g.uses_seed,
         })
         .collect();
-    encode(&ServerMsg::Lobby { world, generators })
+    encode(&ServerMsg::Lobby { world, generators, build: wurfel_sim::protocol::build_id() })
 }
 
 fn failed(request: &str, message: impl Into<String>) -> Arc<str> {
@@ -404,6 +443,8 @@ async fn ws_handler(ws: WebSocketUpgrade, State(shared): State<Shared>) -> impl 
 enum Payload {
     Text(Arc<str>),
     Binary(Vec<u8>),
+    /// A normal close frame; the writer stops after sending it.
+    Close,
 }
 
 /// A message waiting to be written, and when it may be written (to simulate lag).
@@ -416,6 +457,10 @@ async fn writer(mut sink: futures_util::stream::SplitSink<WebSocket, Message>, m
         let (size, message) = match payload {
             Payload::Text(text) => (text.len(), Message::Text(text.to_string().into())),
             Payload::Binary(bytes) => (bytes.len(), Message::Binary(bytes.into())),
+            Payload::Close => {
+                let _ = sink.send(Message::Close(None)).await;
+                break;
+            }
         };
         net.bytes_out.fetch_add(size as u64, Ordering::Relaxed);
         if sink.send(message).await.is_err() {
@@ -425,6 +470,7 @@ async fn writer(mut sink: futures_util::stream::SplitSink<WebSocket, Message>, m
 }
 
 async fn client(socket: WebSocket, shared: Shared) {
+    let _open = OpenSocket::new(&shared.open_sockets);
     let (sink, mut stream) = socket.split();
     let (queue, queue_rx) = mpsc::channel::<Outgoing>(OUTGOING_QUEUE);
     let writer_task = tokio::spawn(writer(sink, queue_rx, shared.net.clone()));
@@ -441,9 +487,19 @@ async fn client(socket: WebSocket, shared: Shared) {
     let mut interest = Interest::new(CHUNK_RADIUS, CHUNKS_PER_UPDATE);
     let mut chunk_timer = tokio::time::interval(CHUNK_UPDATE_EVERY);
     chunk_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut closing = shared.closing.subscribe();
+    let mut said_goodbye = false;
 
     while alive {
         tokio::select! {
+            // The server is shutting down (the world is already saved): say so, then close properly.
+            _ = closing.changed() => {
+                if player.is_some() {
+                    send(Payload::Text(encode(&ServerMsg::ServerRestarting)));
+                }
+                said_goodbye = send(Payload::Close);
+                break;
+            },
             incoming = stream.next() => match incoming {
                 Some(Ok(Message::Text(text))) => {
                     shared.net.bytes_in.fetch_add(text.len() as u64, Ordering::Relaxed);
@@ -484,7 +540,7 @@ async fn client(socket: WebSocket, shared: Shared) {
                                 }
                             }
                         }
-                        ClientMsg::Input { .. } | ClientMsg::SetBlock { .. } | ClientMsg::Action { .. } | ClientMsg::Command { .. } => {
+                        ClientMsg::Input { .. } | ClientMsg::Editor { .. } | ClientMsg::SetBlock { .. } | ClientMsg::Action { .. } | ClientMsg::Command { .. } => {
                             if let Some((id, _)) = &player {
                                 let broadcast = shared.game.lock().unwrap().handle(*id, msg);
                                 if let Some(msg) = broadcast {
@@ -537,7 +593,12 @@ async fn client(socket: WebSocket, shared: Shared) {
     }
 
     drop(queue);
-    writer_task.abort();
+    if said_goodbye {
+        // Let the writer flush the notice and the close frame (it stops by itself after the close).
+        let _ = tokio::time::timeout(SHUTDOWN_GRACE, writer_task).await;
+    } else {
+        writer_task.abort();
+    }
     if let Some((id, _)) = player {
         shared.game.lock().unwrap().remove_player(id);
         shared.pings.lock().unwrap().remove(id);

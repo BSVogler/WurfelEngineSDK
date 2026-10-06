@@ -6,7 +6,9 @@
 //! shrinks with its alpha instead (see [`SHRINK_WITH_ALPHA`]). True blending needs an alpha
 //! channel in the vertex and a blend state in a second pipeline.
 
-use wurfel_sim::particle::{Particle, Particles};
+use glam::Vec3;
+use wurfel_sim::light::PointLight;
+use wurfel_sim::particle::{Particle, ParticleEmitter, Particles};
 
 use crate::mesh::{Vertex, FACE_UNLIT};
 
@@ -17,6 +19,80 @@ pub const SHRINK_WITH_ALPHA: bool = true;
 /// on screen needs `WIDTH / HEIGHT` times its width as vertical extent in `z`.
 const BLOCK_WIDTH_PX: f32 = 200.0;
 const BLOCK_HEIGHT_PX: f32 = 122.0;
+
+/// Ejira's jetpack: two emitters attached behind the player, left and right of the back
+/// (`Ejira.update`). They burn while the jetpack is on, spray against the direction the player
+/// moves vertically, and the second one also lights its surroundings.
+pub struct Jetpack {
+    pub flames: [ParticleEmitter; 2],
+    last_z: Option<f32>,
+}
+
+/// Sideways distance of each nozzle from the player's middle, in blocks (Java: 25 units).
+const NOZZLE_SIDE: f32 = 0.25;
+/// How far behind the player's back they sit (Java: 20 units).
+const NOZZLE_BEHIND: f32 = 0.2;
+/// Height above the feet (Java: half an edge length).
+const NOZZLE_HEIGHT: f32 = 0.5;
+/// The brightness of the second nozzle's light (Java: `setBrightness(10.1f)`).
+const NOZZLE_LIGHT: f32 = 10.1;
+
+/// The speed the flame leaves with when the player moves up or down at `vertical` blocks per
+/// second: against the movement and faster than it, and just sinking while the player falls
+/// (`Ejira.update`, "not physically correct"). Hovering leaves the flame standing still.
+pub fn exhaust_speed(vertical: f32) -> f32 {
+    let speed = -vertical * 1.5;
+    if speed > 0.0 {
+        -0.1
+    } else {
+        speed
+    }
+}
+
+impl Jetpack {
+    pub fn new() -> Self {
+        let mut flames = [ParticleEmitter::jetpack(), ParticleEmitter::jetpack()];
+        flames[1].set_brightness(NOZZLE_LIGHT);
+        Jetpack { flames, last_z: None }
+    }
+
+    /// Where the nozzles are for a player standing at `feet` and facing `facing` (the sprite
+    /// facing, a unit vector in the screen-aligned game space of `sprites::facing_of`).
+    pub fn nozzles(feet: Vec3, facing: [f32; 2]) -> [Vec3; 2] {
+        // Back to the ground frame: screen right is (+x, -y), screen down is (+x, +y).
+        let ahead = glam::Vec2::new(facing[0] + facing[1], facing[1] - facing[0]).normalize_or_zero();
+        let ahead = if ahead == glam::Vec2::ZERO { glam::Vec2::new(1.0, 1.0).normalize() } else { ahead };
+        let side = glam::Vec2::new(ahead.y, -ahead.x);
+        let back = feet + Vec3::new(-ahead.x, -ahead.y, 0.0) * NOZZLE_BEHIND + Vec3::Z * NOZZLE_HEIGHT;
+        [back + side.extend(0.0) * NOZZLE_SIDE, back - side.extend(0.0) * NOZZLE_SIDE]
+    }
+
+    /// Advance by `dt` seconds. `burning` is the player's feet and facing while the jetpack burns,
+    /// `None` otherwise.
+    pub fn update(&mut self, dt: f32, particles: &mut Particles, burning: Option<(Vec3, [f32; 2])>) {
+        let z = burning.map(|(feet, _)| feet.z);
+        let vertical = match (z, self.last_z) {
+            (Some(z), Some(last)) if dt > 0.0 => (z - last) / dt,
+            _ => 0.0,
+        };
+        self.last_z = z;
+        let exhaust = exhaust_speed(vertical);
+        let positions = burning.map(|(feet, facing)| Self::nozzles(feet, facing));
+        for (i, flame) in self.flames.iter_mut().enumerate() {
+            flame.active = positions.is_some();
+            if let Some(positions) = positions {
+                flame.position = positions[i];
+                flame.velocity.z = exhaust;
+            }
+            flame.update(dt, particles);
+        }
+    }
+
+    /// The glow of the nozzles that have one, while the jetpack burns.
+    pub fn lights(&self) -> impl Iterator<Item = PointLight> + '_ {
+        self.flames.iter().filter_map(|f| f.light())
+    }
+}
 
 /// The six vertices (two triangles) of one particle.
 pub fn quad(p: &Particle) -> [Vertex; 6] {
@@ -72,6 +148,66 @@ mod tests {
     fn screen(v: &Vertex) -> (f32, f32) {
         let [x, y, z] = v.position;
         ((x - y) * 100.0, (x + y) * 50.0 - z * 122.0)
+    }
+
+    #[test]
+    fn a_burning_jetpack_puts_visible_flame_quads_behind_the_player() {
+        let mut particles = Particles::new(256, 1);
+        let mut jetpack = Jetpack::new();
+        let feet = Vec3::new(3.0, 4.0, 5.0);
+        jetpack.update(0.2, &mut particles, None);
+        assert!(vertices(&particles).is_empty(), "nothing while it is off");
+        jetpack.update(0.2, &mut particles, Some((feet, [0.0, 1.0])));
+        particles.update(&wurfel_sim::World::new(wurfel_sim::generator::AirGenerator), 1.0 / 60.0);
+        let out = vertices(&particles);
+        assert!(!out.is_empty());
+        for q in out.chunks(6) {
+            let (a, c) = (screen(&q[0]), screen(&q[2]));
+            assert!((a.0 - c.0).abs() + (a.1 - c.1).abs() > 1.0, "quad has area");
+            assert!(q[0].color.iter().any(|&v| v > 0.0), "not black");
+        }
+    }
+
+    #[test]
+    fn the_jetpack_has_two_nozzles_left_and_right_of_the_back() {
+        let feet = Vec3::new(3.0, 4.0, 5.0);
+        let screen_of = |p: Vec3| ((p.x - p.y) * 100.0, (p.x + p.y) * 50.0 - p.z * 122.0);
+        // Facing south (down the screen): the back is up the screen, the nozzles side by side.
+        let [a, b] = Jetpack::nozzles(feet, [0.0, 1.0]);
+        let (sa, sb) = (screen_of(a), screen_of(b));
+        assert!((sa.0 - sb.0).abs() > 40.0, "apart horizontally on screen: {sa:?} {sb:?}");
+        assert!((sa.1 - sb.1).abs() < 0.01, "at the same height on screen: {sa:?} {sb:?}");
+        assert!(((a.z + b.z) / 2.0 - (feet.z + 0.5)).abs() < 1e-5, "half a block above the feet");
+        let middle = screen_of(feet);
+        assert!(((sa.0 + sb.0) / 2.0 - middle.0).abs() < 1.0, "centred behind the player");
+        assert!((sa.1 + sb.1) / 2.0 < middle.1, "behind a player who faces the viewer is further up the screen");
+        // Facing away they swap sides of the back, which now lies below the feet on screen.
+        let [c, d] = Jetpack::nozzles(feet, [0.0, -1.0]);
+        assert!((screen_of(c).1 + screen_of(d).1) / 2.0 > (sa.1 + sb.1) / 2.0, "the back is now down the screen");
+        assert!(((screen_of(c).0 + screen_of(d).0) / 2.0 - middle.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn the_flame_goes_against_the_vertical_movement_and_only_sinks_when_not_rising() {
+        assert_eq!(exhaust_speed(3.0), -4.5);
+        assert_eq!(exhaust_speed(0.0), 0.0, "hovering: the flame stays where it is born");
+        assert_eq!(exhaust_speed(-2.0), -0.1, "falling: the flame just sinks");
+        let mut particles = Particles::new(256, 1);
+        let mut jetpack = Jetpack::new();
+        jetpack.update(0.1, &mut particles, Some((Vec3::new(0.0, 0.0, 1.0), [0.0, 1.0])));
+        jetpack.update(0.1, &mut particles, Some((Vec3::new(0.0, 0.0, 1.3), [0.0, 1.0])));
+        assert!(jetpack.flames.iter().all(|f| (f.velocity.z + 4.5).abs() < 1e-3), "rising at 3 blocks/s");
+    }
+
+    #[test]
+    fn only_the_second_nozzle_glows_and_only_while_burning() {
+        let mut particles = Particles::new(64, 1);
+        let mut jetpack = Jetpack::new();
+        assert_eq!(jetpack.lights().count(), 0);
+        jetpack.update(0.05, &mut particles, Some((Vec3::ZERO, [0.0, 1.0])));
+        assert_eq!(jetpack.lights().count(), 1);
+        jetpack.update(0.05, &mut particles, None);
+        assert_eq!(jetpack.lights().count(), 0);
     }
 
     #[test]
