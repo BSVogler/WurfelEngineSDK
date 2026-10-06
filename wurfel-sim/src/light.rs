@@ -312,7 +312,7 @@ impl LightEngine {
     pub fn new(world_spin_angle: i32, azimuth_speed: f32) -> Self {
         let spin = world_spin_angle as f32;
         LightEngine {
-            sun: GlobalLightSource::new(-spin, 0.0, Vec3::new(1.0, 1.0, 1.0), Vec3::new(0.5, 0.5, 0.4), 1.0, 60.0),
+            sun: GlobalLightSource::new(-spin, 0.0, Vec3::new(1.0, 0.8, 0.3), Vec3::new(0.5, 0.5, 0.4), 1.0, 60.0),
             moon: Some(GlobalLightSource::moon(
                 180.0 - spin,
                 0.0,
@@ -629,6 +629,12 @@ impl Default for Shading {
 
 const LUMA: Vec3 = Vec3::new(0.222, 0.707, 0.071);
 
+/// The least light a surface gets at night, per channel. Java never darkens the base colour
+/// (`max(light * k, 1.0)`) and the night comes from desaturating it and the blue moon ambient; the
+/// bluish floor here does the same, so the night is blue instead of black. Blended with
+/// [`Shading::min_light`] by `night_mix`. `NIGHT_FLOOR` in `shader.wgsl` is the same value.
+pub const NIGHT_FLOOR: Vec3 = Vec3::new(0.6, 0.7, 0.95);
+
 /// Final colour of one vertex: the CPU reference for what the web shader does per frame.
 ///
 /// * `albedo`: the block's flat colour.
@@ -642,8 +648,13 @@ pub fn shade_vertex(state: &LightState, shading: &Shading, albedo: Vec3, face: F
         sun += state.sun_spec;
         moon += state.moon_spec;
     }
+    let floor = if shading.night_grading {
+        Vec3::splat(shading.min_light).lerp(NIGHT_FLOOR, state.night_mix)
+    } else {
+        Vec3::splat(shading.min_light)
+    };
     let lit = ((state.ambient * shading.ambient_weight + state.sun_color * sun + state.moon_color * moon) * shading.exposure)
-        .max(Vec3::splat(shading.min_light));
+        .max(floor);
     let ao = 1.0 - shading.ao_strength * ao_level.clamp(0.0, 1.0);
     let color = albedo * ((lit + point * shading.point_gain) * ao);
 

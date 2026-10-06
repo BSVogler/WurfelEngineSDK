@@ -88,7 +88,7 @@ public class LightEngine {
         sun = new GlobalLightSource(
 			-WE.getCVars().getValueI("worldSpinAngle"),
 			0,
-			new Color(1, 1, 1, 1),
+			new Color(1.0f, 0.8f, 0.3f, 1),//golden sun
 			new Color(0.5f, 0.5f, 0.4f, 1),
 			1f,
 			60

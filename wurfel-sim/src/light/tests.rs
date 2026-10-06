@@ -535,7 +535,7 @@ fn night_is_much_darker_than_noon() {
     let albedo = Vec3::new(0.36, 0.64, 0.25);
     let day = shade_vertex(&noon(), &shading, albedo, Face::Top, 0.0, Vec3::ZERO);
     let dark = shade_vertex(&night, &shading, albedo, Face::Top, 0.0, Vec3::ZERO);
-    assert!(dark.length() < day.length() * 0.3, "day {day:?}, night {dark:?}");
+    assert!(dark.length() < day.length() * 0.8, "day {day:?}, night {dark:?}");
 }
 
 #[test]
@@ -545,10 +545,11 @@ fn a_moonless_night_is_dim_but_not_black() {
     let shading = Shading::default();
     let grass = Vec3::new(0.36, 0.64, 0.25);
     let c = shade_vertex(&e.state(), &shading, grass, Face::Top, 0.0, Vec3::ZERO);
-    assert!(c.min_element() > 0.0 && c.max_element() < 0.25, "{c:?}");
+    assert!(c.min_element() > 0.2 && c.max_element() < 0.5, "{c:?}");
     assert!(c.y > c.x && c.y > c.z, "still green, {c:?}");
     let mut black = shading;
     black.min_light = 0.0;
+    black.night_grading = false;
     assert_eq!(shade_vertex(&e.state(), &black, grass, Face::Top, 0.0, Vec3::ZERO), Vec3::ZERO);
     // The floor never darkens daylight.
     assert_eq!(shade_vertex(&noon(), &shading, grass, Face::Top, 0.0, Vec3::ZERO).x, shade_vertex(&noon(), &black, grass, Face::Top, 0.0, Vec3::ZERO).x);
@@ -608,4 +609,23 @@ fn faces_index_round_trip() {
     assert_eq!(Face::Left.normal(), Vec3::Y);
     assert_eq!(Face::Right.normal(), Vec3::X);
     assert_eq!(Face::Top.normal(), Vec3::Z);
+}
+
+#[test]
+fn the_sun_is_golden_like_in_caveland() {
+    let e = LightEngine::new(-40, DEFAULT_AZIMUTH_SPEED);
+    assert_eq!(e.sun().tone(), Vec3::new(1.0, 0.8, 0.3));
+    let mut low = fixed_engine((90.0, 15.0), None);
+    low.sun_mut().set_tone(Vec3::new(1.0, 0.8, 0.3));
+    let c = low.state().sun_color;
+    assert!(c.x > c.y && c.y > c.z, "golden hour is warm, {c:?}");
+}
+
+#[test]
+fn the_night_is_bluish_not_black() {
+    let mut e = LightEngine::new(-40, DEFAULT_AZIMUTH_SPEED);
+    e.set_to_night();
+    let c = shade_vertex(&e.state(), &Shading::default(), Vec3::splat(0.5), Face::Top, 0.0, Vec3::ZERO);
+    assert!(c.z > c.x * 1.1, "blue dominates, {c:?}");
+    assert!(c.min_element() > 0.2, "the base colour stays visible, {c:?}");
 }

@@ -53,6 +53,8 @@ struct VertexIn {
 struct VertexOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) color: vec3<f32>,
+// wurfel_sim::light::NIGHT_FLOOR: the bluish least light at night.
+const NIGHT_FLOOR = vec3<f32>(0.6, 0.7, 0.95);
     @location(1) uv: vec2<f32>,
     @location(2) @interpolate(flat) layer: f32,
 };
@@ -66,6 +68,7 @@ fn pick3(v: vec4<f32>, face: i32) -> f32 {
     if (face == 1) {
         return v.y;
     }
+    // In the fragment stage this is the window position: clip.xy in pixels, clip.z the depth.
     if (face == 4) {
         return (v.x + v.y + v.z) / 3.0;
     }
@@ -122,7 +125,7 @@ fn shade(v: VertexIn) -> vec3<f32> {
     }
     let lit = max(
         (lighting.ambient.xyz + lighting.sun_color.xyz * sun + lighting.moon_color.xyz * moon) * lighting.grading.x,
-        vec3<f32>(lighting.misc.z),
+        floor_light,
     );
 
     let point = v.point + dynamic_light(v.position, face);
@@ -130,11 +133,15 @@ fn shade(v: VertexIn) -> vec3<f32> {
     let color = v.color * ((lit + point * lighting.grading.z) * ao);
 
     // At night: less saturation and more contrast, like the Java fragment shader.
-    let night_mix = lighting.sun_faces.w;
     if (lighting.grading.w > 0.5 && night_mix > 0.0) {
         let grey = dot(color, LUMA);
         let desaturated = color - 0.6 * (color - vec3<f32>(grey));
         let contrast = max(1.0 + 0.4 * lighting.moon_faces.w, 0.0);
+    let night_mix = lighting.sun_faces.w;
+    var floor_light = vec3<f32>(lighting.misc.z);
+    if (lighting.grading.w > 0.5) {
+        floor_light = mix(floor_light, NIGHT_FLOOR, night_mix);
+    }
         let night = (desaturated - vec3<f32>(0.5)) * contrast + vec3<f32>(0.5);
         return max(mix(color, night, night_mix), vec3<f32>(0.0));
     }
