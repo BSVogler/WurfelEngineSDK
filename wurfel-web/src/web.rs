@@ -28,6 +28,8 @@ use crate::prediction::{classify, replay, Correction, InputHistory, VisualOffset
 use crate::minimap::{CameraView, ChunkInfo, ChunkState, EntityDot, Minimap, MinimapData, Mode};
 use crate::netstats::{format_report, NetStats};
 use crate::peel::gpu::{Peeling, DEPTH_FORMAT};
+use crate::post::gpu::Post;
+use crate::post::PostSettings;
 use crate::pick::{pick, pick_thing, Pick};
 use crate::reconnect::{Closed, Reconnect};
 use crate::render_storage::RenderStorage;
@@ -168,6 +170,9 @@ struct State {
     model_placed: Option<PlacedModel>,
     /// Draws the scene in layers of depth peeling (see `peel.rs`) and blends them onto the canvas.
     peeling: Peeling,
+    /// Bloom, tone map and FXAA on the blended picture (see `post.rs`).
+    post: Post,
+    post_settings: PostSettings,
     backend: wgpu::Backend,
     camera: Camera,
     dpr: f32,
@@ -375,7 +380,10 @@ async fn run() -> Result<(), String> {
     };
     let scene_format = if hdr_ok { crate::peel::gpu::HDR_FORMAT } else { config.format };
     web_sys::console::log_1(&format!("render: layers in {scene_format:?} (canvas {:?})", config.format).into());
-    let peeling = Peeling::new(&device, &queue, config.format, scene_format, config.width, config.height);
+    let peeling = Peeling::new(&device, &queue, scene_format, config.width, config.height);
+    let post_settings = post_settings_wanted().limited_by(hdr_ok);
+    web_sys::console::log_1(&format!("render: {post_settings:?}").into());
+    let post = Post::new(&device, scene_format, config.format, peeling.blended(), config.width, config.height);
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("blocks"),
         bind_group_layouts: &[Some(&bind_group_layout), Some(&atlas_layout), Some(peeling.peel_layout())],
@@ -416,8 +424,12 @@ async fn run() -> Result<(), String> {
     let light_overlay = create_light_overlay(&document);
     let light_diagram = LightDiagram::new(&document, dpr.round().max(1.0) as u32);
     let minimap = Minimap::new(&document, MINIMAP_SIZE.0, MINIMAP_SIZE.1, dpr.round().max(1.0) as u32).ok();
+    let mut lighting = crate::lighting::LightingController::new();
+    lighting.linear_light = post_settings.linear;
     let state = Rc::new(RefCell::new(State {
         peeling,
+        post,
+        post_settings,
         camera: Camera { center: [(gx - gy) * 100.0, (gx + gy) * 50.0 - 4.0 * 122.0], zoom: 0.5 * dpr },
         dpr,
         menu_zoom: None,
@@ -433,7 +445,7 @@ async fn run() -> Result<(), String> {
         pipeline,
         camera_buffer,
         lighting_buffer,
-        lighting: crate::lighting::LightingController::new(),
+        lighting,
         audio: Audio::new(),
         particles: wurfel_sim::particle::Particles::default(),
         emitters: Vec::new(),
@@ -538,6 +550,13 @@ async fn run() -> Result<(), String> {
 fn normal_maps_wanted() -> bool {
     let search = web_sys::window().and_then(|w| w.location().search().ok()).unwrap_or_default();
     !search.trim_start_matches('?').split('&').any(|part| part == "normals=0")
+}
+
+/// The post-process settings from the page address: `?classic`, `?bloom=0.2`, `?fxaa=0`,
+/// `?linear=0`, `?tonemap=filmic` (see `PostSettings::from_query`).
+fn post_settings_wanted() -> PostSettings {
+    let search = web_sys::window().and_then(|w| w.location().search().ok()).unwrap_or_default();
+    PostSettings::from_query(&search)
 }
 
 /// `?flat=1` in the page address keeps the old look: solid coloured blocks, no sprites.
@@ -1745,6 +1764,7 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         s.surface.configure(&s.device, &s.config);
         let s = &mut *s;
         s.peeling.resize(&s.device, s.config.width, s.config.height);
+        s.post.resize(&s.device, s.peeling.blended(), s.config.width, s.config.height);
     });
 
     let s = state.clone();
@@ -2634,8 +2654,12 @@ fn render(s: &mut State) {
     let mut encoder = s.device.create_command_encoder(&Default::default());
     // The scene is drawn once per depth peeling layer, in any order, and the layers are blended
     // onto the canvas (see `peel.rs`).
-    let background = wgpu::Color { r: 0.063, g: 0.075, b: 0.102, a: 1.0 };
-    s.peeling.render(&mut encoder, &view, background, |pass| {
+    let mut background = wgpu::Color { r: 0.063, g: 0.075, b: 0.102, a: 1.0 };
+    if s.post_settings.linear {
+        // The layers hold linear light then (see `shader.wgsl`), and so does what they are blended over.
+        background = wgpu::Color { r: background.r.powf(2.2), g: background.g.powf(2.2), b: background.b.powf(2.2), a: 1.0 };
+    }
+    s.peeling.render(&mut encoder, background, |pass| {
         pass.set_pipeline(&s.pipeline);
         pass.set_bind_group(0, &s.bind_group, &[]);
         pass.set_bind_group(1, &s.atlas_bind_group, &[]);
@@ -2660,6 +2684,7 @@ fn render(s: &mut State) {
             }
         }
     });
+    s.post.render(&mut encoder, &s.queue, &view, &s.post_settings);
     s.queue.submit(Some(encoder.finish()));
     s.queue.present(output);
 }

@@ -39,7 +39,7 @@ pub struct Lighting {
     pub moon_faces: [f32; 4],
     /// x exposure, y ambient occlusion strength, z point light gain, w night grading (1 or 0).
     pub grading: [f32; 4],
-    /// x left, y top, z right: brightness of the flat look.
+    /// x left, y top, z right: brightness of the flat look. w: 1 when the scene is drawn in linear light.
     pub flat_shades: [f32; 4],
     /// x: number of dynamic point lights. y: time of day. z: minimum light. w: 1 when the sprites are
     /// lit per pixel with their normal map (`fragment_NM.fs`), 0 for the vertex lighting alone.
@@ -120,6 +120,8 @@ pub struct LightingController {
     pub normal_maps: bool,
     /// The focus entity (the local player): the one light the normal map shader lights per pixel.
     pub local_light: Option<Vec3>,
+    /// The scene is drawn in linear light (`post.rs`) instead of display colours.
+    pub linear_light: bool,
     /// Time passes this many times faster than the Java day length (7.7 minutes). 0 stops the clock.
     pub time_scale: f32,
     dynamic: Vec<PointLight>,
@@ -144,6 +146,7 @@ impl LightingController {
             ao_strength: DEFAULT_AO_STRENGTH,
             normal_maps: false,
             local_light: None,
+            linear_light: false,
             time_scale: 1.0,
             dynamic: Vec::new(),
         };
@@ -184,6 +187,7 @@ impl LightingController {
         let mut uniform = Lighting::new(&self.engine.state(), &self.shading, self.enabled, &self.dynamic);
         // Without the light engine there is nothing to light the pixels with.
         uniform.misc[3] = if self.normal_maps && self.enabled { 1.0 } else { 0.0 };
+        uniform.flat_shades[3] = if self.linear_light { 1.0 } else { 0.0 };
         if let Some(p) = self.local_light.filter(|p| p.is_finite()) {
             uniform.local_light = [p.x, p.y, p.z, 1.0];
         }

@@ -21,6 +21,7 @@ mod shadow;
 mod sprites;
 mod particles;
 mod peel;
+mod post;
 mod preview;
 mod prediction;
 mod reconnect;

@@ -32,7 +32,7 @@ struct Lighting {
     sun_faces: vec4<f32>,    // x left, y top, z right: sun diffuse intensity; w: night mix
     moon_faces: vec4<f32>,   // x left, y top, z right: moon diffuse intensity; w: moon blue
     grading: vec4<f32>,      // x exposure, y ambient occlusion strength, z point light gain, w night grading (1/0)
-    flat_shades: vec4<f32>,  // x left, y top, z right: brightness of the flat look
+    flat_shades: vec4<f32>,  // x left, y top, z right: brightness of the flat look; w: 1 = draw linear light (see post.rs)
     misc: vec4<f32>,         // x: number of dynamic point lights, y: time of day, z: minimum light, w: 1 = normal maps
     fog: vec4<f32>,          // rgb: fog colour; w: 1 = fog on
     sun_back: vec4<f32>,     // x: sun diffuse intensity on the -y face, y: on the -x face (free camera)
@@ -414,6 +414,13 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
         if (in.clip.z - peel.params.y <= behind) {
             discard;
         }
+    }
+    if (lighting.flat_shades.w > 0.5) {
+        // The colours above are display colours (the palette, the sprites and the light were made for
+        // them). The layers are blended and tone mapped in linear light, so translucent surfaces and
+        // the bloom mix the way light does; post.rs encodes it again at the end. A power keeps
+        // `albedo * light` the same product on both sides, so the look does not change.
+        color = vec4<f32>(pow(max(color.rgb, vec3<f32>(0.0)), vec3<f32>(2.2)), color.a);
     }
     return color;
 }
