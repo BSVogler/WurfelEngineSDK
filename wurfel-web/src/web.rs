@@ -19,7 +19,7 @@ use crate::actors::Actors;
 use crate::audio::{Audio, EntityInfo};
 use crate::bindings::{parse_hex_color, Bindings};
 use crate::caveland_client::{self, Happening};
-use crate::editor::{self, Button, Edit, Editor, Tool};
+use crate::editor::{self, Button, Edit, Editor, Tool, ThingAction};
 use crate::interp::{RenderClock, Track};
 use crate::locator;
 use crate::mesh::{self, Vertex};
@@ -28,7 +28,7 @@ use crate::prediction::{classify, replay, Correction, InputHistory, VisualOffset
 use crate::minimap::{CameraView, ChunkInfo, ChunkState, EntityDot, Minimap, MinimapData, Mode};
 use crate::netstats::{format_report, NetStats};
 use crate::peel::gpu::{Peeling, DEPTH_FORMAT};
-use crate::pick::{pick, Pick};
+use crate::pick::{pick, pick_thing, Pick};
 use crate::reconnect::{Closed, Reconnect};
 use crate::render_storage::RenderStorage;
 use crate::texture;
@@ -47,6 +47,8 @@ const PLAYER_COLORS: [[f32; 3]; 6] = [
     [0.90, 0.90, 0.95],
 ];
 const MARKER_COLOR: [f32; 3] = [1.0, 0.92, 0.25];
+/// The frame under the thing the editor's select tool holds.
+const THING_MARKER_COLOR: [f32; 3] = [0.3, 0.85, 1.0];
 /// Room for the players and the hover marker.
 const DYNAMIC_VERTICES: u64 = 24576;
 
@@ -1279,6 +1281,8 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
         }
         ServerMsg::Friends { .. } => {} // somebody else's
         ServerMsg::Things { things, .. } => s.things = things,
+        ServerMsg::Saved { chunks, error: None } => show_banner(&format!("World saved ({chunks} chunk(s) written)"), Tone::Ok),
+        ServerMsg::Saved { error: Some(error), .. } => report_error(&format!("Saving the world failed: {error}")),
         ServerMsg::Rules { kind, data } => handle_rules(s, &kind, &data),
     }
 }
@@ -1569,6 +1573,33 @@ fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     let _ = js_sys::Reflect::set(&net, &"editorBlock".into(), editor_block.as_ref());
     editor_block.forget();
     let s = state.clone();
+    let editor_thing = Closure::<dyn FnMut(u32)>::new(move |index: u32| {
+        s.borrow_mut().editor.select_thing_kind(index as usize);
+    });
+    let _ = js_sys::Reflect::set(&net, &"editorThing".into(), editor_thing.as_ref());
+    editor_thing.forget();
+    let s = state.clone();
+    let editor_value = Closure::<dyn FnMut(i32)>::new(move |step: i32| {
+        s.borrow_mut().editor.step_value(step);
+    });
+    let _ = js_sys::Reflect::set(&net, &"editorValue".into(), editor_value.as_ref());
+    editor_value.forget();
+    let s = state.clone();
+    let editor_layer = Closure::<dyn FnMut(i32)>::new(move |steps: i32| {
+        s.borrow_mut().editor.step_layer(steps);
+    });
+    let _ = js_sys::Reflect::set(&net, &"editorLayer".into(), editor_layer.as_ref());
+    editor_layer.forget();
+    let s = state.clone();
+    let editor_save = Closure::<dyn FnMut()>::new(move || {
+        let mut s = s.borrow_mut();
+        if s.editor.active() {
+            send(&mut s, &ClientMsg::SaveWorld);
+        }
+    });
+    let _ = js_sys::Reflect::set(&net, &"editorSave".into(), editor_save.as_ref());
+    editor_save.forget();
+    let s = state.clone();
     let editor_history_call = Closure::<dyn FnMut(bool)>::new(move |undo: bool| {
         editor_history(&mut s.borrow_mut(), undo);
     });
@@ -1618,6 +1649,10 @@ fn editor_click(s: &mut State, button: i16, alt: bool) {
     let world = &s.world;
     let edit = s.editor.click(button, target, |(x, y, z)| world.get(x, y, z));
     send_edits(s, edit);
+    // The select and spawn tools work on things instead of blocks.
+    let under = pointer_screen(s).and_then(|(sx, sy)| pick_thing(&s.things, sx, sy));
+    let action = s.editor.click_thing(button, target, under);
+    send_thing_action(s, action);
 }
 
 /// The pointer moved: a held painting tool carries on.
@@ -1629,6 +1664,8 @@ fn editor_drag(s: &mut State) {
     let world = &s.world;
     let edit = s.editor.drag(target, |(x, y, z)| world.get(x, y, z));
     send_edits(s, edit);
+    let action = pointer_screen(s).and_then(|screen| s.editor.drag_thing(screen, &s.things));
+    send_thing_action(s, action);
 }
 
 /// A mouse button went up: ends a stroke, and the bucket fills now.
@@ -1641,6 +1678,15 @@ fn editor_release(s: &mut State, button: i16) {
     if let Some(fill) = s.editor.release(target, |(x, y, z)| world.get(x, y, z)) {
         let ((x1, y1), (x2, y2)) = (fill.from, fill.to);
         send(s, &ClientMsg::FillBlocks { x1, y1, x2, y2, z: fill.z, block: fill.block });
+    }
+}
+
+fn send_thing_action(s: &mut State, action: Option<ThingAction>) {
+    match action {
+        Some(ThingAction::Spawn { kind, pos }) => send(s, &ClientMsg::SpawnThing { kind: kind.to_string(), pos }),
+        Some(ThingAction::Move { id, pos }) => send(s, &ClientMsg::MoveThing { id, pos }),
+        Some(ThingAction::Delete { id }) => send(s, &ClientMsg::DeleteThing { id }),
+        None => {}
     }
 }
 
@@ -1685,7 +1731,7 @@ fn toggle_editor(s: &mut State) {
 /// Push the toolbar state (and the cursor line) to `editor.js` when it changed.
 fn update_editor_ui(s: &mut State, target: Option<Pick>) {
     let cursor = match target {
-        Some(pick) => editor::cursor_text(Some(pick), s.world.get(pick.hit.0, pick.hit.1, pick.hit.2).id()),
+        Some(pick) => editor::cursor_text(Some(pick), s.world.get(pick.hit.0, pick.hit.1, pick.hit.2)),
         None => String::new(),
     };
     let json = s.editor.ui_json(&cursor);
@@ -1760,6 +1806,13 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         }
         e.prevent_default();
         let mut s = s.borrow_mut();
+        // In the editor the wheel limits the drawn layers (Java); Ctrl/Cmd + wheel (or a pinch)
+        // still zooms. The page reports lines in some browsers: about 40 px each.
+        if s.editor.active() && !e.ctrl_key() && !e.meta_key() {
+            let delta = e.delta_y() as f32 * if e.delta_mode() == 1 { 40.0 } else { 1.0 };
+            s.editor.scroll(delta);
+            return;
+        }
         let dpr = s.dpr;
         s.camera.zoom = (s.camera.zoom * (-e.delta_y() as f32 * 0.001).exp()).clamp(0.1 * dpr, 4.0 * dpr);
     });
@@ -1818,6 +1871,15 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
             e.prevent_default();
             editor_history(&mut s, !e.shift_key());
             return;
+        } else if s.editor.active() && matches!(key.as_str(), "delete" | "backspace") {
+            // Java: Delete removes the selected entities.
+            e.prevent_default();
+            let action = s.editor.delete_selected();
+            send_thing_action(&mut s, action);
+            return;
+        } else if s.editor.active() && matches!(key.as_str(), "+" | "=" | "-") && !e.ctrl_key() && !e.meta_key() {
+            s.editor.step_value(if key == "-" { -1 } else { 1 });
+            return;
         } else if let Some(index) = Editor::index_for_key(&key) {
             // Number keys choose the block to build with, but only inside the editor.
             s.editor.select_block(index);
@@ -1843,7 +1905,7 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
 fn read_input(s: &State) -> PlayerInput {
     let held = |action: &str| s.bindings.held(action, &s.keys);
     // With a turned camera the keys still mean directions on the screen.
-    s.view.walk_input(PlayerInput { up: held("up"), down: held("down"), left: held("left"), right: held("right"), jump: held("jump") })
+    s.view.walk_input(PlayerInput { up: held("up"), down: held("down"), left: held("left"), right: held("right"), jump: held("jump"), heading: None })
 }
 
 // ------------------------------------------------------------------------------------- game loop
@@ -1879,12 +1941,22 @@ fn local_position(s: &State) -> Option<Vec3> {
     s.local_id.and_then(|id| s.entities.get(id)).map(|e| e.position + s.visual_offset.value())
 }
 
-/// The block under the pointer, if any.
-fn hovered(s: &State) -> Option<Pick> {
+/// The pointer in screen space (px at zoom 1, y down), the space `pick` works in.
+fn pointer_screen(s: &State) -> Option<(f32, f32)> {
     let (px, py) = s.pointer?;
-    let sx = s.camera.center[0] + (px - s.config.width as f32 / 2.0) / s.camera.zoom;
-    let sy = s.camera.center[1] + (py - s.config.height as f32 / 2.0) / s.camera.zoom;
-    pick(&s.world, sx, sy)
+    Some((s.camera.center[0] + (px - s.config.width as f32 / 2.0) / s.camera.zoom, s.camera.center[1] + (py - s.config.height as f32 / 2.0) / s.camera.zoom))
+}
+
+/// What the camera looks at: our player, or in the editor the point the keys panned it to.
+fn camera_focus(s: &State) -> Option<Vec3> {
+    let (pan_x, pan_y) = s.editor.pan();
+    local_position(s).map(|p| p + Vec3::new(pan_x, pan_y, 0.0))
+}
+
+/// The block under the pointer, if any (not counting the layers the editor has hidden).
+fn hovered(s: &State) -> Option<Pick> {
+    let (sx, sy) = pointer_screen(s)?;
+    pick(&s.world, sx, sy, s.editor.layer())
 }
 
 /// A block changed on the server: update the world, break particles, mesh again.
@@ -1962,7 +2034,14 @@ fn frame(s: &mut State, now_ms: f64) {
     // While rejoining the world is frozen as it was: nobody is listening to our inputs.
     let blocked = input_blocked() || s.reconnect.active();
 
-    let wanted = if blocked { PlayerInput::default() } else { read_input(s) };
+    // In the editor the movement keys pan the camera and the player stands still.
+    let wanted = if blocked || s.editor.active() { PlayerInput::default() } else { read_input(s) };
+    if s.editor.active() && !blocked {
+        let held = |action: &str| s.bindings.held(action, &s.keys) as i32 as f32;
+        let direction = (held("right") - held("left"), held("down") - held("up"));
+        let fast = s.keys.contains("shift");
+        s.editor.pan_by(direction, fast, dt);
+    }
 
     // Our own player: the same fixed physics steps as the server, so movement is instant.
     s.accumulator = (s.accumulator + dt).min(0.25);
@@ -2060,8 +2139,8 @@ fn frame(s: &mut State, now_ms: f64) {
     s.actors.set_yaw(s.view.yaw);
     s.actors.update(dt, drawn, &s.things);
 
-    // The camera follows us (or stays on the island while offline).
-    if let Some(p) = local_position(s) {
+    // The camera follows us (or stays on the island while offline), panned away from us in the editor.
+    if let Some(p) = camera_focus(s) {
         s.view.pivot = (p.x, p.y);
         let target = s.view.screen_position((p.x, p.y), p.z + 0.7);
         let k = ease(8.0);
@@ -2085,7 +2164,9 @@ fn frame(s: &mut State, now_ms: f64) {
         }
     }
 
-    s.lighting.update(dt * 1000.0);
+    // Like the Java editor (`timespeed` 0) the time of day stands still while editing, so the light
+    // does not change under the editor's hands. Everybody else's clock is not touched.
+    s.lighting.update(if s.editor.active() { 0.0 } else { dt * 1000.0 });
     // Debug display on: holding the left button sets the sun's position from the pointer's x, like
     // the Java light engine's debug mode (the moon turns with it, the day clock is paused meanwhile).
     if s.show_net && s.keys.contains("mouse0") {
@@ -2103,14 +2184,18 @@ fn frame(s: &mut State, now_ms: f64) {
     }
 
     animate_sea(s, dt);
-    // Keep the drawn window centred on the player; crossing a chunk border moves it.
-    if let Some(p) = local_position(s) {
+    // Keep the drawn window centred on the camera; crossing a chunk border moves it.
+    if let Some(p) = camera_focus(s) {
         let (x, y) = from_iso(p.x, p.y);
         let chunk = chunk_of(x, y);
         if chunk != s.view_chunk {
             s.view_chunk = chunk;
             s.remesh = true;
         }
+    }
+    // The editor's layer limit (the wheel) leaves the upper layers out of the meshes.
+    if s.render.set_layer_limit(s.editor.layer()) {
+        s.remesh = true;
     }
     if s.remesh {
         s.remesh = false;
@@ -2352,6 +2437,12 @@ fn upload_dynamic_mesh(s: &mut State, target: Option<Pick>) {
             }
             None => s.preview = None,
         }
+    }
+    // The thing the select tool holds: a frame on the ground around it.
+    s.editor.keep_selection_in(&s.things);
+    if let Some(thing) = s.editor.selected_thing().and_then(|id| s.things.iter().find(|t| t.id == id)) {
+        let [x, y, z] = thing.pos;
+        mesh::top_face_unlit(&mut vertices, THING_MARKER_COLOR, [x - 0.4, x + 0.4, y - 0.4, y + 0.4], z + 0.02);
     }
     if let Some(Pick { hit: (x, y, z), .. }) = target {
         let (gx, gy) = to_iso(x, y);

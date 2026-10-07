@@ -97,6 +97,8 @@ pub struct MeshContext<'a> {
     /// The sprite atlas, once loaded. Blocks without a sprite, and everything while this is `None`
     /// (the flat look, `?flat=1`), show their flat colour.
     pub sprites: Option<&'a Sprites>,
+    /// The highest layer that is meshed (the editor's layer limit); `CHUNK_SIZE_Z - 1` for all.
+    pub top: i32,
     /// Also mesh the sides that look away from the fixed camera (`-x`, `-y`), so the free camera
     /// can look at the world from behind. Costs about a third more triangles.
     pub all_faces: bool,
@@ -174,7 +176,7 @@ pub fn build_chunk(chunk: &RenderChunk, ctx: &MeshContext) -> Vec<Vertex> {
             let (x, y) = (left + lx, top + ly);
             let (gx, gy) = to_iso(x, y);
             let (x0, x1, y0, y1) = (gx - 0.5, gx + 0.5, gy - 0.5, gy + 0.5);
-            for z in 0..CHUNK_SIZE_Z {
+            for z in 0..=ctx.top.min(CHUNK_SIZE_Z - 1) {
                 let cell = chunk.cell(lx, ly, z).expect("index is inside the chunk");
                 // A cell whose three front sides are covered can still show its back sides to the
                 // free camera (the far slope of a hill), so it is only skipped for the fixed one.

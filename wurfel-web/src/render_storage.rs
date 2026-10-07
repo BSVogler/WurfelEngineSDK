@@ -106,7 +106,7 @@ impl RenderChunk {
 
     /// Copy the blocks from the simulation chunk and work out the shading. Clipping needs the
     /// neighbouring chunks too, so it is done separately.
-    fn load(pos: (i32, i32), world: &World) -> Self {
+    fn load(pos: (i32, i32), world: &World, top: i32) -> Self {
         let sim = world.chunk(pos.0, pos.1);
         let mut cells = Vec::with_capacity((CHUNK_SIZE_X * CHUNK_SIZE_Y * CHUNK_SIZE_Z) as usize);
         for lx in 0..CHUNK_SIZE_X {
@@ -117,17 +117,18 @@ impl RenderChunk {
             }
         }
         let mut chunk = RenderChunk { pos, cells, mesh: Vec::new(), mesh_dirty: true, mesh_version: 0 };
-        chunk.apply_shading();
+        chunk.apply_shading(top);
         chunk
     }
 
     /// Java `RenderChunk.resetShadingFor`: a top face under an overhang gets darker. Only looks
-    /// within the column, so it never depends on other chunks.
-    fn apply_shading(&mut self) {
+    /// within the column, so it never depends on other chunks. Layers above `top` (the editor's
+    /// layer limit) are not drawn, so they cast no shadow.
+    fn apply_shading(&mut self, top: i32) {
         for lx in 0..CHUNK_SIZE_X {
             for ly in 0..CHUNK_SIZE_Y {
                 for z in 0..CHUNK_SIZE_Z {
-                    let transparent = |dz: i32| self.cells[Self::index(lx, ly, z + dz)].is_transparent();
+                    let transparent = |dz: i32| z + dz > top || self.cells[Self::index(lx, ly, z + dz)].is_transparent();
                     let light = if z < CHUNK_SIZE_Z - 2 && transparent(1) {
                         if !transparent(2) {
                             0.8
@@ -157,6 +158,9 @@ pub struct RenderStorage {
     /// The free camera is on: the render set is the whole surface around the player, seen from any
     /// side (see [`RenderStorage::set_free_view`]), not what the fixed camera can see.
     all_faces: bool,
+    /// The highest layer that is drawn (the editor's wheel, see [`RenderStorage::set_layer_limit`]);
+    /// `None` draws them all.
+    layer_limit: Option<i32>,
 }
 
 /// Chunks from the middle to the edge of the render window of the fixed camera (3x3 chunks).
@@ -219,7 +223,7 @@ impl RenderStorage {
             .collect();
         reload.sort_unstable();
         for pos in reload {
-            let mut fresh = RenderChunk::load(pos, world);
+            let mut fresh = RenderChunk::load(pos, world, self.top_layer());
             // the build counter counts over the whole life of the position, not of one object
             fresh.mesh_version = self.chunks.get(&pos).map_or(0, |old| old.mesh_version);
             self.chunks.insert(pos, fresh);
@@ -265,6 +269,7 @@ impl RenderStorage {
             neighbour.is_some_and(|n| n.hides_past_block() || (n.is_liquid() && current.is_liquid()))
         };
 
+        let top_layer = self.top_layer();
         let mut flags = Vec::with_capacity(chunk.cells.len());
         for lx in 0..CHUNK_SIZE_X {
             for ly in 0..CHUNK_SIZE_Y {
@@ -281,7 +286,7 @@ impl RenderStorage {
                         if hides(self.cell(lrx, lry, z), current) {
                             clipping |= CLIP_RIGHT;
                         }
-                        if hides(chunk.cell(lx, ly, z + 1), current) {
+                        if z < top_layer && hides(chunk.cell(lx, ly, z + 1), current) {
                             clipping |= CLIP_TOP;
                         }
                     }
@@ -341,9 +346,43 @@ impl RenderStorage {
         }
     }
 
-    /// Is the block at these block coordinates opaque? Cells outside the window count as open.
+    /// Is the block at these block coordinates opaque? Cells outside the window count as open, and
+    /// so do the layers above the layer limit.
     fn is_opaque(&self, x: i32, y: i32, z: i32) -> bool {
-        self.cell(x, y, z).is_some_and(|cell| cell.hides_past_block())
+        z <= self.top_layer() && self.cell(x, y, z).is_some_and(|cell| cell.hides_past_block())
+    }
+
+    /// The highest layer that is drawn: the layer limit, or the top of the world.
+    fn top_layer(&self) -> i32 {
+        self.layer_limit.unwrap_or(CHUNK_SIZE_Z - 1)
+    }
+
+    /// Draw only the layers up to `limit` (`None`: all), like the Java editor's Z rendering limit:
+    /// the layers above are left out of the meshes, so the ones below can be looked at and edited
+    /// from above. A limit at or above the top layer counts as none. Returns whether it changed
+    /// (the caller then meshes again with [`vertices`](Self::vertices)).
+    pub fn set_layer_limit(&mut self, limit: Option<i32>) -> bool {
+        let limit = limit.map(|l| l.max(0)).filter(|&l| l < CHUNK_SIZE_Z - 1);
+        if self.layer_limit == limit {
+            return false;
+        }
+        self.layer_limit = limit;
+        let top = self.top_layer();
+        // The shading and the clipping of the top layer look at the layers above it.
+        for chunk in self.chunks.values_mut() {
+            chunk.apply_shading(top);
+        }
+        let mut positions: Vec<_> = self.chunks.keys().copied().collect();
+        positions.sort_unstable();
+        for pos in positions {
+            let clipping = self.compute_clipping(pos);
+            let chunk = self.chunks.get_mut(&pos).expect("listed above");
+            for (cell, flags) in chunk.cells.iter_mut().zip(clipping) {
+                cell.clipping = flags;
+            }
+            chunk.mesh_dirty = true;
+        }
+        true
     }
 
     /// All vertices of the window. Only chunks that changed are meshed again.
@@ -353,7 +392,7 @@ impl RenderStorage {
             let mesh = {
                 let this = &*self;
                 let opaque = |x: i32, y: i32, z: i32| this.is_opaque(x, y, z);
-                let ctx = MeshContext { opaque: &opaque, lights: &this.static_lights, sprites: this.sprites.as_deref(), all_faces: this.all_faces };
+                let ctx = MeshContext { opaque: &opaque, lights: &this.static_lights, sprites: this.sprites.as_deref(), all_faces: this.all_faces, top: this.top_layer() };
                 mesh::build_chunk(&this.chunks[&pos], &ctx)
             };
             let chunk = self.chunks.get_mut(&pos).expect("listed above");
@@ -565,6 +604,42 @@ mod tests {
         assert_eq!(light(7, 0), 1.0);
         assert_eq!(light(9, 8), 1.0);
         assert_eq!(light(9, 9), 1.0);
+    }
+
+    #[test]
+    fn the_layer_limit_leaves_out_the_layers_above_and_uncovers_the_top_one() {
+        // A tower of three stones, and a stone with an overhang two layers above it.
+        let mut world = World::new(Blocks(vec![
+            ((1, 1, 0), id::STONE),
+            ((1, 1, 1), id::STONE),
+            ((1, 1, 2), id::STONE),
+            ((5, 1, 0), id::STONE),
+            ((5, 1, 2), id::STONE),
+        ]));
+        let mut storage = RenderStorage::new();
+        storage.update(&mut world, (0, 0));
+        let all = storage.vertices();
+        assert_eq!(storage.cell(5, 1, 0).unwrap().top_light, 0.8);
+        assert_eq!(flags(&storage, 1, 1, 1) & CLIP_TOP, CLIP_TOP, "covered by the stone above");
+
+        assert!(storage.set_layer_limit(Some(1)));
+        assert!(!storage.set_layer_limit(Some(1)), "nothing changed");
+        let limited = storage.vertices();
+        assert!(limited.len() < all.len(), "the layer 2 stones are gone");
+        assert!(limited.iter().all(|v| v.position[2] <= 2.0), "nothing above the top of layer 1");
+        assert_eq!(flags(&storage, 1, 1, 1) & CLIP_TOP, 0, "the top layer shows its top");
+        assert_eq!(storage.cell(5, 1, 0).unwrap().top_light, 1.0, "an overhang that is not drawn casts no shadow");
+        assert!(!storage.is_opaque(1, 1, 2), "and does not occlude");
+        assert!(storage.is_opaque(1, 1, 1));
+
+        // A limit at the top of the world, or none, is the whole world again.
+        assert!(storage.set_layer_limit(Some(CHUNK_SIZE_Z + 3)));
+        assert_eq!(storage.vertices(), all);
+        assert!(!storage.set_layer_limit(None));
+        // Chunks that come into the window afterwards honour the limit.
+        storage.set_layer_limit(Some(0));
+        storage.update(&mut world, (1, 0));
+        assert!(storage.vertices().iter().all(|v| v.position[2] <= 1.0));
     }
 
     #[test]
