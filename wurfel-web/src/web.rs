@@ -29,6 +29,7 @@ use crate::minimap::{CameraView, ChunkInfo, ChunkState, EntityDot, Minimap, Mini
 use crate::netstats::{format_report, NetStats};
 use crate::peel::gpu::{Peeling, DEPTH_FORMAT};
 use crate::post::gpu::Post;
+use crate::sunshadow::gpu::SunShadowMap;
 use crate::post::PostSettings;
 use crate::pick::{pick, pick_thing, Pick};
 use crate::reconnect::{Closed, Reconnect};
@@ -154,6 +155,10 @@ struct State {
     /// Arrows at the screen edge towards friends who are out of view.
     friend_markers: FriendMarkers,
     bind_group: wgpu::BindGroup,
+    /// What `bind_group` is made of, to make it again when the shadow map changes size.
+    bind_group_layout: wgpu::BindGroupLayout,
+    cloud_view: wgpu::TextureView,
+    cloud_sampler: wgpu::Sampler,
     /// The sprite atlas texture array (a 1 pixel placeholder until it has loaded).
     atlas_bind_group: wgpu::BindGroup,
     world_buffer: wgpu::Buffer,
@@ -173,6 +178,11 @@ struct State {
     /// Bloom, tone map and FXAA on the blended picture (see `post.rs`).
     post: Post,
     post_settings: PostSettings,
+    /// The sun's shadow map (see `sunshadow.rs`) and the menu's switch for it.
+    sun_shadow: SunShadowMap,
+    sun_shadows: bool,
+    /// The device can blend into a float texture; without it there is no linear light and no bloom.
+    hdr: bool,
     backend: wgpu::Backend,
     camera: Camera,
     dpr: f32,
@@ -354,14 +364,52 @@ async fn run() -> Result<(), String> {
     };
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("camera and lighting layout"),
-        entries: &[uniform_entry(0), uniform_entry(1)],
+        entries: &[
+            uniform_entry(0),
+            uniform_entry(1),
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+            // The sun's shadow map (sunshadow.rs): its uniform and the depth it holds.
+            uniform_entry(4),
+            wgpu::BindGroupLayoutEntry {
+                binding: 5,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Depth,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+        ],
     });
+    let (cloud_view, cloud_sampler) = crate::clouds::gpu::create(&device, &queue);
+    let atlas_layout = texture::bind_group_layout(&device);
+    let sun_shadow = SunShadowMap::new(&device, &camera_buffer, &atlas_layout, sun_shadow_quality_from_menu().size());
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("camera"),
         layout: &bind_group_layout,
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: camera_buffer.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 1, resource: lighting_buffer.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&cloud_view) },
+            wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&cloud_sampler) },
+            wgpu::BindGroupEntry { binding: 4, resource: sun_shadow.uniform_buffer().as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(sun_shadow.view()) },
         ],
     });
 
@@ -369,7 +417,6 @@ async fn run() -> Result<(), String> {
         label: Some("blocks"),
         source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
     });
-    let atlas_layout = texture::bind_group_layout(&device);
     let atlas_bind_group = texture::placeholder(&device, &queue, &atlas_layout);
     // The layers are kept in 16 bit floats so that light above 1 reaches the tone map unclipped. Where
     // the device can not render and blend into that format the layers use the canvas format.
@@ -381,7 +428,7 @@ async fn run() -> Result<(), String> {
     let scene_format = if hdr_ok { crate::peel::gpu::HDR_FORMAT } else { config.format };
     web_sys::console::log_1(&format!("render: layers in {scene_format:?} (canvas {:?})", config.format).into());
     let peeling = Peeling::new(&device, &queue, scene_format, config.width, config.height);
-    let post_settings = post_settings_wanted().limited_by(hdr_ok);
+    let post_settings = post_settings_from_menu().limited_by(hdr_ok);
     web_sys::console::log_1(&format!("render: {post_settings:?}").into());
     let post = Post::new(&device, scene_format, config.format, peeling.blended(), config.width, config.height);
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -430,6 +477,9 @@ async fn run() -> Result<(), String> {
         peeling,
         post,
         post_settings,
+        sun_shadow,
+        sun_shadows: sun_shadows_from_menu(),
+        hdr: hdr_ok,
         camera: Camera { center: [(gx - gy) * 100.0, (gx + gy) * 50.0 - 4.0 * 122.0], zoom: 0.5 * dpr },
         dpr,
         menu_zoom: None,
@@ -458,6 +508,9 @@ async fn run() -> Result<(), String> {
         name_tags: NameTags::new(&document),
         friend_markers: FriendMarkers::new(&document),
         bind_group,
+        bind_group_layout,
+        cloud_view,
+        cloud_sampler,
         atlas_bind_group,
         world_buffer,
         world_vertices: world_vertices.len() as u32,
@@ -550,13 +603,6 @@ async fn run() -> Result<(), String> {
 fn normal_maps_wanted() -> bool {
     let search = web_sys::window().and_then(|w| w.location().search().ok()).unwrap_or_default();
     !search.trim_start_matches('?').split('&').any(|part| part == "normals=0")
-}
-
-/// The post-process settings from the page address: `?classic`, `?bloom=0.2`, `?fxaa=0`,
-/// `?linear=0`, `?tonemap=filmic` (see `PostSettings::from_query`).
-fn post_settings_wanted() -> PostSettings {
-    let search = web_sys::window().and_then(|w| w.location().search().ok()).unwrap_or_default();
-    PostSettings::from_query(&search)
 }
 
 /// `?flat=1` in the page address keeps the old look: solid coloured blocks, no sprites.
@@ -1048,6 +1094,7 @@ fn end_session(s: &mut State) {
     reset_mode_state(s);
     hud("show", &JsValue::FALSE);
     hud("closeDialog", &JsValue::UNDEFINED);
+    call_js("wurfelLoading", "hide", &JsValue::UNDEFINED);
     s.world = World::new(IslandGenerator::new(DEFAULT_SEED));
     s.animated = AnimatedBlocks::new();
     s.sea_chunks.clear();
@@ -1235,6 +1282,7 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
             check_build(s, &build);
             let rejoined = s.reconnect.active();
             s.reconnect.on_welcome();
+            call_js("wurfelLoading", "hide", &JsValue::UNDEFINED);
             // Whatever a dialog of the old server asked is moot; the state below is the new server's.
             hud("closeDialog", &JsValue::UNDEFINED);
             s.roster = roster.into_iter().map(|p| (p.id, p)).collect();
@@ -1310,6 +1358,12 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
         }
         // The lobby is the menu's business; the game socket only sees its greeting before it joins.
         ServerMsg::Lobby { build, .. } => check_build(s, &build),
+        // Another map is loaded under us: cover the game; the socket closes next, the reconnect
+        // rejoins and the Welcome of the new world removes the screen.
+        ServerMsg::WorldSwitching { map } => {
+            hud("closeDialog", &JsValue::UNDEFINED);
+            call_js("wurfelLoading", "show", &JsValue::from_str(&format!("Loading '{map}'…")));
+        }
         ServerMsg::Maps { .. } | ServerMsg::WorldChanged { .. } | ServerMsg::MapCreated { .. } => {}
         // The server saved and is going away; the socket closes next and the reconnect starts.
         ServerMsg::ServerRestarting => show_banner("Server updating, reconnecting…", Tone::Info),
@@ -1516,6 +1570,65 @@ fn listen<E: JsCast + 'static>(window: &web_sys::Window, event: &str, mut handle
     closure.forget();
 }
 
+/// The graphics settings of the menu (`linearLight`, `bloom`, `fxaa`); the defaults while
+/// the menu has not run.
+fn post_settings_from_menu() -> PostSettings {
+    let settings = web_sys::window().map(|w| js_get(&w, "wurfelSettings")).unwrap_or(JsValue::UNDEFINED);
+    PostSettings::from_menu(
+        js_get(&settings, "linearLight").as_bool(),
+        js_get(&settings, "bloom").as_f64(),
+        js_get(&settings, "fxaa").as_bool(),
+    )
+}
+
+/// Take the menu's graphics settings into the running game: the next frame is drawn with them.
+fn apply_post_settings(s: &mut State) {
+    s.post_settings = post_settings_from_menu().limited_by(s.hdr);
+    s.lighting.linear_light = s.post_settings.linear;
+}
+
+/// The menu's `sunShadows` switch (on while the menu has not run).
+fn sun_shadows_from_menu() -> bool {
+    web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "sunShadows").as_bool()).unwrap_or(true)
+}
+
+/// The menu's `shadowQuality` (low, medium or high).
+fn sun_shadow_quality_from_menu() -> crate::sunshadow::ShadowQuality {
+    let name = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "shadowQuality").as_string());
+    crate::sunshadow::ShadowQuality::from_name(name.as_deref().unwrap_or(""))
+}
+
+/// Make the shadow map the size the menu asks for. The scene's bind group holds the map, so it is made again.
+fn apply_sun_shadow_quality(s: &mut State) {
+    if !s.sun_shadow.resize(&s.device, sun_shadow_quality_from_menu().size()) {
+        return;
+    }
+    s.bind_group = s.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("camera"),
+        layout: &s.bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: s.camera_buffer.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 1, resource: s.lighting_buffer.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&s.cloud_view) },
+            wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&s.cloud_sampler) },
+            wgpu::BindGroupEntry { binding: 4, resource: s.sun_shadow.uniform_buffer().as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(s.sun_shadow.view()) },
+        ],
+    });
+}
+
+/// The sun's shadow map for this frame: centred on what the camera looks at, from the sun, as strong as
+/// the sun is high. A strength of 0 (off in the menu, lighting off, night) draws nothing.
+fn sun_shadow_uniform(s: &State) -> crate::sunshadow::SunShadowUniform {
+    let state = s.lighting.engine.state();
+    let strength = if s.sun_shadows && s.lighting.enabled { crate::sunshadow::strength(state.sun_direction.z, state.night_mix) } else { 0.0 };
+    // Where the camera looks on the ground: the screen row is (gx + gy) * 50 and the column (gx - gy) * 100.
+    let [cx, cy] = s.camera.center;
+    let ground = Vec3::new((cx / 100.0 + cy / 50.0) / 2.0, (cy / 50.0 - cx / 100.0) / 2.0, 0.0);
+    let focus = camera_focus(s).unwrap_or(ground);
+    crate::sunshadow::uniform(focus, state.sun_direction, strength, s.sun_shadow.size())
+}
+
 /// Events from the HTML menu (see the contract at the top of `menu.js`).
 fn install_menu_events(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     let s = state.clone();
@@ -1525,7 +1638,16 @@ fn install_menu_events(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         if let Some(on) = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "ambientOcclusion").as_bool()) {
             s.lighting.ambient_occlusion = on;
         }
+        if let Some(on) = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "cloudShadows").as_bool()) {
+            s.lighting.clouds = on;
+        }
+        if let Some(speed) = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "cloudSpeed").as_f64()) {
+            s.lighting.cloud_speed = speed as f32;
+        }
         s.lighting.apply_settings();
+        apply_post_settings(&mut s);
+        s.sun_shadows = sun_shadows_from_menu();
+        apply_sun_shadow_quality(&mut s);
         apply_grass_settings(&mut s);
         apply_menu_zoom(&mut s);
     });
@@ -2614,14 +2736,12 @@ fn update_overlays(s: &mut State, now_ms: f64) {
     }
 }
 
+/// The top left line: only how many players are online, and only while in a world.
 fn update_info(s: &mut State) {
-    let status = match (s.connected, s.my_id) {
-        (true, Some(id)) => format!("online as player {id} · {} other(s)", s.remotes.len()),
-        (true, None) => "connecting…".to_string(),
-        (false, _) if s.reconnect.active() => "server updating, reconnecting…".to_string(),
-        (false, _) => "offline: showing a preview. Open the menu (Esc) to join a world".to_string(),
+    let text = match (s.connected, s.my_id) {
+        (true, Some(_)) => format!("{} online", s.remotes.len() + 1),
+        _ => String::new(),
     };
-    let text = format!("Wurfel Engine · {:?} · {status}", s.backend);
     if text != s.info_text {
         set_info(&text);
         s.info_text = text;
@@ -2659,6 +2779,17 @@ fn render(s: &mut State) {
         // The layers hold linear light then (see `shader.wgsl`), and so does what they are blended over.
         background = wgpu::Color { r: background.r.powf(2.2), g: background.g.powf(2.2), b: background.b.powf(2.2), a: 1.0 };
     }
+    let sun_uniform = sun_shadow_uniform(s);
+    s.sun_shadow.render(&mut encoder, &s.queue, &sun_uniform, &s.atlas_bind_group, |pass| {
+        if s.world_vertices > 0 {
+            pass.set_vertex_buffer(0, s.world_buffer.slice(..));
+            pass.draw(0..s.world_vertices, 0..1);
+        }
+        if s.dynamic_vertices > 0 {
+            pass.set_vertex_buffer(0, s.dynamic_buffer.slice(..));
+            pass.draw(0..s.dynamic_vertices, 0..1);
+        }
+    });
     s.peeling.render(&mut encoder, background, |pass| {
         pass.set_pipeline(&s.pipeline);
         pass.set_bind_group(0, &s.bind_group, &[]);

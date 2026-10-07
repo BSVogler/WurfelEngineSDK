@@ -14,6 +14,7 @@ use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 use wurfel_sim::light::{LightEngine, LightState, PointLight, Shading, DEFAULT_AZIMUTH_SPEED, DEFAULT_WORLD_SPIN_ANGLE};
 
+use crate::clouds;
 use crate::mesh::FLAT_SHADES;
 
 /// How many moving point lights the shader handles at once.
@@ -56,6 +57,11 @@ pub struct Lighting {
     pub pixel_ambient: [f32; 4],
     /// xyz: the Java `u_localLightPos` and `u_playerpos` (the focus entity, in blocks), w: 1 when there is one.
     pub local_light: [f32; 4],
+    /// xyz: the unit vector towards the sun in the world's ground frame (where the cloud shadows come from).
+    pub sun_dir: [f32; 4],
+    /// x: seconds the clouds have drifted, y: shadow strength (0 = no clouds), z: blocks per texture
+    /// repeat, w: height of the cloud layer in blocks.
+    pub clouds: [f32; 4],
     /// xyz: position in blocks, w: radius.
     pub lights: [[f32; 4]; MAX_POINT_LIGHTS],
     /// rgb: colour, w: brightness.
@@ -92,6 +98,8 @@ impl Lighting {
             moon_normal: rgb(state.moon_normal_game, 0.0),
             pixel_ambient: rgb(state.ambient, 0.0),
             local_light: [0.0; 4],
+            sun_dir: rgb(state.sun_direction, 0.0),
+            clouds: [0.0, 0.0, clouds::TILE_BLOCKS, clouds::HEIGHT],
             lights: [[0.0; 4]; MAX_POINT_LIGHTS],
             light_colors: [[0.0; 4]; MAX_POINT_LIGHTS],
         };
@@ -122,6 +130,15 @@ pub struct LightingController {
     pub local_light: Option<Vec3>,
     /// The scene is drawn in linear light (`post.rs`) instead of display colours.
     pub linear_light: bool,
+    /// Cloud shadows drift over the world (see `clouds.rs`).
+    pub clouds: bool,
+    /// How dark the heart of a cloud's shadow is, 0..1.
+    pub cloud_strength: f32,
+    /// How fast the clouds drift, 1 = the normal wind, 0 = they stand still.
+    pub cloud_speed: f32,
+    /// Seconds of drift so far (real time times the speed, so a change of speed does not make the
+    /// shadows jump); they move even while the day clock is stopped.
+    cloud_time: f32,
     /// Time passes this many times faster than the Java day length (7.7 minutes). 0 stops the clock.
     pub time_scale: f32,
     dynamic: Vec<PointLight>,
@@ -147,6 +164,10 @@ impl LightingController {
             normal_maps: false,
             local_light: None,
             linear_light: false,
+            clouds: true,
+            cloud_strength: clouds::DEFAULT_STRENGTH,
+            cloud_speed: 1.0,
+            cloud_time: 0.0,
             time_scale: 1.0,
             dynamic: Vec::new(),
         };
@@ -156,6 +177,9 @@ impl LightingController {
 
     /// Advance the day. `dt_ms` is real time in milliseconds.
     pub fn update(&mut self, dt_ms: f32) {
+        if dt_ms.is_finite() && dt_ms > 0.0 {
+            self.cloud_time = (self.cloud_time + dt_ms / 1000.0 * self.cloud_speed.clamp(0.0, 10.0)) % 100_000.0;
+        }
         if self.time_scale > 0.0 && dt_ms.is_finite() && dt_ms > 0.0 {
             self.engine.update(dt_ms * self.time_scale);
         }
@@ -188,6 +212,10 @@ impl LightingController {
         // Without the light engine there is nothing to light the pixels with.
         uniform.misc[3] = if self.normal_maps && self.enabled { 1.0 } else { 0.0 };
         uniform.flat_shades[3] = if self.linear_light { 1.0 } else { 0.0 };
+        if self.clouds && self.enabled {
+            uniform.clouds[0] = self.cloud_time;
+            uniform.clouds[1] = self.cloud_strength.clamp(0.0, 1.0);
+        }
         if let Some(p) = self.local_light.filter(|p| p.is_finite()) {
             uniform.local_light = [p.x, p.y, p.z, 1.0];
         }
@@ -234,7 +262,7 @@ mod tests {
 
     #[test]
     fn the_uniform_is_all_vec4_so_it_has_no_padding() {
-        assert_eq!(size_of::<Lighting>(), 15 * 16 + 2 * MAX_POINT_LIGHTS * 16);
+        assert_eq!(size_of::<Lighting>(), 17 * 16 + 2 * MAX_POINT_LIGHTS * 16);
         assert_eq!(size_of::<Lighting>() % 16, 0, "uniform buffers want 16-byte multiples");
         for offset in [
             offset_of!(Lighting, ambient),
@@ -252,6 +280,8 @@ mod tests {
             offset_of!(Lighting, moon_normal),
             offset_of!(Lighting, pixel_ambient),
             offset_of!(Lighting, local_light),
+            offset_of!(Lighting, sun_dir),
+            offset_of!(Lighting, clouds),
             offset_of!(Lighting, lights),
             offset_of!(Lighting, light_colors),
         ] {
@@ -294,6 +324,10 @@ mod tests {
             vec![
                 (0, 0, "camera".to_string()),
                 (0, 1, "lighting".to_string()),
+                (0, 2, "cloud_map".to_string()),
+                (0, 3, "cloud_sampler".to_string()),
+                (0, 4, "sun_shadow".to_string()),
+                (0, 5, "shadow_map".to_string()),
                 (1, 0, "atlas".to_string()),
                 (1, 1, "atlas_sampler".to_string()),
                 (1, 2, "normals".to_string()),
@@ -334,6 +368,8 @@ mod tests {
             ("moon_normal", offset_of!(Lighting, moon_normal)),
             ("pixel_ambient", offset_of!(Lighting, pixel_ambient)),
             ("local_light", offset_of!(Lighting, local_light)),
+            ("sun_dir", offset_of!(Lighting, sun_dir)),
+            ("clouds", offset_of!(Lighting, clouds)),
             ("lights", offset_of!(Lighting, lights)),
             ("light_colors", offset_of!(Lighting, light_colors)),
         ];
@@ -425,6 +461,28 @@ mod tests {
         assert_eq!(controller.uniform().local_light, [0.0; 4], "a bad position is no light");
         controller.enabled = false;
         assert_eq!(controller.uniform().misc[3], 0.0, "lighting off means the flat look, not normal maps");
+    }
+
+    #[test]
+    fn the_clouds_drift_with_real_time_and_switch_off_with_the_light() {
+        let mut controller = LightingController::new();
+        controller.time_scale = 0.0;
+        controller.update(2000.0);
+        let u = controller.uniform();
+        assert_eq!(u.clouds[0], 2.0, "moves although the day clock is stopped");
+        assert_eq!(u.clouds[1], clouds::DEFAULT_STRENGTH);
+        assert!((Vec3::from_slice(&u.sun_dir[..3]).length() - 1.0).abs() < 1e-4);
+        controller.cloud_speed = 2.0;
+        controller.update(1000.0);
+        assert_eq!(controller.uniform().clouds[0], 4.0, "faster wind adds drift without moving what was passed");
+        controller.cloud_speed = 0.0;
+        controller.update(1000.0);
+        assert_eq!(controller.uniform().clouds[0], 4.0, "speed 0: they stand still");
+        controller.clouds = false;
+        assert_eq!(controller.uniform().clouds[1], 0.0);
+        controller.clouds = true;
+        controller.enabled = false;
+        assert_eq!(controller.uniform().clouds[1], 0.0, "the flat look has no cloud shadows");
     }
 
     #[test]

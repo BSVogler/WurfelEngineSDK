@@ -41,12 +41,28 @@ struct Lighting {
     moon_normal: vec4<f32>,  // xyz: the Java u_moonNormal
     pixel_ambient: vec4<f32>,  // rgb: the Java u_ambientColor, unweighted
     local_light: vec4<f32>,  // xyz: the Java u_localLightPos / u_playerpos (blocks); w: 1 when there is one
+    sun_dir: vec4<f32>,      // xyz: unit vector towards the sun in the world's ground frame
+    clouds: vec4<f32>,       // x: seconds drifted, y: shadow strength (0 = off), z: blocks per repeat, w: cloud height
     lights: array<vec4<f32>, 8>,        // xyz: position (blocks), w: radius
     light_colors: array<vec4<f32>, 8>,  // rgb: colour, w: brightness
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(0) @binding(1) var<uniform> lighting: Lighting;
+// The cloud coverage (clouds.rs): 0 clear sky, 1 the heart of a cloud. Repeats.
+@group(0) @binding(2) var cloud_map: texture_2d<f32>;
+@group(0) @binding(3) var cloud_sampler: sampler;
+// The sun's shadow map (sunshadow.rs, sunshadow.wgsl): the world seen from the sun, as depth.
+struct SunShadow {
+    right: vec4<f32>,   // xyz: the map's x axis in the world
+    up: vec4<f32>,      // xyz: the map's y axis
+    dir: vec4<f32>,     // xyz: unit vector towards the sun; w: depth per block along it
+    center: vec4<f32>,  // xyz: the world point in the middle of the map; w: 1 / half the width in blocks
+    params: vec4<f32>,  // x: strength 0..1 (0 = no shadows); y: a texel in blocks; z: map size in texels
+};
+@group(0) @binding(4) var<uniform> sun_shadow: SunShadow;
+@group(0) @binding(5) var shadow_map: texture_depth_2d;
+
 @group(1) @binding(0) var atlas: texture_2d_array<f32>;
 @group(1) @binding(1) var atlas_sampler: sampler;
 // The normal map of the atlas: the same pages, so the same uv and layer (the Java u_normals).
@@ -130,6 +146,9 @@ struct VertexOut {
     @location(4) baked: vec4<f32>,
     @location(5) world: vec3<f32>,
     @location(6) @interpolate(flat) face: f32,
+    @location(7) ground: vec3<f32>,  // the position in the world (not turned by the free camera)
+    // How much of the vertex's light comes from the sun: what a sun shadow takes away.
+    @location(8) sun_share: f32,
 };
 
 // The left, top or right component of a vec4; face 4 (a sprite standing in the world) takes the
@@ -202,8 +221,9 @@ fn with_fog(color: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
 }
 
 // The final colour of a vertex. wurfel_sim::light::shade_vertex is the reference implementation.
-fn shade(v: VertexIn, seen: vec3<f32>) -> vec3<f32> {
+fn shade(v: VertexIn, seen: vec3<f32>, sun_share: ptr<function, f32>) -> vec3<f32> {
     let face = i32(v.shade.x + 0.5);
+    *sun_share = 0.0;
     if (face == 3 || face == 7) {
         return v.color;  // not lit: markers and particles
     }
@@ -241,7 +261,10 @@ fn shade(v: VertexIn, seen: vec3<f32>) -> vec3<f32> {
     }
     let point = baked + dynamic_light(v.position, face);
     let ao = 1.0 - lighting.grading.y * clamp(v.shade.y, 0.0, 1.0);
-    let color = v.color * ((lit + point * lighting.grading.z) * ao);
+    let total_light = lit + point * lighting.grading.z;
+    let color = v.color * (total_light * ao);
+    let sun_light = lighting.sun_color.xyz * sun * lighting.grading.x;
+    *sun_share = clamp(dot(sun_light, LUMA) / max(dot(total_light, LUMA), 0.0001), 0.0, 1.0);
 
     // At night: less saturation and more contrast, like the Java fragment shader.
     if (lighting.grading.w > 0.5 && night_mix > 0.0) {
@@ -279,7 +302,9 @@ fn vs_main(v: VertexIn) -> VertexOut {
         out.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);  // outside the view: the side that looks away
     }
     let seen = view_pos(v.position);
-    out.color = shade(v, seen);
+    var sun_share = 0.0;
+    out.color = shade(v, seen, &sun_share);
+    out.sun_share = sun_share;
     out.uv = v.uv;
     out.layer = v.layer;
     out.albedo = v.color;
@@ -295,6 +320,7 @@ fn vs_main(v: VertexIn) -> VertexOut {
     }
     out.world = seen;
     out.face = f32(face);
+    out.ground = v.position;
     return out;
 }
 
@@ -327,11 +353,86 @@ fn turn_game_direction(g: vec3<f32>) -> vec3<f32> {
 
 // Is this fragment lit per pixel? Blocks (faces 0, 1, 2 and the free camera's 5, 6) and standing
 // sprites (4) are; markers, particles and models (3, 7) keep their vertex colour.
+// The way a face of the given id looks, in the world (not turned by the free camera).
+fn face_normal(face: i32, to_sun: vec3<f32>) -> vec3<f32> {
+    if (face == 0) {
+        return vec3<f32>(0.0, 1.0, 0.0);
+    }
+    if (face == 1) {
+        return vec3<f32>(0.0, 0.0, 1.0);
+    }
+    if (face == 2) {
+        return vec3<f32>(1.0, 0.0, 0.0);
+    }
+    if (face == 5) {
+        return vec3<f32>(0.0, -1.0, 0.0);
+    }
+    if (face == 6) {
+        return vec3<f32>(-1.0, 0.0, 0.0);
+    }
+    return to_sun;  // a standing sprite has no particular side
+}
+
+// How much of the sun reaches `pos`: 1 in the light, 0 in shadow, in between at the soft edge (about
+// three map texels wide).
+fn sun_visibility(pos: vec3<f32>, face: i32) -> f32 {
+    let strength = sun_shadow.params.x;
+    if (strength <= 0.0 || face == 3 || face == 7) {
+        return 1.0;
+    }
+    let to_sun = sun_shadow.dir.xyz;
+    let n = face_normal(face, to_sun);
+    let texel = sun_shadow.params.y;
+    // A surface that is turned away from the sun compares against a depth that changes quickly across
+    // a texel: the bias grows with the slope (tan of the angle between the normal and the sun).
+    let cos_angle = clamp(dot(n, to_sun), 0.0, 1.0);
+    let slope = min(sqrt(max(1.0 - cos_angle * cos_angle, 0.0)) / max(cos_angle, 0.1), 4.0);
+    let rel = pos + n * texel * 1.5 - sun_shadow.center.xyz;
+    let uv = vec2<f32>(
+        dot(rel, sun_shadow.right.xyz) * sun_shadow.center.w * 0.5 + 0.5,
+        0.5 - dot(rel, sun_shadow.up.xyz) * sun_shadow.center.w * 0.5,
+    );
+    if (uv.x <= 0.0 || uv.x >= 1.0 || uv.y <= 0.0 || uv.y >= 1.0) {
+        return 1.0;  // outside the map: nothing is known, so no shadow
+    }
+    let depth = 0.5 - dot(rel, to_sun) * sun_shadow.dir.w;
+    let bias = (texel * (1.0 + slope) + 0.02) * sun_shadow.dir.w;
+    let size = sun_shadow.params.z;
+    let last = i32(size) - 1;
+    // The comparisons of a 4 x 4 block of texels, weighed so that the 3 x 3 window slides smoothly across
+    // texel borders: the edge of a shadow moves by fractions of a texel and has no stair steps.
+    let position = uv * size - vec2<f32>(0.5);
+    let corner = vec2<i32>(floor(position));
+    let fraction = position - floor(position);
+    var lit = 0.0;
+    for (var dy = -1; dy <= 2; dy = dy + 1) {
+        var wy = 1.0;
+        if (dy == -1) {
+            wy = 1.0 - fraction.y;
+        } else if (dy == 2) {
+            wy = fraction.y;
+        }
+        for (var dx = -1; dx <= 2; dx = dx + 1) {
+            var wx = 1.0;
+            if (dx == -1) {
+                wx = 1.0 - fraction.x;
+            } else if (dx == 2) {
+                wx = fraction.x;
+            }
+            let at = clamp(corner + vec2<i32>(dx, dy), vec2<i32>(0), vec2<i32>(last));
+            if (depth <= textureLoad(shadow_map, at, 0) + bias) {
+                lit = lit + wx * wy;
+            }
+        }
+    }
+    return mix(1.0, lit / 9.0, strength);
+}
+
 fn lit_by_normal_map(face: i32, layer: f32) -> bool {
     return lighting.misc.w > 0.5 && layer > -0.5 && face != 3 && face != 7;
 }
 
-fn normal_map_color(in: VertexOut, texel: vec4<f32>) -> vec3<f32> {
+fn normal_map_color(in: VertexOut, texel: vec4<f32>, sun_seen: f32) -> vec3<f32> {
     // The sun and the moon belong to the world. A block's normal map is in the world's frame, which
     // does not turn with the free camera, so the light is used as it is. Only a standing sprite
     // always faces the camera: its normal map is in the view frame, so the light turns into it.
@@ -349,7 +450,7 @@ fn normal_map_color(in: VertexOut, texel: vec4<f32>) -> vec3<f32> {
     n.x = -n.x;  // x is flipped in the texture
 
     // Clamp the sun light at white, so during the day it appears white, not yellow.
-    let sun_light = min(lighting.sun_color.rgb * 2.0, vec3<f32>(1.0)) * max(dot(n, sun_normal), 0.0);
+    let sun_light = min(lighting.sun_color.rgb * 2.0, vec3<f32>(1.0)) * max(dot(n, sun_normal), 0.0) * sun_seen;
     diffuse = diffuse * max(sun_light * 3.5, vec3<f32>(1.0));  // allow very bright light
     let moon_light = lighting.moon_color.rgb * 2.0 * max(dot(n, moon_normal), 0.0);
     diffuse = diffuse * max(moon_light, vec3<f32>(1.0));
@@ -387,17 +488,44 @@ fn normal_map_color(in: VertexOut, texel: vec4<f32>) -> vec3<f32> {
     return with_fog(max(lit, vec3<f32>(0.0)), in.world);
 }
 
+// ------------------------------------------------------------------------------ cloud shadows
+// Clouds drift over the world and block part of the sun. The sun's ray from the surface point is
+// followed up to the cloud layer and the coverage is read there, so a shadow slides when the sun
+// moves and a tall wall's shadow falls away from the sun. Like the sun's shadow map this takes away
+// the sun's share of the light only (it multiplies `sun_visibility`), so a cloud adds nothing to a
+// place the sun does not reach anyway, and a shaded place darkens to the ambient light, not black.
+const WIND = vec2<f32>(0.8, 0.6);
+
+// How much of the sun gets through the clouds to `ground`: 1 under a clear sky.
+fn cloud_light(ground: vec3<f32>, face: i32) -> f32 {
+    let strength = lighting.clouds.y;
+    let sun = lighting.sun_dir.xyz;
+    if (strength <= 0.0 || sun.z <= 0.05 || face == 3 || face == 7) {
+        return 1.0;
+    }
+    let rise = max(lighting.clouds.w - ground.z, 0.0) / sun.z;
+    let at_cloud = ground.xy + sun.xy * rise - WIND * lighting.clouds.x * 0.6;
+    let coverage = textureSampleLevel(cloud_map, cloud_sampler, at_cloud / lighting.clouds.z, 0.0).r;
+    // Low sun: the shadows are long and faint. (At night the sun's share is zero anyway.)
+    let sun_power = smoothstep(0.05, 0.4, sun.z);
+    return 1.0 - coverage * strength * sun_power;
+}
+
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     // Sampled for every fragment (a level sample may sit in non-uniform control flow) and only used
     // when the vertex has a sprite. The sprites are cut out: pixels that are (nearly) transparent are
     // discarded, the rest keep their alpha, which the compositing of the layers blends.
     let texel = textureSampleLevel(atlas, atlas_sampler, in.uv, i32(max(in.layer, 0.0) + 0.5), 0.0);
-    var color = vec4<f32>(in.color, 1.0);
+    // 1: the sun reaches this point, 0: something is in the way. Unlit things (markers, particles) have no sun.
+    let sun_seen = sun_visibility(in.ground, i32(in.face + 0.5)) * cloud_light(in.ground, i32(in.face + 0.5));
+    // The vertex colour holds the sun's light already; a shadow takes the sun's share of it away.
+    let shadowed = 1.0 - in.sun_share * (1.0 - sun_seen);
+    var color = vec4<f32>(in.color * shadowed, 1.0);
     if (in.layer > -0.5) {
-        color = vec4<f32>(texel.rgb * in.color, texel.a);
+        color = vec4<f32>(texel.rgb * in.color * shadowed, texel.a);
         if (lit_by_normal_map(i32(in.face + 0.5), in.layer)) {
-            color = vec4<f32>(normal_map_color(in, texel), texel.a);
+            color = vec4<f32>(normal_map_color(in, texel, sun_seen), texel.a);
         }
     }
     let face = i32(in.face + 0.5);

@@ -24,7 +24,12 @@
 <body>
   <!-- The game. The wasm client draws into #canvas and writes its help/status text into #info. -->
   <canvas id="canvas"></canvas>
-  <div id="info">loading…</div>
+  <div id="info"></div>
+
+  <!-- Loading screen: shown while the server swaps the map under a running game. -->
+  <div id="loading" class="loading" role="status" aria-live="polite" hidden>
+    <div class="loading-box"><div class="spinner" aria-hidden="true"></div><p id="loading-text">Loading…</p></div>
+  </div>
 
   <!-- HUD shown while playing -->
   <div id="fps" class="hud hud-fps" hidden></div>
@@ -40,11 +45,7 @@
   <div id="menu" class="menu" role="dialog" aria-modal="true" aria-labelledby="menu-title" hidden>
     <div class="panel">
       <header class="brand">
-        <svg class="logo" viewBox="0 0 64 64" width="56" height="56" aria-hidden="true">
-          <polygon points="32,6 58,20 32,34 6,20" fill="#5ba33f"/>
-          <polygon points="6,20 32,34 32,60 6,46" fill="#47802f"/>
-          <polygon points="58,20 32,34 32,60 58,46" fill="#356023"/>
-        </svg>
+        <img class="logo" src="assets/logo.png" alt="" width="49" height="56">
         <div>
           <h1 id="menu-title">Wurfel Engine</h1>
           <p class="tag">Isometric block world · browser prototype</p>
@@ -101,7 +102,7 @@
 
         <h3 class="sub-title" id="maps-title">Load a different map</h3>
         <p id="maps-status" class="note" role="status" aria-live="polite"></p>
-        <p id="maps-blocked" class="note blocked" role="note" hidden>Server in use. Try again when it is empty.</p>
+        <p id="maps-blocked" class="note blocked" role="note" hidden>Players are on the server. Loading a map moves them all to it.</p>
         <p id="maps-error" class="error" role="alert" hidden></p>
         <div id="map-list" class="maps" role="list" aria-labelledby="maps-title"></div>
         <div class="buttons">
@@ -174,7 +175,14 @@
           <fieldset>
             <legend>Graphics</legend>
             <label class="row"><span>FPS limit <small>(0 = unlimited)</small></span><input type="number" data-nav data-setting="fpsLimit" min="0" max="1000" step="1" /></label>
-            <label class="row check"><input type="checkbox" data-nav data-setting="ambientOcclusion" /><span>Ambient occlusion <small>(used once lighting is ported)</small></span></label>
+            <label class="row check"><input type="checkbox" data-nav data-setting="ambientOcclusion" /><span>Ambient occlusion <small>(darkens corners where blocks meet)</small></span></label>
+            <label class="row check"><input type="checkbox" data-nav data-setting="sunShadows" /><span>Sun shadows <small>(blocks and creatures cast shadows; applies at once)</small></span></label>
+            <label class="row"><span>Shadow quality <small>(sharpness of the sun's shadows; high needs 64 MB of video memory)</small></span><select data-nav data-setting="shadowQuality"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+            <label class="row check"><input type="checkbox" data-nav data-setting="cloudShadows" /><span>Cloud shadows <small>(clouds drift overhead and shade the ground)</small></span></label>
+            <label class="row"><span>Cloud speed <small>(0 = still)</small></span><input type="range" data-nav data-setting="cloudSpeed" data-scale="100" min="0" max="400" step="10" /><output></output></label>
+            <label class="row check"><input type="checkbox" data-nav data-setting="linearLight" /><span>Linear light <small>(blends and glows like light; applies at once)</small></span></label>
+            <label class="row"><span>Bloom <small>(glow of bright lights, 0 = off)</small></span><input type="range" data-nav data-setting="bloom" data-scale="100" min="0" max="50" step="5" /><output></output></label>
+            <label class="row check"><input type="checkbox" data-nav data-setting="fxaa" /><span>Anti-aliasing <small>(FXAA)</small></span></label>
             <label class="row check"><input type="checkbox" data-nav data-setting="grass" /><span>Grass blades</span></label>
             <label class="row"><span>Grass density <small>(blades per block, 0 to 20)</small></span><input type="number" data-nav data-setting="grassDensity" min="0" max="20" step="1" /></label>
             <div class="row check"><button class="item compact" type="button" data-nav data-action="fullscreen" id="fullscreen-btn"><span class="label">Enter fullscreen</span></button></div>

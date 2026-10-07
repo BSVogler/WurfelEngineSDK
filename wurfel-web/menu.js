@@ -17,7 +17,14 @@
  *     seed             integer >= 0: the seed last used in that form
  *                      (both only remember the form; the world you play in is described by wurfel:play)
  *     fpsLimit         integer 0..1000: frame rate cap in FPS, 0 = unlimited (default 60)
- *     ambientOcclusion bool     for the light engine, once it exists
+ *     ambientOcclusion bool     darken corners where blocks meet (applies at once)
+ *     sunShadows       bool     the sun casts shadows of blocks and sprites (default true, applies at once)
+ *     shadowQuality    'low' | 'medium' | 'high'   sharpness of the sun shadows (default medium, applies at once)
+ *     cloudShadows     bool     clouds drift overhead and shade the ground (default true, applies at once)
+ *     cloudSpeed       0..4     how fast the cloud shadows drift, 1 = normal, 0 = still (default 1, applies at once)
+ *     linearLight      bool     light and blend in linear light, encode at the end (default true)
+ *     bloom            0..0.5   glow of very bright things, 0 = off (default 0.1)
+ *     fxaa             bool     smooth edges (default true)
  *     grass            bool     grass blades on grass blocks (default true)
  *     grassDensity     integer 0..20  blades per block near the player (default 10)
  *     showFps, showHelp bool    (JS handles the FPS counter and hides #info itself)
@@ -121,7 +128,7 @@
     jump: [' ', ''], players: ['tab', ''],
   };
   const RANGES = {
-    masterVolume: [0, 1], musicVolume: [0, 1], effectsVolume: [0, 1], zoom: [0.2, 2],
+    masterVolume: [0, 1], musicVolume: [0, 1], effectsVolume: [0, 1], zoom: [0.2, 2], bloom: [0, 0.5], cloudSpeed: [0, 4],
   };
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -133,7 +140,7 @@
       masterVolume: 0.8, musicVolume: 0.6, effectsVolume: 0.8,
       zoom: 0.5,
       generator: 'island', seed: Math.floor(Math.random() * 1000000),
-      fpsLimit: 60, ambientOcclusion: false, grass: true, grassDensity: 10, showFps: false, showHelp: true,
+      fpsLimit: 60, ambientOcclusion: false, cloudShadows: true, cloudSpeed: 1, sunShadows: true, shadowQuality: 'medium', linearLight: true, bloom: 0.1, fxaa: true, grass: true, grassDensity: 10, showFps: false, showHelp: true,
       keys: clone(DEFAULT_KEYS),
     };
   }
@@ -146,12 +153,13 @@
     if (typeof raw.playerColor === 'string' && HEX.test(raw.playerColor)) out.playerColor = raw.playerColor.toLowerCase();
     if (Array.isArray(raw.servers)) out.servers = cleanServers(raw.servers);
     if (typeof raw.serverUrl === 'string') out.serverUrl = raw.serverUrl.trim().slice(0, 200);
+    if (['low', 'medium', 'high'].includes(raw.shadowQuality)) out.shadowQuality = raw.shadowQuality;
     if (typeof raw.generator === 'string' && /^[\w-]{1,32}$/.test(raw.generator)) out.generator = raw.generator;
     if (Number.isSafeInteger(raw.seed) && raw.seed >= 0) out.seed = raw.seed;
     for (const [key, [lo, hi]] of Object.entries(RANGES)) {
       if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) out[key] = Math.min(hi, Math.max(lo, raw[key]));
     }
-    for (const key of ['ambientOcclusion', 'grass', 'showFps', 'showHelp']) {
+    for (const key of ['ambientOcclusion', 'cloudShadows', 'sunShadows', 'linearLight', 'fxaa', 'grass', 'showFps', 'showHelp']) {
       if (typeof raw[key] === 'boolean') out[key] = raw[key];
     }
     if (typeof raw.grassDensity === 'number' && Number.isFinite(raw.grassDensity)) out.grassDensity = Math.min(20, Math.max(0, Math.round(raw.grassDensity)));
@@ -542,7 +550,7 @@
     $('#refresh-btn').disabled = busy;
     $('#map-submit').disabled = busy;
     for (const b of $$('#map-list .map-actions button')) {
-      b.disabled = busy || blocked || !connected;
+      b.disabled = busy || !connected;
       if (blocked) b.setAttribute('aria-describedby', 'maps-blocked'); else b.removeAttribute('aria-describedby');
     }
   }
@@ -1260,7 +1268,7 @@
     if (playing && st) text = st.connected ? `Connected · ${st.players ?? 1} player${st.players === 1 ? '' : 's'}` : 'Connecting…';
     else if (playing) text = 'Playing';
     else if (st && st.connected) text = `Connected · ${st.players ?? 1} player${st.players === 1 ? '' : 's'}`;
-    else text = 'Offline preview';
+    else text = 'Not connected';
     $('#menu-status').textContent = text;
   }
 
@@ -1539,5 +1547,10 @@
   requestAnimationFrame(tick);
 
   // Handy for debugging and for tests.
+  // The loading screen the game shows while the server loads another map under it.
+  window.wurfelLoading = {
+    show(text) { $('#loading-text').textContent = String(text || 'Loading…'); $('#loading').hidden = false; },
+    hide() { $('#loading').hidden = true; },
+  };
   window.wurfelMenu = { openMenu, resume, leave, startGame, resolveServer, resolve, sanitize, defaults, generators, timeouts: TIMEOUTS };
 })();
