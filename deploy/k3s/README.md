@@ -5,7 +5,10 @@ pushes `ghcr.io/bsvogler/wurfel-server:<branch>-<sha>`, then `kubectl apply -k d
 
 ## One-time setup
 
-1. Set the real hostname in `kustomization.yaml` (two places) and point DNS at the cluster.
+1. Hostname: the test deployment is served at `https://wurfel-test.portraittogo.com` (`httproute.yaml`). The
+   cluster's Gateway (`kube-system/traefik-gateway`) already has a `*.portraittogo.com` listener with a wildcard
+   certificate, and wildcard DNS points at it, so nothing else is needed for that name. For a name on another
+   domain you need a DNS record to the Gateway IP, plus a listener and certificate for it on the Gateway.
 2. As cluster admin: `kubectl apply -f deploy/k3s/bootstrap/deployer-rbac.yaml`
 3. Build a kubeconfig for the `ci-deployer` account and store it base64-encoded as the GitHub secret
    `K3S_KUBECONFIG` (repo Settings > Secrets, ideally on the `production` environment):
