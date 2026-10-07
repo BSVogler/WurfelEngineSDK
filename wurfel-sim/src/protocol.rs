@@ -346,6 +346,9 @@ pub enum ServerMsg {
     /// A save was loaded: sent to every connection that is still in the lobby.
     WorldChanged { world: WorldInfo },
     MapCreated { map: MapSummary },
+    /// The server is loading another map under a running game: show a loading screen. The socket
+    /// closes right after and the client rejoins the new world like after a restart.
+    WorldSwitching { map: String },
     /// A lobby request was refused. `request` is the type of the message it answers.
     Failed { request: String, message: String },
     // ----- in the world
@@ -434,6 +437,7 @@ impl ServerMsg {
             | ServerMsg::Things { .. } => Channel::Unreliable,
             ServerMsg::Welcome { .. }
             | ServerMsg::ServerRestarting
+            | ServerMsg::WorldSwitching { .. }
             | ServerMsg::BlockSet(_)
             | ServerMsg::BlocksSet { .. }
             | ServerMsg::Saved { .. }
@@ -551,6 +555,7 @@ mod tests {
             ServerMsg::Lobby { world: world.clone(), generators: vec![GeneratorSummary { id: "island".into(), name: "Island".into(), description: "d".into(), uses_seed: true }], build: build_id() },
             ServerMsg::Maps { maps: vec![MapSummary { id: "a".into(), name: "A".into(), description: "".into(), generator: "air".into(), seed: 1, gamemode: "engine".into(), saves: vec![SaveSummary { slot: 0, modified: None }] }] },
             ServerMsg::WorldChanged { world },
+            ServerMsg::WorldSwitching { map: "Island".into() },
             ServerMsg::Failed { request: "LoadMap".into(), message: "nope".into() },
         ];
         for msg in messages {

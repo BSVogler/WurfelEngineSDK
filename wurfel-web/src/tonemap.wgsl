@@ -4,7 +4,7 @@
 // maps the result onto the screen.
 //
 // `post.params`: x the bloom intensity, y 1 when the HDR texture holds linear light (0: display
-// colours, like before the linear mode), z 1 for the filmic curve, w unused.
+// colours, like before the linear mode), zw unused.
 //
 // The default curve: below KNEE nothing changes; above it the brightest channel is compressed
 // towards 1 and the others follow, so the hue stays instead of shifting like it does when each
@@ -50,12 +50,6 @@ fn tone_map(input: vec3<f32>) -> vec3<f32> {
     return min(mix(scaled, vec3<f32>(new_peak), towards_white), vec3<f32>(1.0));
 }
 
-// Narkowicz's fit of the ACES curve: a toe for the shadows and a long shoulder, on linear light.
-fn aces(x: vec3<f32>) -> vec3<f32> {
-    let c = max(x, vec3<f32>(0.0));
-    return clamp((c * (2.51 * c + 0.03)) / (c * (2.43 * c + 0.59) + 0.14), vec3<f32>(0.0), vec3<f32>(1.0));
-}
-
 fn encode(linear: vec3<f32>) -> vec3<f32> {
     return pow(max(linear, vec3<f32>(0.0)), vec3<f32>(1.0 / GAMMA));
 }
@@ -67,18 +61,9 @@ fn fs_main(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     var color = textureLoad(hdr, vec2<i32>(frag.xy), 0).rgb;
     color = color + textureSampleLevel(bloom, bloom_sampler, frag.xy / size, 0.0).rgb * post.params.x;
 
-    let linear = post.params.y > 0.5;
-    var shown: vec3<f32>;
-    if (post.params.z > 0.5) {
-        var light = color;
-        if (!linear) {
-            light = pow(max(color, vec3<f32>(0.0)), vec3<f32>(GAMMA));
-        }
-        shown = encode(aces(light));
-    } else if (linear) {
+    var shown = tone_map(color);
+    if (post.params.y > 0.5) {
         shown = tone_map(encode(color));
-    } else {
-        shown = tone_map(color);
     }
 
     // Dither by a third of a step of the 8 bit canvas: the gradients of the sky and the fog would

@@ -219,9 +219,9 @@ pub fn key_action(key: &str, pressed: bool) -> Option<(&'static str, i32)> {
     match (key, pressed) {
         ("f", true) => Some(("attack", 0)),
         ("f", false) => Some(("release_attack", 0)),
-        ("m", true) => Some(("prepare_throw", 0)),
-        ("m", false) => Some(("throw", 0)),
-        ("g", true) => Some(("use", 0)),
+        ("t", true) => Some(("prepare_throw", 0)),
+        ("t", false) => Some(("throw", 0)),
+        ("e", true) => Some(("use", 0)),
         ("r", true) => Some(("interact", 0)),
         ("x", true) => Some(("drop", 0)),
         ("z", true) => Some(("switch_left", 0)),
@@ -655,14 +655,13 @@ mod tests {
     fn keys_map_to_actions_and_holding_keys_have_a_release() {
         assert_eq!(key_action("f", true), Some(("attack", 0)));
         assert_eq!(key_action("f", false), Some(("release_attack", 0)));
-        assert_eq!(key_action("m", true), Some(("prepare_throw", 0)));
-        assert_eq!(key_action("m", false), Some(("throw", 0)));
+        assert_eq!(key_action("t", true), Some(("prepare_throw", 0)));
+        assert_eq!(key_action("t", false), Some(("throw", 0)));
         assert_eq!(key_action("c", true), None, "c is the crafting popup, no longer the throw");
         assert_eq!(key_action("c", false), None);
-        assert_eq!(key_action("g", true), Some(("use", 0)));
-        assert_eq!(key_action("g", false), None, "using is a press, not a hold");
+        assert_eq!(key_action("e", true), Some(("use", 0)));
+        assert_eq!(key_action("e", false), None, "using is a press, not a hold");
         assert_eq!(key_action("1", true), None, "crafting is the popup's job, not a digit key");
-        assert_eq!(key_action("e", true), None, "zoom is the scroll wheel only");
         assert_eq!(key_action("w", true), None, "walking is not an action");
         assert_eq!(mouse_action(0, true), Some(("attack", 0)));
         assert_eq!(mouse_action(0, false), Some(("release_attack", 0)));
@@ -694,7 +693,7 @@ mod tests {
     fn every_key_action_is_one_the_server_understands() {
         // The names the server's `CavelandMode::act` accepts.
         let known = ["attack", "release_attack", "prepare_throw", "throw", "drop", "use", "interact", "switch_left", "switch_right", "craft"];
-        for key in ["f", "m", "g", "r", "x", "z", "v", "1", "5", "9"] {
+        for key in ["f", "t", "e", "r", "x", "z", "v", "1", "5", "9"] {
             for pressed in [true, false] {
                 if let Some((name, _)) = key_action(key, pressed) {
                     assert!(known.contains(&name), "{name}");

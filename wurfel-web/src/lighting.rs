@@ -328,6 +328,9 @@ mod tests {
                 (0, 3, "cloud_sampler".to_string()),
                 (0, 4, "sun_shadow".to_string()),
                 (0, 5, "shadow_map".to_string()),
+                (0, 6, "voxels".to_string()),
+                (0, 7, "voxel_sampler".to_string()),
+                (0, 8, "mirror_image".to_string()),
                 (1, 0, "atlas".to_string()),
                 (1, 1, "atlas_sampler".to_string()),
                 (1, 2, "normals".to_string()),
@@ -335,6 +338,16 @@ mod tests {
                 (2, 1, "previous_depth".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn the_hidden_sides_turn_the_normal_of_the_picture_they_borrow() {
+        // -y and -x wear the pictures (and normal maps) of +y and +x: the normal has to be mirrored, or a
+        // turned camera lights them as if they faced the other way (and the light no longer fits the shadows).
+        let source = include_str!("shader.wgsl");
+        let at = source.find("if (side == 5 || side == 6) {").expect("the back sides are handled in normal_map_color");
+        assert!(source[at..].starts_with("if (side == 5 || side == 6) {\n        n = vec3<f32>(-n.x, -n.y, n.z);"));
+        assert!(source[..at].contains("fn normal_map_color("));
     }
 
     /// The members of a struct in the shader: `(name, offset)` and its total size.

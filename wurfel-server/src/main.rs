@@ -93,6 +93,9 @@ struct Shared {
     started: Instant,
     /// Set to true when the server is shutting down: every connection says goodbye and closes.
     closing: watch::Sender<bool>,
+    /// Counts the maps loaded so far. Bumped (under the game lock) when a map replaces the running
+    /// one: connections that joined the old world are told to rejoin the new one.
+    world_epoch: watch::Sender<u32>,
     /// WebSocket connections that are still being served.
     open_sockets: Arc<AtomicUsize>,
 }
@@ -165,6 +168,7 @@ async fn main() {
         lag,
         started: Instant::now(),
         closing: watch::channel(false).0,
+        world_epoch: watch::channel(0).0,
         open_sockets: Arc::default(),
     };
 
@@ -336,9 +340,6 @@ fn lobby_request(shared: &Shared, msg: ClientMsg) -> Option<Arc<str>> {
         }
         ClientMsg::LoadMap { map, slot } => {
             let mut game = shared.game.lock().unwrap();
-            if game.player_count() > 0 {
-                return Some(failed("LoadMap", "Someone is playing on this server. You can load another save when it is empty."));
-            }
             let opened = match slot {
                 SlotChoice::Existing(slot) => shared.maps.open_world(&map, slot),
                 SlotChoice::New => shared.maps.new_save_slot(&map).and_then(|slot| shared.maps.open_world(&map, slot)),
@@ -349,6 +350,11 @@ fn lobby_request(shared: &Shared, msg: ClientMsg) -> Option<Arc<str>> {
                         eprintln!("wurfel-server: saving the old world failed: {e}");
                     }
                     *game = Game::from_opened(opened);
+                    // Player ids, hearts and pings belonged to the old world. The players in it are
+                    // sent a loading screen and rejoin; their old connections must not touch the new game.
+                    *shared.friends.lock().unwrap() = Default::default();
+                    *shared.pings.lock().unwrap() = Default::default();
+                    shared.world_epoch.send_modify(|epoch| *epoch += 1);
                     shared.maps.remember_active(&game.spec().map_id, game.spec().slot);
                     let changed = encode(&ServerMsg::WorldChanged { world: game.info() });
                     eprintln!("wurfel-server: loaded '{}' save {}", game.spec().map, game.spec().slot);
@@ -513,7 +519,10 @@ async fn client(socket: WebSocket, shared: Shared) {
     let mut chunk_timer = tokio::time::interval(CHUNK_UPDATE_EVERY);
     chunk_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut closing = shared.closing.subscribe();
+    let mut world_epoch = shared.world_epoch.subscribe();
     let mut said_goodbye = false;
+    // The map under this player was replaced: the player is gone with the old game already.
+    let mut world_replaced = false;
 
     while alive {
         tokio::select! {
@@ -522,6 +531,15 @@ async fn client(socket: WebSocket, shared: Shared) {
                 if player.is_some() {
                     send(Payload::Text(encode(&ServerMsg::ServerRestarting)));
                 }
+                said_goodbye = send(Payload::Close);
+                break;
+            },
+            // Another map was loaded under the running game: tell the player (a loading screen),
+            // then close; the client rejoins and lands in the new world.
+            _ = world_epoch.changed(), if player.is_some() => {
+                let map = shared.game.lock().unwrap().spec().map.clone();
+                send(Payload::Text(encode(&ServerMsg::WorldSwitching { map })));
+                world_replaced = true;
                 said_goodbye = send(Payload::Close);
                 break;
             },
@@ -544,6 +562,7 @@ async fn client(socket: WebSocket, shared: Shared) {
                             // between the welcome and the first update.
                             let (id, welcome, updates) = {
                                 let mut game = shared.game.lock().unwrap();
+                                world_epoch.borrow_and_update(); // joined the world that is running now
                                 let updates = shared.tx.subscribe();
                                 let id = game.add_player_as(&login.user.name, color);
                                 if login.user.admin {
@@ -651,7 +670,7 @@ async fn client(socket: WebSocket, shared: Shared) {
     } else {
         writer_task.abort();
     }
-    if let Some((id, _)) = player {
+    if let Some((id, _)) = player.filter(|_| !world_replaced) {
         shared.game.lock().unwrap().remove_player(id);
         shared.pings.lock().unwrap().remove(id);
         let affected = shared.friends.lock().unwrap().remove_player(id);

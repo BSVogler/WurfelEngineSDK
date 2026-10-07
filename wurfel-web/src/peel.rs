@@ -287,6 +287,11 @@ pub mod gpu {
             &self.peel_layout
         }
 
+        /// Group 2 of the scene pipeline for a pass that peels nothing (the first layer's).
+        pub fn first_peel_group(&self) -> &wgpu::BindGroup {
+            &self.targets.peel_groups[0]
+        }
+
         /// The canvas changed size.
         pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
             self.targets = Self::create_targets(device, &self.peel_layout, &self.composite_layout, &self.uniforms, self.color_format, width, height);

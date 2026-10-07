@@ -16,10 +16,11 @@ struct Camera {
     center: vec2<f32>,    // screen position (px, y down) that sits in the middle of the canvas
     scale: vec2<f32>,     // 2 * zoom / canvas size in px
     center_depth: f32,
-    // Three scalars, not a vec3: a vec3 would be 16-byte aligned and make this struct 48 bytes,
-    // but the CPU side (`CameraUniform` in web.rs) is 32.
-    _pad0: f32,
-    _pad1: f32,
+    // The water mirror (reflection.rs): the water level, and 1 in the pass that draws the scene flipped
+    // about it. Three scalars, not a vec3: a vec3 would be 16-byte aligned and make this struct 48
+    // bytes, but the CPU side (`CameraUniform` in web.rs) is 32.
+    mirror_level: f32,
+    mirror_on: f32,
     _pad2: f32,
     // The free camera: x cos and y sin of the yaw, zw the ground point the world turns about.
     view: vec4<f32>,
@@ -58,10 +59,18 @@ struct SunShadow {
     up: vec4<f32>,      // xyz: the map's y axis
     dir: vec4<f32>,     // xyz: unit vector towards the sun; w: depth per block along it
     center: vec4<f32>,  // xyz: the world point in the middle of the map; w: 1 / half the width in blocks
-    params: vec4<f32>,  // x: strength 0..1 (0 = no shadows); y: a texel in blocks; z: map size in texels
+    params: vec4<f32>,  // x: strength 0..1 (0 = no shadows); y: a texel in blocks; z: map size in texels; w: 1 = blocks cast through the voxel grid
+    grid_origin: vec4<f32>,  // xy: the ground cell that cell (0, 0) of the voxel grid is; z: tangent of the sun's angular radius (0 = hard shadows); w: steps of the ray walk
+    grid_dims: vec4<f32>,    // xyz: size of the voxel grid in cells
 };
 @group(0) @binding(4) var<uniform> sun_shadow: SunShadow;
 @group(0) @binding(5) var shadow_map: texture_depth_2d;
+// The scene seen flipped about the water level (reflection.rs), drawn from the same camera; empty
+// (alpha 0) where nothing is mirrored. A 1 x 1 blank in the pass that draws it.
+@group(0) @binding(8) var mirror_image: texture_2d<f32>;
+// The block world as opacities, 255 = solid (voxels.rs): the sun's ray is walked through it.
+@group(0) @binding(6) var voxels: texture_3d<f32>;
+@group(0) @binding(7) var voxel_sampler: sampler;
 
 @group(1) @binding(0) var atlas: texture_2d_array<f32>;
 @group(1) @binding(1) var atlas_sampler: sampler;
@@ -149,6 +158,8 @@ struct VertexOut {
     @location(7) ground: vec3<f32>,  // the position in the world (not turned by the free camera)
     // How much of the vertex's light comes from the sun: what a sun shadow takes away.
     @location(8) sun_share: f32,
+    // 1 on the surface of water (the fraction the mesher adds to the face id), which mirrors the sky.
+    @location(9) @interpolate(flat) water: f32,
 };
 
 // The left, top or right component of a vec4; face 4 (a sprite standing in the world) takes the
@@ -284,6 +295,10 @@ fn vs_main(v: VertexIn) -> VertexOut {
     if (face == 4 || face == 7) {
         p = billboard_pos(p, v.point.x, v.point.y, v.point.z);
     }
+    let mirroring = camera.mirror_on > 0.5;
+    if (mirroring) {
+        p.z = 2.0 * camera.mirror_level - p.z;
+    }
     let sx = (p.x - p.y) * 100.0;
     let sy = (p.x + p.y) * 50.0 - p.z * 122.0;
 
@@ -298,7 +313,9 @@ fn vs_main(v: VertexIn) -> VertexOut {
         0.5 - depth * 0.002,
         1.0,
     );
-    if (!faces_camera(face)) {
+    // Flipped, the tops face down and the flat markers lie on the wrong side: both are not seen.
+    let hidden_when_mirrored = mirroring && (face == 1 || face == 3);
+    if (!faces_camera(face) || hidden_when_mirrored) {
         out.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);  // outside the view: the side that looks away
     }
     let seen = view_pos(v.position);
@@ -320,6 +337,7 @@ fn vs_main(v: VertexIn) -> VertexOut {
     }
     out.world = seen;
     out.face = f32(face);
+    out.water = select(0.0, 1.0, v.shade.x - f32(face) > 0.1);
     out.ground = v.position;
     return out;
 }
@@ -373,13 +391,9 @@ fn face_normal(face: i32, to_sun: vec3<f32>) -> vec3<f32> {
     return to_sun;  // a standing sprite has no particular side
 }
 
-// How much of the sun reaches `pos`: 1 in the light, 0 in shadow, in between at the soft edge (about
-// three map texels wide).
-fn sun_visibility(pos: vec3<f32>, face: i32) -> f32 {
-    let strength = sun_shadow.params.x;
-    if (strength <= 0.0 || face == 3 || face == 7) {
-        return 1.0;
-    }
+// How much of the sun reaches `pos` through the shadow map: 1 in the light, 0 in shadow, in between
+// at the soft edge (about three map texels wide).
+fn map_visibility(pos: vec3<f32>, face: i32) -> f32 {
     let to_sun = sun_shadow.dir.xyz;
     let n = face_normal(face, to_sun);
     let texel = sun_shadow.params.y;
@@ -425,7 +439,142 @@ fn sun_visibility(pos: vec3<f32>, face: i32) -> f32 {
             }
         }
     }
-    return mix(1.0, lit / 9.0, strength);
+    return lit / 9.0;
+}
+
+// The ray of one axis of the cell walk: x the distance along the ray to the next cell border, y the
+// distance for one whole cell, and the second function the direction of the step.
+fn ray_axis(q: f32, d: f32) -> vec2<f32> {
+    if (abs(d) < 0.000001) {
+        return vec2<f32>(1.0e30, 1.0e30);
+    }
+    let edge = select(floor(q), floor(q) + 1.0, d > 0.0);
+    return vec2<f32>((edge - q) / d, 1.0 / abs(d));
+}
+
+fn ray_step(d: f32) -> i32 {
+    return select(-1, 1, d > 0.0);
+}
+
+// How much of the sun reaches `pos` through the blocks: the ray towards the sun is walked cell by cell
+// through the voxel grid (Amanatides and Woo), and a solid cell ends it. The edges are exact. Water
+// lets part of the light through.
+//
+// The sun is a disc, so a shadow should be sharp where it starts and blur with the distance from what
+// casts it: the disc is `2 * soft * distance` wide at a distance. The walk is exact for the first stretch
+// (`reach`, where the disc is a quarter of a cell); from there the ray is a cone that takes steps of
+// half the disc and reads the grid blurred to the disc's width:
+//   * narrower than a cell: the two cells a sample lies between are mixed over a smaller part of the way
+//     between their centres (`sharpened`), so the edge of a block is a ramp as wide as the disc;
+//   * wider: the texture's mips (box averages of the cells) give the blur.
+// voxels.rs `soft_transmittance` is the same on the CPU.
+const SOFT_STEPS = 48;
+const MIP_MAX = 5.0;
+// The disc where the cone starts, in cells.
+const CONE_START = 0.25;
+// A mip cell is up to twice the disc wide, and its blur must not reach the receiver's own surface.
+const SELF_CLEARANCE = 0.3;
+// Blurred occupancy below this is the faint edge of a neighbour's blur, not a shadow: it is cut off, so open
+// ground is not dimmed by the blocks under it.
+const NOISE_FLOOR = 0.04;
+
+// Move a sample position (in cells) so that the hardware's linear mix between two cells is done over a
+// ramp of width `width` (0..1 cells) around the border between them.
+fn sharpened(p: vec3<f32>, width: f32) -> vec3<f32> {
+    let q = p - vec3<f32>(0.5);
+    let base = floor(q);
+    let ramp = clamp((q - base - vec3<f32>(0.5)) / max(width, 0.02) + vec3<f32>(0.5), vec3<f32>(0.0), vec3<f32>(1.0));
+    return base + vec3<f32>(0.5) + ramp;
+}
+
+fn voxel_visibility(pos: vec3<f32>, face: i32) -> f32 {
+    let to_sun = sun_shadow.dir.xyz;
+    let n = face_normal(face, to_sun);
+    let facing = dot(n, to_sun);
+    if (facing <= 0.0) {
+        return 1.0;  // turned away from the sun: it has no sun light to take away
+    }
+    let dims = vec3<i32>(sun_shadow.grid_dims.xyz);
+    // A cell of the grid is a block: the centres are on whole numbers, so a cell starts half a block lower.
+    let start = pos + n * 0.02 + to_sun * 0.02;
+    let q = start + vec3<f32>(0.5, 0.5, 0.0) - vec3<f32>(sun_shadow.grid_origin.xy, 0.0);
+    var cell = vec3<i32>(floor(q));
+    let x = ray_axis(q.x, to_sun.x);
+    let y = ray_axis(q.y, to_sun.y);
+    let z = ray_axis(q.z, to_sun.z);
+    var t = vec3<f32>(x.x, y.x, z.x);
+    let delta = vec3<f32>(x.y, y.y, z.y);
+    let dir_step = vec3<i32>(ray_step(to_sun.x), ray_step(to_sun.y), ray_step(to_sun.z));
+    // The blur of a surface that is hardly turned to the sun must not reach its own block.
+    let soft = min(sun_shadow.grid_origin.z, SELF_CLEARANCE * facing);
+    var reach = 1.0e30;
+    if (soft > 0.001) {
+        reach = CONE_START * 0.5 / soft;
+    }
+    var transmittance = 1.0;
+    var travelled = 0.0;
+    var cone = false;
+    let steps = i32(sun_shadow.grid_origin.w);
+    for (var i = 0; i < steps; i = i + 1) {
+        if (cell.z >= dims.z || cell.z < 0 || cell.x < 0 || cell.y < 0 || cell.x >= dims.x || cell.y >= dims.y) {
+            break;  // out of the grid: above the highest block, or nothing is known out there
+        }
+        transmittance = transmittance * (1.0 - textureLoad(voxels, cell, 0).r);
+        if (transmittance < 0.02) {
+            return 0.0;
+        }
+        if (t.x < t.y && t.x < t.z) {
+            travelled = t.x;
+            cell.x = cell.x + dir_step.x;
+            t.x = t.x + delta.x;
+        } else if (t.y < t.z) {
+            travelled = t.y;
+            cell.y = cell.y + dir_step.y;
+            t.y = t.y + delta.y;
+        } else {
+            travelled = t.z;
+            cell.z = cell.z + dir_step.z;
+            t.z = t.z + delta.z;
+        }
+        if (travelled > reach) {
+            cone = true;
+            break;
+        }
+    }
+    if (cone) {
+        let size = vec3<f32>(dims);
+        var distance = travelled;
+        for (var j = 0; j < SOFT_STEPS; j = j + 1) {
+            let p = q + to_sun * distance;
+            if (p.z >= size.z || p.z < 0.0 || p.x < 0.0 || p.y < 0.0 || p.x >= size.x || p.y >= size.y) {
+                break;
+            }
+            let diameter = 2.0 * soft * distance;
+            var seen = 0.0;
+            if (diameter < 1.0) {
+                seen = textureSampleLevel(voxels, voxel_sampler, sharpened(p, diameter) / size, 0.0).r;
+            } else {
+                seen = textureSampleLevel(voxels, voxel_sampler, p / size, clamp(log2(diameter), 0.0, MIP_MAX)).r;
+            }
+            transmittance = min(transmittance, 1.0 - clamp((seen - NOISE_FLOOR) / (1.0 - NOISE_FLOOR), 0.0, 1.0));
+            distance = distance + max(diameter * 0.5, 0.25);
+        }
+    }
+    return transmittance;
+}
+
+// How much of the sun reaches `pos`: 1 in the light, 0 in shadow. The blocks' shadows come from the
+// shadow map or, with the voxel method, from the grid; the map then only holds the standing sprites.
+fn sun_visibility(pos: vec3<f32>, face: i32) -> f32 {
+    let strength = sun_shadow.params.x;
+    if (strength <= 0.0 || face == 3 || face == 7) {
+        return 1.0;
+    }
+    var seen = map_visibility(pos, face);
+    if (sun_shadow.params.w > 0.5) {
+        seen = min(seen, voxel_visibility(pos, face));
+    }
+    return mix(1.0, seen, strength);
 }
 
 fn lit_by_normal_map(face: i32, layer: f32) -> bool {
@@ -448,6 +597,14 @@ fn normal_map_color(in: VertexOut, texel: vec4<f32>, sun_seen: f32) -> vec3<f32>
     let normal_color = textureSampleLevel(normals, atlas_sampler, in.uv, i32(max(in.layer, 0.0) + 0.5), 0.0).rgb;
     var n = normalize(normal_color * 2.0 - vec3<f32>(1.0));
     n.x = -n.x;  // x is flipped in the texture
+    // The sides that look away from the fixed camera (-y and -x, only meshed for the free camera) wear the
+    // pictures of the opposite sides, and so their normal maps: the normal on them points the other way
+    // round the vertical axis. Without this a turned camera lights these sides as if they faced the
+    // opposite way, and the light no longer fits the shadows.
+    let side = i32(in.face + 0.5);
+    if (side == 5 || side == 6) {
+        n = vec3<f32>(-n.x, -n.y, n.z);
+    }
 
     // Clamp the sun light at white, so during the day it appears white, not yellow.
     let sun_light = min(lighting.sun_color.rgb * 2.0, vec3<f32>(1.0)) * max(dot(n, sun_normal), 0.0) * sun_seen;
@@ -511,6 +668,72 @@ fn cloud_light(ground: vec3<f32>, face: i32) -> f32 {
     return 1.0 - coverage * strength * sun_power;
 }
 
+// ---------------------------------------------------------------------------- water reflection
+// The surface of water mirrors what is above it: the sky, the drifting clouds and the sun. (It does not
+// mirror the blocks around it; that would need the scene drawn again, upside down.) The camera looks
+// along (-1, -1, -0.82) in the view's frame, so the mirrored ray leaves upwards towards (-1, -1, +0.82).
+// Small moving waves tilt the normal; Schlick's Fresnel term lets the reflection grow towards the
+// horizon, and the water's own colour shows through where it is low.
+const WATER_REFLECTIVITY = 0.55;
+
+fn wave_normal(ground: vec2<f32>, time: f32) -> vec3<f32> {
+    let a = sin(ground.x * 3.1 + time * 1.3) + sin(ground.y * 2.3 - time * 1.1 + ground.x * 0.7);
+    let b = sin(ground.y * 3.7 + time * 1.7) + sin(ground.x * 2.9 + time * 0.9 - ground.y * 0.5);
+    return normalize(vec3<f32>(a * 0.035, b * 0.035, 1.0));
+}
+
+fn sky_color(dir: vec3<f32>, ground: vec3<f32>) -> vec3<f32> {
+    let height = clamp(dir.z, 0.0, 1.0);
+    // Light blue on the horizon, deeper overhead; the fog colour tints the horizon like the haze does.
+    let horizon = mix(lighting.fog.xyz, vec3<f32>(0.75, 0.85, 0.95), 0.6);
+    let zenith = vec3<f32>(0.25, 0.45, 0.85);
+    var sky = mix(horizon, zenith, pow(height, 0.6));
+    // The clouds, looked up at the layer they float in (like `cloud_light`).
+    if (lighting.clouds.y > 0.0 && dir.z > 0.05) {
+        let rise = max(lighting.clouds.w - ground.z, 0.0) / dir.z;
+        let at_cloud = ground.xy + dir.xy * rise - WIND * lighting.clouds.x * 0.6;
+        let coverage = textureSampleLevel(cloud_map, cloud_sampler, at_cloud / lighting.clouds.z, 0.0).r;
+        sky = mix(sky, vec3<f32>(0.95), coverage * 0.8);
+    }
+    // Daylight on the sky; at night it is dark and bluish.
+    let day = lighting.sun_color.xyz * 0.9 + vec3<f32>(0.25);
+    let night = vec3<f32>(0.04, 0.06, 0.12);
+    return mix(sky * min(day, vec3<f32>(1.2)), night, clamp(lighting.sun_faces.w, 0.0, 1.0));
+}
+
+fn water_reflection(color: vec3<f32>, in: VertexOut, sun_seen: f32) -> vec3<f32> {
+    let n = wave_normal(in.ground.xy, lighting.clouds.x);
+    // The view ray (1, 1, 0.82) mirrored about the tilted normal, in the view's frame, then turned back
+    // to the world's frame (the free camera turned the world by the yaw).
+    let incoming = -normalize(vec3<f32>(1.0, 1.0, 0.82));
+    let mirrored = reflect(incoming, n);
+    let c = camera.view.x;
+    let s = camera.view.y;
+    let dir = vec3<f32>(c * mirrored.x + s * mirrored.y, c * mirrored.y - s * mirrored.x, mirrored.z);
+    let facing = clamp(dot(n, -incoming), 0.0, 1.0);
+    let fresnel = 0.04 + 0.96 * pow(1.0 - facing, 5.0);
+    let amount = clamp(fresnel * 3.0 + 0.2, 0.0, 1.0) * WATER_REFLECTIVITY;
+    var reflected = sky_color(dir, in.ground);
+    // The mirrored scene over the sky, read at this pixel: the waves shift it a little. It only
+    // belongs to the water at the level it was flipped about.
+    let size = vec2<f32>(textureDimensions(mirror_image));
+    if (size.x > 1.5 && abs(in.ground.z - camera.mirror_level) < 0.05) {
+        let zoom = camera.scale.x * size.x * 0.5;
+        let at = clamp(vec2<i32>(in.clip.xy + n.xy * 40.0 * zoom), vec2<i32>(0), vec2<i32>(size) - vec2<i32>(1));
+        var image = textureLoad(mirror_image, at, 0);
+        if (lighting.flat_shades.w > 0.5) {
+            image = vec4<f32>(pow(max(image.rgb, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.2)), image.a);
+        }
+        // Seen through water: a little darker and bluer.
+        reflected = mix(reflected, image.rgb * vec3<f32>(0.85, 0.93, 1.0), image.a);
+    }
+    // The sun's glint, where the mirrored ray runs into it (not under a cloud or a shadow).
+    let sun = lighting.sun_dir.xyz;
+    let glint = pow(max(dot(dir, sun), 0.0), 220.0) * step(0.02, sun.z);
+    reflected = reflected + lighting.sun_color.xyz * glint * 4.0 * sun_seen;
+    return mix(color, reflected, amount);
+}
+
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     // Sampled for every fragment (a level sample may sit in non-uniform control flow) and only used
@@ -528,12 +751,26 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
             color = vec4<f32>(normal_map_color(in, texel, sun_seen), texel.a);
         }
     }
+    if (in.water > 0.5) {
+        color = vec4<f32>(water_reflection(color.rgb, in, sun_seen), color.a);
+    }
     let face = i32(in.face + 0.5);
     if (face == 3 || face == 7) {
         color.a = color.a * in.baked.a;  // markers, shadows, damage cracks and particles can fade
     }
     if (color.a <= peel.params.z) {
         discard;
+    }
+    // The mirror pass keeps what is above the water: blocks by their height (a side that reaches below
+    // the water is cut there), pictures and particles by the point they stand on.
+    if (camera.mirror_on > 0.5) {
+        var floor_z = camera.mirror_level + 0.01;
+        if (face == 4 || face == 7) {
+            floor_z = camera.mirror_level - 0.2;
+        }
+        if (in.ground.z < floor_z) {
+            discard;
+        }
     }
     // Peeling: drop what this or a nearer layer already shows. The margin keeps the surface
     // of the last layer from showing up again through rounding.

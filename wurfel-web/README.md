@@ -121,7 +121,7 @@ The contract with the game side (the full version is the comment at the top of `
 
 ## Caveland HUD
 
-`hud.js` draws the in-game HUD of Caveland worlds. Crafting is a popup like in the Java game: `C` opens it (and closes it again), `W`/`S` or the arrow keys choose a recipe (one is shown at a time, craftable ones first), `Enter`, `Space` or `N` craft it, `Esc`, `M`, a right click or a click beside the popup close it. The server owns the recipes: the `state` message lists them in a fixed order as `[name, can_craft, [ingredient, ...]]`, the client orders them for display and sends `craft` with the recipe's fixed index. `wurfelHud.update` takes `"recipes": [{index, name, can, ingredients: [{name, have}]}]` already in menu order. While the popup is open `window.wurfelDialogOpen` is true, so the game ignores gameplay keys.
+`hud.js` draws the in-game HUD of Caveland worlds. Crafting is a popup like in the Java game: `C` opens it (and closes it again), `W`/`S` or the arrow keys choose a recipe (one is shown at a time, craftable ones first), `Enter` or `Space` craft it, `Esc`, `C`, a right click or a click beside the popup close it. The server owns the recipes: the `state` message lists them in a fixed order as `[name, can_craft, [ingredient, ...]]`, the client orders them for display and sends `craft` with the recipe's fixed index. `wurfelHud.update` takes `"recipes": [{index, name, can, ingredients: [{name, have}]}]` already in menu order. While the popup is open `window.wurfelDialogOpen` is true, so the game ignores gameplay keys.
 
 ## Sprites
 
@@ -155,6 +155,6 @@ just enough of the rules to animate, with the same constants as the server's `Tu
   walked).
 
 Keys (`caveland_client::key_action`, `mouse_action`): left mouse button or `F` swing, hold to charge, release to
-fire a charged power attack; right mouse button or `M` hold to wind up a throw, release to throw, hold 0.6 s
-(`playerItemDropTime`) to drop the item instead; `G` use the item in hand (torch, explosives, kits), `R`
+fire a charged power attack; right mouse button or `T` hold to wind up a throw, release to throw, hold 0.6 s
+(`playerItemDropTime`) to drop the item instead; `E` use the item in hand (torch, explosives, kits), `R`
 interact, `X` drop, `Z`/`V` switch items.

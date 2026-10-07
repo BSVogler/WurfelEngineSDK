@@ -28,6 +28,7 @@ use crate::prediction::{classify, replay, Correction, InputHistory, VisualOffset
 use crate::minimap::{CameraView, ChunkInfo, ChunkState, EntityDot, Minimap, MinimapData, Mode};
 use crate::netstats::{format_report, NetStats};
 use crate::peel::gpu::{Peeling, DEPTH_FORMAT};
+use crate::reflection::gpu::Reflection;
 use crate::post::gpu::Post;
 use crate::sunshadow::gpu::SunShadowMap;
 use crate::post::PostSettings;
@@ -105,7 +106,8 @@ struct CameraUniform {
     center: [f32; 2],
     scale: [f32; 2],
     center_depth: f32,
-    _pad: [f32; 3],
+    /// `[water level, 1 while the mirror image is drawn, unused]`, see `reflection.rs`.
+    mirror: [f32; 3],
     /// The free camera, see `View::uniform`.
     view: [f32; 4],
 }
@@ -155,6 +157,16 @@ struct State {
     /// Arrows at the screen edge towards friends who are out of view.
     friend_markers: FriendMarkers,
     bind_group: wgpu::BindGroup,
+    /// The same for the pass that draws the mirror image (reflection.rs): its own camera uniform, and
+    /// a blank picture where `bind_group` has the mirror image.
+    mirror_bind_group: wgpu::BindGroup,
+    mirror_camera_buffer: wgpu::Buffer,
+    reflection: Reflection,
+    scene_format: wgpu::TextureFormat,
+    /// The height of the water surface that is mirrored, if there is water in view.
+    water_level: Option<f32>,
+    /// What `water_level` was found for: the terrain version and the chunk in the middle.
+    water_level_for: Option<(u64, (i32, i32))>,
     /// What `bind_group` is made of, to make it again when the shadow map changes size.
     bind_group_layout: wgpu::BindGroupLayout,
     cloud_view: wgpu::TextureView,
@@ -181,6 +193,13 @@ struct State {
     /// The sun's shadow map (see `sunshadow.rs`) and the menu's switch for it.
     sun_shadow: SunShadowMap,
     sun_shadows: bool,
+    /// How the blocks' shadows are made (the menu's `shadowMethod`) and the grid of the blocks for the voxel one.
+    shadow_method: crate::sunshadow::ShadowMethod,
+    voxels: crate::voxels::gpu::VoxelTexture,
+    /// The blocks may have changed since the grid was made.
+    voxels_stale: bool,
+    /// The tangent of the sun's angular radius for the voxel shadows (the menu's `shadowSoftness`).
+    shadow_softness: f32,
     /// The device can blend into a float texture; without it there is no linear light and no bloom.
     hdr: bool,
     backend: wgpu::Backend,
@@ -395,23 +414,41 @@ async fn run() -> Result<(), String> {
                 },
                 count: None,
             },
+            // The block world as a 3D grid of opacities, for the voxel shadows (voxels.rs).
+            wgpu::BindGroupLayoutEntry {
+                binding: 6,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D3,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 7,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+            // The mirror image of the scene, for the water (reflection.rs).
+            wgpu::BindGroupLayoutEntry {
+                binding: 8,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
         ],
     });
     let (cloud_view, cloud_sampler) = crate::clouds::gpu::create(&device, &queue);
     let atlas_layout = texture::bind_group_layout(&device);
-    let sun_shadow = SunShadowMap::new(&device, &camera_buffer, &atlas_layout, sun_shadow_quality_from_menu().size());
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("camera"),
-        layout: &bind_group_layout,
-        entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: camera_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: lighting_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&cloud_view) },
-            wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&cloud_sampler) },
-            wgpu::BindGroupEntry { binding: 4, resource: sun_shadow.uniform_buffer().as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(sun_shadow.view()) },
-        ],
-    });
+    let (shadow_method, shadow_quality) = (sun_shadow_method_from_menu(), sun_shadow_quality_from_menu());
+    let sun_shadow = SunShadowMap::new(&device, &camera_buffer, &atlas_layout, shadow_method.map_size(shadow_quality));
+    let voxels = crate::voxels::gpu::VoxelTexture::new(&device);
 
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("blocks"),
@@ -428,6 +465,23 @@ async fn run() -> Result<(), String> {
     let scene_format = if hdr_ok { crate::peel::gpu::HDR_FORMAT } else { config.format };
     web_sys::console::log_1(&format!("render: layers in {scene_format:?} (canvas {:?})", config.format).into());
     let peeling = Peeling::new(&device, &queue, scene_format, config.width, config.height);
+    let reflection = Reflection::new(&device, scene_format, config.width, config.height);
+    let mirror_camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("mirror camera"),
+        size: std::mem::size_of::<CameraUniform>() as u64,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let scene = SceneGroupParts {
+        layout: &bind_group_layout,
+        lighting: &lighting_buffer,
+        cloud_view: &cloud_view,
+        cloud_sampler: &cloud_sampler,
+        sun_shadow: &sun_shadow,
+        voxels: &voxels,
+    };
+    let bind_group = scene.make(&device, &camera_buffer, reflection.color());
+    let mirror_bind_group = scene.make(&device, &mirror_camera_buffer, reflection.blank());
     let post_settings = post_settings_from_menu().limited_by(hdr_ok);
     web_sys::console::log_1(&format!("render: {post_settings:?}").into());
     let post = Post::new(&device, scene_format, config.format, peeling.blended(), config.width, config.height);
@@ -479,6 +533,10 @@ async fn run() -> Result<(), String> {
         post_settings,
         sun_shadow,
         sun_shadows: sun_shadows_from_menu(),
+        shadow_method,
+        voxels,
+        voxels_stale: true,
+        shadow_softness: sun_shadow_softness_from_menu(),
         hdr: hdr_ok,
         camera: Camera { center: [(gx - gy) * 100.0, (gx + gy) * 50.0 - 4.0 * 122.0], zoom: 0.5 * dpr },
         dpr,
@@ -508,6 +566,12 @@ async fn run() -> Result<(), String> {
         name_tags: NameTags::new(&document),
         friend_markers: FriendMarkers::new(&document),
         bind_group,
+        mirror_bind_group,
+        mirror_camera_buffer,
+        reflection,
+        scene_format,
+        water_level: None,
+        water_level_for: None,
         bind_group_layout,
         cloud_view,
         cloud_sampler,
@@ -1598,23 +1662,75 @@ fn sun_shadow_quality_from_menu() -> crate::sunshadow::ShadowQuality {
     crate::sunshadow::ShadowQuality::from_name(name.as_deref().unwrap_or(""))
 }
 
-/// Make the shadow map the size the menu asks for. The scene's bind group holds the map, so it is made again.
+/// The menu's `shadowSoftness` (0 to 1) as the tangent of the sun's angular radius.
+fn sun_shadow_softness_from_menu() -> f32 {
+    let softness = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "shadowSoftness").as_f64()).unwrap_or(0.5);
+    if softness.is_finite() { softness.clamp(0.0, 1.0) as f32 * crate::sunshadow::MAX_SOFT } else { 0.0 }
+}
+
+/// The menu's `shadowMethod` (map or voxel).
+fn sun_shadow_method_from_menu() -> crate::sunshadow::ShadowMethod {
+    let name = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "shadowMethod").as_string());
+    crate::sunshadow::ShadowMethod::from_name(name.as_deref().unwrap_or(""))
+}
+
+/// Take the menu's shadow method and quality into the running game. The map's size follows both (the
+/// voxel method needs only a small one); the scene's bind group holds the map, so it is made again when it changes.
 fn apply_sun_shadow_quality(s: &mut State) {
-    if !s.sun_shadow.resize(&s.device, sun_shadow_quality_from_menu().size()) {
+    s.shadow_softness = sun_shadow_softness_from_menu();
+    let method = sun_shadow_method_from_menu();
+    if method != s.shadow_method {
+        s.shadow_method = method;
+        s.voxels_stale = true;
+    }
+    if !s.sun_shadow.resize(&s.device, method.map_size(sun_shadow_quality_from_menu())) {
         return;
     }
-    s.bind_group = s.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("camera"),
+    remake_scene_groups(s);
+}
+
+/// Everything the scene's group 0 is made of besides the camera and the mirror image.
+struct SceneGroupParts<'a> {
+    layout: &'a wgpu::BindGroupLayout,
+    lighting: &'a wgpu::Buffer,
+    cloud_view: &'a wgpu::TextureView,
+    cloud_sampler: &'a wgpu::Sampler,
+    sun_shadow: &'a SunShadowMap,
+    voxels: &'a crate::voxels::gpu::VoxelTexture,
+}
+
+impl SceneGroupParts<'_> {
+    fn make(&self, device: &wgpu::Device, camera: &wgpu::Buffer, mirror_image: &wgpu::TextureView) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("camera"),
+            layout: self.layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: camera.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: self.lighting.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(self.cloud_view) },
+                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(self.cloud_sampler) },
+                wgpu::BindGroupEntry { binding: 4, resource: self.sun_shadow.uniform_buffer().as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(self.sun_shadow.view()) },
+                wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(self.voxels.view()) },
+                wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::Sampler(self.voxels.sampler()) },
+                wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(mirror_image) },
+            ],
+        })
+    }
+}
+
+/// Make the scene's group 0 (both of them) again: the shadow map or the mirror image is a new texture.
+fn remake_scene_groups(s: &mut State) {
+    let parts = SceneGroupParts {
         layout: &s.bind_group_layout,
-        entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: s.camera_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: s.lighting_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&s.cloud_view) },
-            wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(&s.cloud_sampler) },
-            wgpu::BindGroupEntry { binding: 4, resource: s.sun_shadow.uniform_buffer().as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(s.sun_shadow.view()) },
-        ],
-    });
+        lighting: &s.lighting_buffer,
+        cloud_view: &s.cloud_view,
+        cloud_sampler: &s.cloud_sampler,
+        sun_shadow: &s.sun_shadow,
+        voxels: &s.voxels,
+    };
+    s.bind_group = parts.make(&s.device, &s.camera_buffer, s.reflection.color());
+    s.mirror_bind_group = parts.make(&s.device, &s.mirror_camera_buffer, s.reflection.blank());
 }
 
 /// The sun's shadow map for this frame: centred on what the camera looks at, from the sun, as strong as
@@ -1626,7 +1742,11 @@ fn sun_shadow_uniform(s: &State) -> crate::sunshadow::SunShadowUniform {
     let [cx, cy] = s.camera.center;
     let ground = Vec3::new((cx / 100.0 + cy / 50.0) / 2.0, (cy / 50.0 - cx / 100.0) / 2.0, 0.0);
     let focus = camera_focus(s).unwrap_or(ground);
-    crate::sunshadow::uniform(focus, state.sun_direction, strength, s.sun_shadow.size())
+    let uniform = crate::sunshadow::uniform(focus, state.sun_direction, strength, s.sun_shadow.size(), s.shadow_method.radius());
+    match s.shadow_method {
+        crate::sunshadow::ShadowMethod::Map => uniform,
+        crate::sunshadow::ShadowMethod::Voxel => uniform.with_voxels(s.voxels.origin(), s.shadow_softness),
+    }
 }
 
 /// Events from the HTML menu (see the contract at the top of `menu.js`).
@@ -1886,6 +2006,8 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         s.surface.configure(&s.device, &s.config);
         let s = &mut *s;
         s.peeling.resize(&s.device, s.config.width, s.config.height);
+        s.reflection = Reflection::new(&s.device, s.scene_format, s.config.width, s.config.height);
+        remake_scene_groups(s);
         s.post.resize(&s.device, s.peeling.blended(), s.config.width, s.config.height);
     });
 
@@ -2386,6 +2508,12 @@ fn frame(s: &mut State, now_ms: f64) {
         let vertices = s.render.vertices();
         upload_world_mesh(&s.device, &s.queue, &mut s.world_buffer, &vertices);
         s.world_vertices = vertices.len() as u32;
+        s.voxels_stale = true;
+    }
+    // The grid of the blocks for the voxel shadows follows the render window and the edits.
+    if s.voxels_stale && s.shadow_method == crate::sunshadow::ShadowMethod::Voxel {
+        s.voxels_stale = false;
+        s.voxels.set(&s.queue, crate::voxels::VoxelGrid::build(&s.render));
     }
 
     // The hover marker and the cursor info belong to the editor.
@@ -2748,16 +2876,50 @@ fn update_info(s: &mut State) {
     }
 }
 
+/// Draw everything the scene shows, with the pipeline and the groups 0 and 1 set up the way a pass needs.
+fn draw_scene(s: &State, pass: &mut wgpu::RenderPass<'_>, group: &wgpu::BindGroup) {
+    pass.set_pipeline(&s.pipeline);
+    pass.set_bind_group(0, group, &[]);
+    pass.set_bind_group(1, &s.atlas_bind_group, &[]);
+    if s.world_vertices > 0 {
+        pass.set_vertex_buffer(0, s.world_buffer.slice(..));
+        pass.draw(0..s.world_vertices, 0..1);
+    }
+    if s.dynamic_vertices > 0 {
+        pass.set_vertex_buffer(0, s.dynamic_buffer.slice(..));
+        pass.draw(0..s.dynamic_vertices, 0..1);
+    }
+    if s.grass_vertices > 0 {
+        pass.set_vertex_buffer(0, s.grass_buffer.slice(..));
+        pass.draw(0..s.grass_vertices, 0..1);
+    }
+    if let (Some(placed), Some(loaded)) = (&s.model_placed, &s.model_loaded) {
+        pass.set_vertex_buffer(0, placed.buffer.slice(..));
+        for (picture, range) in &placed.draws {
+            let group = picture.and_then(|i| loaded.pictures.get(i)).unwrap_or(&s.atlas_bind_group);
+            pass.set_bind_group(1, group, &[]);
+            pass.draw(range.clone(), 0..1);
+        }
+    }
+}
+
 fn render(s: &mut State) {
+    let key = (s.terrain_version, s.view_chunk);
+    if s.water_level_for != Some(key) {
+        s.water_level_for = Some(key);
+        s.water_level = crate::reflection::level(&s.world, s.view_chunk);
+    }
     let uniform = CameraUniform {
         center: s.camera.center,
         scale: [2.0 * s.camera.zoom / s.config.width as f32, 2.0 * s.camera.zoom / s.config.height as f32],
         // At ground level the screen row is (gx + gy) * 50.
         center_depth: s.camera.center[1] / 50.0,
-        _pad: [0.0; 3],
+        mirror: [s.water_level.unwrap_or(0.0), 0.0, 0.0],
         view: s.view.uniform(),
     };
     s.queue.write_buffer(&s.camera_buffer, 0, bytemuck::bytes_of(&uniform));
+    let mirrored = CameraUniform { mirror: [uniform.mirror[0], 1.0, 0.0], ..uniform };
+    s.queue.write_buffer(&s.mirror_camera_buffer, 0, bytemuck::bytes_of(&mirrored));
     s.queue.write_buffer(&s.lighting_buffer, 0, bytemuck::bytes_of(&s.lighting.uniform()));
 
     use wgpu::CurrentSurfaceTexture as Frame;
@@ -2780,41 +2942,23 @@ fn render(s: &mut State) {
         background = wgpu::Color { r: background.r.powf(2.2), g: background.g.powf(2.2), b: background.b.powf(2.2), a: 1.0 };
     }
     let sun_uniform = sun_shadow_uniform(s);
-    s.sun_shadow.render(&mut encoder, &s.queue, &sun_uniform, &s.atlas_bind_group, |pass| {
+    s.sun_shadow.render(&mut encoder, &s.queue, &sun_uniform, &s.atlas_bind_group, |pass, world_group, dynamic_group| {
         if s.world_vertices > 0 {
+            pass.set_bind_group(0, world_group, &[]);
             pass.set_vertex_buffer(0, s.world_buffer.slice(..));
             pass.draw(0..s.world_vertices, 0..1);
         }
         if s.dynamic_vertices > 0 {
+            pass.set_bind_group(0, dynamic_group, &[]);
             pass.set_vertex_buffer(0, s.dynamic_buffer.slice(..));
             pass.draw(0..s.dynamic_vertices, 0..1);
         }
     });
-    s.peeling.render(&mut encoder, background, |pass| {
-        pass.set_pipeline(&s.pipeline);
-        pass.set_bind_group(0, &s.bind_group, &[]);
-        pass.set_bind_group(1, &s.atlas_bind_group, &[]);
-        if s.world_vertices > 0 {
-            pass.set_vertex_buffer(0, s.world_buffer.slice(..));
-            pass.draw(0..s.world_vertices, 0..1);
-        }
-        if s.dynamic_vertices > 0 {
-            pass.set_vertex_buffer(0, s.dynamic_buffer.slice(..));
-            pass.draw(0..s.dynamic_vertices, 0..1);
-        }
-        if s.grass_vertices > 0 {
-            pass.set_vertex_buffer(0, s.grass_buffer.slice(..));
-            pass.draw(0..s.grass_vertices, 0..1);
-        }
-        if let (Some(placed), Some(loaded)) = (&s.model_placed, &s.model_loaded) {
-            pass.set_vertex_buffer(0, placed.buffer.slice(..));
-            for (picture, range) in &placed.draws {
-                let group = picture.and_then(|i| loaded.pictures.get(i)).unwrap_or(&s.atlas_bind_group);
-                pass.set_bind_group(1, group, &[]);
-                pass.draw(range.clone(), 0..1);
-            }
-        }
-    });
+    if s.water_level.is_some() {
+        let mut pass = s.reflection.begin(&mut encoder, s.peeling.first_peel_group());
+        draw_scene(s, &mut pass, &s.mirror_bind_group);
+    }
+    s.peeling.render(&mut encoder, background, |pass| draw_scene(s, pass, &s.bind_group));
     s.post.render(&mut encoder, &s.queue, &view, &s.post_settings);
     s.queue.submit(Some(encoder.finish()));
     s.queue.present(output);

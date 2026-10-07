@@ -24,6 +24,8 @@ struct SunShadow {
     dir: vec4<f32>,
     center: vec4<f32>,
     params: vec4<f32>,
+    grid_origin: vec4<f32>,
+    grid_dims: vec4<f32>,  // w: 1 = only standing sprites cast (the blocks are in the voxel grid)
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;
@@ -79,7 +81,7 @@ fn vs_shadow(v: VertexIn) -> VertexOut {
     var out: VertexOut;
     out.uv = v.uv;
     out.layer = v.layer;
-    if (face == 3 || face == 7) {
+    if (face == 3 || face == 7 || (sun.grid_dims.w > 0.5 && face != 4)) {
         out.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);  // does not cast: outside the map
         return out;
     }

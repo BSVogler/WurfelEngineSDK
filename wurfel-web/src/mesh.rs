@@ -68,6 +68,9 @@ pub const FACE_BACK_Y: f32 = 5.0;
 pub const FACE_BACK_X: f32 = 6.0;
 /// A flat coloured square facing the camera, not lit (particles): positioned like [`FACE_SPRITE`].
 pub const FACE_BILLBOARD: f32 = 7.0;
+/// Added to the face id of the top of a water block: the shader rounds the id to the nearest whole
+/// number, so this fraction only marks the surface for the reflection (`shader.wgsl`, `water_flag`).
+pub const WATER_SURFACE: f32 = 0.25;
 
 /// Brightness per face of the old flat look, used when lighting is switched off (left, top, right).
 pub const FLAT_SHADES: [f32; 3] = [0.78, 1.0, 0.58];
@@ -214,7 +217,13 @@ pub fn build_chunk(chunk: &RenderChunk, ctx: &MeshContext) -> Vec<Vertex> {
                     // The Java cheap shadow under overhangs (`top_light`) stays part of the colour.
                     let shaded = color.map(|c| c * cell.top_light);
                     let corners = [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]];
+                    let first = vertices.len();
                     lit_quad(&mut vertices, ctx, at, Face::Top, shaded, corners, sprite_of(Face::Top));
+                    if cell.block.id() == id::WATER {
+                        for vertex in &mut vertices[first..] {
+                            vertex.shade[0] += WATER_SURFACE;
+                        }
+                    }
                 }
                 if cell.clipping & CLIP_LEFT == 0 {
                     let corners = [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]];

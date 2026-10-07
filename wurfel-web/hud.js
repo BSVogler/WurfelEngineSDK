@@ -17,7 +17,7 @@
 //   wurfelHud.active           true while the HUD is shown (a Caveland map)
 //
 // C opens the crafting popup (a list of every recipe, craftable ones first): click one, or W/S or the
-// arrows choose and Enter, Space or N craft it (when the pack has the ingredients) and close the popup; Esc, C, M, a right click or a click beside it close it. C
+// arrows choose and Enter or Space craft it (when the pack has the ingredients) and close the popup; Esc, C, a right click or a click beside it close it. C
 // inside a server dialog does nothing. The popup closes when a server dialog arrives, the world
 // changes (show) or the player dies.
 //
@@ -29,7 +29,7 @@
 
   const HINTS = [
     ["WASD", "walk"], ["Space", "jump / jetpack"], ["F / click", "swing, hold to charge"],
-    ["G", "use item"], ["M / right click", "hold, release: throw (long hold: drop)"], ["X", "drop"],
+    ["E", "use item"], ["T / right click", "hold, release: throw (long hold: drop)"], ["X", "drop"],
     ["Z / V", "switch item"], ["Wheel", "zoom"], ["1 / 2", "turn the map"], ["C", "crafting"], ["R", "talk / build / ride (nearest)"], ["Tab", "players"],
   ];
 
@@ -366,8 +366,8 @@
     if (craft) {
       if (key === "ArrowUp" || key === "w" || key === "W") moveCraft(-1);
       else if (key === "ArrowDown" || key === "s" || key === "S") moveCraft(1);
-      else if (key === "Enter" || key === " " || key === "n" || key === "N") confirmCraft();
-      else if (key === "Escape" || key === "c" || key === "C" || key === "m" || key === "M") closeCraft();
+      else if (key === "Enter" || key === " ") confirmCraft();
+      else if (key === "Escape" || key === "c" || key === "C") closeCraft();
       e.preventDefault();
       e.stopImmediatePropagation();
     } else if ((key === "c" || key === "C") && api.active && !window.wurfelMenuOpen && !window.wurfelConsoleOpen) {

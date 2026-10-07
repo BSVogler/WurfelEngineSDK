@@ -26,11 +26,13 @@ mod post;
 mod preview;
 mod prediction;
 mod reconnect;
+mod reflection;
 mod shake;
 mod sunshadow;
 mod render_storage;
 mod texture;
 mod view;
+mod voxels;
 
 #[cfg(target_arch = "wasm32")]
 mod web;

@@ -20,7 +20,9 @@
  *     fpsLimit         integer 0..1000: frame rate cap in FPS, 0 = unlimited (default 60)
  *     ambientOcclusion bool     darken corners where blocks meet (applies at once)
  *     sunShadows       bool     the sun casts shadows of blocks and sprites (default true, applies at once)
- *     shadowQuality    'low' | 'medium' | 'high'   sharpness of the sun shadows (default medium, applies at once)
+ *     shadowMethod     'map' | 'voxel'   how blocks cast sun shadows: one shadow map, or exact edges from a grid of the blocks (default map, applies at once)
+ *     shadowSoftness   0..1  how much the edges of voxel shadows blur with the distance from what casts them (default 0.5, applies at once)
+ *     shadowQuality    'low' | 'medium' | 'high'   size of the shadow map, for the 'map' method (default medium, applies at once)
  *     cloudShadows     bool     clouds drift overhead and shade the ground (default true, applies at once)
  *     cloudSpeed       0..4     how fast the cloud shadows drift, 1 = normal, 0 = still (default 1, applies at once)
  *     linearLight      bool     light and blend in linear light, encode at the end (default true)
@@ -131,7 +133,7 @@
     jump: [' ', ''], players: ['tab', ''],
   };
   const RANGES = {
-    masterVolume: [0, 1], musicVolume: [0, 1], effectsVolume: [0, 1], zoom: [0.2, 2], bloom: [0, 0.5], cloudSpeed: [0, 4],
+    masterVolume: [0, 1], musicVolume: [0, 1], effectsVolume: [0, 1], zoom: [0.2, 2], shadowSoftness: [0, 1], bloom: [0, 0.5], cloudSpeed: [0, 4],
   };
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -143,7 +145,7 @@
       masterVolume: 0.8, musicVolume: 0.6, effectsVolume: 0.8,
       zoom: 0.5,
       generator: 'island', seed: Math.floor(Math.random() * 1000000),
-      fpsLimit: 60, ambientOcclusion: false, cloudShadows: true, cloudSpeed: 1, sunShadows: true, shadowQuality: 'medium', linearLight: true, bloom: 0.1, fxaa: true, grass: true, grassDensity: 10, showFps: false, showHelp: true,
+      fpsLimit: 60, ambientOcclusion: false, cloudShadows: true, cloudSpeed: 1, sunShadows: true, shadowMethod: 'map', shadowSoftness: 0.5, shadowQuality: 'medium', linearLight: true, bloom: 0.1, fxaa: true, grass: true, grassDensity: 10, showFps: false, showHelp: true,
       keys: clone(DEFAULT_KEYS),
     };
   }
@@ -157,6 +159,7 @@
     if (Array.isArray(raw.servers)) out.servers = cleanServers(raw.servers);
     if (typeof raw.serverUrl === 'string') out.serverUrl = raw.serverUrl.trim().slice(0, 200);
     if (['low', 'medium', 'high'].includes(raw.shadowQuality)) out.shadowQuality = raw.shadowQuality;
+    if (['map', 'voxel'].includes(raw.shadowMethod)) out.shadowMethod = raw.shadowMethod;
     if (typeof raw.generator === 'string' && /^[\w-]{1,32}$/.test(raw.generator)) out.generator = raw.generator;
     if (Number.isSafeInteger(raw.seed) && raw.seed >= 0) out.seed = raw.seed;
     for (const [key, [lo, hi]] of Object.entries(RANGES)) {

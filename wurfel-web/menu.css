@@ -57,6 +57,7 @@ canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
   pointer-events: none; white-space: pre;
 }
 html.menu-open #info { display: none; }
+#info:empty { display: none; }
 
 /* HUD */
 .hud { position: fixed; z-index: 6; font: 12px/1 var(--mono); color: #e8edf6; text-shadow: 0 1px 2px #000; }
@@ -102,6 +103,9 @@ html.menu-open #info { display: none; }
   color: var(--text);
 }
 .menu[hidden] { display: none; }
+/* The options show the game as it is: no blur and no dimming, so a graphics setting can be judged
+   on the picture behind the panel. */
+.menu[data-view="options"] { backdrop-filter: none; background: transparent; }
 .menu > .panel:first-child { margin-top: auto; }
 .menu > .player-panel { margin-bottom: auto; }
 @media (min-width: 900px) {
@@ -204,7 +208,13 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent);
 .map-desc.fallback { font-style: italic; }
 .map-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .item.mini { padding: 7px 12px; min-height: 40px; font-size: 0.85rem; justify-content: center; }
-.note.blocked { color: var(--danger); }
+.note.blocked { color: var(--muted); }
+.loading { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--text); }
+.loading[hidden] { display: none; }
+.loading-box { text-align: center; }
+.loading-box p { margin: 16px 0 0; font-size: 1.1rem; }
+.spinner { width: 36px; height: 36px; margin: 0 auto; border: 4px solid var(--item-hover); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 select {
   box-sizing: border-box; width: 100%; padding: 11px 12px; font: inherit; color: inherit; cursor: pointer;
   background: var(--field); border: 1px solid var(--panel-border); border-radius: 10px;
@@ -259,7 +269,7 @@ kbd {
 @media (max-width: 520px) {
   .panel { padding: 16px 14px 10px; }
   .brand h1 { font-size: 1.35rem; }
-  .logo { width: 44px; height: 44px; }
+  .logo { width: 38px; height: 44px; }
   .row { grid-template-columns: 1fr 3.2em; }
   .row > input[type="range"] { grid-column: 1 / -1; grid-row: 2; }
   .row > span { grid-column: 1; }

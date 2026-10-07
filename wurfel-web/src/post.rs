@@ -8,8 +8,8 @@
 //!
 //! With `linear` the scene shader writes linear light (`shader.wgsl`, the `flat_shades.w` flag), so
 //! the layers blend the way light does and the bloom adds light, and the tone map encodes it to the
-//! display at the end. The settings come from the page address (see [`PostSettings::from_query`]),
-//! like `?normals=0`, so the old look is one parameter away: `?classic`.
+//! display at the end. The settings come from the graphics section of the menu (see
+//! [`PostSettings::from_menu`]) and apply at once, in the running game.
 //!
 //! The shaders are plain WGSL, the same on every backend; this file builds the passes (browser only)
 //! and holds what a native test can check (the settings and that the shaders are valid).
@@ -32,44 +32,24 @@ pub struct PostSettings {
     pub bloom: f32,
     /// Smooth the edges of the finished picture.
     pub fxaa: bool,
-    /// The ACES filmic curve instead of the soft knee that keeps the colours below 0.8 as they are.
-    pub filmic: bool,
 }
 
 impl Default for PostSettings {
     fn default() -> Self {
-        PostSettings { linear: true, bloom: DEFAULT_BLOOM, fxaa: true, filmic: false }
+        PostSettings { linear: true, bloom: DEFAULT_BLOOM, fxaa: true }
     }
 }
 
 impl PostSettings {
-    /// The old look: display colours, a hard cut at white and no extra passes (but the tone map).
-    pub const CLASSIC: PostSettings = PostSettings { linear: false, bloom: 0.0, fxaa: false, filmic: false };
-
-    /// Read the settings from a page address query (`?bloom=0.2&fxaa=0`): `classic` switches
-    /// everything off, `linear=0`, `bloom=<0..2>` (0 is off), `fxaa=0` and `tonemap=filmic` change one thing.
-    /// What is not understood is ignored.
-    pub fn from_query(search: &str) -> Self {
-        let mut settings = PostSettings::default();
-        for part in search.trim_start_matches('?').split('&') {
-            let (key, value) = part.split_once('=').unwrap_or((part, ""));
-            let off = matches!(value, "0" | "off" | "false");
-            match key {
-                "classic" => settings = PostSettings::CLASSIC,
-                "linear" => settings.linear = !off,
-                "fxaa" => settings.fxaa = !off,
-                "bloom" => {
-                    settings.bloom = if off {
-                        0.0
-                    } else {
-                        value.parse::<f32>().ok().filter(|v| v.is_finite()).unwrap_or(DEFAULT_BLOOM).clamp(0.0, MAX_BLOOM)
-                    }
-                }
-                "tonemap" => settings.filmic = value == "filmic" || value == "aces",
-                _ => {}
-            }
+    /// The settings from the menu (`wurfelSettings`, see `menu.js`); what is missing keeps its default.
+    /// `bloom` is clamped to 0..=[`MAX_BLOOM`] and a value that is not a number counts as missing.
+    pub fn from_menu(linear: Option<bool>, bloom: Option<f64>, fxaa: Option<bool>) -> Self {
+        let d = PostSettings::default();
+        PostSettings {
+            linear: linear.unwrap_or(d.linear),
+            bloom: bloom.filter(|v| v.is_finite()).map_or(d.bloom, |v| (v as f32).clamp(0.0, MAX_BLOOM)),
+            fxaa: fxaa.unwrap_or(d.fxaa),
         }
-        settings
     }
 
     /// Without a 16 bit float target the layers are clipped at 1 (see `peel.rs`): linear light would
@@ -83,7 +63,7 @@ impl PostSettings {
     }
 
     pub fn uniform(&self) -> PostUniform {
-        PostUniform { params: [self.bloom, if self.linear { 1.0 } else { 0.0 }, if self.filmic { 1.0 } else { 0.0 }, 0.0] }
+        PostUniform { params: [self.bloom, if self.linear { 1.0 } else { 0.0 }, 0.0, 0.0] }
     }
 }
 
@@ -91,7 +71,7 @@ impl PostSettings {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct PostUniform {
-    /// x: bloom intensity, y: 1 for linear light, z: 1 for the filmic curve, w: unused.
+    /// x: bloom intensity, y: 1 for linear light, zw: unused.
     pub params: [f32; 4],
 }
 
@@ -476,32 +456,28 @@ mod tests {
     }
 
     #[test]
-    fn the_new_look_is_the_default_and_classic_turns_everything_off() {
-        let default = PostSettings::from_query("");
-        assert!(default.linear && default.fxaa && default.bloom > 0.0 && !default.filmic);
-        assert_eq!(PostSettings::from_query("?classic"), PostSettings::CLASSIC);
-        assert_eq!(PostSettings::from_query("?x=1&classic"), PostSettings::CLASSIC);
+    fn the_new_look_is_the_default() {
+        let d = PostSettings::default();
+        assert!(d.linear && d.fxaa && d.bloom > 0.0 && true);
+        assert_eq!(PostSettings::from_menu(None, None, None), d);
     }
 
     #[test]
-    fn each_parameter_changes_one_thing() {
+    fn each_menu_value_changes_one_thing() {
         let d = PostSettings::default();
-        assert_eq!(PostSettings::from_query("?fxaa=0"), PostSettings { fxaa: false, ..d });
-        assert_eq!(PostSettings::from_query("?linear=0"), PostSettings { linear: false, ..d });
-        assert_eq!(PostSettings::from_query("?bloom=0"), PostSettings { bloom: 0.0, ..d });
-        assert_eq!(PostSettings::from_query("?bloom=0.5"), PostSettings { bloom: 0.5, ..d });
-        assert_eq!(PostSettings::from_query("?tonemap=filmic"), PostSettings { filmic: true, ..d });
-        assert_eq!(PostSettings::from_query("?tonemap=knee"), d);
+        assert_eq!(PostSettings::from_menu(None, None, Some(false)), PostSettings { fxaa: false, ..d });
+        assert_eq!(PostSettings::from_menu(Some(false), None, None), PostSettings { linear: false, ..d });
+        assert_eq!(PostSettings::from_menu(None, Some(0.0), None), PostSettings { bloom: 0.0, ..d });
+        assert_eq!(PostSettings::from_menu(None, Some(0.25), None), PostSettings { bloom: 0.25, ..d });
     }
 
     #[test]
-    fn nonsense_in_the_address_is_ignored_or_clamped() {
+    fn nonsense_from_the_menu_is_ignored_or_clamped() {
         let d = PostSettings::default();
-        assert_eq!(PostSettings::from_query("?bloom=lots"), d);
-        assert_eq!(PostSettings::from_query("?bloom=NaN"), d);
-        assert_eq!(PostSettings::from_query("?bloom=99").bloom, MAX_BLOOM);
-        assert_eq!(PostSettings::from_query("?bloom=-3").bloom, 0.0);
-        assert_eq!(PostSettings::from_query("?&&=&unknown"), d);
+        assert_eq!(PostSettings::from_menu(None, Some(f64::NAN), None), d);
+        assert_eq!(PostSettings::from_menu(None, Some(f64::INFINITY), None), d);
+        assert_eq!(PostSettings::from_menu(None, Some(99.0), None).bloom, MAX_BLOOM);
+        assert_eq!(PostSettings::from_menu(None, Some(-3.0), None).bloom, 0.0);
     }
 
     #[test]
@@ -515,8 +491,8 @@ mod tests {
 
     #[test]
     fn the_uniform_carries_the_settings() {
-        let u = PostSettings { linear: true, bloom: 0.25, fxaa: true, filmic: true }.uniform();
-        assert_eq!(u.params, [0.25, 1.0, 1.0, 0.0]);
-        assert_eq!(PostSettings::CLASSIC.uniform().params, [0.0; 4]);
+        let u = PostSettings { linear: true, bloom: 0.25, fxaa: true }.uniform();
+        assert_eq!(u.params, [0.25, 1.0, 0.0, 0.0]);
+        assert_eq!(PostSettings { linear: false, bloom: 0.0, fxaa: false }.uniform().params, [0.0; 4]);
     }
 }
