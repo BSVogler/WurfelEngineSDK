@@ -63,6 +63,8 @@ pub trait Component: Send {
 pub trait Controllable {
     /// `speed` in blocks per second. Directions are screen directions: `up` is away from the viewer.
     fn walk(&mut self, up: bool, down: bool, left: bool, right: bool, speed: f32);
+    /// Walk in any screen direction (`dir` is normalised here; zero does nothing).
+    fn walk_toward(&mut self, dir: Vec2, speed: f32);
 }
 
 /// Screen-aligned direction (x right, y towards the viewer: the Java engine's frame) to the
@@ -290,13 +292,18 @@ impl Entity {
 
 impl Controllable for Entity {
     fn walk(&mut self, up: bool, down: bool, left: bool, right: bool, speed: f32) {
-        let Some(body) = self.body.as_mut() else { return };
         // Left wins over right and up over down, like the original.
         let screen = Vec2::new(
             if left { -1.0 } else if right { 1.0 } else { 0.0 },
             if up { -1.0 } else if down { 1.0 } else { 0.0 },
         )
         .normalize_or_zero();
+        self.walk_toward(screen, speed);
+    }
+
+    fn walk_toward(&mut self, screen: Vec2, speed: f32) {
+        let Some(body) = self.body.as_mut() else { return };
+        let screen = screen.normalize_or_zero();
         if screen == Vec2::ZERO {
             return; // no keys: friction brings the entity to a stop
         }

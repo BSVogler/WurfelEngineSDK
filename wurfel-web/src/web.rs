@@ -344,7 +344,16 @@ async fn run() -> Result<(), String> {
     });
     let atlas_layout = texture::bind_group_layout(&device);
     let atlas_bind_group = texture::placeholder(&device, &queue, &atlas_layout);
-    let peeling = Peeling::new(&device, &queue, config.format, config.width, config.height);
+    // The layers are kept in 16 bit floats so that light above 1 reaches the tone map unclipped. Where
+    // the device can not render and blend into that format the layers use the canvas format.
+    let hdr_ok = {
+        let features = adapter.get_texture_format_features(crate::peel::gpu::HDR_FORMAT);
+        features.allowed_usages.contains(wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING)
+            && features.flags.contains(wgpu::TextureFormatFeatureFlags::BLENDABLE)
+    };
+    let scene_format = if hdr_ok { crate::peel::gpu::HDR_FORMAT } else { config.format };
+    web_sys::console::log_1(&format!("render: layers in {scene_format:?} (canvas {:?})", config.format).into());
+    let peeling = Peeling::new(&device, &queue, config.format, scene_format, config.width, config.height);
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("blocks"),
         bind_group_layouts: &[Some(&bind_group_layout), Some(&atlas_layout), Some(peeling.peel_layout())],
@@ -363,7 +372,7 @@ async fn run() -> Result<(), String> {
             module: &shader,
             entry_point: Some("fs_main"),
             compilation_options: Default::default(),
-            targets: &[Some(config.format.into())],
+            targets: &[Some(peeling.color_format().into())],
         }),
         primitive: wgpu::PrimitiveState::default(),
         depth_stencil: Some(wgpu::DepthStencilState {

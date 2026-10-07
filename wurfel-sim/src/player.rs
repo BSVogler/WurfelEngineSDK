@@ -3,7 +3,7 @@
 //! Values come from Caveland's `Ejira` and the engine's CVars: 1.4 blocks tall, heavy (mass 60),
 //! `playerfriction` 0.03, `playerWalkingSpeed` 4.0 and a jump speed of 4.7 blocks per second.
 
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 
 use crate::entity::physics::ground_height;
@@ -32,6 +32,26 @@ pub struct PlayerInput {
     pub left: bool,
     pub right: bool,
     pub jump: bool,
+    /// Free camera: the exact walking direction on the screen (see [`heading_units`]), which
+    /// replaces the eight directions of the keys while any of them is held. The keys stay set to the
+    /// nearest of the eight, for everything that only knows keys (animation, Caveland).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heading: Option<u16>,
+}
+
+/// A full turn in the units of [`PlayerInput::heading`] (0.35 degrees each).
+pub const HEADING_STEPS: u16 = 1024;
+
+/// A screen direction (x right, y towards the viewer) as a heading.
+pub fn heading_units(screen: Vec2) -> u16 {
+    let turns = screen.y.atan2(screen.x) / std::f32::consts::TAU;
+    ((turns * HEADING_STEPS as f32).round() as i32).rem_euclid(HEADING_STEPS as i32) as u16
+}
+
+/// The screen direction of a heading.
+pub fn heading_direction(units: u16) -> Vec2 {
+    let angle = (units % HEADING_STEPS) as f32 / HEADING_STEPS as f32 * std::f32::consts::TAU;
+    Vec2::new(angle.cos(), angle.sin())
 }
 
 /// A new player entity standing at `position` (feet).
@@ -47,7 +67,11 @@ pub fn new_player(position: Vec3) -> Entity {
 
 /// Steer the entity for the next physics step.
 pub fn apply_input(entity: &mut Entity, input: PlayerInput, world: &World) {
-    entity.walk(input.up, input.down, input.left, input.right, WALKING_SPEED);
+    let any_key = input.up || input.down || input.left || input.right;
+    match input.heading {
+        Some(units) if any_key => entity.walk_toward(heading_direction(units), WALKING_SPEED),
+        _ => entity.walk(input.up, input.down, input.left, input.right, WALKING_SPEED),
+    }
     if input.jump {
         entity.jump(world);
     }
@@ -75,6 +99,22 @@ mod tests {
 
     fn world() -> World {
         World::new(IslandGenerator::new(1))
+    }
+
+    #[test]
+    fn a_heading_survives_the_round_trip_and_replaces_the_key_directions() {
+        for units in [0, 1, 100, 256, 777, HEADING_STEPS - 1] {
+            assert_eq!(heading_units(heading_direction(units)), units);
+        }
+        let mut e = new_player(Vec3::ZERO);
+        let heading = Some(heading_units(Vec2::new(1.0, 0.2)));
+        apply_input(&mut e, PlayerInput { right: true, heading, ..Default::default() }, &world());
+        let screen = crate::entity::iso_to_screen(e.body.as_ref().unwrap().hor_movement()).normalize();
+        assert!((screen - Vec2::new(1.0, 0.2).normalize()).length() < 0.01, "{screen:?}");
+        // Without a key the heading does nothing.
+        let mut idle = new_player(Vec3::ZERO);
+        apply_input(&mut idle, PlayerInput { heading, ..Default::default() }, &world());
+        assert_eq!(idle.body.as_ref().unwrap().speed_hor(), 0.0);
     }
 
     #[test]

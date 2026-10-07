@@ -767,3 +767,57 @@ fn the_start_matches_the_running_day_cycle() {
     let diff = (placed.moon().unwrap().azimuth() - run.moon().unwrap().azimuth() + 540.0).rem_euclid(360.0) - 180.0;
     assert!(diff.abs() < 3.0, "{diff}");
 }
+
+// ---------------------------------------------------------------------------------------- tone map
+
+#[test]
+fn the_tone_map_leaves_ordinary_colours_alone() {
+    for c in [Vec3::ZERO, Vec3::new(0.2, 0.5, 0.1), Vec3::splat(TONE_KNEE), Vec3::new(0.8, 0.3, 0.0)] {
+        assert_eq!(tone_map(c), c);
+    }
+    assert_eq!(tone_map(Vec3::new(-1.0, 0.5, 0.2)), Vec3::new(0.0, 0.5, 0.2), "negatives are floored");
+}
+
+#[test]
+fn the_tone_map_never_exceeds_one_and_keeps_getting_brighter() {
+    let mut last = 0.0;
+    for i in 0..=200 {
+        let v = i as f32 * 0.05; // 0 to 10
+        let out = tone_map(Vec3::splat(v));
+        assert!(out.max_element() <= 1.0, "{v} -> {out:?}");
+        assert!(out.x >= last - 1e-6, "dimmer at {v}");
+        last = out.x;
+    }
+    assert!(last > 0.99, "a very bright colour gets close to white: {last}");
+}
+
+#[test]
+fn the_tone_map_is_continuous_at_the_knee() {
+    let below = tone_map(Vec3::splat(TONE_KNEE - 1e-4));
+    let above = tone_map(Vec3::splat(TONE_KNEE + 1e-4));
+    assert!((above - below).length() < 1e-3, "{below:?} {above:?}");
+    // And it does not slow down abruptly: the slope just above the knee is close to 1.
+    let slope = (tone_map(Vec3::splat(TONE_KNEE + 0.02)).x - tone_map(Vec3::splat(TONE_KNEE)).x) / 0.02;
+    assert!(slope > 0.9 && slope <= 1.0, "{slope}");
+}
+
+#[test]
+fn a_bright_gold_stays_gold_instead_of_clipping_to_yellow() {
+    // The golden hour sun on a lit side: red above 1, green about half, blue low.
+    let gold = Vec3::new(1.6, 0.7, 0.15);
+    let clipped = gold.min(Vec3::ONE); // what the 8-bit pipeline did
+    let mapped = tone_map(gold);
+    let ratio = |c: Vec3| c.y / c.x;
+    // Clipping pulls green/red from 0.44 up to 0.70 (yellow); the tone map keeps it much nearer the
+    // original (a little is lost on purpose: very bright colours turn towards white).
+    let original = ratio(gold);
+    assert!(ratio(mapped) - original < 0.5 * (ratio(clipped) - original), "green/red: original {original} mapped {} clipped {}", ratio(mapped), ratio(clipped));
+    assert!(mapped.x > mapped.y && mapped.y > mapped.z, "{mapped:?}");
+}
+
+#[test]
+fn the_tone_map_shader_uses_the_same_constants() {
+    let wgsl = include_str!("../../../wurfel-web/src/tonemap.wgsl");
+    assert!(wgsl.contains(&format!("const KNEE = {TONE_KNEE:?};")), "KNEE differs");
+    assert!(wgsl.contains(&format!("const DESATURATION = {TONE_DESATURATION:?};")), "DESATURATION differs");
+}

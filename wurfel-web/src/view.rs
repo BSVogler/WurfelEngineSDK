@@ -6,7 +6,8 @@
 //! (name tags, the camera follow, the movement keys) goes through it. With a yaw of 0 it changes
 //! nothing, so the fixed camera is the special case.
 
-use wurfel_sim::player::PlayerInput;
+use wurfel_sim::player::{heading_units, PlayerInput};
+use glam::Vec2;
 
 /// Radians per pixel of mouse movement.
 pub const MOUSE_SENSITIVITY: f32 = 0.005;
@@ -105,7 +106,10 @@ impl View {
         // The nearest of the eight directions (sectors of 45 degrees, 0 is right).
         let sector = ((screen.1.atan2(screen.0) / std::f32::consts::FRAC_PI_4).round() as i32).rem_euclid(8);
         let (dx, dy) = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)][sector as usize];
-        PlayerInput { up: dy < 0, down: dy > 0, left: dx < 0, right: dx > 0, jump: input.jump }
+        // The keys keep the snapped direction (the walking animation turns in steps); the movement
+        // itself follows the exact direction, so it turns smoothly with the camera.
+        let heading = Some(heading_units(Vec2::new(screen.0, screen.1)));
+        PlayerInput { up: dy < 0, down: dy > 0, left: dx < 0, right: dx > 0, jump: input.jump, heading }
     }
 }
 
@@ -115,7 +119,7 @@ mod tests {
     use std::f32::consts::{FRAC_PI_2, PI};
 
     fn keys(up: bool, down: bool, left: bool, right: bool) -> PlayerInput {
-        PlayerInput { up, down, left, right, jump: false }
+        PlayerInput { up, down, left, right, ..Default::default() }
     }
 
     #[test]
@@ -125,6 +129,16 @@ mod tests {
         assert_eq!(CameraMode::parse("orbit"), None);
         assert_eq!(CameraMode::Fixed.toggled(), CameraMode::Free);
         assert_eq!(CameraMode::Free.toggled(), CameraMode::Fixed);
+    }
+
+    #[test]
+    fn a_turned_camera_walks_in_the_exact_direction_but_keeps_snapped_keys() {
+        let view = View { yaw: 0.2, pivot: (0.0, 0.0) };
+        let out = view.walk_input(keys(false, false, false, true));
+        assert!(out.right && !out.up && !out.down && !out.left, "keys stay on the nearest of eight");
+        let dir = wurfel_sim::player::heading_direction(out.heading.expect("a heading"));
+        // "Right" on the screen, with the world turned by 0.2 rad, is turned back by that much.
+        assert!((dir.y.atan2(dir.x) + 0.2).abs() < 0.01, "{dir:?}");
     }
 
     #[test]

@@ -159,6 +159,9 @@ pub mod gpu {
     use super::*;
 
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+    /// The format the layers and their blend are kept in, so that a lit colour above 1 survives
+    /// until the tone map instead of being clipped to the 8 bits of the canvas.
+    pub const HDR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
     /// Everything that depends on the size of the canvas.
     struct Targets {
@@ -169,22 +172,36 @@ pub mod gpu {
         peel_groups: Vec<wgpu::BindGroup>,
         /// Group 0 of the composite shader per layer: that layer's colour.
         composite_groups: Vec<wgpu::BindGroup>,
+        /// The layers blended together, in the HDR format; the tone map reads it.
+        blended: wgpu::TextureView,
+        /// Group 0 of the tone map shader: `blended`.
+        tonemap_group: wgpu::BindGroup,
     }
 
     pub struct Peeling {
+        /// The format of the layers and of the blended picture (see [`HDR_FORMAT`]).
         color_format: wgpu::TextureFormat,
         /// Group 2 of the scene pipeline.
         peel_layout: wgpu::BindGroupLayout,
         composite_layout: wgpu::BindGroupLayout,
         composite_pipeline: wgpu::RenderPipeline,
+        tonemap_pipeline: wgpu::RenderPipeline,
         uniforms: Vec<wgpu::Buffer>,
         targets: Targets,
     }
 
     impl Peeling {
-        /// `color_format` is the format of the canvas; the layers use it too, so that the colours
-        /// come out exactly as if the scene had been drawn onto the canvas.
-        pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, color_format: wgpu::TextureFormat, width: u32, height: u32) -> Self {
+        /// `screen_format` is the format of the canvas. The layers are kept in `color_format`, which is
+        /// [`HDR_FORMAT`] when the device can render and blend into it and otherwise the canvas format
+        /// (then colours above 1 are clipped before the tone map, as they were before it existed).
+        pub fn new(
+            device: &wgpu::Device,
+            queue: &wgpu::Queue,
+            screen_format: wgpu::TextureFormat,
+            color_format: wgpu::TextureFormat,
+            width: u32,
+            height: u32,
+        ) -> Self {
             let peel_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("peel layout"),
                 entries: &[
@@ -253,6 +270,36 @@ pub mod gpu {
                 multiview_mask: None,
                 cache: None,
             });
+            // The tone map reads one texture like the composite does, so it shares that layout.
+            let tonemap_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("tone map"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("tonemap.wgsl").into()),
+            });
+            let tonemap_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("tone map"),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &tonemap_shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &tonemap_shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: screen_format,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            });
             let uniforms: Vec<wgpu::Buffer> = passes()
                 .map(|pass| {
                     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -266,7 +313,7 @@ pub mod gpu {
                 })
                 .collect();
             let targets = Self::create_targets(device, &peel_layout, &composite_layout, &uniforms, color_format, width, height);
-            Peeling { color_format, peel_layout, composite_layout, composite_pipeline, uniforms, targets }
+            Peeling { color_format, peel_layout, composite_layout, composite_pipeline, tonemap_pipeline, uniforms, targets }
         }
 
         /// Group 2 of the scene pipeline.
@@ -326,10 +373,22 @@ pub mod gpu {
                     })
                 })
                 .collect();
-            Targets { depth, colors, peel_groups, composite_groups }
+            let blended = texture("blended", color_format);
+            let tonemap_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("tone map"),
+                layout: composite_layout,
+                entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&blended) }],
+            });
+            Targets { depth, colors, peel_groups, composite_groups, blended, tonemap_group }
         }
 
-        /// Draw the scene once per layer, then blend the layers onto `screen` over `background`.
+        /// The format the scene pipeline must draw in.
+        pub fn color_format(&self) -> wgpu::TextureFormat {
+            self.color_format
+        }
+
+        /// Draw the scene once per layer, blend the layers over `background` and tone map the result
+        /// onto `screen`.
         /// `draw` issues the draw calls of the scene (pipeline, groups 0 and 1, buffers); it runs
         /// once per layer and this sets group 2.
         pub fn render(
@@ -363,7 +422,7 @@ pub mod gpu {
             let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("composite"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: screen,
+                    view: &self.targets.blended,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations { load: wgpu::LoadOp::Clear(background), store: wgpu::StoreOp::Store },
@@ -378,6 +437,23 @@ pub mod gpu {
                 rp.set_bind_group(0, &self.targets.composite_groups[layer], &[]);
                 rp.draw(0..3, 0..1);
             }
+            drop(rp);
+            let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("tone map"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: screen,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            rp.set_pipeline(&self.tonemap_pipeline);
+            rp.set_bind_group(0, &self.targets.tonemap_group, &[]);
+            rp.draw(0..3, 0..1);
         }
     }
 }
@@ -540,6 +616,24 @@ mod tests {
         assert!(entry_points.contains(&("vs_main", naga::ShaderStage::Vertex)), "{entry_points:?}");
         assert!(entry_points.contains(&("fs_main", naga::ShaderStage::Fragment)), "{entry_points:?}");
         let bindings: Vec<(u32, u32)> = module.global_variables.iter().filter_map(|(_, g)| g.binding.as_ref().map(|b| (b.group, b.binding))).collect();
+        assert_eq!(bindings, vec![(0, 0)]);
+    }
+
+    #[test]
+    fn the_tone_map_shader_validates_and_binds_one_texture_in_group_zero() {
+        let source = include_str!("tonemap.wgsl");
+        let module = naga::front::wgsl::parse_str(source).unwrap_or_else(|e| panic!("tonemap.wgsl does not parse:\n{}", e.emit_to_string(source)));
+        naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::empty())
+            .validate(&module)
+            .expect("tonemap.wgsl validates");
+        let entry_points: Vec<(&str, naga::ShaderStage)> = module.entry_points.iter().map(|e| (e.name.as_str(), e.stage)).collect();
+        assert!(entry_points.contains(&("vs_main", naga::ShaderStage::Vertex)), "{entry_points:?}");
+        assert!(entry_points.contains(&("fs_main", naga::ShaderStage::Fragment)), "{entry_points:?}");
+        let bindings: Vec<(u32, u32)> = module
+            .global_variables
+            .iter()
+            .filter_map(|(_, v)| v.binding.as_ref().map(|b| (b.group, b.binding)))
+            .collect();
         assert_eq!(bindings, vec![(0, 0)]);
     }
 }

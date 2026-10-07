@@ -470,3 +470,13 @@ fn an_entity_can_come_back_under_its_old_id() {
     let fresh = entities.spawn(Entity::new("new", 1));
     assert!(fresh > c, "new ids still grow");
 }
+
+#[test]
+fn walk_toward_goes_in_exactly_the_given_screen_direction() {
+    let mut e = walker(Vec3::ZERO);
+    let dir = Vec2::new(1.0, 0.3);
+    e.walk_toward(dir * 7.0, 4.0);
+    let m = e.body.as_ref().unwrap().hor_movement();
+    assert!((e.body.as_ref().unwrap().speed_hor() - 4.0).abs() < 1e-4);
+    assert!((iso_to_screen(m).normalize() - dir.normalize()).length() < 1e-4);
+}

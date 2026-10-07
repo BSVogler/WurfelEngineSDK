@@ -754,6 +754,35 @@ const LUMA: Vec3 = Vec3::new(0.222, 0.707, 0.071);
 /// [`Shading::min_light`] by `night_mix`. `NIGHT_FLOOR` in `shader.wgsl` is the same value.
 pub const NIGHT_FLOOR: Vec3 = Vec3::new(0.6, 0.7, 0.95);
 
+// -------------------------------------------------------------------------------------- tone map
+
+/// Where the tone map starts to compress. Everything whose brightest channel is below this is shown
+/// as it is, so the look of ordinary lighting does not change. `KNEE` in `tonemap.wgsl` is the same.
+pub const TONE_KNEE: f32 = 0.8;
+/// How much of a compressed colour turns towards white (a very bright colour loses saturation like
+/// in a camera). `DESATURATION` in `tonemap.wgsl` is the same.
+pub const TONE_DESATURATION: f32 = 0.25;
+
+/// Bring a colour that may be brighter than the screen (the light and the exposure can push a
+/// channel above 1) into 0..1 without clipping channels one by one, which shifts the hue (gold
+/// turns yellow, then flat). Below [`TONE_KNEE`] the colour is unchanged. Above, the brightest channel
+/// is compressed smoothly towards 1 (a Reinhard shoulder that joins the straight part without a
+/// kink), the other channels are scaled with it so the hue stays, and the colour moves a little
+/// towards white the more it was compressed. `tonemap.wgsl` is the same formula.
+pub fn tone_map(color: Vec3) -> Vec3 {
+    let color = color.max(Vec3::ZERO);
+    let peak = color.max_element();
+    if peak <= TONE_KNEE {
+        return color;
+    }
+    let room = 1.0 - TONE_KNEE;
+    let over = peak - TONE_KNEE;
+    let new_peak = TONE_KNEE + room * over / (over + room);
+    let scaled = color * (new_peak / peak);
+    let towards_white = 1.0 - 1.0 / (TONE_DESATURATION * (peak - new_peak) + 1.0);
+    scaled.lerp(Vec3::splat(new_peak), towards_white).min(Vec3::ONE)
+}
+
 /// Final colour of one vertex: the CPU reference for what the web shader does per frame.
 ///
 /// * `albedo`: the block's flat colour.
