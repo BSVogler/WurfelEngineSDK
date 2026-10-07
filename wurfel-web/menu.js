@@ -6,8 +6,9 @@
  * window.wurfelSettings   Live object, always current. Fields (all validated and clamped):
  *     playerName       string, 1-16 chars (control characters removed). The game reads this when it joins.
  *     playerColor      "#rrggbb" (lowercase), default random from the 10 swatches. Read when it joins.
- *     serverUrl        the active server as typed: "localhost" (default), "host", "host:port", a ws(s)://
- *                      or http(s):// URL, or "" for the server this page came from. Use the `server` field
+ *     serverUrl        the active server as typed: "" for the server this page came from (default; "localhost"
+ *                      when the page has no origin), "host", "host:port", or a ws(s)://
+ *                      or http(s):// URL. Use the `server` field
  *                      of wurfel:play, which is already a full ws:// or wss:// URL.
  *     servers          up to 8 remembered servers (strings, most recent first, no duplicates); a server is
  *                      remembered after its lobby answered once.
@@ -100,7 +101,9 @@
 
   const STORAGE_KEY = 'wurfel.settings.v1';
   const NAME_MAX = 16;
-  const DEFAULT_SERVER = 'localhost';
+  // A page served by a game server talks to that server ("" = where this page came from, which also
+  // works behind the dev proxy); only a page opened from a file has no origin and falls back to localhost.
+  const DEFAULT_SERVER = location.host ? '' : 'localhost';
   const DEFAULT_PORT = 3000;
   const MAX_SERVERS = 8;
   const HEX = /^#[0-9a-f]{6}$/i;
@@ -129,7 +132,7 @@
     return {
       playerName: 'Player' + String(100 + Math.floor(Math.random() * 900)),
       playerColor: SWATCHES[Math.floor(Math.random() * SWATCHES.length)][1],
-      serverUrl: DEFAULT_SERVER, servers: [DEFAULT_SERVER],
+      serverUrl: DEFAULT_SERVER, servers: DEFAULT_SERVER ? [DEFAULT_SERVER] : [],
       masterVolume: 0.8, musicVolume: 0.6, effectsVolume: 0.8,
       zoom: 0.5,
       generator: 'island', seed: Math.floor(Math.random() * 1000000),
