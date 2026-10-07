@@ -33,7 +33,7 @@ web-sys = { version = "0.3", features = [
   "StereoPannerNode", "HtmlAudioElement", "HtmlMediaElement", "MediaElementAudioSourceNode",
   "AnalyserNode", "Response", "CustomEvent", "CustomEventInit",
   # client: timing and POST /api/worlds
-  "Performance", "Request", "RequestInit", "RequestCache", "Headers", "BinaryType",
+  "Performance", "Storage", "Request", "RequestInit", "RequestCache", "Headers", "BinaryType",
 ] }
 
 [dev-dependencies]

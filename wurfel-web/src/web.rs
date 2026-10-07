@@ -34,6 +34,8 @@ use crate::render_storage::RenderStorage;
 use crate::texture;
 use crate::view::{self, CameraMode, View};
 
+mod console;
+
 /// Seed of the island shown behind the menu, before a world has been joined.
 const DEFAULT_SEED: u64 = 1;
 /// Most fires placed in the world at once (each costs a light and particles).
@@ -260,6 +262,8 @@ struct State {
 
     last_frame_ms: Option<f64>,
     info_text: String,
+    /// The engine console's client side (`console.rs`).
+    console: console::ClientConsole,
 }
 
 async fn run() -> Result<(), String> {
@@ -502,6 +506,7 @@ async fn run() -> Result<(), String> {
         next_status_ms: 0.0,
         last_frame_ms: None,
         info_text: String::new(),
+        console: console::ClientConsole::new(),
     }));
 
     // The camera mode: `CameraMode::DEFAULT`, or `?camera=free` / `?camera=fixed`. `?yaw=40` (for
@@ -1063,7 +1068,8 @@ fn connect(window: &web_sys::Window, state: &Rc<RefCell<State>>, url: &str) {
         show_banner("Connected, loading the world…", Tone::Info);
         // The server holds a lobby connection until it is told to join.
         let (name, color) = read_identity();
-        send(&mut s, &ClientMsg::Join { name, color });
+        let session = console::stored_session(&s.server_url);
+        send(&mut s, &ClientMsg::Join { name, color, session });
     });
     socket.set_onopen(Some(on_open.as_ref().unchecked_ref()));
     on_open.forget();
@@ -1223,6 +1229,7 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
             s.terrain_version += 1;
 
             s.my_id = Some(your_id);
+            console::auth_from_url(s);
             s.remotes.clear();
             s.entities = Entities::new();
             s.local_id = None;
@@ -1300,6 +1307,11 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
         ServerMsg::Saved { chunks, error: None } => show_banner(&format!("World saved ({chunks} chunk(s) written)"), Tone::Ok),
         ServerMsg::Saved { error: Some(error), .. } => report_error(&format!("Saving the world failed: {error}")),
         ServerMsg::Rules { kind, data } => handle_rules(s, &kind, &data),
+        ServerMsg::Session { secret, .. } => {
+            if let Some(secret) = secret {
+                console::store_session(&s.server_url, &secret);
+            }
+        }
     }
 }
 
@@ -1543,7 +1555,8 @@ fn install_menu_events(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
 }
 
 /// What the page's HUD and console send to the server: `wurfelNet.action(name, arg)` answers a
-/// dialog or offer, `wurfelNet.command(line)` is a console line of the game mode,
+/// dialog or offer, `wurfelNet.command(line)` runs a console line (JSON answer, see `console.rs`),
+/// `wurfelNet.suggest(prefix)` and `wurfelNet.prompt()` serve the console's Tab and prompt,
 /// `wurfelNet.heart(playerId, on)` is the heart in the Tab player list.
 fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     let net = js_sys::Object::new();
@@ -1554,11 +1567,19 @@ fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     let _ = js_sys::Reflect::set(&net, &"action".into(), action.as_ref());
     action.forget();
     let s = state.clone();
-    let command = Closure::<dyn FnMut(String)>::new(move |line: String| {
-        send(&mut s.borrow_mut(), &ClientMsg::Command { line });
-    });
+    let command = Closure::<dyn FnMut(String) -> String>::new(move |line: String| console::execute(&mut s.borrow_mut(), &line));
     let _ = js_sys::Reflect::set(&net, &"command".into(), command.as_ref());
     command.forget();
+    let s = state.clone();
+    let suggest = Closure::<dyn FnMut(String) -> js_sys::Array>::new(move |prefix: String| {
+        console::suggest(&mut s.borrow_mut(), &prefix).into_iter().map(JsValue::from).collect()
+    });
+    let _ = js_sys::Reflect::set(&net, &"suggest".into(), suggest.as_ref());
+    suggest.forget();
+    let s = state.clone();
+    let prompt = Closure::<dyn FnMut() -> String>::new(move || console::prompt(&s.borrow()));
+    let _ = js_sys::Reflect::set(&net, &"prompt".into(), prompt.as_ref());
+    prompt.forget();
     // The editor toolbar and the `editor` console command (editor.js, console-host.js).
     let s = state.clone();
     let editor_set = Closure::<dyn FnMut(String) -> String>::new(move |mode: String| {
@@ -1966,6 +1987,9 @@ fn pointer_screen(s: &State) -> Option<(f32, f32)> {
 
 /// What the camera looks at: our player, or in the editor the point the keys panned it to.
 fn camera_focus(s: &State) -> Option<Vec3> {
+    if let Some(hold) = s.console.camera_hold {
+        return Some(hold);
+    }
     let (pan_x, pan_y) = s.editor.pan();
     local_position(s).map(|p| p + Vec3::new(pan_x, pan_y, 0.0))
 }
@@ -2052,6 +2076,9 @@ fn frame(s: &mut State, now_ms: f64) {
 
     // In the editor the movement keys pan the camera and the player stands still.
     let wanted = if blocked || s.editor.active() { PlayerInput::default() } else { read_input(s) };
+    if wanted.up || wanted.down || wanted.left || wanted.right || wanted.jump {
+        s.console.camera_hold = None; // `tp` lasts until we move
+    }
     if s.editor.active() && !blocked {
         let held = |action: &str| s.bindings.held(action, &s.keys) as i32 as f32;
         let direction = (held("right") - held("left"), held("down") - held("up"));
@@ -2162,6 +2189,9 @@ fn frame(s: &mut State, now_ms: f64) {
         // Like the Java camera: the player may walk inside the leap radius before the picture follows.
         s.camera.center = view::follow_within_leap(s.camera.center, target, view::CAMERA_LEAP_RADIUS);
     }
+    let [shake_x, shake_y] = s.console.shake_offset(dt * 1000.0);
+    s.camera.center[0] += shake_x;
+    s.camera.center[1] += shake_y;
     s.camera.zoom = s.camera.zoom.clamp(0.1 * s.dpr, 4.0 * s.dpr);
 
     // The server accepted the connection (or not) but never sent the world.

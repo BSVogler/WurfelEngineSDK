@@ -235,12 +235,16 @@ pub enum ClientMsg {
         #[serde(default)]
         gamemode: String,
     },
-    /// Enter the loaded world as a player: answered with `Welcome`, then chunks start to flow.
+    /// Enter the loaded world as a player: answered with `Welcome` and `Session`, then chunks
+    /// start to flow. `session` is the secret this browser got in an earlier [`ServerMsg::Session`]
+    /// (empty the first time): it brings back the same user (name, colour, admin rights).
     Join {
         #[serde(default)]
         name: String,
         #[serde(default = "default_color")]
         color: [u8; 3],
+        #[serde(default)]
+        session: String,
     },
     // ----- in the world
     /// What the player is pressing. Sent whenever it changes; the server keeps applying it.
@@ -278,9 +282,16 @@ pub enum ClientMsg {
         #[serde(default)]
         arg: i32,
     },
-    /// A console line for the game mode (Caveland: `give Torch`, `tpplayer 0 0 10`). Whether it is
-    /// allowed is up to the mode; the answer comes back as a `Rules` message of kind `console`.
-    Command { line: String },
+    /// A console line the client does not answer itself: a command of the game mode (Caveland:
+    /// `give Torch`, `tpplayer 0 0 10`) or an engine command that changes the shared world
+    /// (`killall`, `save`, `teleport 3 4`...; see `console::ExecResult::Forward`). `path` is the
+    /// client console's `cd` path. Whether it is allowed is up to the server; the answer comes
+    /// back as a `Rules` message of kind `console`.
+    Command {
+        line: String,
+        #[serde(default)]
+        path: String,
+    },
     /// The heart in the Tab player list. `on` invites `to` to be friends, or accepts their invite
     /// if they already invited you; `off` withdraws your invite, declines theirs or ends the
     /// friendship. The answer is a [`ServerMsg::Friends`] to both players.
@@ -399,6 +410,16 @@ pub enum ServerMsg {
     /// everybody's health and inventory, `events` with sounds and happenings). The engine only
     /// carries it.
     Rules { kind: String, data: serde_json::Value },
+    /// Who you are on this server, right after the `Welcome`. `secret` is only sent when the
+    /// server made a new session (the client had none, or one the server does not know): keep
+    /// it and send it with the next `Join`.
+    Session {
+        user: u32,
+        #[serde(default)]
+        secret: Option<String>,
+        #[serde(default)]
+        admin: bool,
+    },
 }
 
 impl ServerMsg {
@@ -423,6 +444,7 @@ impl ServerMsg {
             | ServerMsg::WorldChanged { .. }
             | ServerMsg::MapCreated { .. }
             | ServerMsg::Rules { .. }
+            | ServerMsg::Session { .. }
             | ServerMsg::Failed { .. } => Channel::Reliable,
         }
     }
@@ -535,8 +557,8 @@ mod tests {
         let load = |json: &str| serde_json::from_str::<ClientMsg>(json).unwrap();
         assert_eq!(load(r#"{"type":"LoadMap","map":"a","slot":3}"#), ClientMsg::LoadMap { map: "a".into(), slot: SlotChoice::Existing(3) });
         assert_eq!(load(r#"{"type":"LoadMap","map":"a","slot":"new"}"#), ClientMsg::LoadMap { map: "a".into(), slot: SlotChoice::New });
-        assert_eq!(load(r#"{"type":"Join"}"#), ClientMsg::Join { name: String::new(), color: [230, 190, 50] }, "name and colour are optional");
-        assert_eq!(load(r#"{"type":"Join","name":"Ann","color":[1,2,3]}"#), ClientMsg::Join { name: "Ann".into(), color: [1, 2, 3] });
+        assert_eq!(load(r#"{"type":"Join"}"#), ClientMsg::Join { name: String::new(), color: [230, 190, 50], session: String::new() }, "name and colour are optional");
+        assert_eq!(load(r#"{"type":"Join","name":"Ann","color":[1,2,3]}"#), ClientMsg::Join { name: "Ann".into(), color: [1, 2, 3], session: String::new() });
         assert_eq!(load(r#"{"type":"ListMaps"}"#), ClientMsg::ListMaps);
         assert_eq!(load(r#"{"type":"Heart","to":3,"on":true}"#), ClientMsg::Heart { to: 3, on: true });
         let create = ClientMsg::CreateMap { id: "x".into(), name: "X".into(), description: "".into(), generator: "island".into(), seed: 2, gamemode: "caveland".into() };
@@ -799,9 +821,9 @@ mod game_mode_tests {
     #[test]
     fn game_mode_traffic_uses_the_right_channels() {
         assert_eq!(ClientMsg::Action { name: "x".into(), arg: 0 }.channel(), Channel::Reliable);
-        assert_eq!(ClientMsg::Command { line: "give Torch".into() }.channel(), Channel::Reliable);
+        assert_eq!(ClientMsg::Command { line: "give Torch".into(), path: String::new() }.channel(), Channel::Reliable);
         let command: ClientMsg = serde_json::from_str(r#"{"type":"Command","line":"give Torch"}"#).unwrap();
-        assert_eq!(command, ClientMsg::Command { line: "give Torch".into() });
+        assert_eq!(command, ClientMsg::Command { line: "give Torch".into(), path: String::new() });
         assert_eq!(ServerMsg::Things { tick: 0, things: vec![] }.channel(), Channel::Unreliable);
         assert_eq!(ServerMsg::Rules { kind: "events".into(), data: serde_json::Value::Null }.channel(), Channel::Reliable);
     }

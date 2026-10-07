@@ -23,6 +23,7 @@ mod game;
 mod interest;
 mod maps;
 mod pings;
+mod users;
 
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -85,6 +86,8 @@ struct Shared {
     pings: Arc<Mutex<pings::Pings>>,
     /// Hearts in the Tab player list: who is friends with whom.
     friends: Arc<Mutex<friends::Friends>>,
+    /// Who is who across connections (session secrets, admin rights), see `users.rs`.
+    users: Arc<Mutex<users::Users>>,
     lag: Duration,
     started: Instant,
     /// Set to true when the server is shutting down: every connection says goodbye and closes.
@@ -106,6 +109,11 @@ async fn main() {
     let lag = Duration::from_millis(arg("--lag-ms").and_then(|s| s.parse().ok()).unwrap_or(0));
     if std::env::args().any(|a| a == "--skip-intro") {
         caveland_mode::SKIP_INTRO.store(true, Ordering::Relaxed);
+    }
+    // `auth <token>` in the console makes a player an admin (world-changing commands, cheats).
+    let (token, generated) = game::init_admin_token();
+    if generated {
+        eprintln!("wurfel-server: admin token for the console's `auth <token>`: {token} (set WURFEL_ADMIN_TOKEN to choose one)");
     }
     let static_dir = arg("--static").unwrap_or_else(|| "../wurfel-web/dist".to_string());
 
@@ -141,7 +149,9 @@ async fn main() {
     }
     let (tx, _) = broadcast::channel(256);
     let (lobby_tx, _) = broadcast::channel(16);
+    let users = users::Users::open(std::path::Path::new(&maps_dir).join(users::USERS_FILE));
     let shared = Shared {
+        users: Arc::new(Mutex::new(users)),
         game: Arc::new(Mutex::new(game)),
         maps: Arc::new(store),
         tx,
@@ -493,6 +503,8 @@ async fn client(socket: WebSocket, shared: Shared) {
     // Set once the client joins. The world broadcast is only subscribed to then, so a connection
     // that stays in the lobby does not pile up snapshots it never reads.
     let mut player: Option<(u32, broadcast::Receiver<Arc<str>>)> = None;
+    // The user behind this connection, once it joined.
+    let mut user: Option<users::UserId> = None;
     // The chunks around the player are streamed, nearest first, a few at a time.
     let mut interest = Interest::new(CHUNK_RADIUS, CHUNKS_PER_UPDATE);
     let mut chunk_timer = tokio::time::interval(CHUNK_UPDATE_EVERY);
@@ -523,22 +535,28 @@ async fn client(socket: WebSocket, shared: Shared) {
                             let tick = shared.game.lock().unwrap().tick_count();
                             alive = send(Payload::Text(encode(&ServerMsg::Pong { client_time, tick })));
                         }
-                        ClientMsg::Join { name, color } if player.is_none() => {
+                        ClientMsg::Join { name, color, session } if player.is_none() => {
+                            let login = shared.users.lock().unwrap().login(&session, &name, color);
                             // Subscribe and register under one lock so no broadcast can slip
                             // between the welcome and the first update.
                             let (id, welcome, updates) = {
                                 let mut game = shared.game.lock().unwrap();
                                 let updates = shared.tx.subscribe();
-                                let id = game.add_player_as(&name, color);
+                                let id = game.add_player_as(&login.user.name, color);
+                                if login.user.admin {
+                                    game.set_admin(id);
+                                }
                                 (id, encode(&game.welcome(id)), updates)
                             };
+                            user = Some(login.user.id);
+                            let session = ServerMsg::Session { user: login.user.id, secret: login.new_secret, admin: login.user.admin };
                             let info = shared.game.lock().unwrap().player_info(id);
                             if let Some(player) = info {
                                 eprintln!("player {id} ({}) joined", player.name);
                                 let _ = shared.tx.send(encode(&ServerMsg::PlayerJoined { player }));
                             }
                             player = Some((id, updates));
-                            alive = send(Payload::Text(welcome));
+                            alive = send(Payload::Text(welcome)) && send(Payload::Text(encode(&session)));
                         }
                         ClientMsg::Join { .. } => {}
                         ClientMsg::Heart { to, on } => {
@@ -561,9 +579,17 @@ async fn client(socket: WebSocket, shared: Shared) {
                         | ClientMsg::Action { .. }
                         | ClientMsg::Command { .. } => {
                             if let Some((id, _)) = &player {
-                                let broadcast = shared.game.lock().unwrap().handle(*id, msg);
+                                let (broadcast, granted) = {
+                                    let mut game = shared.game.lock().unwrap();
+                                    let broadcast = game.handle(*id, msg);
+                                    (broadcast, game.take_admin_grant(*id))
+                                };
                                 if let Some(msg) = broadcast {
                                     let _ = shared.tx.send(encode(&msg));
+                                }
+                                // `auth <token>` worked: the user stays an admin from now on.
+                                if let (true, Some(user)) = (granted, user) {
+                                    shared.users.lock().unwrap().grant_admin(user);
                                 }
                             }
                         }

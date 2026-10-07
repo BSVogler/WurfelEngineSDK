@@ -21,6 +21,9 @@ use wurfel_sim::protocol::{clean_name, encode_chunk, PlayerInfo, WorldInfo};
 use crate::caveland_mode::CavelandMode;
 use crate::maps::{default_game_mode, OpenedWorld};
 
+mod console;
+pub use console::init_admin_token;
+
 /// Most cells the server animates at once. Every change of an animated block goes to every client,
 /// so this bounds the traffic (the waves are not counted: clients animate those themselves).
 #[allow(dead_code)] // used by animate_block, which game rules and tests call
@@ -123,6 +126,14 @@ pub struct Game {
     balls: Vec<(EntityId, u64)>,
     /// How long the last tick took, for the benchmark's "is the server still fast" test.
     last_tick_secs: f32,
+    /// Answers to engine console lines, sent with the next `drain_outbox`.
+    outbox: Vec<ServerMsg>,
+    /// Players who logged in with `auth <token>` (see [`Game::is_admin`]).
+    admins: HashSet<EntityId>,
+    /// Wrong `auth` tokens per player, to stop guessing.
+    auth_failures: HashMap<EntityId, u8>,
+    /// Players who just logged in with the admin token, for the server to remember with their user.
+    admin_grants: Vec<EntityId>,
 }
 
 impl Game {
@@ -172,6 +183,10 @@ impl Game {
             benchmark: None,
             balls: Vec::new(),
             last_tick_secs: 0.0,
+            outbox: Vec::new(),
+            admins: HashSet::new(),
+            auth_failures: HashMap::new(),
+            admin_grants: Vec::new(),
         }
     }
 
@@ -205,6 +220,7 @@ impl Game {
     /// the plain engine.
     pub fn drain_outbox(&mut self) -> Vec<ServerMsg> {
         let mut out = self.mode.as_mut().map(CavelandMode::drain_outbox).unwrap_or_default();
+        out.append(&mut self.outbox);
         // Animated blocks: one message per batch, each cell at most once (the newest value).
         let mut edits = std::mem::take(&mut self.animation_edits);
         edits.reverse();
@@ -247,8 +263,8 @@ impl Game {
     /// engine; at most [`MAX_BENCHMARK_BALLS`] balls live at once and each vanishes after a
     /// minute. Calling it again with the benchmark running just adds one more ball (up to the cap).
     pub fn spawn_benchmark_ball(&mut self, player: EntityId) -> Result<(), String> {
-        if self.inputs.keys().min() != Some(&player) {
-            return Err("only the host can start the benchmark".into());
+        if !self.is_admin(player) {
+            return Err("only the host or an admin can start the benchmark".into());
         }
         if self.mode.is_some() {
             return Err("the benchmark is only available in the plain engine".into());
@@ -446,6 +462,9 @@ impl Game {
         self.inputs.remove(&id);
         self.roster.remove(&id);
         self.editors.remove(&id);
+        self.admins.remove(&id);
+        self.auth_failures.remove(&id);
+        self.admin_grants.retain(|&p| p != id);
         if self.benchmark.as_ref().is_some_and(|(_, owner)| *owner == id) {
             self.benchmark = None;
         }
@@ -599,16 +618,15 @@ impl Game {
             | ClientMsg::MoveThing { .. }
             | ClientMsg::DeleteThing { .. }
             | ClientMsg::SaveWorld => None,
-            ClientMsg::Command { line } => {
-                // Only the host (the lowest id still here) may use cheats.
-                let host = self.inputs.keys().min() == Some(&player);
-                if let Some(mode) = self.mode.as_mut() {
-                    mode.command(&mut self.entities, &mut self.world, player, &line, host);
-                } else if line.trim().trim_start_matches(['/', ':']).split_whitespace().next() == Some("benchmark") {
-                    // The plain engine has no command replies yet; a refusal is only logged.
-                    if let Err(e) = self.spawn_benchmark_ball(player) {
-                        eprintln!("wurfel-server: benchmark from player {player} refused: {e}");
-                    }
+            ClientMsg::Command { line, path } => {
+                // Only admins (and the host) may use cheats and change the world.
+                let admin = self.is_admin(player);
+                let line = line.trim().trim_start_matches(['/', ':']);
+                let name = line.split_whitespace().next().unwrap_or("").to_lowercase();
+                match self.mode.as_mut() {
+                    // The game mode's own commands (Caveland: `give`, `tpplayer`...).
+                    Some(mode) if CavelandMode::has_command(&name) => mode.command(&mut self.entities, &mut self.world, player, line, admin),
+                    _ => self.engine_command(player, line, &path),
                 }
                 None
             }
@@ -1265,7 +1283,7 @@ mod game_mode_tests {
         let mut game = caveland_game();
         let (host, guest) = (game.add_player(), game.add_player());
         for id in [guest, host] {
-            game.handle(id, ClientMsg::Command { line: "give Torch".into() });
+            game.handle(id, ClientMsg::Command { line: "give Torch".into(), path: String::new() });
         }
         let answers: Vec<(u64, bool)> = game
             .drain_outbox()
@@ -1276,11 +1294,101 @@ mod game_mode_tests {
             })
             .collect();
         assert_eq!(answers, vec![(guest as u64, false), (host as u64, true)]);
-        // The plain engine has no console.
+        // The plain engine has no Caveland commands: its own console answers.
         let mut engine = Game::island(1);
         let me = engine.add_player();
-        assert_eq!(engine.handle(me, ClientMsg::Command { line: "give Torch".into() }), None);
-        assert!(engine.drain_outbox().is_empty());
+        assert_eq!(engine.handle(me, ClientMsg::Command { line: "give Torch".into(), path: String::new() }), None);
+        let answer = console_answers(&mut engine).pop().unwrap();
+        assert_eq!(answer["ok"], false);
+        assert!(answer["text"].as_str().unwrap().contains("command not found"), "{answer}");
+    }
+
+    fn console_answers(game: &mut Game) -> Vec<serde_json::Value> {
+        game.drain_outbox()
+            .into_iter()
+            .filter_map(|m| match m {
+                ServerMsg::Rules { kind, data } if kind == "console" => Some(data),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn command(game: &mut Game, id: u32, line: &str) -> serde_json::Value {
+        game.handle(id, ClientMsg::Command { line: line.into(), path: String::new() });
+        let mut answers = console_answers(game);
+        assert_eq!(answers.len(), 1, "one answer for '{line}'");
+        assert_eq!(answers[0]["to"], id);
+        answers.pop().unwrap()
+    }
+
+    #[test]
+    fn auth_with_the_admin_token_lets_a_guest_change_the_world() {
+        let (token, _) = init_admin_token();
+        let mut game = Game::island(1);
+        let (_host, guest) = (game.add_player(), game.add_player());
+        assert_eq!(command(&mut game, guest, "teleport 3 4")["ok"], false);
+        let wrong = command(&mut game, guest, "auth nope");
+        assert_eq!(wrong["ok"], false);
+        assert!(!wrong["text"].as_str().unwrap().contains(token), "the token is never echoed");
+        let right = command(&mut game, guest, &format!("auth {token}"));
+        assert_eq!(right["ok"], true, "{right}");
+        assert_eq!(command(&mut game, guest, "teleport 3 4")["ok"], true);
+        // Leaving ends it: the id may come back as somebody else.
+        game.remove_player(guest);
+        assert!(!game.is_admin(guest));
+    }
+
+    #[test]
+    fn auth_stops_answering_after_too_many_wrong_tokens() {
+        let (token, _) = init_admin_token();
+        let mut game = Game::island(1);
+        let (_host, guest) = (game.add_player(), game.add_player());
+        for _ in 0..5 {
+            command(&mut game, guest, "auth wrong");
+        }
+        assert_eq!(command(&mut game, guest, &format!("auth {token}"))["ok"], false, "locked out");
+        assert!(!game.is_admin(guest));
+    }
+
+    #[test]
+    fn engine_commands_run_on_the_server_for_the_host() {
+        let mut game = Game::island(1);
+        let (host, guest) = (game.add_player(), game.add_player());
+        // Changing the world is for the host.
+        let refused = command(&mut game, guest, "teleport 3 4");
+        assert_eq!(refused["ok"], false);
+        assert!(refused["text"].as_str().unwrap().contains("permission denied"), "{refused}");
+
+        let moved = command(&mut game, host, "teleport 3 4");
+        assert_eq!(moved["ok"], true, "{moved}");
+        let p = game.entities.get(host).unwrap().position;
+        assert_eq!(from_iso(p.x, p.y), (3, 4));
+
+        let map = command(&mut game, guest, "printmap 0 0 0 4 2");
+        assert_eq!(map["ok"], true, "reading is for everybody: {map}");
+        assert_eq!(map["lines"].as_array().unwrap().len(), 3, "a legend and two rows");
+
+        game.handle(host, ClientMsg::Editor { on: true });
+        let p = game.entities.get(host).unwrap().position;
+        let (x, y) = from_iso(p.x, p.y);
+        game.handle(host, ClientMsg::SpawnThing { kind: EDITOR_THING_KINDS[0].into(), pos: [p.x, p.y, p.z + 1.0] });
+        assert_eq!(game.things.len(), 1);
+        let killed = command(&mut game, host, "killall");
+        assert_eq!(killed["text"], "disposed 1 entities");
+        assert!(game.things.is_empty());
+
+        let (cx, cy) = chunk_of(x, y);
+        game.handle(host, ClientMsg::Command { line: format!("fillwithair {} {}", cx + 3, cy), path: String::new() });
+        let out = game.drain_outbox();
+        assert!(out.iter().any(|m| matches!(m, ServerMsg::Rules { data, .. } if data["ok"] == true)), "{out:?}");
+        assert!(out.iter().any(|m| matches!(m, ServerMsg::BlocksSet { .. })), "the clients hear of it");
+        let top = (cx + 3) * wurfel_sim::CHUNK_SIZE_X;
+        assert!((0..CHUNK_SIZE_Z).all(|z| game.world.get(top, cy * wurfel_sim::CHUNK_SIZE_Y, z).is_air()));
+
+        let unknown = command(&mut game, host, "loadmap other");
+        assert_eq!(unknown["ok"], false);
+        // Client commands are not run here.
+        assert_eq!(command(&mut game, host, "fullscreen")["ok"], false);
     }
 
     #[test]
@@ -1394,7 +1502,7 @@ mod game_mode_tests {
     }
 
     fn benchmark_command(game: &mut Game, id: u32) {
-        game.handle(id, ClientMsg::Command { line: "benchmark".into() });
+        game.handle(id, ClientMsg::Command { line: "benchmark".into(), path: String::new() });
     }
 
     #[test]

@@ -410,15 +410,20 @@ impl CavelandMode {
         }
     }
 
-    /// A console line of a player. Only the host (the player who has been here longest) may run
-    /// them: `give` and `tpplayer` are cheats.
+    /// Is `name` one of the game mode's console commands (the rest are the engine's)?
+    pub fn has_command(name: &str) -> bool {
+        COMMANDS.iter().any(|(n, _)| *n == name)
+    }
+
+    /// A console line of a player. Only an admin (`auth <token>`, or the host: the player who has
+    /// been here longest) may run them: `give` and `tpplayer` are cheats.
     pub fn command(&mut self, entities: &mut Entities, world: &mut World, player: EntityId, line: &str, host: bool) {
         let line = line.trim().trim_start_matches(['/', ':']);
         let name = line.split_whitespace().next().unwrap_or("");
         let reply = if !COMMANDS.iter().any(|(n, _)| *n == name) {
             Err(format!("unknown command '{name}' (try: {})", COMMANDS.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")))
         } else if !host {
-            Err("only the host can use commands".to_string())
+            Err("only the host or an admin can use commands (log in with `auth <token>`)".to_string())
         } else {
             match self.caveland.run_command(entities, player, line) {
                 Ok(CommandOutcome::Done(text)) => Ok(text.to_string()),
@@ -916,7 +921,7 @@ mod tests {
         let answers: Vec<&Value> = rules(&s.sent, "console").collect();
         assert_eq!(answers.len(), 4);
         assert!(answers.iter().all(|a| a["to"] == json!(s.player)));
-        assert_eq!((answers[0]["ok"].clone(), answers[0]["text"].clone()), (json!(false), json!("only the host can use commands")));
+        assert_eq!((answers[0]["ok"].clone(), answers[0]["text"].clone()), (json!(false), json!("only the host or an admin can use commands (log in with `auth <token>`)")));
         assert_eq!(answers[1]["ok"], false);
         assert!(answers[1]["text"].as_str().unwrap().contains("unknown command 'fly'"));
         assert_eq!(answers[2]["ok"], true, "a leading slash is allowed");

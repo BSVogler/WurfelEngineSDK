@@ -15,3 +15,4 @@ tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "sync", "
 tower-http = { version = "0.7.1", features = ["fs"] }
 wurfel-sim = { path = "../wurfel-sim" }
 caveland-sim = { path = "../caveland-sim" }
+sha2 = "0.10"
