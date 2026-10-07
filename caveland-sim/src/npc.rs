@@ -244,7 +244,7 @@ impl Vanya {
             if horizontal(position, wp.goal) > wp.initial_distance / 2.0 {
                 // The first half climbs (limited to a little above the top of the world)...
                 d = d.normalize_or_zero();
-                if (position.z.floor() as i32) < wurfel_sim::caveland::HEIGHT + 2 {
+                if (position.z.floor() as i32) < crate::generator::HEIGHT + 2 {
                     d.z = 1.0;
                 }
             } else {

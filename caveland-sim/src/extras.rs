@@ -35,7 +35,7 @@ const SCAN_EVERY: f32 = 0.5;
 /// Where the tutorial's guide appears (`new Coordinate(-3, 8, 6)`).
 pub const VANYA_SPAWN: Cell = (-3, 8, 6);
 /// The place whose crossing starts the tutorial's end fight, corners of the cube.
-pub const FIGHT_ZONE: (Cell, Cell) = ((28, -5, 3), (30, 7, wurfel_sim::caveland::HEIGHT));
+pub const FIGHT_ZONE: (Cell, Cell) = ((28, -5, 3), (30, 7, crate::generator::HEIGHT));
 /// Where the robots of the end fight come from: x 34 to 38, y 4 to 8, z 5.
 pub const FIGHT_ROBOTS: usize = 5;
 /// Where a player starts and comes back to until a flag says otherwise (`respawnX/Y/Z` defaults).
@@ -1273,7 +1273,7 @@ impl Caveland {
         let vanya = self.x.scenario.vanya.expect("set above");
 
         // Down in the caves the tutorial is over.
-        if players.iter().any(|&(_, p)| cell_at(p).1 > wurfel_sim::caveland::CAVES_BORDER) {
+        if players.iter().any(|&(_, p)| cell_at(p).1 > crate::generator::CAVES_BORDER) {
             self.set_tutorial_step(entities, 4);
         }
 

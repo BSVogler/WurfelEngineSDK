@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use super::{splitmix64, Generator};
 use crate::block::{id, Block};
 use crate::grid::{lower_left, lower_right, row_offset, to_iso};
-use crate::caveland::blocks::TREE;
+use crate::block::id::TREE;
 use crate::CHUNK_SIZE_Z;
 
 /// Terraced highlands with sheer cliffs, lakes and natural arches. Not from the Java engine.

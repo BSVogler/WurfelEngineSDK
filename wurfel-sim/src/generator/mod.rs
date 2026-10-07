@@ -1,8 +1,9 @@
 //! Map generators. Same contract as the Java engine's `Generator`: a pure function from absolute
 //! block coordinates to a block, so any machine can regenerate any part of the world from a seed.
 //!
-//! All generators found in the Java projects are here and selectable by name, see [`generators`]
-//! and [`create_generator`]:
+//! The engine's generators (all those of the Java engine) are selectable by name, see
+//! [`generators`] and [`create_generator`]. A game adds its own with [`register_generator`] at
+//! startup (Caveland's is in the `caveland-sim` crate):
 //!
 //! | id | Java class | what it makes |
 //! |---|---|---|
@@ -11,7 +12,6 @@
 //! | `blocktest` | `BlockTestGenerator` | a floor with one row of every block type |
 //! | `fullmap` | `FullMapGenerator` | solid world of a single block type (the seed is the block id) |
 //! | `arena` | `ArenaGenerator` (Weapon of Choice demo) | sand floor with scattered pillars |
-//! | `caveland` | `ChunkGenerator` (Caveland) | flat overworld, a grid of diamond caves underneath |
 //! | `terrain` | none, new | terraced highlands with cliffs, lakes and natural arches (noise based) |
 //!
 //! Not ported: `MinecraftLoader`, which reads a Minecraft save from a hardcoded path on the
@@ -37,7 +37,8 @@ pub use fullmap::FullMapGenerator;
 pub use island::IslandGenerator;
 pub use terrain::TerrainGenerator;
 
-use crate::caveland::CavelandGenerator;
+use std::sync::RwLock;
+
 use crate::cvar::CVarSystem;
 use crate::Block;
 
@@ -108,18 +109,12 @@ pub struct GeneratorInfo {
     pub uses_seed: bool,
 }
 
-static GENERATORS: [GeneratorInfo; 7] = [
+static ENGINE_GENERATORS: [GeneratorInfo; 6] = [
     GeneratorInfo {
         id: "island",
         name: "Island",
         description: "One mountain in a shallow sea (Wurfel Engine default).",
         uses_seed: true,
-    },
-    GeneratorInfo {
-        id: "caveland",
-        name: "Caveland",
-        description: "A flat overworld with grass; below it a grid of diamond-shaped caves with coal, sulfur and iron.",
-        uses_seed: false,
     },
     GeneratorInfo {
         id: "arena",
@@ -148,28 +143,51 @@ static GENERATORS: [GeneratorInfo; 7] = [
     GeneratorInfo { id: "air", name: "Empty", description: "Nothing at all.", uses_seed: false },
 ];
 
-/// All generators, in a stable order.
-pub fn generators() -> &'static [GeneratorInfo] {
-    &GENERATORS
+/// Makes a generator from a seed.
+pub type GeneratorConstructor = fn(u64) -> Box<dyn Generator>;
+
+/// Generators games added with [`register_generator`], after the engine's own.
+static REGISTERED: RwLock<Vec<(GeneratorInfo, GeneratorConstructor)>> = RwLock::new(Vec::new());
+
+/// Make a game's generator selectable by name, like the engine's own. Registering an id again
+/// replaces the earlier one, so a game may call this as often as it likes. Engine ids cannot be
+/// replaced.
+pub fn register_generator(info: GeneratorInfo, create: GeneratorConstructor) {
+    assert!(!ENGINE_GENERATORS.iter().any(|g| g.id == info.id), "'{}' is an engine generator", info.id);
+    let mut registered = REGISTERED.write().unwrap_or_else(|e| e.into_inner());
+    registered.retain(|(known, _)| known.id != info.id);
+    registered.push((info, create));
 }
 
-pub fn generator_info(id: &str) -> Option<&'static GeneratorInfo> {
+fn registered() -> std::sync::RwLockReadGuard<'static, Vec<(GeneratorInfo, GeneratorConstructor)>> {
+    REGISTERED.read().unwrap_or_else(|e| e.into_inner())
+}
+
+/// All generators: the engine's in a stable order, then the registered ones in registration order.
+pub fn generators() -> Vec<GeneratorInfo> {
+    ENGINE_GENERATORS.iter().copied().chain(registered().iter().map(|(info, _)| *info)).collect()
+}
+
+pub fn generator_info(id: &str) -> Option<GeneratorInfo> {
     let id = id.trim().to_ascii_lowercase();
-    GENERATORS.iter().find(|info| info.id == id)
+    generators().into_iter().find(|info| info.id == id)
 }
 
 /// Build a generator by id (case-insensitive). `seed` is ignored by generators that do not use one
 /// (see [`GeneratorInfo::uses_seed`]). `None` for an unknown id.
 pub fn create_generator(id: &str, seed: u64) -> Option<Box<dyn Generator>> {
-    Some(match generator_info(id)?.id {
+    let id = id.trim().to_ascii_lowercase();
+    Some(match id.as_str() {
         "island" => Box::new(IslandGenerator::new(seed)),
-        "caveland" => Box::new(CavelandGenerator),
         "arena" => Box::new(ArenaGenerator::new(seed)),
         "blocktest" => Box::new(BlockTestGenerator),
         "fullmap" => Box::new(FullMapGenerator::new(seed as u8)),
         "terrain" => Box::new(TerrainGenerator::new(seed)),
         "air" => Box::new(AirGenerator),
-        _ => return None,
+        _ => {
+            let create = registered().iter().find(|(info, _)| info.id == id)?.1;
+            create(seed)
+        }
     })
 }
 
@@ -191,9 +209,10 @@ pub(crate) fn splitmix64(state: &mut u64) -> u64 {
     z ^ (z >> 31)
 }
 
-/// Reading the fixtures written by the real Java code.
-#[cfg(test)]
-pub(crate) mod fixture {
+/// Reading the fixtures written by the real Java code (`fixtures/generators`). Public for the tests
+/// of games whose generators are checked against the same Java harness.
+#[doc(hidden)]
+pub mod fixture {
     use super::{block_from_java_int, Generator};
 
     /// Lines of the form `x y: v0 v1 v2 ...` (the raw `int` Java returned for z = 0, 1, 2...).
@@ -228,7 +247,8 @@ mod tests {
     #[test]
     fn the_registry_lists_every_generator_once_in_a_stable_order() {
         let ids: Vec<_> = generators().iter().map(|g| g.id).collect();
-        assert_eq!(ids, ["island", "caveland", "arena", "blocktest", "fullmap", "terrain", "air"]);
+        // Other tests may register generators of their own (the registry is global): they come after.
+        assert_eq!(ids[..6], ["island", "arena", "blocktest", "fullmap", "terrain", "air"]);
         for info in generators() {
             assert!(create_generator(info.id, 5).is_some(), "{} cannot be created", info.id);
             assert!(!info.name.is_empty() && !info.description.is_empty());
@@ -239,7 +259,7 @@ mod tests {
 
     #[test]
     fn lookup_ignores_case_and_surrounding_spaces() {
-        assert_eq!(generator_info(" Caveland ").unwrap().id, "caveland");
+        assert_eq!(generator_info(" Arena ").unwrap().id, "arena");
         assert!(create_generator("ISLAND", 1).is_some());
     }
 
@@ -257,10 +277,34 @@ mod tests {
 
     #[test]
     fn a_world_can_be_built_from_a_boxed_generator() {
-        let mut world = World::new(create_generator("caveland", 0).unwrap());
+        let mut world = World::new(create_generator("fullmap", crate::block::id::DIRT as u64).unwrap());
         world.load_chunk(0, 0);
-        assert_eq!(world.get(0, 0, 3).id(), crate::caveland::blocks::GRASS);
-        assert_eq!(world.get(0, 0, 0).id(), crate::caveland::blocks::DIRT);
+        assert_eq!(world.get(0, 0, 3).id(), crate::block::id::DIRT);
+    }
+
+    struct Checkerboard(u64);
+    impl Generator for Checkerboard {
+        fn generate(&self, x: i32, y: i32, z: i32) -> Block {
+            if z == 0 && (x + y) % 2 == 0 { Block::new(self.0 as u8, 0) } else { Block::AIR }
+        }
+    }
+
+    #[test]
+    fn a_game_registers_its_own_generators_after_the_engines() {
+        let info = GeneratorInfo { id: "test-checkerboard", name: "Checkers", description: "test", uses_seed: true };
+        register_generator(info, |seed| Box::new(Checkerboard(seed)));
+        register_generator(info, |seed| Box::new(Checkerboard(seed + 1))); // replaces, not duplicates
+        let ids: Vec<_> = generators().iter().map(|g| g.id).collect();
+        assert_eq!(ids.iter().filter(|&&id| id == "test-checkerboard").count(), 1);
+        assert!(ids.iter().position(|&id| id == "test-checkerboard") > ids.iter().position(|&id| id == "air"));
+        assert_eq!(generator_info(" Test-Checkerboard ").unwrap().name, "Checkers");
+        assert_eq!(create_generator("test-checkerboard", 2).unwrap().generate(0, 0, 0).id(), 3);
+    }
+
+    #[test]
+    #[should_panic(expected = "engine generator")]
+    fn engine_generators_cannot_be_replaced() {
+        register_generator(GeneratorInfo { id: "island", name: "", description: "", uses_seed: false }, |_| Box::new(AirGenerator));
     }
 
     #[test]
@@ -297,14 +341,14 @@ mod tests {
         let mut map = CVarSystem::map();
         // Defaults are not written: a fresh map file still only has its version.
         assert_eq!(map.save_string(), "mapversion 4\n");
-        map.set("generator", "caveland").unwrap();
+        map.set("generator", "arena").unwrap();
         map.set("generatorSeed", "42").unwrap();
         let text = map.save_string();
-        assert_eq!(text, "generator caveland\ngeneratorseed 42\nmapversion 4\n");
+        assert_eq!(text, "generator arena\ngeneratorseed 42\nmapversion 4\n");
 
         let mut loaded = CVarSystem::map();
         assert_eq!(loaded.load_str(&text).applied, 3);
-        assert_eq!(loaded.get_str("generator"), Ok("caveland"));
+        assert_eq!(loaded.get_str("generator"), Ok("arena"));
         assert_eq!(loaded.get_i32("generatorSeed"), Ok(42));
     }
 

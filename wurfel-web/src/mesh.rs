@@ -111,7 +111,7 @@ pub fn block_color(block: Block) -> [f32; 3] {
 }
 
 fn base_color(block: Block) -> [f32; 3] {
-    use wurfel_sim::caveland::blocks as cl;
+    use caveland_sim::blocks::ids as cl;
     match block.id() {
         id::GRASS => [0.36, 0.64, 0.25],
         id::DIRT => [0.53, 0.37, 0.24],
@@ -421,8 +421,8 @@ mod tests {
 
     #[test]
     fn coal_is_dark_and_sulfur_is_yellow() {
-        let coal = base_color(Block::new(wurfel_sim::caveland::blocks::COAL, 0));
-        let sulfur = base_color(Block::new(wurfel_sim::caveland::blocks::SULFUR, 0));
+        let coal = base_color(Block::new(caveland_sim::blocks::ids::COAL, 0));
+        let sulfur = base_color(Block::new(caveland_sim::blocks::ids::SULFUR, 0));
         assert!(coal.iter().all(|&c| c < 0.2));
         assert!(sulfur[0] > 0.8 && sulfur[1] > 0.8 && sulfur[2] < 0.4);
     }

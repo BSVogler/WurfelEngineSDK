@@ -111,7 +111,7 @@ impl Transport {
         let existing = self.portals.iter().find(|(_, p)| p.exit && p.cell == target).map(|(&id, _)| id);
         let exit = match existing {
             Some(id) => id,
-            None => self.spawn_portal(entities, target, (0, 0, wurfel_sim::caveland::HEIGHT - 1), true),
+            None => self.spawn_portal(entities, target, (0, 0, crate::generator::HEIGHT - 1), true),
         };
         if let Some(p) = self.portals.get_mut(&exit) {
             if p.target != back {
@@ -153,8 +153,8 @@ impl Transport {
                 .or_else(|| self.portals.iter().find(|(_, p)| !p.exit && p.cell == cell).map(|(&id, _)| id))
                 .unwrap_or_else(|| {
                     // The way down: cave 0 from outside, otherwise the next cave.
-                    let number = wurfel_sim::caveland::cave_number(cell.0, cell.1);
-                    let target = wurfel_sim::caveland::cave_up(if number < 0 { 0 } else { number + 1 });
+                    let number = crate::generator::cave_number(cell.0, cell.1);
+                    let target = crate::generator::cave_up(if number < 0 { 0 } else { number + 1 });
                     self.spawn_portal(entities, cell, target, false)
                 });
             let open = self.entries.get(&cell).is_some_and(|e| e.interactable(world, cell));
@@ -240,11 +240,11 @@ impl Transport {
             return;
         }
         spawner.cooldown += SPAWN_INTERVAL;
-        let cave = wurfel_sim::caveland::cave_number(portal.cell.0, portal.cell.1);
+        let cave = crate::generator::cave_number(portal.cell.0, portal.cell.1);
         if cave < 0 {
             return;
         }
-        let (cx, cy, cz) = wurfel_sim::caveland::cave_center(cave);
+        let (cx, cy, cz) = crate::generator::cave_center(cave);
         let missing = MAX_SPAWNED.saturating_sub(spawner.robots.len());
         let mut spawned = Vec::new();
         for _ in 0..missing {

@@ -21,10 +21,24 @@ use serde_json::{json, Value};
 use wurfel_sim::entity::physics::ground_height;
 use wurfel_sim::entity::{Entities, EntityId};
 use wurfel_sim::generator::{create_generator, Generator};
+
+use crate::game::WorldSpec;
+use crate::mode::{GameMode, ModeInfo};
 use wurfel_sim::grid::{from_iso, to_iso};
 use wurfel_sim::player::PlayerInput;
 use wurfel_sim::protocol::{Edit, ServerMsg, ThingState};
 use wurfel_sim::{Block, World, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z};
+
+/// The Caveland rules, played on maps of the Caveland generator unless they choose otherwise.
+pub const MODE: ModeInfo = ModeInfo {
+    name: "caveland",
+    generator: Some(caveland_sim::generator::INFO.id),
+    create: |world: &mut World, spec: &WorldSpec| -> Box<dyn GameMode> {
+        let mut mode = CavelandMode::new(world, spec.seed);
+        mode.configure(&spec.generator, spec.seed);
+        Box::new(mode)
+    },
+};
 
 /// Set by `--skip-intro`: a new game starts on the ground instead of in the crashing spaceship.
 pub static SKIP_INTRO: AtomicBool = AtomicBool::new(false);
@@ -126,38 +140,9 @@ impl CavelandMode {
         self.spawner = create_generator(generator, seed);
     }
 
-    /// Who is friends with whom: turrets spare the friends of their owner.
-    pub fn set_friends(&mut self, pairs: &[(u32, u32)]) {
-        self.caveland.set_friends(pairs.iter().copied());
-    }
-
     #[cfg(test)]
     pub fn caveland(&self) -> &Caveland {
         &self.caveland
-    }
-
-    /// Add a player at `spot`. The first one also finds some things to pick up and an enemy to
-    /// fight, so there is something to do.
-    pub fn spawn_player(&mut self, entities: &mut Entities, world: &World, spot: Vec3) -> EntityId {
-        let number = self.numbers.len().min(u8::MAX as usize) as u8;
-        let id = self.caveland.spawn_player(entities, number, spot);
-        self.numbers.insert(id, number);
-        self.spawn.get_or_insert(spot);
-        if !self.seeded {
-            self.seeded = true;
-            self.scatter(entities, world, spot);
-        }
-        if self.intro_wanted() {
-            self.board_ship(entities, id, spot);
-        }
-        id
-    }
-
-    pub fn remove_player(&mut self, id: EntityId) {
-        self.numbers.remove(&id);
-        self.last_focus.remove(&id);
-        self.riding.remove(&id);
-        self.pending_lift.remove(&id);
     }
 
     /// A new game starts with the crash of the spaceship, until it has happened once on this save.
@@ -174,7 +159,7 @@ impl CavelandMode {
             None => {
                 let (x, y) = from_iso(spot.x + SHIP_TARGET.x, spot.y + SHIP_TARGET.y);
                 let start = spot + SHIP_OFFSET;
-                let start = Vec3::new(start.x, start.y, start.z.min(wurfel_sim::caveland::HEIGHT as f32 - 2.0));
+                let start = Vec3::new(start.x, start.y, start.z.min(caveland_sim::generator::HEIGHT as f32 - 2.0));
                 let ship = self.caveland.transport_mut().spawn_spaceship(entities, start);
                 self.caveland.transport_mut().enable_crash(entities, ship, (x, y, spot.z.floor() as i32));
                 self.ship = Some(ship);
@@ -226,124 +211,6 @@ impl CavelandMode {
             self.caveland.spawn_flag(entities, Team::Neutral, flag);
             let bird = at(0.0, -4.0) + Vec3::Z * 2.0;
             self.caveland.spawn_bird(entities, bird);
-        }
-    }
-
-    /// What a player holds down this tick.
-    pub fn controls(&mut self, entities: &mut Entities, world: &World, id: EntityId, input: PlayerInput) {
-        let controls = Controls { up: input.up, down: input.down, left: input.left, right: input.right, jump: input.jump, heading: input.heading };
-        self.caveland.set_controls(entities, world, id, controls);
-    }
-
-    /// A client's one-off action. Unknown names and nonsense arguments are ignored.
-    pub fn act(&mut self, entities: &mut Entities, world: &mut World, id: EntityId, name: &str, arg: i32) {
-        let action = match name {
-            "attack" => Action::Attack,
-            "release_attack" => Action::ReleaseAttack,
-            "prepare_throw" => Action::PrepareThrow,
-            "throw" => Action::Throw,
-            "drop" => Action::Drop,
-            "use" => Action::UseItem,
-            "interact" => Action::Interact,
-            "switch_left" => Action::SwitchItems { left: true },
-            "switch_right" => Action::SwitchItems { left: false },
-            "craft" => match usize::try_from(arg) {
-                Ok(index) => Action::Craft(index),
-                Err(_) => return,
-            },
-            "choose" => match u8::try_from(arg) {
-                Ok(option) => Action::Choose(option),
-                Err(_) => return,
-            },
-            "cancel" => Action::Cancel,
-            // The answer to the offer of a lift construction site.
-            "confirm_lift" => {
-                if let Some(site) = self.pending_lift.remove(&id) {
-                    self.caveland.confirm_lift_site(world, site);
-                }
-                return;
-            }
-            "decline_lift" => {
-                self.pending_lift.remove(&id);
-                return;
-            }
-            _ => return,
-        };
-        let packed = |c: &Caveland| c.player(id).map(|p| (p.inventory.items().len(), p.prepare_throw, p.time_till_impact.is_some()));
-        let before = packed(&self.caveland);
-        self.caveland.act(entities, world, id, action);
-        // Tell everybody about the moves that clients animate (the animation is the clients' own;
-        // this is the one-shot trigger for the other players and the outcome for the actor). `ok`
-        // is false when the rules refused: no swing started, nothing prepared, nothing thrown.
-        if let (Some((had, _, _)), Some((has, preparing, swinging))) = (before, packed(&self.caveland)) {
-            let ok = match name {
-                "attack" => swinging,
-                "prepare_throw" => preparing,
-                "throw" => has < had,
-                "release_attack" | "drop" => true,
-                _ => return,
-            };
-            self.action_happenings.push(json!({"t": "action", "player": id, "name": name, "ok": ok}));
-        }
-    }
-
-    /// One fixed step of the rules. `tick` is the server's step counter after this step.
-    pub fn tick(&mut self, entities: &mut Entities, world: &mut World, tick: u64, dt: f32) {
-        self.scan_new_chunks(entities, world);
-        let events = self.caveland.tick(entities, world, dt);
-        let (mut edits, mut happenings) = (Vec::new(), Vec::new());
-        for event in &events {
-            match event {
-                GameEvent::BlockDestroyed { cell, .. } => edits.push(Edit { x: cell.0, y: cell.1, z: cell.2, block: 0 }),
-                GameEvent::ItemPlaced { cell, block } => {
-                    edits.push(Edit { x: cell.0, y: cell.1, z: cell.2, block: Block::new(*block, 0).raw() })
-                }
-                GameEvent::PlayerDied { player } => {
-                    self.respawn(entities, *player);
-                    happenings.push(describe(event));
-                }
-                other => happenings.push(describe(other)),
-            }
-        }
-        // What the rest of the rules report: dialogs and notices, exact block changes, vehicles.
-        for event in self.caveland.drain_extra_events() {
-            self.extra_event(event, &mut edits, &mut happenings);
-        }
-        for event in self.caveland.drain_transport_events() {
-            self.transport_event(event, &mut happenings);
-        }
-        for edit in edits {
-            self.outbox.push(ServerMsg::BlockSet(edit));
-        }
-        happenings.extend(self.action_happenings.drain(..));
-        happenings.retain(|h| !h.is_null());
-        if !happenings.is_empty() {
-            self.outbox.push(ServerMsg::Rules { kind: "events".into(), data: Value::Array(happenings) });
-        }
-        if tick % THINGS_EVERY == 0 {
-            self.outbox.push(self.things_message(entities, tick));
-        }
-        if self.powered_dirty || tick % POWER_EVERY == 0 {
-            self.powered_dirty = false;
-            let mut cells: Vec<_> = self.powered.iter().copied().collect();
-            cells.sort_unstable();
-            cells.truncate(512);
-            self.outbox.push(ServerMsg::Rules { kind: "power".into(), data: json!({ "cells": cells }) });
-        }
-        if tick % FOCUS_EVERY == 0 {
-            self.send_interaction_focus(entities, world);
-        }
-        if tick % STATE_EVERY == 0 {
-            let launchers = self.launchers().to_string();
-            if launchers != self.last_launchers {
-                self.outbox.push(ServerMsg::Rules { kind: "launchers".into(), data: serde_json::from_str(&launchers).expect("just made") });
-                self.last_launchers = launchers;
-            }
-            let state = self.state(entities).to_string();
-            if state != self.last_state {
-                self.outbox.push(ServerMsg::Rules { kind: "state".into(), data: serde_json::from_str(&state).expect("just made") });
-                self.last_state = state;
-            }
         }
     }
 
@@ -435,89 +302,6 @@ impl CavelandMode {
         }
     }
 
-    /// Is `name` one of the game mode's console commands (the rest are the engine's)?
-    pub fn has_command(name: &str) -> bool {
-        COMMANDS.iter().any(|(n, _)| *n == name)
-    }
-
-    /// A console line of a player. Only an admin (`auth <token>`, or the host: the player who has
-    /// been here longest) may run them: `give` and `tpplayer` are cheats.
-    /// Returns the answer for the player's console (`Err` for a refusal or a failure).
-    pub fn command(&mut self, entities: &mut Entities, world: &mut World, player: EntityId, line: &str, host: bool) -> Result<String, String> {
-        let line = normalize_line(line);
-        let name = command_name(line);
-        if !COMMANDS.iter().any(|(n, _)| *n == name) {
-            Err(format!("unknown command '{name}' (try: {})", COMMANDS.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")))
-        } else if !host {
-            Err("only the host or an admin can use commands (log in with `auth <token>`)".to_string())
-        } else {
-            match self.caveland.run_command(entities, player, line) {
-                Ok(CommandOutcome::Done(text)) => Ok(text.to_string()),
-                Ok(CommandOutcome::PortalTarget(cell)) => {
-                    // The portal nearest to the player is the selected one.
-                    let at = entities.get(player).map(|e| e.position).unwrap_or_default();
-                    let nearest = self
-                        .caveland
-                        .things()
-                        .into_iter()
-                        .filter(|(_, k)| matches!(k, EntityKind::Portal | EntityKind::ExitPortal))
-                        .filter_map(|(id, _)| entities.get(id).map(|e| (e.position.distance(at), id)))
-                        .min_by(|a, b| a.0.total_cmp(&b.0));
-                    match nearest {
-                        Some((_, id)) if self.caveland.transport_mut().set_portal_target(&[id], cell) => Ok("portal target set".to_string()),
-                        _ => Err("no portal nearby".to_string()),
-                    }
-                }
-                Ok(CommandOutcome::Place(block)) => {
-                    // One block in front of the player, on the floor they stand on.
-                    let at = entities.get(player).map(|e| {
-                        let facing = e.body.as_ref().map_or(glam::Vec2::X, |b| b.orientation());
-                        (e.position + facing.extend(0.0) * 1.5, e.position.z)
-                    });
-                    match at {
-                        Some((p, z)) => {
-                            let (x, y) = from_iso(p.x, p.y);
-                            if self.caveland.place_machine(world, (x, y, z.floor() as i32), block) {
-                                Ok("placed".to_string())
-                            } else {
-                                Err("there is no free space in front of you".to_string())
-                            }
-                        }
-                        None => Err("you are not in the world".to_string()),
-                    }
-                }
-                Err(e) => Err(e),
-            }
-        }
-    }
-
-    /// Keep what the blocks do not: money, machines, the respawn point, the intro. Next to the save
-    /// slot's chunks.
-    pub fn save(&self, dir: &Path, entities: &Entities) -> io::Result<()> {
-        let state: Value = serde_json::from_str(&self.caveland.save_state(entities)).map_err(io::Error::other)?;
-        let sidecar = json!({
-            "intro_done": self.intro_done,
-            "respawn": self.flag_respawn.map(|p| p.to_array()),
-            "state": state,
-        });
-        std::fs::create_dir_all(dir)?;
-        std::fs::write(dir.join(SIDECAR), sidecar.to_string())
-    }
-
-    /// Read what [`CavelandMode::save`] wrote. A slot without the file starts fresh; one that cannot
-    /// be read is reported and also starts fresh (the file is not touched until the next save).
-    pub fn load(&mut self, dir: &Path, entities: &Entities) -> Result<(), String> {
-        let text = match std::fs::read_to_string(dir.join(SIDECAR)) {
-            Ok(text) => text,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
-            Err(e) => return Err(format!("{}: {e}", dir.join(SIDECAR).display())),
-        };
-        let sidecar: Value = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", dir.join(SIDECAR).display()))?;
-        self.intro_done = sidecar["intro_done"].as_bool().unwrap_or(false);
-        self.flag_respawn = serde_json::from_value::<Option<[f32; 3]>>(sidecar["respawn"].clone()).ok().flatten().map(Vec3::from);
-        self.caveland.load_state(entities, &sidecar["state"].to_string())
-    }
-
     fn things_message(&self, entities: &Entities, tick: u64) -> ServerMsg {
         let players: Vec<Vec3> = self.numbers.keys().filter_map(|&id| entities.get(id).map(|e| e.position)).collect();
         let things = self
@@ -583,10 +367,6 @@ impl CavelandMode {
         json!({ "launchers": list })
     }
 
-    /// Take what the last steps want to tell everybody.
-    pub fn drain_outbox(&mut self) -> Vec<ServerMsg> {
-        std::mem::take(&mut self.outbox)
-    }
 }
 
 fn round2(v: f32) -> f64 {
@@ -625,6 +405,247 @@ fn describe(event: &GameEvent) -> Value {
         GameEvent::RobotDestroyed { position, .. } => json!({"t": "robot_destroyed", "pos": pos(*position)}),
         // Block changes travel as `BlockSet`; the oven's product is a thing like any other.
         GameEvent::BlockDestroyed { .. } | GameEvent::ItemPlaced { .. } | GameEvent::OvenProduced { .. } => Value::Null,
+    }
+}
+
+impl GameMode for CavelandMode {
+    fn name(&self) -> &'static str {
+        MODE.name
+    }
+
+    /// Who is friends with whom: turrets spare the friends of their owner.
+    fn set_friends(&mut self, pairs: &[(u32, u32)]) {
+        self.caveland.set_friends(pairs.iter().copied());
+    }
+
+    /// Add a player at `spot`. The first one also finds some things to pick up and an enemy to
+    /// fight, so there is something to do.
+    fn spawn_player(&mut self, entities: &mut Entities, world: &World, spot: Vec3) -> EntityId {
+        let number = self.numbers.len().min(u8::MAX as usize) as u8;
+        let id = self.caveland.spawn_player(entities, number, spot);
+        self.numbers.insert(id, number);
+        self.spawn.get_or_insert(spot);
+        if !self.seeded {
+            self.seeded = true;
+            self.scatter(entities, world, spot);
+        }
+        if self.intro_wanted() {
+            self.board_ship(entities, id, spot);
+        }
+        id
+    }
+
+    fn remove_player(&mut self, id: EntityId) {
+        self.numbers.remove(&id);
+        self.last_focus.remove(&id);
+        self.riding.remove(&id);
+        self.pending_lift.remove(&id);
+    }
+
+    /// What a player holds down this tick.
+    fn controls(&mut self, entities: &mut Entities, world: &World, id: EntityId, input: PlayerInput) {
+        let controls = Controls { up: input.up, down: input.down, left: input.left, right: input.right, jump: input.jump, heading: input.heading };
+        self.caveland.set_controls(entities, world, id, controls);
+    }
+
+    /// A client's one-off action. Unknown names and nonsense arguments are ignored.
+    fn act(&mut self, entities: &mut Entities, world: &mut World, id: EntityId, name: &str, arg: i32) {
+        let action = match name {
+            "attack" => Action::Attack,
+            "release_attack" => Action::ReleaseAttack,
+            "prepare_throw" => Action::PrepareThrow,
+            "throw" => Action::Throw,
+            "drop" => Action::Drop,
+            "use" => Action::UseItem,
+            "interact" => Action::Interact,
+            "switch_left" => Action::SwitchItems { left: true },
+            "switch_right" => Action::SwitchItems { left: false },
+            "craft" => match usize::try_from(arg) {
+                Ok(index) => Action::Craft(index),
+                Err(_) => return,
+            },
+            "choose" => match u8::try_from(arg) {
+                Ok(option) => Action::Choose(option),
+                Err(_) => return,
+            },
+            "cancel" => Action::Cancel,
+            // The answer to the offer of a lift construction site.
+            "confirm_lift" => {
+                if let Some(site) = self.pending_lift.remove(&id) {
+                    self.caveland.confirm_lift_site(world, site);
+                }
+                return;
+            }
+            "decline_lift" => {
+                self.pending_lift.remove(&id);
+                return;
+            }
+            _ => return,
+        };
+        let packed = |c: &Caveland| c.player(id).map(|p| (p.inventory.items().len(), p.prepare_throw, p.time_till_impact.is_some()));
+        let before = packed(&self.caveland);
+        self.caveland.act(entities, world, id, action);
+        // Tell everybody about the moves that clients animate (the animation is the clients' own;
+        // this is the one-shot trigger for the other players and the outcome for the actor). `ok`
+        // is false when the rules refused: no swing started, nothing prepared, nothing thrown.
+        if let (Some((had, _, _)), Some((has, preparing, swinging))) = (before, packed(&self.caveland)) {
+            let ok = match name {
+                "attack" => swinging,
+                "prepare_throw" => preparing,
+                "throw" => has < had,
+                "release_attack" | "drop" => true,
+                _ => return,
+            };
+            self.action_happenings.push(json!({"t": "action", "player": id, "name": name, "ok": ok}));
+        }
+    }
+
+    /// One fixed step of the rules. `tick` is the server's step counter after this step.
+    fn tick(&mut self, entities: &mut Entities, world: &mut World, tick: u64, dt: f32) {
+        self.scan_new_chunks(entities, world);
+        let events = self.caveland.tick(entities, world, dt);
+        let (mut edits, mut happenings) = (Vec::new(), Vec::new());
+        for event in &events {
+            match event {
+                GameEvent::BlockDestroyed { cell, .. } => edits.push(Edit { x: cell.0, y: cell.1, z: cell.2, block: 0 }),
+                GameEvent::ItemPlaced { cell, block } => {
+                    edits.push(Edit { x: cell.0, y: cell.1, z: cell.2, block: Block::new(*block, 0).raw() })
+                }
+                GameEvent::PlayerDied { player } => {
+                    self.respawn(entities, *player);
+                    happenings.push(describe(event));
+                }
+                other => happenings.push(describe(other)),
+            }
+        }
+        // What the rest of the rules report: dialogs and notices, exact block changes, vehicles.
+        for event in self.caveland.drain_extra_events() {
+            self.extra_event(event, &mut edits, &mut happenings);
+        }
+        for event in self.caveland.drain_transport_events() {
+            self.transport_event(event, &mut happenings);
+        }
+        for edit in edits {
+            self.outbox.push(ServerMsg::BlockSet(edit));
+        }
+        happenings.extend(self.action_happenings.drain(..));
+        happenings.retain(|h| !h.is_null());
+        if !happenings.is_empty() {
+            self.outbox.push(ServerMsg::Rules { kind: "events".into(), data: Value::Array(happenings) });
+        }
+        if tick % THINGS_EVERY == 0 {
+            self.outbox.push(self.things_message(entities, tick));
+        }
+        if self.powered_dirty || tick % POWER_EVERY == 0 {
+            self.powered_dirty = false;
+            let mut cells: Vec<_> = self.powered.iter().copied().collect();
+            cells.sort_unstable();
+            cells.truncate(512);
+            self.outbox.push(ServerMsg::Rules { kind: "power".into(), data: json!({ "cells": cells }) });
+        }
+        if tick % FOCUS_EVERY == 0 {
+            self.send_interaction_focus(entities, world);
+        }
+        if tick % STATE_EVERY == 0 {
+            let launchers = self.launchers().to_string();
+            if launchers != self.last_launchers {
+                self.outbox.push(ServerMsg::Rules { kind: "launchers".into(), data: serde_json::from_str(&launchers).expect("just made") });
+                self.last_launchers = launchers;
+            }
+            let state = self.state(entities).to_string();
+            if state != self.last_state {
+                self.outbox.push(ServerMsg::Rules { kind: "state".into(), data: serde_json::from_str(&state).expect("just made") });
+                self.last_state = state;
+            }
+        }
+    }
+
+    /// Is `name` one of the game mode's console commands (the rest are the engine's)?
+    fn has_command(&self, name: &str) -> bool {
+        COMMANDS.iter().any(|(n, _)| *n == name)
+    }
+
+    /// A console line of a player. Only an admin (`auth <token>`, or the host: the player who has
+    /// been here longest) may run them: `give` and `tpplayer` are cheats.
+    /// Returns the answer for the player's console (`Err` for a refusal or a failure).
+    fn command(&mut self, entities: &mut Entities, world: &mut World, player: EntityId, line: &str, host: bool) -> Result<String, String> {
+        let line = normalize_line(line);
+        let name = command_name(line);
+        if !COMMANDS.iter().any(|(n, _)| *n == name) {
+            Err(format!("unknown command '{name}' (try: {})", COMMANDS.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")))
+        } else if !host {
+            Err("only the host or an admin can use commands (log in with `auth <token>`)".to_string())
+        } else {
+            match self.caveland.run_command(entities, player, line) {
+                Ok(CommandOutcome::Done(text)) => Ok(text.to_string()),
+                Ok(CommandOutcome::PortalTarget(cell)) => {
+                    // The portal nearest to the player is the selected one.
+                    let at = entities.get(player).map(|e| e.position).unwrap_or_default();
+                    let nearest = self
+                        .caveland
+                        .things()
+                        .into_iter()
+                        .filter(|(_, k)| matches!(k, EntityKind::Portal | EntityKind::ExitPortal))
+                        .filter_map(|(id, _)| entities.get(id).map(|e| (e.position.distance(at), id)))
+                        .min_by(|a, b| a.0.total_cmp(&b.0));
+                    match nearest {
+                        Some((_, id)) if self.caveland.transport_mut().set_portal_target(&[id], cell) => Ok("portal target set".to_string()),
+                        _ => Err("no portal nearby".to_string()),
+                    }
+                }
+                Ok(CommandOutcome::Place(block)) => {
+                    // One block in front of the player, on the floor they stand on.
+                    let at = entities.get(player).map(|e| {
+                        let facing = e.body.as_ref().map_or(glam::Vec2::X, |b| b.orientation());
+                        (e.position + facing.extend(0.0) * 1.5, e.position.z)
+                    });
+                    match at {
+                        Some((p, z)) => {
+                            let (x, y) = from_iso(p.x, p.y);
+                            if self.caveland.place_machine(world, (x, y, z.floor() as i32), block) {
+                                Ok("placed".to_string())
+                            } else {
+                                Err("there is no free space in front of you".to_string())
+                            }
+                        }
+                        None => Err("you are not in the world".to_string()),
+                    }
+                }
+                Err(e) => Err(e),
+            }
+        }
+    }
+
+    /// Keep what the blocks do not: money, machines, the respawn point, the intro. Next to the save
+    /// slot's chunks.
+    fn save(&self, dir: &Path, entities: &Entities) -> io::Result<()> {
+        let state: Value = serde_json::from_str(&self.caveland.save_state(entities)).map_err(io::Error::other)?;
+        let sidecar = json!({
+            "intro_done": self.intro_done,
+            "respawn": self.flag_respawn.map(|p| p.to_array()),
+            "state": state,
+        });
+        std::fs::create_dir_all(dir)?;
+        std::fs::write(dir.join(SIDECAR), sidecar.to_string())
+    }
+
+    /// Read what [`CavelandMode::save`] wrote. A slot without the file starts fresh; one that cannot
+    /// be read is reported and also starts fresh (the file is not touched until the next save).
+    fn load(&mut self, dir: &Path, entities: &Entities) -> Result<(), String> {
+        let text = match std::fs::read_to_string(dir.join(SIDECAR)) {
+            Ok(text) => text,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(format!("{}: {e}", dir.join(SIDECAR).display())),
+        };
+        let sidecar: Value = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", dir.join(SIDECAR).display()))?;
+        self.intro_done = sidecar["intro_done"].as_bool().unwrap_or(false);
+        self.flag_respawn = serde_json::from_value::<Option<[f32; 3]>>(sidecar["respawn"].clone()).ok().flatten().map(Vec3::from);
+        self.caveland.load_state(entities, &sidecar["state"].to_string())
+    }
+
+    /// Take what the last steps want to tell everybody.
+    fn drain_outbox(&mut self) -> Vec<ServerMsg> {
+        std::mem::take(&mut self.outbox)
     }
 }
 
@@ -963,8 +984,8 @@ mod tests {
 
     #[test]
     fn the_generators_portals_appear_when_their_chunk_comes_into_memory() {
-        use wurfel_sim::generator::create_generator;
-        let generator = create_generator("caveland", 1).unwrap();
+        crate::mode::install();
+        let generator = caveland_sim::generator::CavelandGenerator;
         let mut world = World::new(generator);
         let mut mode = CavelandMode::new(&mut world, 1);
         mode.configure("caveland", 1);

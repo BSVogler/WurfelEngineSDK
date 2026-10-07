@@ -1,5 +1,5 @@
-//! Caveland's map generator (`ChunkGenerator`), its block ids (`CavelandBlocks.CLBlocks`) and the
-//! helpers that describe where the caves are.
+//! Caveland's map generator (`ChunkGenerator`) and the helpers that describe where the caves are.
+//! The block ids it places are in [`crate::blocks::ids`].
 //!
 //! # The map
 //!
@@ -13,52 +13,16 @@
 //!
 //! The float arithmetic is translated literally (`f32`, Java's `%` is Rust's `%`, int to float
 //! conversions at the same points) so that every block matches the Java generator. The tests
-//! compare against output of the real Java class, see `fixtures/generators/regenerate.sh`.
+//! compare against output of the real Java class: `wurfel-sim/fixtures/generators/regenerate.sh`
+//! runs it next to the engine's generators, so the fixtures stay there.
 
-use crate::generator::{block_from_java_int, EntitySpawn, Generator};
-use crate::Block;
+use wurfel_sim::generator::{block_from_java_int, register_generator, EntitySpawn, Generator, GeneratorInfo};
+use wurfel_sim::Block;
 
-/// Block ids. The engine ones (0 to 9) are from `RenderCell.getName`, the others from
-/// `CavelandBlocks.CLBlocks`.
-pub mod blocks {
-    pub const AIR: u8 = 0;
-    pub const GRASS: u8 = 1;
-    pub const DIRT: u8 = 2;
-    pub const STONE: u8 = 3;
-    /// Blocks movement but is not drawn.
-    pub const INVISIBLE_OBSTACLE: u8 = 4;
-    pub const SAND: u8 = 8;
-    pub const WATER: u8 = 9;
+use crate::blocks::ids;
 
-    pub const CONSTRUCTION_SITE: u8 = 11;
-    pub const OVEN: u8 = 12;
-    pub const TORCH: u8 = 13;
-    pub const POWER_STATION: u8 = 14;
-    pub const LIFT: u8 = 15;
-    /// Entrance of a cave.
-    pub const ENTRY: u8 = 16;
-    pub const INDESTRUCTIBLE_OBSTACLE: u8 = 17;
-    pub const LIFT_GROUND: u8 = 18;
-    pub const CRYSTAL: u8 = 41;
-    pub const SULFUR: u8 = 42;
-    pub const IRON_ORE: u8 = 43;
-    pub const COAL: u8 = 44;
-    pub const TURRET: u8 = 52;
-    pub const ROBOT_FACTORY: u8 = 53;
-    pub const POWER_CABLE: u8 = 54;
-    pub const RAILS: u8 = 55;
-    pub const BOOSTER_RAILS: u8 = 56;
-    /// Throws players and items along an arc, reloads over time (not in the Java game).
-    pub const CATAPULT: u8 = 57;
-    /// Fires players, items and explosive shells with gunpowder (not in the Java game).
-    pub const CANNON: u8 = 58;
-    pub const FLAG_POLE: u8 = 60;
-    pub const TREE: u8 = 72;
-    /// Java's `UNDEFINED`, the byte -1.
-    pub const UNDEFINED: u8 = 255;
-}
 
-/// The world height Caveland was built for. The engine's chunks are taller now ([`crate::CHUNK_SIZE_Z`]),
+/// The world height Caveland was built for. The engine's chunks are taller now ([`wurfel_sim::CHUNK_SIZE_Z`]),
 /// but the cave ceiling, the portal landing and the tutorial's places were tuned for these layers.
 pub const HEIGHT: i32 = 10;
 
@@ -159,6 +123,19 @@ pub fn inside_outside(x: i32, y: i32, z: i32) -> i32 {
     }
 }
 
+/// How the generator appears in the engine's list (see [`register`]).
+pub const INFO: GeneratorInfo = GeneratorInfo {
+    id: "caveland",
+    name: "Caveland",
+    description: "A flat overworld with grass; below it a grid of diamond-shaped caves with coal, sulfur and iron.",
+    uses_seed: false,
+};
+
+/// Add the Caveland generator to the engine's generators, so maps can be made with it.
+pub fn register() {
+    register_generator(INFO, |_seed| Box::new(CavelandGenerator));
+}
+
 /// `ChunkGenerator`.
 pub struct CavelandGenerator;
 
@@ -169,10 +146,10 @@ impl Generator for CavelandGenerator {
             if y < CAVES_BORDER {
                 // Overworld: dirt, then grass on top.
                 if z < 3 {
-                    break 'result blocks::DIRT as i32;
+                    break 'result ids::DIRT as i32;
                 }
                 if z == 3 {
-                    break 'result blocks::GRASS as i32;
+                    break 'result ids::GRASS as i32;
                 }
                 break 'result 0;
             }
@@ -183,11 +160,11 @@ impl Generator for CavelandGenerator {
             // Underworld.
             let place = inside_outside(x, y, z);
             if place == ENTRY {
-                break 'result blocks::ENTRY as i32;
+                break 'result ids::ENTRY as i32;
             }
             if place == WALL && z <= 4 {
                 // The wall is the indestructible obstacle with value 1.
-                break 'result blocks::INDESTRUCTIBLE_OBSTACLE as i32 + (1 << 8);
+                break 'result ids::INDESTRUCTIBLE_OBSTACLE as i32 + (1 << 8);
             }
             if place == OUTSIDE {
                 break 'result 0;
@@ -203,16 +180,16 @@ impl Generator for CavelandGenerator {
                     .wrapping_add(500);
                 if hash % 8 == y % 7 {
                     if x % 2 == 0 && y % 2 == 0 {
-                        break 'result if y % 5 == 0 { blocks::SULFUR } else { blocks::COAL } as i32;
+                        break 'result if y % 5 == 0 { ids::SULFUR } else { ids::COAL } as i32;
                     } else {
-                        break 'result if y % 8 == 0 { blocks::IRON_ORE as i32 } else { blocks::DIRT as i32 };
+                        break 'result if y % 8 == 0 { ids::IRON_ORE as i32 } else { ids::DIRT as i32 };
                     }
                 }
             }
 
             // Floor.
             if z <= 2 {
-                break 'result blocks::DIRT as i32;
+                break 'result ids::DIRT as i32;
             }
             0
         };
@@ -247,12 +224,12 @@ impl Generator for CavelandGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::generator::fixture;
+    use wurfel_sim::generator::fixture;
 
     /// `ChunkGenerator.main` prints this picture of `insideOutside(x, y, 4)`: the real Java output.
     #[test]
     fn reproduces_the_java_ascii_picture_of_the_caves() {
-        let expected = include_str!("../fixtures/generators/caveland_ascii.txt");
+        let expected = include_str!("../../wurfel-sim/fixtures/generators/caveland_ascii.txt");
         let mut picture = String::new();
         for y in GENERATOR_BORDER..GENERATOR_BORDER + 100 {
             for x in 0..100 {
@@ -280,7 +257,7 @@ mod tests {
     #[test]
     fn inside_outside_matches_java_in_four_layers_including_negative_x() {
         let mut checked = 0;
-        for line in include_str!("../fixtures/generators/caveland_inside_outside.txt").lines() {
+        for line in include_str!("../../wurfel-sim/fixtures/generators/caveland_inside_outside.txt").lines() {
             let (head, values) = line.split_once(':').unwrap();
             let mut coords = head.split_whitespace().map(|p| p.parse::<i32>().unwrap());
             let (x, y) = (coords.next().unwrap(), coords.next().unwrap());
@@ -294,14 +271,14 @@ mod tests {
 
     #[test]
     fn the_overworld_matches_java() {
-        let columns = fixture::columns(include_str!("../fixtures/generators/caveland_overworld.txt"));
+        let columns = fixture::columns(include_str!("../../wurfel-sim/fixtures/generators/caveland_overworld.txt"));
         assert_eq!(columns.len(), 11 * 9);
         fixture::assert_generator_matches(&CavelandGenerator, &columns);
     }
 
     #[test]
     fn the_underworld_matches_java_block_for_block() {
-        let columns = fixture::columns(include_str!("../fixtures/generators/caveland_underworld.txt"));
+        let columns = fixture::columns(include_str!("../../wurfel-sim/fixtures/generators/caveland_underworld.txt"));
         assert_eq!(columns.len(), 64 * 35 + 4 * 16);
         fixture::assert_generator_matches(&CavelandGenerator, &columns);
         // The fixture is not trivially empty: all the underworld block types occur in it.
@@ -310,12 +287,12 @@ mod tests {
             seen.extend(values.iter().copied());
         }
         for java in [
-            blocks::DIRT as i32,
-            blocks::ENTRY as i32,
-            blocks::COAL as i32,
-            blocks::SULFUR as i32,
-            blocks::IRON_ORE as i32,
-            blocks::INDESTRUCTIBLE_OBSTACLE as i32 + 256,
+            ids::DIRT as i32,
+            ids::ENTRY as i32,
+            ids::COAL as i32,
+            ids::SULFUR as i32,
+            ids::IRON_ORE as i32,
+            ids::INDESTRUCTIBLE_OBSTACLE as i32 + 256,
         ] {
             assert!(seen.contains(&java), "the fixture window has no block {java}");
         }
@@ -326,9 +303,9 @@ mod tests {
         let g = CavelandGenerator;
         // Overworld column.
         for z in 0..3 {
-            assert_eq!(g.generate(7, -30, z), Block::new(blocks::DIRT, 0));
+            assert_eq!(g.generate(7, -30, z), Block::new(ids::DIRT, 0));
         }
-        assert_eq!(g.generate(7, -30, 3), Block::new(blocks::GRASS, 0));
+        assert_eq!(g.generate(7, -30, 3), Block::new(ids::GRASS, 0));
         assert!(g.generate(7, -30, 4).is_air());
         // Nothing between the overworld and the caves.
         assert!(g.generate(0, 1000, 0).is_air() && g.generate(0, 1199, 3).is_air());
@@ -341,7 +318,7 @@ mod tests {
             .flat_map(|x| (1200..1260).map(move |y| (x, y)))
             .find(|&(x, y)| inside_outside(x, y, 4) == WALL)
             .expect("the first room has a wall");
-        assert_eq!(g.generate(wall.0, wall.1, 4), Block::new(blocks::INDESTRUCTIBLE_OBSTACLE, 1));
+        assert_eq!(g.generate(wall.0, wall.1, 4), Block::new(ids::INDESTRUCTIBLE_OBSTACLE, 1));
         assert!(g.generate(wall.0, wall.1, 5).is_air(), "the wall is not taller than 4");
     }
 
@@ -364,7 +341,7 @@ mod tests {
                 }
             }
         }
-        let expected: Vec<&str> = include_str!("../fixtures/generators/caveland_spawns.txt").lines().collect();
+        let expected: Vec<&str> = include_str!("../../wurfel-sim/fixtures/generators/caveland_spawns.txt").lines().collect();
         assert_eq!(got, expected);
         assert_eq!(got.len(), 12);
         // Cave 0's portal leads to the surface spawn.
@@ -381,7 +358,7 @@ mod tests {
     fn cave_helpers_match_java() {
         let mut caves = 0;
         let mut numbers = 0;
-        for line in include_str!("../fixtures/generators/caveland_helpers.txt").lines() {
+        for line in include_str!("../../wurfel-sim/fixtures/generators/caveland_helpers.txt").lines() {
             let p: Vec<&str> = line.split_whitespace().collect();
             let int = |i: usize| p[i].parse::<i32>().unwrap();
             if p[0] == "cave" {

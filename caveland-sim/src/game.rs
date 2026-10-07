@@ -47,7 +47,7 @@ const ROBOT_SIGHT: f32 = 4.0 * 1.414_213_6;
 const ROBOT_STOP_DISTANCE: f32 = 1.5;
 const ROBOT_ATTACK_RANGE: f32 = 2.0;
 /// A cave is one block shorter than the world: the ceiling the player is kept below.
-const CAVE_CEILING: f32 = (wurfel_sim::caveland::HEIGHT - 1) as f32;
+const CAVE_CEILING: f32 = (crate::generator::HEIGHT - 1) as f32;
 /// Radius and damage of an exploding explosive (`new Explosion(3, 150, ...)`).
 const EXPLOSIVE_RADIUS: i32 = 3;
 const EXPLOSIVE_DAMAGE: i32 = 150;
@@ -218,7 +218,7 @@ fn cell_of(p: Vec3) -> Cell {
 
 /// Caves have a ceiling one block below the top of the world.
 pub(crate) fn clamp_to_cave_ceiling(entity: &mut Entity) {
-    if from_iso(entity.position.x, entity.position.y).1 > wurfel_sim::caveland::CAVES_BORDER && entity.position.z > CAVE_CEILING {
+    if from_iso(entity.position.x, entity.position.y).1 > crate::generator::CAVES_BORDER && entity.position.z > CAVE_CEILING {
         entity.position.z = CAVE_CEILING;
     }
 }

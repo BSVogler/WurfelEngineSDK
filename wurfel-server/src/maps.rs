@@ -51,6 +51,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use wurfel_sim::cvar::CVarSystem;
 use wurfel_sim::generator::{create_generator, generators, Generator};
+
+use crate::mode;
 use wurfel_sim::storage::ChunkStore;
 
 /// A server stores at most this many maps.
@@ -86,19 +88,11 @@ pub struct MapInfo {
     pub description: String,
     pub generator: String,
     pub seed: u64,
-    /// The rules the map is played by, one of [`GAME_MODES`].
+    /// The rules the map is played by, one of [`mode::names`].
     pub gamemode: String,
     pub saves: Vec<SaveInfo>,
 }
 
-/// The rules a map can be played by. `engine` is the plain engine; `caveland` adds the Caveland
-/// game on top of it (see the `caveland-sim` crate).
-pub const GAME_MODES: [&str; 2] = ["engine", "caveland"];
-
-/// The mode a map gets when it does not name one: the Caveland generator makes Caveland maps.
-pub fn default_game_mode(generator: &str) -> &'static str {
-    if generator == "caveland" { "caveland" } else { "engine" }
-}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct MapCreate {
@@ -109,7 +103,7 @@ pub struct MapCreate {
     pub generator: String,
     #[serde(default = "default_seed")]
     pub seed: u64,
-    /// One of [`GAME_MODES`]; empty takes the generator's usual one.
+    /// One of [`mode::names`]; empty takes the generator's usual one.
     #[serde(default)]
     pub gamemode: String,
 }
@@ -259,9 +253,9 @@ impl MapStore {
         if !generators().iter().any(|g| g.id == request.generator) {
             return Err(MapError::UnknownGenerator(request.generator.clone()));
         }
-        let gamemode = if request.gamemode.is_empty() { default_game_mode(&request.generator) } else { request.gamemode.as_str() };
-        if !GAME_MODES.contains(&gamemode) {
-            return Err(MapError::Invalid(format!("unknown game mode '{}' (available: {})", request.gamemode, GAME_MODES.join(", "))));
+        let gamemode = if request.gamemode.is_empty() { mode::default_for(&request.generator) } else { request.gamemode.as_str() };
+        if !mode::names().contains(&gamemode) {
+            return Err(MapError::Invalid(format!("unknown game mode '{}' (available: {})", request.gamemode, mode::names().join(", "))));
         }
         // The seed is stored in a signed 32 bit cvar (see `generator_from_cvars`).
         let seed = u32::try_from(request.seed)
@@ -419,8 +413,8 @@ fn describe(id: &str, dir: &Path) -> MapInfo {
     let gamemode = meta
         .as_deref()
         .and_then(|m| declared_value(m, "gamemode"))
-        .filter(|mode| GAME_MODES.contains(&mode.as_str()))
-        .unwrap_or_else(|| default_game_mode(&generator).to_string());
+        .filter(|name| mode::names().contains(&name.as_str()))
+        .unwrap_or_else(|| mode::default_for(&generator).to_string());
     MapInfo {
         id: id.to_string(),
         name: if name.trim().is_empty() { NO_NAME.to_string() } else { name },
@@ -526,6 +520,7 @@ mod tests {
 
     impl Sandbox {
         fn new() -> Self {
+            crate::mode::install(); // maps may use the modes' generators
             static COUNTER: AtomicU32 = AtomicU32::new(0);
             let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().subsec_nanos();
             let parent = std::env::temp_dir().join(format!("wurfel-maps-test-{}-{}-{nanos}", std::process::id(), COUNTER.fetch_add(1, Ordering::SeqCst)));

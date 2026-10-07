@@ -46,9 +46,10 @@
 //! [`minecart::MineCart::on_rails`]). The intro cutscene is the spaceship's; the story only waits for it
 //! ([`Caveland::set_tutorial_step`]).
 //! Everything that is rendering, UI, sound playback, animation or camera (`CLGameView`, `CLCamera`,
-//! menus, `ActionBox`, HUD) belongs to the client and is not simulation. The Caveland map
-//! generator still lives in `wurfel_sim::caveland` because it is registered with the engine's
-//! generator list.
+//! menus, `ActionBox`, HUD) belongs to the client and is not simulation.
+//!
+//! The engine knows nothing about Caveland: whoever runs the game calls [`register`] once at
+//! startup, which adds the Caveland map generator ([`generator`]) to the engine's list.
 
 pub mod ai;
 pub mod barrier;
@@ -62,6 +63,7 @@ pub mod crafting;
 pub mod dialog;
 pub mod enemy;
 pub mod extras;
+pub mod generator;
 pub mod game;
 pub mod lift;
 pub mod launcher;
@@ -88,3 +90,9 @@ pub use player::{Action, Controls, PlayerState};
 pub use team::Team;
 pub use transport::{Interaction, Transport, TransportEvent};
 pub use tuning::Tuning;
+
+/// Make Caveland known to the engine: its map generator joins the engine's list (see
+/// [`wurfel_sim::generator::register_generator`]). Call once at startup; calling again is harmless.
+pub fn register() {
+    generator::register();
+}

@@ -5,7 +5,6 @@
 
 pub mod animation;
 pub mod block;
-pub mod caveland;
 pub mod chunk;
 pub mod console;
 pub mod cvar;

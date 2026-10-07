@@ -8,6 +8,8 @@ pub mod id {
     pub const STONE: u8 = 3;
     pub const SAND: u8 = 8;
     pub const WATER: u8 = 9;
+    /// A tree (Caveland's id, which the terrain generator grows too).
+    pub const TREE: u8 = 72;
 }
 
 /// What a block id means for the simulation: the Java engine's `BlockConfig`. The engine knows the

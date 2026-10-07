@@ -5,9 +5,46 @@ use wurfel_sim::block::{Block, BlockConfig, DefaultBlocks};
 
 use crate::collectible::CollectibleType;
 
-/// Block ids. They live in the engine crate next to the Caveland map generator, which has to place
-/// them; this is the single list.
-pub use wurfel_sim::caveland::blocks as ids;
+/// Block ids. The engine ones (0 to 9) are from `RenderCell.getName`, the others from
+/// `CavelandBlocks.CLBlocks`.
+pub mod ids {
+    pub const AIR: u8 = 0;
+    pub const GRASS: u8 = 1;
+    pub const DIRT: u8 = 2;
+    pub const STONE: u8 = 3;
+    /// Blocks movement but is not drawn.
+    pub const INVISIBLE_OBSTACLE: u8 = 4;
+    pub const SAND: u8 = 8;
+    pub const WATER: u8 = 9;
+
+    pub const CONSTRUCTION_SITE: u8 = 11;
+    pub const OVEN: u8 = 12;
+    pub const TORCH: u8 = 13;
+    pub const POWER_STATION: u8 = 14;
+    pub const LIFT: u8 = 15;
+    /// Entrance of a cave.
+    pub const ENTRY: u8 = 16;
+    pub const INDESTRUCTIBLE_OBSTACLE: u8 = 17;
+    pub const LIFT_GROUND: u8 = 18;
+    pub const CRYSTAL: u8 = 41;
+    pub const SULFUR: u8 = 42;
+    pub const IRON_ORE: u8 = 43;
+    pub const COAL: u8 = 44;
+    pub const TURRET: u8 = 52;
+    pub const ROBOT_FACTORY: u8 = 53;
+    pub const POWER_CABLE: u8 = 54;
+    pub const RAILS: u8 = 55;
+    pub const BOOSTER_RAILS: u8 = 56;
+    /// Throws players and items along an arc, reloads over time (not in the Java game).
+    pub const CATAPULT: u8 = 57;
+    /// Fires players, items and explosive shells with gunpowder (not in the Java game).
+    pub const CANNON: u8 = 58;
+    pub const FLAG_POLE: u8 = 60;
+    /// The engine's terrain generator grows the same trees.
+    pub const TREE: u8 = wurfel_sim::block::id::TREE;
+    /// Java's `UNDEFINED`, the byte -1.
+    pub const UNDEFINED: u8 = 255;
+}
 
 /// What a block with behaviour does (the Java `AbstractBlockLogicExtension` subclasses). Only
 /// [`LogicKind::Oven`] is ported so far, see the crate docs.

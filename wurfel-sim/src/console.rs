@@ -947,7 +947,7 @@ mod tests {
             if world == "alpha" { vec!["0".into(), "1".into()] } else { Vec::new() }
         }
         fn generator_ids(&self) -> Vec<String> {
-            vec!["island".into(), "caveland".into(), "air".into()]
+            vec!["island".into(), "arena".into(), "air".into()]
         }
         fn is_admin(&self) -> bool {
             self.admin
@@ -1362,9 +1362,9 @@ mod tests {
         assert_eq!(suggest(&console, "loadmap b"), ["beta"]);
         assert_eq!(suggest(&console, "cd a"), ["alpha"]);
         assert_eq!(suggest(&console, "cd "), ["..", "/", "alpha", "beta"]);
-        assert_eq!(suggest(&console, "generator "), ["air", "caveland", "island"]);
+        assert_eq!(suggest(&console, "generator "), ["air", "arena", "island"]);
         assert_eq!(suggest(&console, "generator is"), ["island"]);
-        assert_eq!(suggest(&console, "set generator c"), ["caveland"]);
+        assert_eq!(suggest(&console, "set generator ar"), ["arena"]);
         assert_eq!(suggest(&console, "set grav"), ["gravity"]);
         assert_eq!(suggest(&console, "enableHSD t"), ["true"]);
         assert!(suggest(&console, "music ").is_empty(), "no candidates for a number");

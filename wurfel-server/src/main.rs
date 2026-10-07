@@ -22,6 +22,7 @@ mod friends;
 mod game;
 mod interest;
 mod maps;
+mod mode;
 mod pings;
 mod users;
 
@@ -107,6 +108,8 @@ async fn main() {
     let seed: u64 = arg("--seed").and_then(|s| s.parse().ok()).unwrap_or(1);
     let generator = arg("--generator").unwrap_or_else(|| "island".to_string());
     let lag = Duration::from_millis(arg("--lag-ms").and_then(|s| s.parse().ok()).unwrap_or(0));
+    // The game modes' generators must be known before any map is read.
+    mode::install();
     if std::env::args().any(|a| a == "--skip-intro") {
         caveland_mode::SKIP_INTRO.store(true, Ordering::Relaxed);
     }
