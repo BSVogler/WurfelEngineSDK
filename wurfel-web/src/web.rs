@@ -164,6 +164,10 @@ struct State {
     world_vertices: u32,
     dynamic_buffer: wgpu::Buffer,
     dynamic_vertices: u32,
+    /// The grass blades (`grass.rs`): their own buffer, as there can be thousands.
+    grass: crate::grass::Grass,
+    grass_buffer: wgpu::Buffer,
+    grass_vertices: u32,
     /// A glTF model asked for with `?model=` (see [`load_model`]): loaded, then placed next to the
     /// local player once there is one.
     model_loaded: Option<LoadedModel>,
@@ -316,6 +320,13 @@ async fn run() -> Result<(), String> {
         mapped_at_creation: false,
     });
 
+    let grass_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("grass"),
+        size: (crate::grass::MAX_BLADES * 6 * std::mem::size_of::<Vertex>()) as u64,
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+
     let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("camera"),
         size: std::mem::size_of::<CameraUniform>() as u64,
@@ -441,6 +452,9 @@ async fn run() -> Result<(), String> {
         world_vertices: world_vertices.len() as u32,
         dynamic_buffer,
         dynamic_vertices: 0,
+        grass: crate::grass::Grass::default(),
+        grass_buffer,
+        grass_vertices: 0,
         model_loaded: None,
         model_placed: None,
         backend,
@@ -550,6 +564,8 @@ async fn load_sprites(state: Rc<RefCell<State>>, device: wgpu::Device, queue: wg
             s.atlas_bind_group = group;
             s.lighting.normal_maps = has_normals && normal_maps_wanted();
             s.actors.set_sprites(Some(sprites.clone()));
+            s.grass.set_sprites(Some(sprites.clone()));
+            apply_grass_settings(&mut s);
             s.render.set_sprites(Some(sprites));
             s.remesh = true;
         }
@@ -1501,6 +1517,7 @@ fn install_menu_events(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
             s.lighting.ambient_occlusion = on;
         }
         s.lighting.apply_settings();
+        apply_grass_settings(&mut s);
         apply_menu_zoom(&mut s);
     });
 
@@ -2211,6 +2228,7 @@ fn frame(s: &mut State, now_ms: f64) {
         place_model(s);
     }
     upload_dynamic_mesh(s, target);
+    upload_grass(s, dt);
     update_editor_ui(s, target);
     update_overlays(s, now_ms);
     update_info(s);
@@ -2399,6 +2417,50 @@ fn push_player(vertices: &mut Vec<Vertex>, color: [f32; 3], pos: Vec3) {
     mesh::cuboid(vertices, color, [pos.x - 0.22, pos.x + 0.22, pos.y - 0.22, pos.y + 0.22], [pos.z, pos.z + PLAYER_HEIGHT]);
 }
 
+/// The grass settings: the menu's `grass` and `grassDensity` (`window.wurfelSettings`), which the
+/// page address overrides (`?grass=0` or `?grass=1`, `?grassdensity=N`). Default: on, 10 blades.
+fn apply_grass_settings(s: &mut State) {
+    let mut settings = crate::grass::Settings::default();
+    if let Some(window) = web_sys::window() {
+        let menu = js_get(&window, "wurfelSettings");
+        if let Some(on) = js_get(&menu, "grass").as_bool() {
+            settings.enabled = on;
+        }
+        if let Some(n) = js_get(&menu, "grassDensity").as_f64() {
+            settings.density = n.round() as i32;
+        }
+    }
+    if let Some(value) = query_value("grass") {
+        settings.enabled = !matches!(value.as_str(), "0" | "off" | "false");
+    }
+    if let Some(n) = query_value("grassdensity").and_then(|v| v.parse::<i32>().ok()) {
+        settings.density = n;
+    }
+    settings.density = settings.density.clamp(0, 2 * wurfel_sim::grass::MAX_BLADES_PER_CELL);
+    s.grass.settings = settings;
+}
+
+/// Advance the wind and build this frame's blades around the local player, who and whom the blades
+/// bend away from are all players drawn. Blades above the editor's layer limit are left out.
+fn upload_grass(s: &mut State, dt: f32) {
+    let viewer = local_position(s).unwrap_or_else(|| {
+        // Offline preview: around the middle of the chunk the view follows.
+        let (x, y) = (s.view_chunk.0 * wurfel_sim::CHUNK_SIZE_X + wurfel_sim::CHUNK_SIZE_X / 2, s.view_chunk.1 * wurfel_sim::CHUNK_SIZE_Y + wurfel_sim::CHUNK_SIZE_Y / 2);
+        let (gx, gy) = to_iso(x, y);
+        Vec3::new(gx, gy, wurfel_sim::CHUNK_SIZE_Z as f32 / 2.0)
+    });
+    let mut forces: Vec<Vec3> = s.remotes.iter().filter(|(id, _)| !s.hidden.contains(id)).map(|(_, r)| r.pos).collect();
+    if let Some(pos) = local_position(s) {
+        forces.push(pos);
+    }
+    let max_z = s.render.layer_limit();
+    s.grass.update(dt, &s.world, s.terrain_version, viewer, &forces, max_z);
+    s.grass_vertices = s.grass.vertices.len() as u32;
+    if !s.grass.vertices.is_empty() {
+        s.queue.write_buffer(&s.grass_buffer, 0, bytemuck::cast_slice(&s.grass.vertices));
+    }
+}
+
 /// Players and the hover marker change every frame, so they live in a small separate buffer.
 fn upload_dynamic_mesh(s: &mut State, target: Option<Pick>) {
     let mut vertices: Vec<Vertex> = Vec::new();
@@ -2565,6 +2627,10 @@ fn render(s: &mut State) {
         if s.dynamic_vertices > 0 {
             pass.set_vertex_buffer(0, s.dynamic_buffer.slice(..));
             pass.draw(0..s.dynamic_vertices, 0..1);
+        }
+        if s.grass_vertices > 0 {
+            pass.set_vertex_buffer(0, s.grass_buffer.slice(..));
+            pass.draw(0..s.grass_vertices, 0..1);
         }
         if let (Some(placed), Some(loaded)) = (&s.model_placed, &s.model_loaded) {
             pass.set_vertex_buffer(0, placed.buffer.slice(..));

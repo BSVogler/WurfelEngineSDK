@@ -5,6 +5,7 @@ mod audio;
 mod bindings;
 mod caveland_client;
 mod editor;
+mod grass;
 mod interp;
 mod lightdebug;
 mod lighting;

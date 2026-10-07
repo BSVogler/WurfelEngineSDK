@@ -352,6 +352,11 @@ impl RenderStorage {
         z <= self.top_layer() && self.cell(x, y, z).is_some_and(|cell| cell.hides_past_block())
     }
 
+    /// The editor's layer limit, if one is set.
+    pub fn layer_limit(&self) -> Option<i32> {
+        self.layer_limit
+    }
+
     /// The highest layer that is drawn: the layer limit, or the top of the world.
     fn top_layer(&self) -> i32 {
         self.layer_limit.unwrap_or(CHUNK_SIZE_Z - 1)

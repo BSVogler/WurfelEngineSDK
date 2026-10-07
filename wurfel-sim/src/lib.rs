@@ -11,6 +11,7 @@ pub mod console;
 pub mod cvar;
 pub mod entity;
 pub mod generator;
+pub mod grass;
 pub mod grid;
 pub mod light;
 pub mod particle;
