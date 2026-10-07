@@ -113,6 +113,23 @@ impl View {
     }
 }
 
+/// The Java engine's `CameraLeapRadius` (view-space units): how far the focus may stray from the
+/// middle of the picture before the camera follows.
+pub const CAMERA_LEAP_RADIUS: f32 = 90.0;
+
+/// The camera of the Java engine does not stick to the player: it stays where it is while the focus
+/// is inside the leap radius and is only dragged along once the focus leaves it, so the player can
+/// walk a little before the picture moves.
+pub fn follow_within_leap(center: [f32; 2], target: [f32; 2], radius: f32) -> [f32; 2] {
+    let (dx, dy) = (center[0] - target[0], center[1] - target[1]);
+    let dist = dx.hypot(dy);
+    if dist <= radius {
+        return center;
+    }
+    let k = radius / dist;
+    [target[0] + dx * k, target[1] + dy * k]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,5 +233,12 @@ mod tests {
         let turned = view.walk_input(input);
         assert!(turned.down && !turned.up && turned.jump, "{turned:?}");
         assert_eq!(view.walk_input(keys(false, false, false, false)), keys(false, false, false, false));
+    }
+
+    #[test]
+    fn the_camera_rests_inside_the_leap_radius_and_trails_outside() {
+        assert_eq!(follow_within_leap([0.0, 0.0], [50.0, 0.0], 90.0), [0.0, 0.0]);
+        let c = follow_within_leap([0.0, 0.0], [200.0, 0.0], 90.0);
+        assert!((c[0] - 110.0).abs() < 1e-4 && c[1].abs() < 1e-4);
     }
 }

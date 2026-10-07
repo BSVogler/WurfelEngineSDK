@@ -32,7 +32,7 @@ use crate::pick::{pick, pick_thing, Pick};
 use crate::reconnect::{Closed, Reconnect};
 use crate::render_storage::RenderStorage;
 use crate::texture;
-use crate::view::{CameraMode, View};
+use crate::view::{self, CameraMode, View};
 
 /// Seed of the island shown behind the menu, before a world has been joined.
 const DEFAULT_SEED: u64 = 1;
@@ -2047,7 +2047,6 @@ fn frame(s: &mut State, now_ms: f64) {
     let dt = s.last_frame_ms.map_or(0.0, |last| (((now_ms - last) / 1000.0) as f32).min(0.1));
     s.last_frame_ms = Some(now_ms);
     s.net.on_frame(dt as f64 * 1000.0);
-    let ease = |rate: f32| 1.0 - (-rate * dt).exp();
     // While rejoining the world is frozen as it was: nobody is listening to our inputs.
     let blocked = input_blocked() || s.reconnect.active();
 
@@ -2160,9 +2159,8 @@ fn frame(s: &mut State, now_ms: f64) {
     if let Some(p) = camera_focus(s) {
         s.view.pivot = (p.x, p.y);
         let target = s.view.screen_position((p.x, p.y), p.z + 0.7);
-        let k = ease(8.0);
-        s.camera.center[0] += (target[0] - s.camera.center[0]) * k;
-        s.camera.center[1] += (target[1] - s.camera.center[1]) * k;
+        // Like the Java camera: the player may walk inside the leap radius before the picture follows.
+        s.camera.center = view::follow_within_leap(s.camera.center, target, view::CAMERA_LEAP_RADIUS);
     }
     s.camera.zoom = s.camera.zoom.clamp(0.1 * s.dpr, 4.0 * s.dpr);
 
