@@ -122,16 +122,69 @@
     return pos;
   }
 
-  /** A stable colour per name, so every item keeps the same icon tile. */
+  // Item sprites: the entity ids of the collectibles in the sprite atlas (`e<id>-0`), as
+  // `entity_art` of src/sprites.rs has them. Items without one keep the coloured letter tile.
+  const ITEM_SPRITE = {
+    Rails: 16, Wood: 46, Explosives: 47, Gunpowder: 56, Ironore: 48, Coal: 49, Cristall: 50, Sulfur: 51,
+    Stone: 52, Toolkit: 53, Torch: 54, Iron: 55, Powercable: 57, DropSpaceFlagConstructionKit: 23,
+  };
+  const ATLAS_URL = "assets/sprites/sprites.atlas";
+  let atlas = null, atlasLoading = false;
+
+  /** {regions: {name: {page, x, y, w, h}}, pages: [file]} from a libGDX .atlas text. */
+  function parseAtlas(text) {
+    const regions = {}, pages = [];
+    let cur = null;
+    for (const raw of text.split("\n")) {
+      const line = raw.replace(/\r$/, "");
+      if (!line.trim()) continue;
+      if (!/^\s/.test(line)) {
+        if (/\.png$/.test(line)) { pages.push(line.trim()); cur = null; }
+        else if (!line.includes(":") && pages.length) { cur = { page: pages.length - 1, x: 0, y: 0, w: 0, h: 0 }; regions[line.trim()] = cur; }
+      } else if (cur) {
+        const m = /^\s+(xy|size):\s*(\d+),\s*(\d+)/.exec(line);
+        if (m && m[1] === "xy") { cur.x = +m[2]; cur.y = +m[3]; }
+        else if (m) { cur.w = +m[2]; cur.h = +m[3]; }
+      }
+    }
+    return { regions, pages };
+  }
+
+  function loadAtlas() {
+    if (atlas || atlasLoading) return;
+    atlasLoading = true;
+    fetch(ATLAS_URL).then((r) => (r.ok ? r.text() : Promise.reject(r.status)))
+      .then((text) => { atlas = parseAtlas(text); if (craft) renderCraft(); })
+      .catch(() => { atlasLoading = false; });
+  }
+
+  /** The item's sprite as an element of `size` pixels, or null when it has none (yet). */
+  function sprite(name, size) {
+    const id = ITEM_SPRITE[name];
+    const region = atlas && id !== undefined ? atlas.regions["e" + id + "-0"] : null;
+    if (!region || !region.w || !region.h) return null;
+    const scale = size / Math.max(region.w, region.h);
+    const img = el("span", "clhud-sprite");
+    img.style.width = Math.round(region.w * scale) + "px";
+    img.style.height = Math.round(region.h * scale) + "px";
+    img.style.backgroundImage = "url(assets/sprites/" + atlas.pages[region.page] + ")";
+    img.style.backgroundSize = Math.round(2048 * scale) + "px auto";
+    img.style.backgroundPosition = "-" + Math.round(region.x * scale) + "px -" + Math.round(region.y * scale) + "px";
+    return img;
+  }
+
+  /** A stable colour per name, for the items without a sprite. */
   function tileColor(name) {
     let h = 0;
     for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) % 360;
     return "hsl(" + h + ", 45%, 42%)";
   }
 
-  function tile(name, dim) {
-    const t = el("span", "clhud-tile" + (dim ? " clhud-dim" : ""), String(name).charAt(0).toUpperCase());
-    t.style.background = tileColor(name);
+  function tile(name, dim, size) {
+    const art = sprite(name, size - 4);
+    const t = el("span", "clhud-tile" + (dim ? " clhud-dim" : ""));
+    if (art) t.append(art);
+    else { t.textContent = String(name).charAt(0).toUpperCase(); t.style.background = tileColor(name); }
     t.title = String(name);
     return t;
   }
@@ -151,13 +204,13 @@
       let selected = null;
       lastRecipes.forEach((r, i) => {
         const card = el("div", "clhud-card" + (r.can ? " clhud-cancraft" : " clhud-cantcraft") + (i === pos ? " clhud-selected" : ""));
-        card.append(tile(r.name, !r.can));
+        card.append(tile(r.name, !r.can, 36));
         const body = el("div", "clhud-cardbody");
         body.append(el("div", "clhud-cardname", String(r.name)));
         const chips = el("div", "clhud-chips");
         (Array.isArray(r.ingredients) ? r.ingredients : []).forEach((ing) => {
           const chip = el("span", "clhud-chip" + (ing.have ? " clhud-have" : " clhud-missing"));
-          chip.append(tile(ing.name, !ing.have), el("span", "", String(ing.name)));
+          chip.append(tile(ing.name, !ing.have, 22), el("span", "", String(ing.name)));
           chips.append(chip);
         });
         body.append(chips);
@@ -173,8 +226,8 @@
         list.append(card);
       });
       panel.append(list);
-      list.scrollTop = scroll;
       craftBox.append(panel);
+      list.scrollTop = scroll; // only works once the list is in the DOM
       if (selected) {
         const top = selected.offsetTop, bottom = top + selected.offsetHeight;
         if (top < list.scrollTop) list.scrollTop = top;
@@ -189,6 +242,7 @@
 
   function openCraft() {
     if (!craftBox || craft) return;
+    loadAtlas();
     craft = { selectedIndex: lastRecipes.length ? lastRecipes[0].index : -1, position: 0 };
     craftBox.hidden = false;
     window.wurfelDialogOpen = true;
