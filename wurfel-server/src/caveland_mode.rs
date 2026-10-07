@@ -224,7 +224,7 @@ impl CavelandMode {
 
     /// What a player holds down this tick.
     pub fn controls(&mut self, entities: &mut Entities, world: &World, id: EntityId, input: PlayerInput) {
-        let controls = Controls { up: input.up, down: input.down, left: input.left, right: input.right, jump: input.jump };
+        let controls = Controls { up: input.up, down: input.down, left: input.left, right: input.right, jump: input.jump, heading: input.heading };
         self.caveland.set_controls(entities, world, id, controls);
     }
 

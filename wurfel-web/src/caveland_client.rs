@@ -26,7 +26,7 @@ use crate::mesh::{self, Vertex};
 pub const MODE: &str = "caveland";
 
 pub fn controls(input: PlayerInput) -> Controls {
-    Controls { up: input.up, down: input.down, left: input.left, right: input.right, jump: input.jump }
+    Controls { up: input.up, down: input.down, left: input.left, right: input.right, jump: input.jump, heading: input.heading }
 }
 
 /// A fresh ruleset for the local player's prediction, with the world following Caveland's blocks.

@@ -567,7 +567,10 @@ impl Caveland {
             // The steering is scaled by how fast the player is going, measured against what they
             // stand on (see `movement`): a launch leaves a player only a little control.
             let before = entity.body.as_ref().map(|b| b.movement);
-            entity.walk(controls.up, controls.down, controls.left, controls.right, walking_speed);
+            match controls.heading {
+                Some(units) => entity.walk_toward(wurfel_sim::player::heading_direction(units), walking_speed),
+                None => entity.walk(controls.up, controls.down, controls.left, controls.right, walking_speed),
+            }
             if let (Some(before), Some(body)) = (before, entity.body.as_mut()) {
                 let control = movement::control_factor((before - platform).length(), walking_speed);
                 if control < 1.0 {

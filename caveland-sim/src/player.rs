@@ -46,6 +46,9 @@ pub struct Controls {
     /// Jump key. Pressing it on the ground jumps; pressing it in the air fires the jetpack, which
     /// burns while the key is held.
     pub jump: bool,
+    /// The exact walking direction (`PlayerInput::heading`) of a free camera; the four keys are then
+    /// only the nearest of the eight directions.
+    pub heading: Option<u16>,
 }
 
 /// One-off things a player does.
