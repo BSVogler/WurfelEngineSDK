@@ -3,6 +3,7 @@
 # subdomain needs only the HTTPRoute below. CI sets the image tag with `sed` before applying.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: wurfel   # also covers httproute.yaml, which ../k8s does not know about
 resources:
   - ../k8s
   - httproute.yaml
