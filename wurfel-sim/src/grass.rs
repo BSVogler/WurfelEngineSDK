@@ -41,6 +41,11 @@ pub const GUST_SPEED: f32 = 350.0;
 pub const GUST_PERIOD: f32 = 7.0;
 /// The sway is this fraction of its full strength between gusts and 100 % at the height of one.
 pub const GUST_MIN: f32 = 0.55;
+/// Blades differ: a soft blade sways and bends this much more than average, a stiff one this much
+/// less (the factor is drawn per blade from this range).
+pub const SOFTNESS_RANGE: (f32, f32) = (0.6, 1.4);
+/// Each blade also catches the wave up to this many seconds early or late.
+pub const MAX_LAG: f32 = 0.4;
 /// Edge of a block in game units (`RenderCell.GAME_EDGELENGTH`).
 pub const EDGE: f32 = 141.0;
 const EDGE2: f32 = 70.0;
@@ -82,7 +87,12 @@ impl Wind {
     /// reaches the position `distance along the wind / WIND_SPEED` seconds late, and a gust (a
     /// slower wave of its own) scales it.
     pub fn at(&self, at: (f32, f32)) -> f32 {
-        let delay = (at.0 * WIND_DIRECTION.0 + at.1 * WIND_DIRECTION.1) / WIND_SPEED;
+        self.at_lagged(at, 0.0)
+    }
+
+    /// [`Wind::at`] for a blade that catches the wave `lag` seconds late (negative: early).
+    pub fn at_lagged(&self, at: (f32, f32), lag: f32) -> f32 {
+        let delay = (at.0 * WIND_DIRECTION.0 + at.1 * WIND_DIRECTION.1) / WIND_SPEED + lag;
         // The circle advances 10 units per second (Java: `dt` in milliseconds times 0.01).
         let circle = ((self.time - delay) * 10.0).rem_euclid(WIND_AMPLITUDE);
         let wave = (circle - WIND_AMPLITUDE / 2.0).abs() - WIND_AMPLITUDE / 2.0;
@@ -209,6 +219,17 @@ pub fn jitter(seed: f32, i: i32, t: f32) -> f32 {
     a + (b - a) * f
 }
 
+/// What makes blade `i` of a cell different from its neighbours, `(softness, lag)`: how much it
+/// gives to wind and force (a factor in [`SOFTNESS_RANGE`]) and how many seconds it catches the
+/// wave early or late (within [`MAX_LAG`]). Fixed per blade, so a blade always behaves the same way.
+pub fn temper(seed: f32, i: i32) -> (f32, f32) {
+    let key = mix(&[(seed * 16_777_216.0) as i32, i, 0x57_1f]);
+    let (lo, hi) = SOFTNESS_RANGE;
+    let softness = lo + (hi - lo) * to_unit(key);
+    let lag = (to_unit(hash(key ^ 0x9e37_79b9)) * 2.0 - 1.0) * MAX_LAG;
+    (softness, lag)
+}
+
 /// Rotation in degrees of blade `i`: a fixed lean (`i * 0.4 - 10.2`), the wind, the jitter and the
 /// bend away from the force centre (Java `setRotation(...)`).
 pub fn rotation(i: i32, wind: f32, jitter: f32, bend: f32) -> f32 {
@@ -247,7 +268,10 @@ pub fn blades(x: i32, y: i32, z: i32, count: i32, wind: &Wind, force: Option<(f3
         let (rotation, scale) = match kind {
             Kind::Blade => {
                 let bend = force.map_or(0.0, |f| force_bend(spot, f));
-                (rotation(i, wind.at(spot), jitter(seed, i, wind.time), bend), scale(xo))
+                {
+                let (softness, lag) = temper(seed, i);
+                (rotation(i, wind.at_lagged(spot, lag) * softness, jitter(seed, i, wind.time), bend * softness), scale(xo))
+            }
             }
             // The Java stone sprite was neither scaled nor turned.
             Kind::Stone => (0.0, 1.0),
@@ -272,6 +296,34 @@ mod tests {
         let mut w = Wind::default();
         w.update(time);
         w
+    }
+
+    #[test]
+    fn every_blade_has_its_own_softness_and_lag_within_range_and_always_the_same() {
+        let temperaments: Vec<(f32, f32)> = (0..200).map(|i| temper(0.37, i)).collect();
+        assert!(temperaments.iter().all(|&(s, l)| (SOFTNESS_RANGE.0..=SOFTNESS_RANGE.1).contains(&s) && l.abs() <= MAX_LAG));
+        let softest = temperaments.iter().map(|t| t.0).fold(f32::MAX, f32::min);
+        let stiffest = temperaments.iter().map(|t| t.0).fold(f32::MIN, f32::max);
+        assert!(stiffest - softest > 0.6, "they spread over the range: {softest} {stiffest}");
+        assert_eq!(temper(0.37, 5), temper(0.37, 5));
+        assert_ne!(temper(0.37, 5), temper(0.37, 6));
+        assert_ne!(temper(0.37, 5), temper(0.38, 5));
+    }
+
+    #[test]
+    fn blades_of_one_block_do_not_sway_in_step() {
+        // The wind part of the rotation alone (no fixed lean, jitter or bend), at one spot.
+        let mut wind = Wind::default();
+        wind.update(1.3);
+        let spot = game_xy(5, 6);
+        let sway: Vec<f32> = (0..10)
+            .map(|i| {
+                let (softness, lag) = temper(cell_seed(5, 6, 2), i);
+                wind.at_lagged(spot, lag) * softness
+            })
+            .collect();
+        let (lo, hi) = sway.iter().fold((f32::MAX, f32::MIN), |(l, h), &v| (l.min(v), h.max(v)));
+        assert!(hi - lo > 3.0, "the blades of one block sway differently: {lo} {hi}");
     }
 
     #[test]

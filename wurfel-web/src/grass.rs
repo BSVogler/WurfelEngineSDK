@@ -322,4 +322,32 @@ mod tests {
         assert_ne!(before, grass.vertices);
         assert_eq!(before.len(), grass.vertices.len());
     }
+
+    /// Not a test of behaviour: `cargo test -p wurfel-web --release grass_cost -- --ignored --nocapture`
+    /// prints what one frame of grass costs on the CPU (the browser runs the same code, slower).
+    #[test]
+    #[ignore]
+    fn grass_cost() {
+        let mut world = World::new(AirGenerator);
+        for x in -25..25 {
+            for y in -25..25 {
+                world.set(x, y, 3, Block::new(id::GRASS, 0));
+            }
+        }
+        let mut grass = Grass::default();
+        grass.set_sprites(Some(Rc::new(real())));
+        let viewer = Vec3::new(0.0, 0.0, 4.0);
+        let forces = [viewer];
+        grass.update(0.016, &world, 1, viewer, &forces, None);
+        let frames = 300;
+        let start = std::time::Instant::now();
+        for _ in 0..frames {
+            grass.update(0.016, &world, 1, viewer, &forces, None);
+        }
+        let per_frame = start.elapsed().as_secs_f64() * 1000.0 / frames as f64;
+        let search = std::time::Instant::now();
+        let cells = find_cells(&world, viewer, 4, None).len();
+        println!("grass: {} vertices ({} blades), {per_frame:.3} ms per frame; cell search {:.3} ms for {cells} cells",
+            grass.vertices.len(), grass.vertices.len() / 6, search.elapsed().as_secs_f64() * 1000.0);
+    }
 }

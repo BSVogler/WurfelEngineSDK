@@ -16,8 +16,8 @@
 //   wurfelHud.closeDialog()    the server closed it
 //   wurfelHud.active           true while the HUD is shown (a Caveland map)
 //
-// C opens the crafting popup (one recipe at a time): W/S or the arrows choose, Enter, Space or N
-// craft the shown recipe and close it; Esc, C, M, a right click or a click beside it close it. C
+// C opens the crafting popup (a list of every recipe, craftable ones first): click one, or W/S or the
+// arrows choose and Enter, Space or N craft it (when the pack has the ingredients) and close the popup; Esc, C, M, a right click or a click beside it close it. C
 // inside a server dialog does nothing. The popup closes when a server dialog arrives, the world
 // changes (show) or the player dies.
 //
@@ -122,27 +122,68 @@
     return pos;
   }
 
+  /** A stable colour per name, so every item keeps the same icon tile. */
+  function tileColor(name) {
+    let h = 0;
+    for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) % 360;
+    return "hsl(" + h + ", 45%, 42%)";
+  }
+
+  function tile(name, dim) {
+    const t = el("span", "clhud-tile" + (dim ? " clhud-dim" : ""), String(name).charAt(0).toUpperCase());
+    t.style.background = tileColor(name);
+    t.title = String(name);
+    return t;
+  }
+
   function renderCraft() {
+    const keepScroll = craftBox.querySelector(".clhud-craftlist");
+    const scroll = keepScroll ? keepScroll.scrollTop : 0;
     craftBox.textContent = "";
     const panel = el("div", "clhud-craftpanel");
     panel.append(el("div", "clhud-title", "Crafting"));
     if (lastRecipes.length === 0) {
-      panel.append(el("div", "clhud-craftempty", "Not enough ingredients."));
+      panel.append(el("div", "clhud-craftempty", "No recipes known."));
     } else {
       const pos = craftPosition();
       craft.position = pos;
-      const r = lastRecipes[pos];
-      panel.append(el("div", "clhud-craftmore", pos > 0 ? "/\\" : ""));
-      const row = el("div", "clhud-craftrow");
-      (Array.isArray(r.ingredients) ? r.ingredients : []).forEach((ing, i) => {
-        if (i > 0) row.append(el("span", "clhud-craftop", "+"));
-        row.append(el("span", ing.have ? "" : "clhud-dim", String(ing.name)));
+      const list = el("div", "clhud-craftlist");
+      let selected = null;
+      lastRecipes.forEach((r, i) => {
+        const card = el("div", "clhud-card" + (r.can ? " clhud-cancraft" : " clhud-cantcraft") + (i === pos ? " clhud-selected" : ""));
+        card.append(tile(r.name, !r.can));
+        const body = el("div", "clhud-cardbody");
+        body.append(el("div", "clhud-cardname", String(r.name)));
+        const chips = el("div", "clhud-chips");
+        (Array.isArray(r.ingredients) ? r.ingredients : []).forEach((ing) => {
+          const chip = el("span", "clhud-chip" + (ing.have ? " clhud-have" : " clhud-missing"));
+          chip.append(tile(ing.name, !ing.have), el("span", "", String(ing.name)));
+          chips.append(chip);
+        });
+        body.append(chips);
+        card.append(body);
+        card.addEventListener("mouseenter", () => {
+          if (craft && craft.selectedIndex !== r.index) { craft.selectedIndex = r.index; renderCraft(); }
+        });
+        card.addEventListener("click", () => {
+          craft.selectedIndex = r.index;
+          if (r.can) confirmCraft(); else renderCraft();
+        });
+        if (i === pos) selected = card;
+        list.append(card);
       });
-      row.append(el("span", "clhud-craftop", "="), el("span", r.can ? "clhud-can" : "clhud-dim", String(r.name)));
-      panel.append(row);
-      panel.append(el("div", "clhud-craftmore", pos < lastRecipes.length - 1 ? "\\/" : ""));
+      panel.append(list);
+      list.scrollTop = scroll;
+      craftBox.append(panel);
+      if (selected) {
+        const top = selected.offsetTop, bottom = top + selected.offsetHeight;
+        if (top < list.scrollTop) list.scrollTop = top;
+        else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
+      }
+      panel.append(el("div", "clhud-dialog-hint", "Click or W/S + Enter to craft \u00b7 Esc close"));
+      return;
     }
-    panel.append(el("div", "clhud-dialog-hint", "W/S choose \u00b7 Enter craft \u00b7 Esc close"));
+    panel.append(el("div", "clhud-dialog-hint", "Esc close"));
     craftBox.append(panel);
   }
 
@@ -170,7 +211,8 @@
   }
 
   function confirmCraft() {
-    if (lastRecipes.length) send("craft", lastRecipes[craftPosition()].index);
+    const r = lastRecipes[craftPosition()];
+    if (r && r.can) send("craft", r.index);
     closeCraft();
   }
 

@@ -21,15 +21,29 @@
 .clhud-can { color: #b9f5a8; }
 .clhud-dim { opacity: 0.3; }
 
-/* Crafting popup (C): one recipe at a time. The backdrop takes the clicks. */
+/* Crafting popup (C): every recipe as a card. The backdrop takes the clicks. */
 .clhud-craftmenu { position: absolute; inset: 0; pointer-events: auto; display: flex; align-items: center; justify-content: center; }
 .clhud-craftmenu[hidden] { display: none; }
-.clhud-craftpanel { min-width: 260px; max-width: calc(100vw - 32px); padding: 12px 16px; border-radius: 8px; text-align: center;
+.clhud-craftpanel { width: min(440px, calc(100vw - 32px)); padding: 12px 14px; border-radius: 8px;
   background: rgba(20, 16, 12, 0.92); border: 2px solid #f2c14e; }
-.clhud-craftrow { display: flex; gap: 8px; justify-content: center; align-items: baseline; flex-wrap: wrap; font-size: 15px; }
-.clhud-craftop { opacity: 0.7; }
-.clhud-craftmore { height: 16px; font-size: 12px; opacity: 0.7; letter-spacing: 2px; }
-.clhud-craftempty { padding: 8px 0; }
+.clhud-craftlist { display: grid; gap: 6px; max-height: min(60vh, 440px); overflow-y: auto; padding: 2px; }
+.clhud-card { display: flex; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 6px; cursor: pointer;
+  background: rgba(255, 255, 255, 0.06); border: 2px solid transparent; }
+.clhud-card.clhud-selected { border-color: #f2c14e; background: rgba(242, 193, 78, 0.14); }
+.clhud-cantcraft { cursor: default; }
+.clhud-cantcraft .clhud-cardname { opacity: 0.55; }
+.clhud-cancraft .clhud-cardname { color: #b9f5a8; }
+.clhud-tile { flex: none; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 6px;
+  font-weight: 700; font-size: 17px; border: 1px solid rgba(255, 255, 255, 0.3); text-shadow: 0 0 3px #000; }
+.clhud-cardbody { min-width: 0; display: grid; gap: 4px; }
+.clhud-cardname { font-weight: 600; font-size: 15px; }
+.clhud-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.clhud-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px 1px 1px; border-radius: 12px; font-size: 12px;
+  background: rgba(0, 0, 0, 0.4); }
+.clhud-chip .clhud-tile { width: 18px; height: 18px; font-size: 10px; border-radius: 9px; }
+.clhud-chip.clhud-missing { color: #ff9a8f; }
+.clhud-chip.clhud-missing .clhud-tile { opacity: 0.35; }
+.clhud-craftempty { padding: 8px 0; text-align: center; }
 
 .clhud-hints { position: absolute; right: 16px; bottom: 16px; display: grid; gap: 1px; font-size: 11px; opacity: 0.75; text-align: right; }
 .clhud-hint { display: flex; gap: 6px; justify-content: flex-end; }
