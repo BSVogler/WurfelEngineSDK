@@ -13,6 +13,7 @@ mod lighting;
 mod locator;
 mod mesh;
 mod minimap;
+mod mode;
 mod model;
 mod netstats;
 mod pick;

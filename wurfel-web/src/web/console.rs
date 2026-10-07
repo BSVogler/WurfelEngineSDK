@@ -106,11 +106,7 @@ impl ConsoleHost for ClientHost<'_> {
 
 /// The game mode's commands, which the server answers (`help` lists them too).
 fn mode_commands(s: &State) -> &'static [(&'static str, &'static str)] {
-    if s.caveland.is_some() {
-        &caveland_sim::commands::COMMANDS
-    } else {
-        &[]
-    }
+    s.mode.as_ref().map_or(&[], |m| m.commands())
 }
 
 /// The server answered a forwarded line: hand it to the page's console.

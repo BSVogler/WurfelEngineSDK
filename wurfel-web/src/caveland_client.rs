@@ -2,8 +2,11 @@
 //! how the local player is predicted with Caveland's rules, and what the HUD shows.
 //!
 //! The rules themselves are the `caveland-sim` crate, the same code the server runs. Like the
-//! server, the client keeps the engine out of Caveland's way: this file is the only place in the
-//! client that knows about the mode.
+//! server, the client keeps the engine out of Caveland's way: [`CavelandClient`] is a
+//! [`ClientMode`], and `mode::create` the only place outside this file that names it.
+
+// Only the browser build joins worlds, so natively the mode is reached by the tests alone.
+#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
 use std::collections::{HashMap, HashSet};
 
@@ -12,7 +15,7 @@ use caveland_sim::launcher::{preview_arc, Launcher, LauncherKind, PreviewDot};
 use caveland_sim::{Caveland, Controls, Tuning};
 use glam::Vec3;
 use serde_json::Value;
-use wurfel_sim::entity::Entities;
+use wurfel_sim::entity::{Entities, EntityId, Event};
 use wurfel_sim::grid::to_iso;
 use wurfel_sim::light::PointLight;
 use wurfel_sim::player::{PlayerInput, TICK_DT};
@@ -20,20 +23,194 @@ use wurfel_sim::protocol::ThingState;
 use wurfel_sim::World;
 
 use crate::mesh::{self, Vertex};
+use crate::mode::{ClientMode, Effect};
+use crate::sprites::Sprites;
 
 /// The name of the mode in `Welcome::gamemode`.
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // only the browser build joins worlds
 pub const MODE: &str = "caveland";
 
 pub fn controls(input: PlayerInput) -> Controls {
     Controls { up: input.up, down: input.down, left: input.left, right: input.right, jump: input.jump, heading: input.heading }
 }
 
-/// A fresh ruleset for the local player's prediction, with the world following Caveland's blocks.
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-pub fn start(world: &mut World) -> Caveland {
-    Caveland::install(world);
-    Caveland::new(Tuning::default(), 1)
+/// The Caveland mode of a session: the ruleset that predicts our player, and what the server last
+/// said about the world (power, launchers, who rides or is hidden, what the use button would hit).
+pub struct CavelandClient {
+    caveland: Caveland,
+    /// The server moves us (a cart, the intro ship).
+    riding: bool,
+    /// Players that are not drawn (inside the intro ship).
+    hidden: HashSet<u32>,
+    /// Cells of power blocks (torches, turrets, stations) that have power.
+    powered: HashSet<(i32, i32, i32)>,
+    /// Catapults and cannons as the server last described them.
+    launchers: Vec<LauncherInfo>,
+    /// The aiming menu of one of them is open: the arc preview is drawn.
+    aiming: bool,
+    /// The preview dots and what they were computed for.
+    preview: Option<(PreviewKey, Vec<PreviewDot>)>,
+    /// Where the interaction sign floats: the thing the use button would act on.
+    interact_focus: Option<Vec3>,
+}
+
+impl CavelandClient {
+    /// A fresh session, with the world following Caveland's blocks.
+    pub fn start(world: &mut World) -> Self {
+        Caveland::install(world);
+        CavelandClient {
+            caveland: Caveland::new(Tuning::default(), 1),
+            riding: false,
+            hidden: HashSet::new(),
+            powered: HashSet::new(),
+            launchers: Vec::new(),
+            aiming: false,
+            preview: None,
+            interact_focus: None,
+        }
+    }
+
+    /// The happenings of an `events` message as effects. `ours` is where our player is.
+    fn effects(happenings: Vec<Happening>, me: u32, ours: Vec3) -> Vec<Effect> {
+        let mut out = Vec::new();
+        for happening in happenings {
+            out.push(match happening {
+                // Our own jump already made its sound when we pressed the key.
+                Happening::Sound { name, pos } if name == "urfJump" && pos.distance(ours) < 2.0 => continue,
+                // The cart's rolling goes on until the server says it stops.
+                Happening::Sound { name, pos } if name == "wagon" => Effect::Loop { name, pos },
+                Happening::Sound { name, pos } => Effect::Sound { name, pos },
+                Happening::SoundStopped { name } => Effect::StopLoop { name },
+                Happening::Teleported { entity, pos } if entity == me => Effect::PlaceLocalPlayer { pos, vel: Vec3::ZERO },
+                // Thrown by a catapult or cannon: only a position and a velocity, then the same
+                // movement rules as the server (control by speed, bounces) run the flight.
+                Happening::Launched { player, pos, vel } if player == me => Effect::PlaceLocalPlayer { pos, vel },
+                // Others are interpolated from the snapshots; a big jump counts as a teleport there.
+                Happening::Launched { .. } | Happening::Teleported { .. } => continue,
+                // The wreck burns (`ParticleType.FIRE`) and lights its surroundings.
+                Happening::ShipCrashed { pos } => Effect::Fire { pos },
+                Happening::Dust { pos } => Effect::Burst { pos, color: [0.6, 0.55, 0.5] },
+                Happening::BlockDamaged { cell, health } => Effect::BlockDamaged { cell, health },
+                Happening::Explosion { pos, radius } => Effect::Blast { pos, radius },
+                Happening::Toast(text) => Effect::Hud { method: "toast", arg: Some(text) },
+                Happening::Action { player, name, ok } => Effect::Announced { player, name, ok },
+                Happening::Hurt => Effect::Shake { amplitude: 14.0, millis: 220.0 },
+                Happening::Died => Effect::Respawned { message: "You died. Back at the start.".into() },
+            });
+        }
+        out
+    }
+}
+
+impl ClientMode for CavelandClient {
+    fn spawn_local_player(&mut self, entities: &mut Entities, pos: Vec3) -> EntityId {
+        self.caveland.spawn_player(entities, 0, pos)
+    }
+
+    fn on_rules(&mut self, kind: &str, data: &Value, me: u32, ours: Vec3) -> Vec<Effect> {
+        let hud = |method: &'static str, arg: Option<String>| vec![Effect::Hud { method, arg }];
+        match kind {
+            "state" => {
+                let flags = parse_flags(data);
+                self.hidden = flags.iter().filter(|(_, f)| f.hidden).map(|(&id, _)| id).collect();
+                self.riding = flags.get(&me).is_some_and(|f| f.riding);
+                parse_state(data, me).map_or_else(Vec::new, |state| hud("update", Some(hud_json(&state))))
+            }
+            // Private news (the broadcast reaches everybody; `to` names who it is for).
+            "dialog" if addressed_to(data, me) => {
+                self.aiming = data.get("title").and_then(|t| t.as_str()).is_some_and(is_aiming_dialog);
+                hud("dialog", Some(data.to_string()))
+            }
+            "dialog_closed" if addressed_to(data, me) => {
+                self.aiming = false;
+                hud("closeDialog", None)
+            }
+            "interact_focus" if addressed_to(data, me) => {
+                self.interact_focus = parse_interact_focus(data);
+                Vec::new()
+            }
+            "launchers" => {
+                self.launchers = parse_launchers(data);
+                Vec::new()
+            }
+            "lift_offer" if addressed_to(data, me) => hud("liftOffer", Some(data.to_string())),
+            "power" => {
+                self.powered = parse_power(data);
+                Vec::new()
+            }
+            "events" => Self::effects(parse_events(data, me), me, ours),
+            _ => Vec::new(),
+        }
+    }
+
+    fn riding(&self) -> bool {
+        self.riding
+    }
+
+    fn is_hidden(&self, player: u32) -> bool {
+        self.hidden.contains(&player)
+    }
+
+    /// Caveland's own walking, jump and jetpack rules, the same as the server runs.
+    fn apply_input(&mut self, entities: &mut Entities, world: &World, id: EntityId, input: PlayerInput) {
+        self.caveland.set_controls(entities, world, id, controls(input));
+    }
+
+    /// Only our own player lives here, so the rules have nothing to hit or pick up; the server
+    /// decides all of that and tells us.
+    fn tick(&mut self, entities: &mut Entities, world: &mut World, dt: f32) -> Vec<Event> {
+        self.caveland.tick(entities, world, dt);
+        self.caveland.engine_events().to_vec()
+    }
+
+    /// Caveland's rules replay on a scratch player, so the live jetpack is not burned twice.
+    fn replay(&mut self, world: &mut World, pos: Vec3, vel: Vec3, plan: &[(PlayerInput, u32)]) -> Option<(Vec3, Vec3)> {
+        replay(world, pos, vel, plan)
+    }
+
+    fn key_action(&self, key: &str, pressed: bool) -> Option<(&'static str, i32)> {
+        key_action(key, pressed)
+    }
+
+    fn mouse_action(&self, button: i16, pressed: bool) -> Option<(&'static str, i32)> {
+        mouse_action(button, pressed)
+    }
+
+    fn exhaust(&self, id: EntityId) -> bool {
+        self.caveland.player(id).is_some_and(|p| p.jetpack_on)
+    }
+
+    fn lights(&self, world: &World, things: &[ThingState]) -> Vec<PointLight> {
+        lamps(world, &self.powered, things)
+    }
+
+    fn push_thing(&self, out: &mut Vec<Vertex>, thing: &ThingState) {
+        push_thing(out, thing);
+    }
+
+    fn push_overlays(&mut self, out: &mut Vec<Vertex>, world: &World, local: Option<Vec3>, sprites: Option<&Sprites>) {
+        // The dotted arc of the machine being aimed: only the start of the flight.
+        if self.aiming {
+            match local.and_then(|at| aimed_launcher(&self.launchers, at)).copied() {
+                Some(info) => {
+                    let key = preview_key(&info);
+                    if self.preview.as_ref().is_none_or(|(k, _)| *k != key) {
+                        self.preview = Some((key, preview_dots(world, &info)));
+                    }
+                    if let Some((_, dots)) = &self.preview {
+                        push_preview(out, dots);
+                    }
+                }
+                None => self.preview = None,
+            }
+        }
+        if let (Some(sprites), Some(focus)) = (sprites, self.interact_focus) {
+            push_interact_sign(out, sprites, focus);
+        }
+    }
+
+    fn commands(&self) -> &'static [(&'static str, &'static str)] {
+        &caveland_sim::commands::COMMANDS
+    }
 }
 
 /// The action a key does. `pressed` is false for the key coming up. The keys avoid the ones the
@@ -416,7 +593,6 @@ fn cell_distance(cell: (i32, i32, i32), at: Vec3) -> f32 {
 }
 
 /// What the aiming preview was computed for; it is only computed again when this changes.
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // only the browser build aims
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PreviewKey {
     cell: (i32, i32, i32),
@@ -425,7 +601,6 @@ pub struct PreviewKey {
     power: u8,
 }
 
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // only the browser build aims
 pub fn preview_key(info: &LauncherInfo) -> PreviewKey {
     PreviewKey { cell: info.cell, heading: info.launcher.heading, elevation: info.launcher.elevation, power: info.launcher.power }
 }
@@ -802,5 +977,82 @@ mod interact_sign_tests {
     fn the_focus_message_gives_a_position_or_nothing() {
         assert_eq!(parse_interact_focus(&json!({"pos": [1.0, 2.5, 3.0]})), Some(glam::Vec3::new(1.0, 2.5, 3.0)));
         assert_eq!(parse_interact_focus(&json!({"pos": null})), None);
+    }
+}
+
+#[cfg(test)]
+mod mode_tests {
+    use super::*;
+    use serde_json::json;
+    use wurfel_sim::AirGenerator;
+
+    fn session() -> CavelandClient {
+        CavelandClient::start(&mut World::new(AirGenerator))
+    }
+
+    #[test]
+    fn the_state_message_updates_the_hud_and_says_who_rides_and_who_is_hidden() {
+        let mut mode = session();
+        let data = json!({"2": {"riding": true}, "7": {"hidden": true}});
+        mode.on_rules("state", &data, 2, Vec3::ZERO);
+        assert!(mode.riding());
+        assert!(mode.is_hidden(7) && !mode.is_hidden(2));
+        mode.on_rules("state", &json!({}), 2, Vec3::ZERO);
+        assert!(!mode.riding() && !mode.is_hidden(7), "the next state replaces the flags");
+    }
+
+    #[test]
+    fn private_news_for_somebody_else_does_nothing() {
+        let mut mode = session();
+        assert!(mode.on_rules("dialog", &json!({"to": 9, "title": "Oven"}), 2, Vec3::ZERO).is_empty());
+        let ours = mode.on_rules("dialog", &json!({"to": 2, "title": "Oven"}), 2, Vec3::ZERO);
+        assert!(matches!(&ours[..], [Effect::Hud { method: "dialog", arg: Some(_) }]));
+        assert_eq!(mode.on_rules("dialog_closed", &json!({"to": 2}), 2, Vec3::ZERO), [Effect::Hud { method: "closeDialog", arg: None }]);
+    }
+
+    #[test]
+    fn happenings_become_engine_effects() {
+        let me = 2;
+        let here = Vec3::new(1.0, 1.0, 1.0);
+        let effects = CavelandClient::effects(
+            vec![
+                Happening::Sound { name: "urfJump".into(), pos: here },
+                Happening::Sound { name: "urfJump".into(), pos: here + Vec3::X * 10.0 },
+                Happening::Sound { name: "wagon".into(), pos: here },
+                Happening::Teleported { entity: me, pos: here },
+                Happening::Teleported { entity: 9, pos: here },
+                Happening::Launched { player: me, pos: here, vel: Vec3::Z },
+                Happening::Hurt,
+                Happening::Died,
+            ],
+            me,
+            here,
+        );
+        assert_eq!(
+            effects,
+            [
+                Effect::Sound { name: "urfJump".into(), pos: here + Vec3::X * 10.0 },
+                Effect::Loop { name: "wagon".into(), pos: here },
+                Effect::PlaceLocalPlayer { pos: here, vel: Vec3::ZERO },
+                Effect::PlaceLocalPlayer { pos: here, vel: Vec3::Z },
+                Effect::Shake { amplitude: 14.0, millis: 220.0 },
+                Effect::Respawned { message: "You died. Back at the start.".into() },
+            ],
+            "our own jump is not heard twice, the cart rolls on, only our player is placed"
+        );
+    }
+
+    #[test]
+    fn the_session_predicts_with_caveland_rules_and_offers_its_commands() {
+        let mut mode = session();
+        let mut world = World::new(AirGenerator);
+        let mut entities = Entities::new();
+        let id = mode.spawn_local_player(&mut entities, Vec3::new(0.0, 0.0, 5.0));
+        mode.apply_input(&mut entities, &world, id, PlayerInput::default());
+        mode.tick(&mut entities, &mut world, TICK_DT);
+        assert!(entities.get(id).unwrap().position.z < 5.0, "it falls through the empty world");
+        assert!(!mode.exhaust(id));
+        assert!(mode.commands().iter().any(|(name, _)| *name == "give"));
+        assert_eq!(mode.key_action("f", true), Some(("attack", 0)));
     }
 }
