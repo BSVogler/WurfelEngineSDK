@@ -3,18 +3,38 @@
 use std::collections::{HashMap, HashSet};
 
 use glam::Vec3;
+use wurfel_sim::animation::{AnimatedBlocks, BlockAnimation};
 use wurfel_sim::block::id;
+use wurfel_sim::entity::benchmark::{benchmark_ball, BenchmarkSpawner};
+use wurfel_sim::particle::Rng;
 use wurfel_sim::entity::physics::occupied_cells;
 use wurfel_sim::entity::{Entities, EntityId, Event};
 use wurfel_sim::grid::to_iso;
 use wurfel_sim::player::{apply_input, new_player, spawn_points, PlayerInput, TICK_DT, TICK_RATE};
-use wurfel_sim::protocol::{ClientMsg, Edit, PlayerState, ServerMsg, MAX_FILL_CELLS};
+use wurfel_sim::protocol::{ClientMsg, Edit, PlayerState, ServerMsg, ThingState, MAX_FILL_CELLS};
 use wurfel_sim::generator::{create_generator, generators, Generator};
 use wurfel_sim::grid::{chunk_of, from_iso};
 use wurfel_sim::protocol::{clean_name, encode_chunk, PlayerInfo, WorldInfo};
 
 use crate::caveland_mode::CavelandMode;
 use crate::maps::{default_game_mode, OpenedWorld};
+
+/// Most cells the server animates at once. Every change of an animated block goes to every client,
+/// so this bounds the traffic (the waves are not counted: clients animate those themselves).
+#[allow(dead_code)] // used by animate_block, which game rules and tests call
+const MAX_SERVER_ANIMATED: usize = 1024;
+/// Most edits in one `BlocksSet` of animation changes.
+const MAX_ANIMATION_EDITS: usize = 512;
+/// Most benchmark balls alive at once.
+pub const MAX_BENCHMARK_BALLS: usize = 100;
+/// Entities (players, balls, things) the benchmark must leave room for: no ball is added beyond it.
+const MAX_ENTITIES_FOR_BENCHMARK: usize = 200;
+/// A ball disappears after this many ticks (60 s), so a forgotten benchmark cleans up after itself.
+const BALL_LIFETIME_TICKS: u64 = 60 * TICK_RATE as u64;
+/// The balls are sent as things every this many ticks.
+const BALL_THINGS_EVERY: u64 = 2;
+/// Name of the thing kind the clients get for a ball.
+const BALL_KIND: &str = "Benchmark Ball";
 
 /// Placeholder while a disk-backed world replaces the generator-only one in `from_opened`.
 struct NoGenerator;
@@ -76,6 +96,16 @@ pub struct Game {
     mode: Option<CavelandMode>,
     /// Where the game mode keeps its own files (the save slot's folder), if the world is a map.
     slot_dir: Option<std::path::PathBuf>,
+    /// Blocks the server animates (not the waves, see [`Game::animate_block`]).
+    animated: AnimatedBlocks,
+    /// Value changes of animated blocks since the last `drain_outbox`.
+    animation_edits: Vec<Edit>,
+    /// The running benchmark (`benchmark` console command) and the player who started it.
+    benchmark: Option<(BenchmarkSpawner, EntityId)>,
+    /// Benchmark balls alive, with the tick they appeared.
+    balls: Vec<(EntityId, u64)>,
+    /// How long the last tick took, for the benchmark's "is the server still fast" test.
+    last_tick_secs: f32,
 }
 
 impl Game {
@@ -116,6 +146,11 @@ impl Game {
             gamemode: "engine".to_string(),
             mode: None,
             slot_dir: None,
+            animated: AnimatedBlocks::new(),
+            animation_edits: Vec::new(),
+            benchmark: None,
+            balls: Vec::new(),
+            last_tick_secs: 0.0,
         }
     }
 
@@ -148,7 +183,103 @@ impl Game {
     /// Messages the game mode wants everybody to get (block changes, things, rule news). Empty in
     /// the plain engine.
     pub fn drain_outbox(&mut self) -> Vec<ServerMsg> {
-        self.mode.as_mut().map(CavelandMode::drain_outbox).unwrap_or_default()
+        let mut out = self.mode.as_mut().map(CavelandMode::drain_outbox).unwrap_or_default();
+        // Animated blocks: one message per batch, each cell at most once (the newest value).
+        let mut edits = std::mem::take(&mut self.animation_edits);
+        edits.reverse();
+        let mut seen = HashSet::new();
+        edits.retain(|e| seen.insert((e.x, e.y, e.z)));
+        edits.reverse();
+        for batch in edits.chunks(MAX_ANIMATION_EDITS) {
+            out.push(ServerMsg::BlocksSet { edits: batch.to_vec() });
+        }
+        if !self.balls.is_empty() && self.tick % BALL_THINGS_EVERY == 0 {
+            let things = self
+                .balls
+                .iter()
+                .filter_map(|&(id, _)| Some(ThingState { id, kind: BALL_KIND.to_string(), pos: self.entities.get(id)?.position.to_array() }))
+                .collect();
+            out.push(ServerMsg::Things { tick: self.tick, things });
+        }
+        out
+    }
+
+    /// Animate the block at `cell` on the server: its value steps through `animation` and every
+    /// change is sent to the clients (as `BlocksSet`, at most once per cell and tick). This is for
+    /// animations that are part of the game state. The sea is not: its frames are cosmetic and
+    /// start from the position, so the clients run them locally (see `wurfel-web`), which costs no
+    /// bandwidth and does not make every water chunk "modified" for the autosave. At most
+    /// [`MAX_SERVER_ANIMATED`] cells; returns an error beyond that.
+    #[allow(dead_code)]
+    pub fn animate_block(&mut self, cell: (i32, i32, i32), animation: BlockAnimation) -> Result<(), String> {
+        if self.animated.len() >= MAX_SERVER_ANIMATED {
+            return Err(format!("at most {MAX_SERVER_ANIMATED} animated blocks"));
+        }
+        self.world.load_chunk(chunk_of(cell.0, cell.1).0, chunk_of(cell.0, cell.1).1);
+        self.animated.add(&self.world, cell, animation);
+        Ok(())
+    }
+
+    /// How many blocks the server animates.
+    #[allow(dead_code)]
+    pub fn animated_count(&self) -> usize {
+        self.animated.len()
+    }
+
+    /// The console command `benchmark`: spawn a bouncing ball above `player` and keep adding more
+    /// (the Java benchmark) while the server keeps up. Only the host may, and only in the plain
+    /// engine; at most [`MAX_BENCHMARK_BALLS`] balls live at once and each vanishes after a
+    /// minute. Calling it again with the benchmark running just adds one more ball (up to the cap).
+    pub fn spawn_benchmark_ball(&mut self, player: EntityId) -> Result<(), String> {
+        if self.inputs.keys().min() != Some(&player) {
+            return Err("only the host can start the benchmark".into());
+        }
+        if self.mode.is_some() {
+            return Err("the benchmark is only available in the plain engine".into());
+        }
+        let at = self.entities.get(player).ok_or("no such player")?.position + Vec3::new(0.0, 0.0, 3.0);
+        if !self.benchmark_has_room() {
+            return Err(format!("too many entities (at most {MAX_BENCHMARK_BALLS} balls)"));
+        }
+        let ball = benchmark_ball(at, &mut Rng::new(self.tick ^ 0x5eed));
+        let id = self.entities.spawn(ball);
+        self.balls.push((id, self.tick));
+        let seed = self.tick.wrapping_mul(0x9E37_79B9) | 1;
+        self.benchmark.get_or_insert_with(|| (BenchmarkSpawner::new(seed), player));
+        Ok(())
+    }
+
+    fn benchmark_has_room(&self) -> bool {
+        self.balls.len() < MAX_BENCHMARK_BALLS && self.entities.len() < MAX_ENTITIES_FOR_BENCHMARK
+    }
+
+    /// Balls that are old are removed; the spawner adds one when it is due and there is room.
+    fn update_benchmark(&mut self) {
+        let tick = self.tick;
+        let entities = &mut self.entities;
+        self.balls.retain(|&(id, born)| {
+            let alive = tick.saturating_sub(born) < BALL_LIFETIME_TICKS && entities.get(id).is_some();
+            if !alive {
+                entities.remove(id);
+            }
+            alive
+        });
+        let Some((_, owner)) = self.benchmark.as_ref() else { return };
+        let Some(owner_position) = self.entities.get(*owner).map(|e| e.position) else {
+            self.benchmark = None; // the host left
+            return;
+        };
+        if !self.benchmark_has_room() {
+            // Full: stop adding until balls expire (the spawner would only fill the gap again and again).
+            return;
+        }
+        let frame = self.last_tick_secs;
+        if let Some((spawner, _)) = self.benchmark.as_mut() {
+            if let Some(ball) = spawner.update(TICK_DT, frame, owner_position + Vec3::new(0.0, 0.0, 3.0)) {
+                let id = self.entities.spawn(ball);
+                self.balls.push((id, tick));
+            }
+        }
     }
 
     /// The chunk the player stands in, if the player exists.
@@ -245,6 +376,9 @@ impl Game {
         self.inputs.remove(&id);
         self.roster.remove(&id);
         self.editors.remove(&id);
+        if self.benchmark.as_ref().is_some_and(|(_, owner)| *owner == id) {
+            self.benchmark = None;
+        }
         if let Some(mode) = self.mode.as_mut() {
             mode.remove_player(id);
         }
@@ -312,6 +446,13 @@ impl Game {
 
     /// One fixed physics step. The browser runs the same step for prediction.
     pub fn tick(&mut self) -> Vec<Event> {
+        let started = std::time::Instant::now();
+        let events = self.step();
+        self.last_tick_secs = started.elapsed().as_secs_f32();
+        events
+    }
+
+    fn step(&mut self) -> Vec<Event> {
         // Physics reads blocks, so the chunks around every player must be in memory before the step.
         let centres: Vec<_> = self.entities.iter().map(|e| from_iso(e.position.x, e.position.y)).collect();
         for (x, y) in centres {
@@ -329,6 +470,11 @@ impl Game {
             }
         }
         self.tick += 1;
+        self.update_benchmark();
+        for (x, y, z) in self.animated.update_changes(&mut self.world, TICK_DT) {
+            let block = self.world.get(x, y, z).raw();
+            self.animation_edits.push(Edit { x, y, z, block });
+        }
         match self.mode.as_mut() {
             Some(mode) => {
                 mode.tick(&mut self.entities, &mut self.world, self.tick, TICK_DT);
@@ -375,6 +521,11 @@ impl Game {
                 let host = self.inputs.keys().min() == Some(&player);
                 if let Some(mode) = self.mode.as_mut() {
                     mode.command(&mut self.entities, &mut self.world, player, &line, host);
+                } else if line.trim().trim_start_matches(['/', ':']).split_whitespace().next() == Some("benchmark") {
+                    // The plain engine has no command replies yet; a refusal is only logged.
+                    if let Err(e) = self.spawn_benchmark_ball(player) {
+                        eprintln!("wurfel-server: benchmark from player {player} refused: {e}");
+                    }
                 }
                 None
             }
@@ -779,7 +930,7 @@ mod tests {
 #[cfg(test)]
 mod game_mode_tests {
     use super::*;
-    use wurfel_sim::protocol::ThingState;
+    use wurfel_sim::grid::from_iso;
 
     fn caveland_game() -> Game {
         Game::new(WorldSpec { map: "c".into(), map_id: "c".into(), slot: 0, generator: "caveland".into(), seed: 1 }).unwrap()
@@ -900,5 +1051,148 @@ mod game_mode_tests {
         let me = game.add_player();
         assert_eq!(game.handle(me, ClientMsg::Action { name: "attack".into(), arg: 0 }), None);
         assert!(game.drain_outbox().is_empty());
+    }
+
+    // ---------------------------------------------------------------- animated blocks, benchmark
+
+    fn ticks(game: &mut Game, n: u32) {
+        for _ in 0..n {
+            game.tick();
+        }
+    }
+
+    fn above_a_player(game: &Game, id: u32) -> (i32, i32, i32) {
+        let p = game.entities.get(id).unwrap().position;
+        let (x, y) = from_iso(p.x, p.y);
+        (x, y, 20)
+    }
+
+    #[test]
+    fn animated_blocks_are_stepped_by_the_tick_and_reach_the_clients_batched_once_per_cell() {
+        let mut game = Game::island(5);
+        let me = game.add_player();
+        let cell = above_a_player(&game, me);
+        game.world.set(cell.0, cell.1, cell.2, Block::new(id::WATER, 0));
+        game.animate_block(cell, BlockAnimation::new(vec![0.1; 3], true, true)).unwrap();
+        assert!(game.drain_outbox().is_empty(), "nothing moved yet");
+        ticks(&mut game, 7); // 7 / 60 s: past the first frame
+        let out = game.drain_outbox();
+        assert_eq!(out.len(), 1, "one batch: {out:?}");
+        match &out[0] {
+            ServerMsg::BlocksSet { edits } => assert_eq!(edits, &vec![Edit { x: cell.0, y: cell.1, z: cell.2, block: Block::new(id::WATER, 1).raw() }]),
+            other => panic!("{other:?}"),
+        }
+        assert!(game.drain_outbox().is_empty(), "drained");
+        // Several changes before a drain collapse into the newest value of the cell.
+        ticks(&mut game, 6);
+        ticks(&mut game, 6);
+        let out = game.drain_outbox();
+        assert_eq!(out.len(), 1);
+        match &out[0] {
+            ServerMsg::BlocksSet { edits } => {
+                assert_eq!(edits.len(), 1);
+                assert_eq!(Block::from_raw(edits[0].block), game.world.get(cell.0, cell.1, cell.2));
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_big_animation_is_split_into_bounded_messages_and_the_number_of_cells_is_capped() {
+        let mut game = Game::island(5);
+        game.add_player();
+        for i in 0..MAX_SERVER_ANIMATED as i32 {
+            game.world.set(i % 40, 30 + i / 40, 20, Block::new(id::WATER, 0));
+            game.animate_block((i % 40, 30 + i / 40, 20), BlockAnimation::new(vec![0.05; 2], true, true)).unwrap();
+        }
+        assert!(game.animate_block((0, 0, 21), BlockAnimation::sea()).is_err(), "capped");
+        assert_eq!(game.animated_count(), MAX_SERVER_ANIMATED);
+        ticks(&mut game, 4);
+        let out = game.drain_outbox();
+        assert!(out.len() >= 2, "{} messages", out.len());
+        for msg in &out {
+            match msg {
+                ServerMsg::BlocksSet { edits } => assert!(edits.len() <= MAX_ANIMATION_EDITS),
+                other => panic!("{other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn the_sea_is_left_to_the_clients_so_water_chunks_stay_unmodified_and_quiet() {
+        let mut game = Game::island(5);
+        game.add_player();
+        ticks(&mut game, 120);
+        assert_eq!(game.animated_count(), 0);
+        assert!(game.drain_outbox().is_empty(), "no animation traffic from the server");
+    }
+
+    fn benchmark_command(game: &mut Game, id: u32) {
+        game.handle(id, ClientMsg::Command { line: "benchmark".into() });
+    }
+
+    #[test]
+    fn the_benchmark_is_for_the_host_only_and_not_in_a_game_mode() {
+        let mut game = Game::island(5);
+        let host = game.add_player();
+        let guest = game.add_player();
+        assert!(game.spawn_benchmark_ball(guest).is_err());
+        benchmark_command(&mut game, guest);
+        assert_eq!(game.balls.len(), 0);
+        benchmark_command(&mut game, host);
+        assert_eq!(game.balls.len(), 1);
+        assert_eq!(game.entity_count(), 3);
+
+        let mut caveland = caveland_game();
+        let me = caveland.add_player();
+        assert!(caveland.spawn_benchmark_ball(me).is_err());
+    }
+
+    #[test]
+    fn balls_are_things_not_players_and_fall_and_bounce() {
+        let mut game = Game::island(5);
+        let host = game.add_player();
+        game.spawn_benchmark_ball(host).unwrap();
+        let ball = game.balls[0].0;
+        let z0 = game.entities.get(ball).unwrap().position.z;
+        ticks(&mut game, 30);
+        assert!(game.entities.get(ball).unwrap().position.z < z0, "falling");
+        let players = match game.snapshot() {
+            ServerMsg::Snapshot { players, .. } => players,
+            _ => unreachable!(),
+        };
+        assert_eq!(players.len(), 1, "the ball is not a player");
+        let things = game.drain_outbox().into_iter().find_map(|m| match m {
+            ServerMsg::Things { things, .. } => Some(things),
+            _ => None,
+        });
+        let things = things.expect("balls are sent as things");
+        assert_eq!((things.len(), things[0].kind.as_str(), things[0].id), (1, "Benchmark Ball", ball));
+    }
+
+    #[test]
+    fn the_benchmark_cannot_overload_the_server() {
+        let mut game = Game::island(5);
+        let host = game.add_player();
+        game.spawn_benchmark_ball(host).unwrap();
+        // The spawner shortens its interval over time; give it ample ticks and keep the clock "fast".
+        for _ in 0..(BALL_LIFETIME_TICKS as u32 / 2) {
+            game.step();
+            game.last_tick_secs = 0.0;
+            assert!(game.balls.len() <= MAX_BENCHMARK_BALLS);
+            assert!(game.entity_count() <= MAX_ENTITIES_FOR_BENCHMARK);
+        }
+        assert!(game.balls.len() > 5, "it does add balls: {}", game.balls.len());
+        for _ in 0..MAX_BENCHMARK_BALLS * 2 {
+            let _ = game.spawn_benchmark_ball(host);
+        }
+        assert!(game.balls.len() <= MAX_BENCHMARK_BALLS);
+        assert!(game.spawn_benchmark_ball(host).is_err() || game.balls.len() < MAX_BENCHMARK_BALLS);
+        // Balls expire, and the host leaving stops the benchmark.
+        game.tick += BALL_LIFETIME_TICKS + 1;
+        game.update_benchmark();
+        assert!(game.balls.len() <= 1, "old balls are gone: {}", game.balls.len());
+        game.remove_player(host);
+        assert!(game.benchmark.is_none());
     }
 }

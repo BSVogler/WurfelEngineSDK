@@ -16,6 +16,7 @@
 
 use std::collections::HashMap;
 
+use crate::block::id;
 use crate::World;
 
 /// Something that can be started and stopped (the Java `Animatable`).
@@ -146,7 +147,13 @@ impl AnimatedBlocks {
     /// block was replaced or that are not loaded (any more) are forgotten. Returns how many
     /// values changed.
     pub fn update(&mut self, world: &mut World, dt: f32) -> usize {
-        let mut changed = 0;
+        self.update_changes(world, dt).len()
+    }
+
+    /// Like [`AnimatedBlocks::update`], but returns the cells whose value changed (so a server can
+    /// tell its clients and a renderer can rebuild only what moved).
+    pub fn update_changes(&mut self, world: &mut World, dt: f32) -> Vec<(i32, i32, i32)> {
+        let mut changed = Vec::new();
         self.cells.retain(|&(x, y, z), (id, animation)| {
             let block = world.get(x, y, z);
             if block.id() != *id || !world.is_loaded_at(x, y) {
@@ -155,19 +162,70 @@ impl AnimatedBlocks {
             let value = animation.update(dt, block.value());
             if value != block.value() {
                 world.set(x, y, z, crate::Block::new(block.id(), value));
-                changed += 1;
+                changed.push((x, y, z));
             }
             true
         });
+        changed.sort_unstable();
         changed
     }
+
+    /// Forget the animations of chunks farther than `radius` chunks (square) from `center`.
+    pub fn forget_outside(&mut self, center: (i32, i32), radius: i32) {
+        self.cells.retain(|&(x, y, _), _| {
+            let (cx, cy) = crate::grid::chunk_of(x, y);
+            (cx - center.0).abs().max((cy - center.1).abs()) <= radius
+        });
+    }
+
+    /// Make the water at `cell` a [`BlockAnimation::sea`] with its own starting frame (the Java
+    /// `Sea` constructor picked a random one so the waves do not move in step). The frame comes
+    /// from the position, so every machine starts the same sea. False if the cell is no water.
+    pub fn add_sea(&mut self, world: &mut World, (x, y, z): (i32, i32, i32)) -> bool {
+        let block = world.get(x, y, z);
+        if block.id() != id::WATER {
+            return false;
+        }
+        let start = sea_start_frame(x, y, z);
+        if block.value() != start {
+            world.set(x, y, z, crate::Block::new(id::WATER, start));
+        }
+        self.add(world, (x, y, z), BlockAnimation::sea());
+        true
+    }
+
+    /// Animate the water of one loaded chunk. Only the surface (water with no water above) moves:
+    /// the water below is hidden, and a sea is mostly depth, so this keeps the number of animated
+    /// cells (and the work per frame) to a layer. Returns how many cells were registered.
+    pub fn add_sea_in_chunk(&mut self, world: &mut World, (cx, cy): (i32, i32)) -> usize {
+        if !world.is_loaded(cx, cy) {
+            return 0;
+        }
+        let mut added = 0;
+        for lx in 0..crate::CHUNK_SIZE_X {
+            for ly in 0..crate::CHUNK_SIZE_Y {
+                let (x, y) = (cx * crate::CHUNK_SIZE_X + lx, cy * crate::CHUNK_SIZE_Y + ly);
+                for z in 0..crate::CHUNK_SIZE_Z {
+                    if world.get(x, y, z).id() == id::WATER && world.get(x, y, z + 1).id() != id::WATER && self.add_sea(world, (x, y, z)) {
+                        added += 1;
+                    }
+                }
+            }
+        }
+        added
+    }
+}
+
+/// The frame (0 to 3) a sea cell starts on: a hash of its position.
+fn sea_start_frame(x: i32, y: i32, z: i32) -> u8 {
+    let h = (x as u32).wrapping_mul(0x9E37_79B1) ^ (y as u32).wrapping_mul(0x85EB_CA6B) ^ (z as u32).wrapping_mul(0xC2B2_AE35);
+    ((h ^ (h >> 15)).wrapping_mul(0x2C1B_3C6D) >> 28) as u8 % 4
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::block::id;
-    use crate::{AirGenerator, Block};
+    use crate::{AirGenerator, Block, Generator};
 
     /// Step once per frame duration and collect the values shown.
     fn values(mut animation: BlockAnimation, steps: usize, start: u8) -> Vec<u8> {
@@ -255,5 +313,40 @@ mod tests {
         assert_eq!(animated.update(&mut world, 1.0), 0);
         assert!(animated.is_empty());
         assert_eq!(world.get(1, 1, 1), Block::new(id::STONE, 0));
+    }
+
+    struct Pond;
+    impl Generator for Pond {
+        fn generate(&self, _x: i32, _y: i32, z: i32) -> Block {
+            if z <= 2 { Block::new(id::WATER, 0) } else { Block::AIR }
+        }
+    }
+
+    #[test]
+    fn only_the_surface_water_of_a_chunk_is_a_sea_and_each_cell_starts_on_its_own_frame() {
+        let mut world = World::new(Pond);
+        world.load_chunk(0, 0);
+        let mut animated = AnimatedBlocks::new();
+        let added = animated.add_sea_in_chunk(&mut world, (0, 0));
+        assert_eq!(added, (crate::CHUNK_SIZE_X * crate::CHUNK_SIZE_Y) as usize, "one layer, not the depth");
+        assert_eq!(animated.len(), added);
+        let frames: std::collections::HashSet<u8> = (0..10).map(|x| world.get(x, 0, 2).value()).collect();
+        assert!(frames.len() > 1, "the waves do not move in step: {frames:?}");
+        assert!(frames.iter().all(|&f| f < 4));
+        assert_eq!(world.get(3, 3, 1).value(), 0, "hidden water is left alone");
+        assert_eq!(animated.add_sea_in_chunk(&mut world, (5, 5)), 0, "unloaded chunks have nothing to animate");
+        assert!(!animated.add_sea(&mut world, (0, 0, 3)), "air is no sea");
+    }
+
+    #[test]
+    fn update_changes_names_the_cells_that_moved() {
+        let mut world = World::new(AirGenerator);
+        world.set(1, 1, 1, Block::new(id::WATER, 0));
+        world.set(2, 1, 1, Block::new(id::WATER, 0));
+        let mut animated = AnimatedBlocks::new();
+        animated.add(&world, (1, 1, 1), BlockAnimation::sea());
+        animated.add(&world, (2, 1, 1), BlockAnimation::new(vec![5.0], true, true));
+        assert_eq!(animated.update_changes(&mut world, 0.5), vec![(1, 1, 1)]);
+        assert!(animated.update_changes(&mut world, 0.01).is_empty());
     }
 }

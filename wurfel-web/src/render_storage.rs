@@ -308,6 +308,11 @@ impl RenderStorage {
     /// Texture the meshes with these sprites (or go back to flat colours with `None`). Every chunk
     /// is meshed again.
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // the browser build loads the atlas
+    /// Whether the meshes are textured: only then does a block's value (an animation frame) show.
+    pub fn has_sprites(&self) -> bool {
+        self.sprites.is_some()
+    }
+
     pub fn set_sprites(&mut self, sprites: Option<Rc<Sprites>>) {
         self.sprites = sprites;
         for chunk in self.chunks.values_mut() {
