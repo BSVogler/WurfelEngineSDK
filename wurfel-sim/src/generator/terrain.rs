@@ -31,6 +31,11 @@ const MIN_GROUND: i32 = 1;
 /// Highest ground height, kept below the top of the world so a roof still has air above it.
 const MAX_GROUND: i32 = CHUNK_SIZE_Z - 3;
 
+/// How many pictures a tree has (its value 0 to 7).
+const TREE_SHAPES: u32 = 8;
+/// The value of the invisible upper half of a tree (`CustomTree.TREETOPVALUE`).
+pub const TREE_TOP: u8 = 8;
+
 /// Everything about one block column that the blocks in it depend on.
 #[derive(Clone, Copy)]
 struct Column {
@@ -223,8 +228,11 @@ impl Generator for TerrainGenerator {
         }
         let column = self.column(x, y);
 
-        if z == column.ground && self.has_tree(x, y, &column) {
-            return Block::new(TREE, 0);
+        if (z == column.ground || z == column.ground + 1) && self.has_tree(x, y, &column) {
+            // Like Java's `CustomTree`: a random shape (value 0 to 7) with the invisible obstacle
+            // that makes it two blocks tall on top.
+            let value = if z == column.ground { (self.hash(x, y, 7) % TREE_SHAPES) as u8 } else { TREE_TOP };
+            return Block::new(TREE, value);
         }
         if z >= column.ground || column.tunnel.is_some_and(|t| z >= t.floor && z <= t.roof) {
             return if z <= SEA_LEVEL { Block::new(id::WATER, 0) } else { Block::AIR };
@@ -394,16 +402,20 @@ mod tests {
     fn trees_grow_in_groves_on_grass() {
         let g = TerrainGenerator::new(5);
         let mut trees = 0;
+        let mut shapes = HashSet::new();
         for x in 0..300 {
             for y in 0..600 {
                 let ground = g.ground(x, y);
                 if g.generate(x, y, ground).id() == TREE {
                     trees += 1;
+                    shapes.insert(g.generate(x, y, ground).value());
+                    assert_eq!(g.generate(x, y, ground + 1), Block::new(TREE, TREE_TOP), "tree top at {x},{y}");
                     assert_eq!(g.generate(x, y, ground - 1).id(), id::GRASS, "tree at {x},{y} not on grass");
-                    assert!(g.generate(x, y, ground + 1).is_air());
+                    assert!(g.generate(x, y, ground + 2).is_air());
                 }
             }
         }
+        assert_eq!(shapes.len(), TREE_SHAPES as usize, "every shape shows up: {shapes:?}");
         assert!(trees > 300, "trees: {trees}");
         assert!(trees < 300 * 600 / 5, "too many trees: {trees}");
     }

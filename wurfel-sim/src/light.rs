@@ -590,7 +590,7 @@ impl PointLight {
 /// Java `isTransparent`) let it through; anything else stops it. The segment is sampled every
 /// quarter block, which is enough because blocks are a block wide.
 pub fn visible(world: &World, from: Vec3, to: Vec3) -> bool {
-    visible_with(&|x, y, z| is_opaque(world.get(x, y, z)), from, to)
+    visible_with(&|x, y, z| is_opaque_in(world, x, y, z), from, to)
 }
 
 /// [`visible`] for any source of block data. `opaque(x, y, z)` answers for block coordinates (the
@@ -613,15 +613,23 @@ pub fn visible_with(opaque: &dyn Fn(i32, i32, i32) -> bool, from: Vec3, to: Vec3
     })
 }
 
-/// Blocks that cast shadows and occlude light: not air, water or the invisible obstacle (id 4).
+/// Blocks that cast shadows and occlude light: not air, water, trees (a picture, not a cube) or the
+/// invisible obstacle (id 4).
 pub fn is_opaque(block: Block) -> bool {
-    !matches!(block.id(), id::AIR | id::WATER | 4)
+    !matches!(block.id(), id::AIR | id::WATER | id::TREE | 4)
+}
+
+/// [`is_opaque`] by the world's block configuration: a game's single-picture blocks (torch, tree...)
+/// are not cubes and let light through, like its `is_transparent` says.
+pub fn is_opaque_in(world: &World, x: i32, y: i32, z: i32) -> bool {
+    let block = world.get(x, y, z);
+    !world.blocks().is_transparent(block) && is_opaque(block)
 }
 
 /// Total light from `lights` at a vertex on `face`, with the occlusion test. `point` is the vertex
 /// position.
 pub fn bake_point_lights(world: &World, lights: &[PointLight], point: Vec3, face: Face) -> Vec3 {
-    bake_point_lights_with(&|x, y, z| is_opaque(world.get(x, y, z)), lights, point, face)
+    bake_point_lights_with(&|x, y, z| is_opaque_in(world, x, y, z), lights, point, face)
 }
 
 /// [`bake_point_lights`] for any source of block data, see [`visible_with`].
@@ -667,7 +675,7 @@ fn opaque_lattice(opaque: &dyn Fn(i32, i32, i32) -> bool, ix: i32, iy: i32, z: i
 /// the left face `du` is along `x` and `dv` along `z`; for the right face `du` is along `y` and
 /// `dv` along `z`.
 pub fn face_vertex_ao(world: &World, cell: (i32, i32, i32), face: Face, du: i32, dv: i32) -> u8 {
-    face_vertex_ao_with(&|x, y, z| is_opaque(world.get(x, y, z)), cell, face, du, dv)
+    face_vertex_ao_with(&|x, y, z| is_opaque_in(world, x, y, z), cell, face, du, dv)
 }
 
 /// [`face_vertex_ao`] for any source of block data (the render storage uses its own cell cache).

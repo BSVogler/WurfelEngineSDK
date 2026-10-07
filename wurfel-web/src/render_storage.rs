@@ -41,16 +41,18 @@ pub struct RenderCell {
     pub clipping: u8,
     /// Brightness factor for the top face, 1.0 unless shaded.
     pub top_light: f32,
+    /// The game's `BlockConfig::is_transparent`: a torch or tree is a picture, not a cube.
+    config_transparent: bool,
 }
 
 impl RenderCell {
-    fn new(block: Block) -> Self {
-        RenderCell { block, clipping: 0, top_light: 1.0 }
+    fn new(block: Block, config_transparent: bool) -> Self {
+        RenderCell { block, clipping: 0, top_light: 1.0, config_transparent }
     }
 
     /// Does not hide what is behind it.
     pub fn is_transparent(&self) -> bool {
-        matches!(self.block.id(), id::AIR | id::WATER | INVISIBLE_OBSTACLE)
+        self.config_transparent || matches!(self.block.id(), id::AIR | id::WATER | INVISIBLE_OBSTACLE)
     }
 
     pub fn is_liquid(&self) -> bool {
@@ -112,7 +114,8 @@ impl RenderChunk {
         for lx in 0..CHUNK_SIZE_X {
             for ly in 0..CHUNK_SIZE_Y {
                 for z in 0..CHUNK_SIZE_Z {
-                    cells.push(RenderCell::new(sim.map_or(Block::AIR, |c| c.get(lx, ly, z))));
+                    let block = sim.map_or(Block::AIR, |c| c.get(lx, ly, z));
+                    cells.push(RenderCell::new(block, world.blocks().is_transparent(block)));
                 }
             }
         }

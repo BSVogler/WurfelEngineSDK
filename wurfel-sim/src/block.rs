@@ -27,7 +27,7 @@ pub trait BlockConfig: Send + Sync {
 
     /// Lets light and sight through (the block does not hide what is behind it).
     fn is_transparent(&self, block: Block) -> bool {
-        matches!(block.id(), id::AIR | id::WATER)
+        matches!(block.id(), id::AIR | id::WATER | id::TREE)
     }
 
     /// Digging cannot remove it.

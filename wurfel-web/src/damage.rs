@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use wurfel_sim::grid::{from_iso, to_iso};
-use wurfel_sim::light::is_opaque;
+use wurfel_sim::light::is_opaque_in;
 use wurfel_sim::World;
 
 use crate::mesh::{overlay_face, Vertex};
@@ -45,7 +45,7 @@ pub fn push(out: &mut Vec<Vertex>, sprites: &Sprites, world: &World, damaged: &m
         let (gx, gy) = to_iso(x, y);
         let (x0, x1, y0, y1) = (gx - 0.5, gx + 0.5, gy - 0.5, gy + 0.5);
         let (z0, z1) = (z as f32, z as f32 + 1.0);
-        let covered = |bx: i32, by: i32, bz: i32| is_opaque(world.get(bx, by, bz));
+        let covered = |bx: i32, by: i32, bz: i32| is_opaque_in(world, bx, by, bz);
         let (lx, ly) = from_iso(gx, gy + 1.0);
         let (rx, ry) = from_iso(gx + 1.0, gy);
         // Left (+y), top, right (+x), the sprite values 0, 1 and 2 of a set.

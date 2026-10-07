@@ -180,7 +180,9 @@ pub fn build_chunk(chunk: &RenderChunk, ctx: &MeshContext) -> Vec<Vertex> {
                 let cell = chunk.cell(lx, ly, z).expect("index is inside the chunk");
                 // A cell whose three front sides are covered can still show its back sides to the
                 // free camera (the far slope of a hill), so it is only skipped for the fixed one.
-                if cell.block.is_air() || (cell.is_fully_clipped() && !ctx.all_faces) {
+                // The upper half of a tree is an invisible obstacle (`CustomTree.TREETOPVALUE`).
+                let tree_top = cell.block.id() == wurfel_sim::block::id::TREE && cell.block.value() == 8;
+                if cell.block.is_air() || tree_top || (cell.is_fully_clipped() && !ctx.all_faces) {
                     continue;
                 }
                 let look = ctx.sprites.and_then(|s| s.block(cell.block.id(), cell.block.value()).map(|look| (s, look)));
