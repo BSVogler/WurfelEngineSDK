@@ -328,8 +328,16 @@ fn lit_by_normal_map(face: i32, layer: f32) -> bool {
 }
 
 fn normal_map_color(in: VertexOut, texel: vec4<f32>) -> vec3<f32> {
-    let sun_normal = turn_game_direction(lighting.sun_normal.xyz);
-    let moon_normal = turn_game_direction(lighting.moon_normal.xyz);
+    // The sun and the moon belong to the world. A block's normal map is in the world's frame, which
+    // does not turn with the free camera, so the light is used as it is. Only a standing sprite
+    // always faces the camera: its normal map is in the view frame, so the light turns into it.
+    let billboard = i32(in.face + 0.5) == 4;
+    var sun_normal = lighting.sun_normal.xyz;
+    var moon_normal = lighting.moon_normal.xyz;
+    if (billboard) {
+        sun_normal = turn_game_direction(sun_normal);
+        moon_normal = turn_game_direction(moon_normal);
+    }
 
     var diffuse = texel.rgb * in.albedo;
     let normal_color = textureSampleLevel(normals, atlas_sampler, in.uv, i32(max(in.layer, 0.0) + 0.5), 0.0).rgb;
@@ -353,7 +361,11 @@ fn normal_map_color(in: VertexOut, texel: vec4<f32>) -> vec3<f32> {
     // fixed colour. The distance is at least a tenth of a block (Java divides by zero there).
     var local = vec3<f32>(0.0);
     if (lighting.local_light.w > 0.5) {
-        let to_light = view_pos(lighting.local_light.xyz) - in.world;
+        var to_light = view_pos(lighting.local_light.xyz) - in.world;
+        if (!billboard) {
+            // `to_light` is in view space; a block's normal is in the world's frame.
+            to_light = vec3<f32>(camera.view.x * to_light.x + camera.view.y * to_light.y, camera.view.x * to_light.y - camera.view.y * to_light.x, to_light.z);
+        }
         let l = normalize(iso_to_game(to_light));
         let dist = max(length(to_light) * GAME_UNITS_PER_BLOCK, 0.1 * GAME_UNITS_PER_BLOCK);
         let view_dir = normalize(vec3<f32>(0.0, 0.5, 1.0));

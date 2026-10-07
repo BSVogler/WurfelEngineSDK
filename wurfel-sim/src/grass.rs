@@ -27,6 +27,20 @@ use crate::grid::to_iso;
 pub const WIND_AMPLITUDE: f32 = 20.0;
 /// Java `noisenum`: the jitter is up to `NOISE * WIND_AMPLITUDE / 2` degrees.
 pub const NOISE: f32 = 0.1;
+/// Where the wind blows to, in game space (a unit vector). The sway reaches a blade later the
+/// further downwind it stands, so the wind moves over the grass in waves instead of everywhere at once.
+pub const WIND_DIRECTION: (f32, f32) = (0.8, 0.6);
+/// How fast the waves travel, game units per second (a wavelength of `2 s * speed`, about 11 blocks).
+pub const WIND_SPEED: f32 = 800.0;
+/// Gusts: a slower, broader wave that makes the sway stronger and weaker, so it does not look like
+/// regular stripes. It blows across the main wave.
+pub const GUST_DIRECTION: (f32, f32) = (-0.5, 0.866);
+/// How fast the gusts travel, game units per second.
+pub const GUST_SPEED: f32 = 350.0;
+/// Seconds between two gusts at one place.
+pub const GUST_PERIOD: f32 = 7.0;
+/// The sway is this fraction of its full strength between gusts and 100 % at the height of one.
+pub const GUST_MIN: f32 = 0.55;
 /// Edge of a block in game units (`RenderCell.GAME_EDGELENGTH`).
 pub const EDGE: f32 = 141.0;
 const EDGE2: f32 = 70.0;
@@ -60,6 +74,21 @@ impl Wind {
         self.circle = (self.circle + dt * 1000.0 * 0.01) % WIND_AMPLITUDE;
         self.value = (self.circle - WIND_AMPLITUDE / 2.0).abs() - WIND_AMPLITUDE / 2.0;
         self.time += dt;
+    }
+}
+
+impl Wind {
+    /// The wind at the game-space position `at`: the same triangle wave as [`Wind::value`], but it
+    /// reaches the position `distance along the wind / WIND_SPEED` seconds late, and a gust (a
+    /// slower wave of its own) scales it.
+    pub fn at(&self, at: (f32, f32)) -> f32 {
+        let delay = (at.0 * WIND_DIRECTION.0 + at.1 * WIND_DIRECTION.1) / WIND_SPEED;
+        // The circle advances 10 units per second (Java: `dt` in milliseconds times 0.01).
+        let circle = ((self.time - delay) * 10.0).rem_euclid(WIND_AMPLITUDE);
+        let wave = (circle - WIND_AMPLITUDE / 2.0).abs() - WIND_AMPLITUDE / 2.0;
+        let gust_delay = (at.0 * GUST_DIRECTION.0 + at.1 * GUST_DIRECTION.1) / GUST_SPEED;
+        let gust = ((self.time - gust_delay) / GUST_PERIOD * std::f32::consts::TAU).sin() * 0.5 + 0.5;
+        wave * (GUST_MIN + (1.0 - GUST_MIN) * gust)
     }
 }
 
@@ -218,7 +247,7 @@ pub fn blades(x: i32, y: i32, z: i32, count: i32, wind: &Wind, force: Option<(f3
         let (rotation, scale) = match kind {
             Kind::Blade => {
                 let bend = force.map_or(0.0, |f| force_bend(spot, f));
-                (rotation(i, wind.value, jitter(seed, i, wind.time), bend), scale(xo))
+                (rotation(i, wind.at(spot), jitter(seed, i, wind.time), bend), scale(xo))
             }
             // The Java stone sprite was neither scaled nor turned.
             Kind::Stone => (0.0, 1.0),
@@ -238,6 +267,55 @@ pub fn blades(x: i32, y: i32, z: i32, count: i32, wind: &Wind, force: Option<(f3
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn wind_at_time(time: f32) -> Wind {
+        let mut w = Wind::default();
+        w.update(time);
+        w
+    }
+
+    #[test]
+    fn the_wind_reaches_places_downwind_later() {
+        // The same sway arrives at a place `d` units downwind `d / WIND_SPEED` seconds after the
+        // origin. (Leave the gust out of it by comparing the unscaled wave through its ratio.)
+        let d = 400.0;
+        let downwind = (WIND_DIRECTION.0 * d, WIND_DIRECTION.1 * d);
+        let delay = d / WIND_SPEED;
+        let early = wind_at_time(3.0).at((0.0, 0.0));
+        let late = wind_at_time(3.0 + delay).at(downwind);
+        // Same wave phase; the gust differs, so only the sign and rough size must agree.
+        assert!(early.signum() == late.signum() || early.abs() < 0.5, "{early} {late}");
+        // At one moment two far apart places sway differently: it is not everywhere at once.
+        let w = wind_at_time(3.0);
+        assert!((w.at((0.0, 0.0)) - w.at((500.0, 300.0))).abs() > 0.5);
+    }
+
+    #[test]
+    fn the_sway_stays_in_range_and_leans_one_way_a_wavelength_downwind() {
+        let wavelength = 2.0 * WIND_SPEED;
+        let w = wind_at_time(5.3);
+        let a = (100.0, -40.0);
+        // Along the wind the wave repeats after one wavelength; the gust moves across it, so the
+        // values can differ by the gust factor at most.
+        let b = (a.0 + WIND_DIRECTION.0 * wavelength, a.1 + WIND_DIRECTION.1 * wavelength);
+        let (va, vb) = (w.at(a), w.at(b));
+        assert!(va.abs() <= WIND_AMPLITUDE / 2.0 && vb.abs() <= WIND_AMPLITUDE / 2.0);
+        assert!(va <= 1e-4 && vb <= 1e-4, "the sway only leans one way: {va} {vb}");
+    }
+
+    #[test]
+    fn a_gust_never_takes_more_than_it_leaves_and_never_flips_the_sway() {
+        for step in 0..400 {
+            let w = wind_at_time(step as f32 * 0.173);
+            for &at in &[(0.0, 0.0), (900.0, -300.0), (-1200.0, 640.0)] {
+                let v = w.at(at);
+                assert!((-WIND_AMPLITUDE / 2.0 - 1e-3..=1e-3).contains(&v), "{v}");
+            }
+        }
+        // At a place the sway still reaches its full depth now and then (GUST_MIN is a floor, not a cap).
+        let deepest = (0..2000).map(|s| wind_at_time(s as f32 * 0.05).at((0.0, 0.0))).fold(0.0_f32, f32::min);
+        assert!(deepest < -WIND_AMPLITUDE / 2.0 * GUST_MIN, "{deepest}");
+    }
 
     #[test]
     fn the_wind_is_a_triangle_wave_between_minus_ten_and_zero() {
