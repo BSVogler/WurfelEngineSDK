@@ -8,7 +8,9 @@ use wurfel_sim::entity::physics::occupied_cells;
 use wurfel_sim::entity::{Entities, EntityId, Event};
 use wurfel_sim::grid::to_iso;
 use wurfel_sim::player::{apply_input, new_player, spawn_points, PlayerInput, TICK_DT, TICK_RATE};
-use wurfel_sim::protocol::{ClientMsg, Edit, PlayerState, ServerMsg, MAX_FILL_CELLS};
+use wurfel_sim::protocol::{
+    editor_block_values, ClientMsg, Edit, PlayerState, ServerMsg, ThingState, EDITOR_THING_KINDS, MAX_EDITOR_THINGS, MAX_FILL_CELLS,
+};
 use wurfel_sim::generator::{create_generator, generators, Generator};
 use wurfel_sim::grid::{chunk_of, from_iso};
 use wurfel_sim::protocol::{clean_name, encode_chunk, PlayerInfo, WorldInfo};
@@ -25,8 +27,17 @@ impl Generator for NoGenerator {
 }
 use wurfel_sim::{Block, World, CHUNK_SIZE_Z};
 
-/// How far from a player's body centre (in blocks) they may place or break blocks.
-pub const REACH: f32 = 12.0;
+/// How far from a player's body centre (ground units, like the world's isometric positions) the
+/// editor may place or break blocks and spawn, move or delete things. Only a player who switched
+/// the editor on can do any of that, so this is the reach of editors. It is wide on purpose: the
+/// editor's camera pans away from the player (the client keeps it within `EDITOR_PAN_LIMIT`, half
+/// of this, so the cursor still has room), which a reach of a few blocks would make useless. A
+/// player outside the editor has no reach at all.
+pub const EDITOR_REACH: f32 = 48.0;
+
+/// The file of the things placed with the editor, in the save slot's folder (JSON, not the Java
+/// format, which has no such thing in the map files the Rust server reads).
+const THINGS_FILE: &str = "editor-things.json";
 
 /// Blocks a client may place. Water is excluded on purpose: it would flood the island.
 const PLACEABLE: [u8; 4] = [id::GRASS, id::DIRT, id::STONE, id::SAND];
@@ -68,6 +79,12 @@ pub struct Game {
     roster: HashMap<EntityId, PlayerInfo>,
     /// Players who switched the map editor on: only they may edit blocks.
     editors: HashSet<EntityId>,
+    /// The things placed with the editor (plain engine only), see [`Game::edit_things`].
+    things: Vec<ThingState>,
+    next_thing: u32,
+    /// `things` changed: send them to everybody (and save them) soon.
+    things_dirty: bool,
+    things_unsaved: bool,
     spawned: usize,
     tick: u64,
     /// The rules the world is played by (`engine` or `caveland`).
@@ -111,6 +128,10 @@ impl Game {
             inputs: HashMap::new(),
             roster: HashMap::new(),
             editors: HashSet::new(),
+            things: Vec::new(),
+            next_thing: 1,
+            things_dirty: false,
+            things_unsaved: false,
             spawned: 0,
             tick: 0,
             gamemode: "engine".to_string(),
@@ -148,7 +169,18 @@ impl Game {
     /// Messages the game mode wants everybody to get (block changes, things, rule news). Empty in
     /// the plain engine.
     pub fn drain_outbox(&mut self) -> Vec<ServerMsg> {
-        self.mode.as_mut().map(CavelandMode::drain_outbox).unwrap_or_default()
+        match self.mode.as_mut() {
+            Some(mode) => mode.drain_outbox(),
+            None => self.things_outbox(),
+        }
+    }
+
+    /// The editor's things for everybody: right after a change, and once a second so that a player
+    /// who joined later gets them (the message is small, and not sent at all while there are none).
+    fn things_outbox(&mut self) -> Vec<ServerMsg> {
+        let due = self.things_dirty || (!self.things.is_empty() && self.tick % TICK_RATE as u64 == 0);
+        self.things_dirty = false;
+        if due { vec![ServerMsg::Things { tick: self.tick, things: self.things.clone() }] } else { Vec::new() }
     }
 
     /// The chunk the player stands in, if the player exists.
@@ -185,14 +217,46 @@ impl Game {
                 eprintln!("wurfel-server: the Caveland state of this save could not be read, starting fresh: {e}");
             }
         }
+        if game.mode.is_none() {
+            game.load_things(&slot_dir);
+        }
         game.slot_dir = Some(slot_dir);
         game
+    }
+
+    /// Read the things the editor placed in this save slot. A file that is missing means none; one
+    /// that cannot be read is reported and ignored (it stays on disk until the next save).
+    fn load_things(&mut self, dir: &std::path::Path) {
+        let path = dir.join(THINGS_FILE);
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+            Err(e) => return eprintln!("wurfel-server: {}: {e}", path.display()),
+        };
+        match serde_json::from_str::<Vec<(String, [f32; 3])>>(&text) {
+            // Through the same checks as a spawn, so a hand-edited file cannot place anything the editor could not.
+            Ok(list) => {
+                for (kind, pos) in list.into_iter().take(MAX_EDITOR_THINGS) {
+                    if EDITOR_THING_KINDS.contains(&kind.as_str()) && thing_position_is_valid(pos) {
+                        self.things.push(ThingState { id: self.next_thing, kind, pos });
+                        self.next_thing += 1;
+                    }
+                }
+            }
+            Err(e) => eprintln!("wurfel-server: {}: {e}, starting without placed things", path.display()),
+        }
     }
 
     /// Write the chunks that changed to disk. Returns how many were written.
     pub fn save(&mut self) -> std::io::Result<usize> {
         if let (Some(mode), Some(dir)) = (self.mode.as_ref(), self.slot_dir.as_ref()) {
             mode.save(dir, &self.entities)?;
+        }
+        if let (true, Some(dir)) = (self.things_unsaved, self.slot_dir.as_ref()) {
+            let list: Vec<(&str, [f32; 3])> = self.things.iter().map(|t| (t.kind.as_str(), t.pos)).collect();
+            std::fs::create_dir_all(dir)?;
+            std::fs::write(dir.join(THINGS_FILE), serde_json::to_string(&list).map_err(std::io::Error::other)?)?;
+            self.things_unsaved = false;
         }
         self.world.save_modified()
     }
@@ -369,7 +433,20 @@ impl Game {
             ClientMsg::FillBlocks { x1, y1, x2, y2, z, block } if self.mode.is_none() && self.editors.contains(&player) => {
                 self.fill_blocks(player, (x1, y1, x2, y2), z, block)
             }
-            ClientMsg::SetBlock { .. } | ClientMsg::FillBlocks { .. } => None,
+            ClientMsg::SpawnThing { .. } | ClientMsg::MoveThing { .. } | ClientMsg::DeleteThing { .. } if self.mode.is_none() && self.editors.contains(&player) => {
+                self.edit_things(player, msg);
+                None // the change goes out with the next `things_outbox`
+            }
+            ClientMsg::SaveWorld if self.mode.is_none() && self.editors.contains(&player) => Some(match self.save() {
+                Ok(chunks) => ServerMsg::Saved { chunks: chunks as u32, error: None },
+                Err(e) => ServerMsg::Saved { chunks: 0, error: Some(e.to_string()) },
+            }),
+            ClientMsg::SetBlock { .. }
+            | ClientMsg::FillBlocks { .. }
+            | ClientMsg::SpawnThing { .. }
+            | ClientMsg::MoveThing { .. }
+            | ClientMsg::DeleteThing { .. }
+            | ClientMsg::SaveWorld => None,
             ClientMsg::Command { line } => {
                 // Only the host (the lowest id still here) may use cheats.
                 let host = self.inputs.keys().min() == Some(&player);
@@ -415,16 +492,55 @@ impl Game {
         (!edits.is_empty()).then_some(ServerMsg::BlocksSet { edits })
     }
 
+    /// Is `point` (ground units) within the editor's reach of the player's body?
+    fn in_reach(&self, player: u32, point: Vec3) -> bool {
+        self.entities.get(player).is_some_and(|e| (e.position + Vec3::new(0.0, 0.0, 0.7)).distance(point) <= EDITOR_REACH)
+    }
+
+    /// The editor's spawn, move and delete of things. Anything the rules refuse is ignored: an
+    /// unknown kind, a position that is not finite or outside the world's height, one out of
+    /// reach (the thing's old place too, when moving), too many things, an unknown id.
+    fn edit_things(&mut self, player: u32, msg: ClientMsg) {
+        let reachable = |game: &Game, pos: [f32; 3]| thing_position_is_valid(pos) && game.in_reach(player, Vec3::from(pos));
+        match msg {
+            ClientMsg::SpawnThing { kind, pos } => {
+                if self.things.len() < MAX_EDITOR_THINGS && EDITOR_THING_KINDS.contains(&kind.as_str()) && reachable(self, pos) {
+                    self.things.push(ThingState { id: self.next_thing, kind, pos });
+                    self.next_thing += 1;
+                } else {
+                    return;
+                }
+            }
+            ClientMsg::MoveThing { id, pos } => {
+                let Some(index) = self.things.iter().position(|t| t.id == id) else { return };
+                if !reachable(self, pos) || !reachable(self, self.things[index].pos) {
+                    return;
+                }
+                self.things[index].pos = pos;
+            }
+            ClientMsg::DeleteThing { id } => {
+                let Some(index) = self.things.iter().position(|t| t.id == id) else { return };
+                if !reachable(self, self.things[index].pos) {
+                    return;
+                }
+                self.things.remove(index);
+            }
+            _ => return,
+        }
+        self.things_dirty = true;
+        self.things_unsaved = true;
+    }
+
     /// Change one block if the rules allow it; returns what changed.
     fn apply_edit(&mut self, player: u32, edit: Edit) -> Option<Edit> {
-        let body_centre = self.entities.get(player)?.position + Vec3::new(0.0, 0.0, 0.7);
         let wanted = Block::from_raw(edit.block);
-        let allowed = wanted.value() == 0 && (wanted.is_air() || PLACEABLE.contains(&wanted.id()));
+        // Air is exactly 0; a placeable block may carry a value, as many as it has pictures.
+        let allowed = if wanted.is_air() { wanted.raw() == 0 } else { PLACEABLE.contains(&wanted.id()) && wanted.value() < editor_block_values(wanted.id()) };
         if !allowed || !(0..CHUNK_SIZE_Z).contains(&edit.z) {
             return None;
         }
         let (gx, gy) = to_iso(edit.x, edit.y);
-        if body_centre.distance(Vec3::new(gx, gy, edit.z as f32 + 0.5)) > REACH {
+        if !self.in_reach(player, Vec3::new(gx, gy, edit.z as f32 + 0.5)) {
             return None;
         }
         // Never fill a cell somebody is standing in. Breaking is fine.
@@ -439,6 +555,11 @@ impl Game {
         self.world.set(edit.x, edit.y, edit.z, wanted);
         Some(edit)
     }
+}
+
+/// A position the editor may put a thing at: finite, and inside the world's height.
+fn thing_position_is_valid(pos: [f32; 3]) -> bool {
+    pos.iter().all(|c| c.is_finite()) && (0.0..CHUNK_SIZE_Z as f32).contains(&pos[2])
 }
 
 #[cfg(test)]
@@ -640,8 +761,8 @@ mod tests {
         // Filling again changes nothing, so there is nothing to tell.
         assert!(game.handle(editor, fill(x, y, x + 1, y + 1, stone)).is_none());
         // Cells out of reach are skipped, the rest is still done.
-        let Some(ServerMsg::BlocksSet { edits }) = game.handle(editor, fill(x, y, x + 40, y, 0)) else { panic!("no answer") };
-        assert!(edits.len() >= 2 && edits.len() < 41, "{}", edits.len());
+        let Some(ServerMsg::BlocksSet { edits }) = game.handle(editor, fill(x, y, x + 100, y, stone)) else { panic!("no answer") };
+        assert!(edits.len() > 20 && edits.len() < 100, "{}", edits.len());
         // Over the size limit, invalid blocks and invalid layers do nothing.
         assert!(game.handle(editor, fill(x, y, x + 20, y + 20, stone)).is_none(), "too big (441 columns)");
         assert!(game.handle(editor, fill(x, y, x, y, Block::new(id::WATER, 0).raw())).is_none());
@@ -659,15 +780,154 @@ mod tests {
             ("above the world", ClientMsg::SetBlock { x, y, z: CHUNK_SIZE_Z, block: stone }),
             ("below the world", ClientMsg::SetBlock { x, y, z: -1, block: stone }),
             ("outside the world", ClientMsg::SetBlock { x: 10_000, y, z: 3, block: stone }),
-            ("out of reach", ClientMsg::SetBlock { x: x + 20, y, z: 3, block: stone }),
+            ("out of reach", ClientMsg::SetBlock { x: x + 100, y, z: 3, block: stone }),
             ("water is not placeable", ClientMsg::SetBlock { x, y, z: top, block: Block::new(id::WATER, 0).raw() }),
             ("unknown block id", ClientMsg::SetBlock { x, y, z: top, block: 200 }),
-            ("variant bits set", ClientMsg::SetBlock { x, y, z: top, block: Block::new(id::STONE, 5).raw() }),
+            ("a value the block has no picture for", ClientMsg::SetBlock { x, y, z: top, block: Block::new(id::STONE, 5).raw() }),
+            ("a value on a block with one picture", ClientMsg::SetBlock { x, y, z: top, block: Block::new(id::GRASS, 1).raw() }),
+            ("air with a value", ClientMsg::SetBlock { x, y, z: top, block: Block::new(id::AIR, 1).raw() }),
             ("already air", ClientMsg::SetBlock { x, y, z: top, block: 0 }),
         ];
         for (name, msg) in cases {
             assert!(game.handle(id, msg).is_none(), "{name} should be rejected");
         }
+    }
+
+    #[test]
+    fn a_block_keeps_the_value_the_editor_gave_it() {
+        let mut game = Game::island(1);
+        let id = game.add_editor();
+        let (x, y) = neighbour(&game, id);
+        let z = 9;
+        let variant = Block::new(id::STONE, 1);
+        assert_eq!(game.handle(id, ClientMsg::SetBlock { x, y, z, block: variant.raw() }), Some(ServerMsg::BlockSet(Edit { x, y, z, block: variant.raw() })));
+        assert_eq!(game.world.get(x, y, z), variant);
+        // Joiners get the value with the chunk.
+        let (cx, cy) = chunk_of(x, y);
+        let chunk = wurfel_sim::protocol::decode_chunk(&game.chunk_message(cx, cy)).unwrap();
+        assert_eq!(chunk.get(x.rem_euclid(10), y.rem_euclid(40), z), variant);
+        // Another value of the same block is a change; the same one is not.
+        assert!(game.handle(id, ClientMsg::SetBlock { x, y, z, block: variant.raw() }).is_none());
+        assert!(game.handle(id, ClientMsg::SetBlock { x, y, z, block: Block::new(id::STONE, 0).raw() }).is_some());
+    }
+
+    /// Where the editor puts a thing so that the player (an editor) reaches it.
+    fn near(game: &Game, id: u32) -> [f32; 3] {
+        let s = state(game, id);
+        [s.pos[0] + 2.0, s.pos[1], s.pos[2]]
+    }
+
+    fn things_of(game: &mut Game) -> Vec<ThingState> {
+        match game.drain_outbox().pop() {
+            Some(ServerMsg::Things { things, .. }) => things,
+            other => panic!("expected the things, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_editor_spawns_moves_and_deletes_things_and_everybody_is_told() {
+        let mut game = Game::island(1);
+        let (plain, editor) = (game.add_player(), game.add_editor());
+        let pos = near(&game, editor);
+        game.tick(); // tick 0 would count as the start of a second
+        let spawn = |kind: &str, pos| ClientMsg::SpawnThing { kind: kind.into(), pos };
+
+        assert!(game.drain_outbox().is_empty(), "nothing to say while there are no things");
+        game.handle(plain, spawn("Wood", pos));
+        assert!(game.drain_outbox().is_empty(), "only from the editor");
+        assert!(game.handle(editor, spawn("Wood", pos)).is_none(), "the answer is the things message, not a reply");
+        assert_eq!(things_of(&mut game), vec![ThingState { id: 1, kind: "Wood".into(), pos }]);
+        assert!(game.drain_outbox().is_empty(), "sent once, then only about once a second");
+
+        let moved = [pos[0] + 1.0, pos[1], pos[2]];
+        game.handle(editor, ClientMsg::MoveThing { id: 1, pos: moved });
+        assert_eq!(things_of(&mut game)[0].pos, moved);
+        game.handle(plain, ClientMsg::DeleteThing { id: 1 });
+        assert!(game.drain_outbox().is_empty());
+        game.handle(editor, ClientMsg::DeleteThing { id: 1 });
+        assert!(things_of(&mut game).is_empty(), "the empty list tells the clients to forget it");
+
+        // A joiner gets them with the periodic message.
+        game.handle(editor, spawn("Torch", pos));
+        game.drain_outbox();
+        let late = game.tick_count() + 60 - game.tick_count() % 60;
+        while game.tick_count() < late {
+            game.tick();
+        }
+        assert_eq!(things_of(&mut game).len(), 1);
+    }
+
+    #[test]
+    fn invalid_things_are_refused() {
+        let mut game = Game::island(1);
+        let id = game.add_editor();
+        let pos = near(&game, id);
+        game.tick();
+        let cases = [
+            ("unknown kind", ClientMsg::SpawnThing { kind: "Nuke".into(), pos }),
+            ("not a number", ClientMsg::SpawnThing { kind: "Wood".into(), pos: [f32::NAN, 0.0, 1.0] }),
+            ("infinite", ClientMsg::SpawnThing { kind: "Wood".into(), pos: [f32::INFINITY, 0.0, 1.0] }),
+            ("above the world", ClientMsg::SpawnThing { kind: "Wood".into(), pos: [pos[0], pos[1], CHUNK_SIZE_Z as f32] }),
+            ("below the world", ClientMsg::SpawnThing { kind: "Wood".into(), pos: [pos[0], pos[1], -0.5] }),
+            ("out of reach", ClientMsg::SpawnThing { kind: "Wood".into(), pos: [pos[0] + 500.0, pos[1], pos[2]] }),
+            ("unknown id", ClientMsg::MoveThing { id: 77, pos }),
+            ("unknown id", ClientMsg::DeleteThing { id: 77 }),
+        ];
+        for (name, msg) in cases {
+            game.handle(id, msg);
+            assert!(game.drain_outbox().is_empty(), "{name} should be refused");
+        }
+        // A thing cannot be dragged out of reach, nor grabbed from out of reach.
+        game.handle(id, ClientMsg::SpawnThing { kind: "Wood".into(), pos });
+        game.drain_outbox();
+        game.handle(id, ClientMsg::MoveThing { id: 1, pos: [pos[0] + 500.0, pos[1], pos[2]] });
+        assert!(game.drain_outbox().is_empty());
+        game.things[0].pos[0] += 500.0;
+        game.handle(id, ClientMsg::DeleteThing { id: 1 });
+        assert!(game.drain_outbox().is_empty());
+        game.things[0].pos[0] -= 500.0;
+        // The count is limited.
+        for _ in 0..MAX_EDITOR_THINGS + 5 {
+            game.handle(id, ClientMsg::SpawnThing { kind: "Wood".into(), pos });
+        }
+        assert_eq!(game.things.len(), MAX_EDITOR_THINGS);
+    }
+
+    #[test]
+    fn things_are_the_editors_only_in_the_plain_engine_and_survive_a_save() {
+        let dir = std::env::temp_dir().join(format!("wurfel-things-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut game = Game::island(1);
+        let id = game.add_editor();
+        let pos = near(&game, id);
+        game.handle(id, ClientMsg::SpawnThing { kind: "Coal".into(), pos });
+        game.handle(id, ClientMsg::SpawnThing { kind: "flag".into(), pos });
+        // Without a save slot there is nothing to write to; the world part still works.
+        assert!(game.save().is_ok());
+        game.slot_dir = Some(dir.clone());
+        assert!(game.save().is_ok());
+        let mut again = Game::island(1);
+        again.load_things(&dir);
+        assert_eq!(again.things, game.things);
+        assert_eq!(again.next_thing, 3);
+        // A damaged or hostile file places nothing it should not.
+        std::fs::write(dir.join(THINGS_FILE), r#"[["Nuke",[0,0,1]],["Wood",[0,0,99]],["Wood",[0,0,1]]]"#).unwrap();
+        let mut hostile = Game::island(1);
+        hostile.load_things(&dir);
+        assert_eq!(hostile.things.len(), 1);
+        std::fs::write(dir.join(THINGS_FILE), "{").unwrap();
+        let mut broken = Game::island(1);
+        broken.load_things(&dir);
+        assert!(broken.things.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_save_button_is_for_the_editor_and_answers_everybody() {
+        let mut game = Game::island(1);
+        let (plain, editor) = (game.add_player(), game.add_editor());
+        assert!(game.handle(plain, ClientMsg::SaveWorld).is_none());
+        assert!(matches!(game.handle(editor, ClientMsg::SaveWorld), Some(ServerMsg::Saved { error: None, .. })));
     }
 
     #[test]

@@ -22,23 +22,61 @@ One-time setup: `rustup target add wasm32-unknown-unknown && cargo install trunk
 WASD / arrows walk, Space jumps, wheel zoom. Normal play never edits blocks with the mouse.
 `F2` (or the console command `editor`, `editor on|off`) switches the map editor on and off, like the
 Java engine's editor: a red EDITOR badge and a toolbar appear, and only then does the mouse edit
-blocks. In the editor the left button uses the toolbar's tool (draw: place next to the clicked block,
-bucket: fill the rectangle between press and release on the layer of the first block, replace, erase,
-pick) and keeps painting while held with draw or replace, the right button erases, the middle button
-(or Alt + left) picks the clicked block's kind, `1`-`4` choose stone/dirt/grass/sand, Ctrl/Cmd+Z
-undoes and Ctrl/Cmd+Shift+Z redoes (also the Undo/Redo buttons; the history is dropped when you leave),
-and the bottom-left line shows the cursor's position and block. Not ported from the Java editor: the
-entity tools (select, move, spawn), block values, the layer slider (wheel) and the free camera.
+blocks. The toolbar has the Java tools in the Java order: draw (place next to the clicked block),
+bucket (fill the rectangle between press and release on the layer of the first block), replace,
+select, spawn, erase, plus a pick (eyedropper) the Java editor lacks. The left button uses the
+tool (draw and replace keep painting while held), the right button erases, the middle button (or
+Alt + left) picks the clicked block's kind and value, Ctrl/Cmd+Z undoes and Ctrl/Cmd+Shift+Z redoes
+(also the Undo/Redo buttons; the history is dropped when you leave). The bottom-left line shows the
+cursor's position, block and value.
+
+- **Things (Java entities).** The spawn tool puts the kind chosen in the toolbar (`Wood`, `Coal`,
+  `Ironore`, `Torch`, `Rails`, `money`, `flag`, `bird`: the kinds the client has art for, instead of
+  Java's list of registered entity classes) in the empty cell where a block would go. The select
+  tool selects the thing under the pointer (a cyan frame), drags it along its layer and Delete (or
+  Backspace) removes it. Not ported: selecting several things with a rectangle, and undo for things
+  (the server hands out their ids). Things do not move or collide; they are sent to everybody as
+  `Things` (right after a change and about once a second) and saved with the world in the save
+  slot's `editor-things.json` (this Rust server's own file; not the Java map format).
+- **Block values.** The Java `values` field is the block's variant. Nothing in the simulation reads
+  it (physics, light and storage only carry it, `.wec` files keep it); it picks the block's
+  picture, so only blocks with more than one picture have more than one value: stone has two
+  (`editor_block_values` in `wurfel-sim`). `+`/`-` or the toolbar change it, choosing a block
+  starts at 0 as in Java, the pick tool takes it over, and the server refuses a value a block has no
+  picture for. The flat-colour look (`?flat=1`) cannot show it.
+- **Layers.** The wheel limits how many layers are drawn (Java: the Z rendering limit; wheel down
+  hides the top layer, wheel up brings layers back, past the top shows everything), also the
+  Up/Down toolbar buttons. In the editor the wheel no longer zooms: Ctrl/Cmd + wheel (and a
+  trackpad pinch) does. The meshes leave the hidden layers out (`RenderStorage::set_layer_limit`),
+  the top shown layer shows its top faces, and picking ignores the hidden layers (`pick`'s `top`);
+  a block drawn on the top shown layer lands in the hidden layer above it. Leaving the editor shows
+  everything again.
+- **Camera.** In the editor WASD / arrows pan the camera away from the player (Shift is three times
+  as fast) instead of walking, up to 24 ground units (`PAN_LIMIT`) from the player, and the time of
+  day stops (Java: `timespeed` 0) so the light does not change while editing. The existing free
+  camera (F8) is a different thing, a yaw turn about the player that picking cannot follow, so it
+  stays exclusive with the editor. A stopped simulation clock has no meaning here: the plain engine
+  has no time-driven world to stop, only the local light.
+- **Save.** The Save button sends `SaveWorld`; the server writes the changed chunks and the things
+  now and answers everybody with `Saved` (a banner). Only from the editor, and not in game modes.
+- **Keys 1-5.** Java picks tools with them. Here `1`-`4` already choose the block (the palette),
+  so the tools are only on the toolbar.
+
 The editor needs a joined world (not the offline preview) and is not available in Caveland maps. The
-server only applies block edits from players who are in the editor (`ClientMsg::Editor`), each within
-reach; the bucket is one `FillBlocks` (at most 400 columns) answered by one `BlocksSet`.
+server only applies edits from players who are in the editor (`ClientMsg::Editor`). Their reach is
+`EDITOR_REACH` (48 ground units around the body, `wurfel-server`'s `game.rs`; it used to be 12) so
+that the panned camera can edit: only editors can edit at all, so nobody else is exempt from
+anything. It applies to blocks, the cells of a bucket fill (one `FillBlocks`, at most 400 columns,
+answered by one `BlocksSet`) and things (`SpawnThing`, `MoveThing` for both the old and the new
+place, `DeleteThing`), which are also checked for kind, a finite position inside the world's
+height, and at most 500 things.
 
 ## Where things are
 
 - `src/web.rs`: canvas, wgpu setup, input, WebSocket, prediction/interpolation, frame loop. GPU errors are logged to the console.
 - `src/mesh.rs`: world to triangles; only camera-facing faces next to air. Also the box used for players.
-- `src/editor.rs`: the editor mode (tools, palette, what a click does). Pure, unit tested; `editor.js`/`editor.css` are its toolbar.
-- `src/pick.rs`: screen position to block (for placing/breaking). Pure, unit tested.
+- `src/editor.rs`: the editor mode (tools, palette, things, values, layer limit, camera pan, what a click does). Pure, unit tested; `editor.js`/`editor.css` are its toolbar.
+- `src/pick.rs`: screen position to block (for placing/breaking, below the layer limit) and to thing. Pure, unit tested.
 - `src/shader.wgsl`: the isometric projection with the Java engine's constants. Depth is exact, so the depth buffer sorts everything.
 - To try another map, implement `wurfel_sim::Generator` and construct the world with it in `web.rs` and in the server's `Game::new`.
 

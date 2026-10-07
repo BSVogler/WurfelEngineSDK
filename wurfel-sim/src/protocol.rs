@@ -24,6 +24,24 @@ pub enum Channel {
 /// The most columns one [`ClientMsg::FillBlocks`] may cover.
 pub const MAX_FILL_CELLS: usize = 400;
 
+/// How many things the editor may have placed in a world at most.
+pub const MAX_EDITOR_THINGS: usize = 500;
+
+/// The kinds of thing the editor can spawn (the Java `EntityTable` listed the registered entity
+/// classes): decorations and collectibles that the client has art for. They do not move or collide.
+pub const EDITOR_THING_KINDS: [&str; 8] = ["Wood", "Coal", "Ironore", "Torch", "Rails", "money", "flag", "bird"];
+
+/// How many values (variants) the editor may give the block with this id: the Java `values` field
+/// of the editor's block table. Nothing in the simulation reads a value (physics, light and
+/// storage only carry it); it picks the block's picture, so only the ids with more than one
+/// picture have more than one value (stone has two). Other ids have just value 0.
+pub fn editor_block_values(id: u8) -> u8 {
+    match id {
+        crate::block::id::STONE => 2,
+        _ => 1,
+    }
+}
+
 /// A block that differs from what the generator would produce.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Edit {
@@ -241,6 +259,18 @@ pub enum ClientMsg {
     /// refuse for a `SetBlock` are skipped, and so is everything when the rectangle is larger than
     /// [`MAX_FILL_CELLS`]. The answer is one [`ServerMsg::BlocksSet`].
     FillBlocks { x1: i32, y1: i32, x2: i32, y2: i32, z: i32, block: u16 },
+    /// The editor's spawn tool: put a thing of `kind` (one of [`EDITOR_THING_KINDS`]) at `pos`, in
+    /// the same ground frame as [`ThingState::pos`]. Only from a player in the editor, within its
+    /// reach and not above [`MAX_EDITOR_THINGS`]. Answered with a [`ServerMsg::Things`].
+    SpawnThing { kind: String, pos: [f32; 3] },
+    /// The editor's select tool drags a thing it placed to `pos` (the same rules as `SpawnThing`,
+    /// and the thing must be within reach too).
+    MoveThing { id: u32, pos: [f32; 3] },
+    /// The editor removes a thing it placed.
+    DeleteThing { id: u32 },
+    /// The editor's save button: write the changed chunks and the placed things to disk now (the
+    /// server also saves on its own every few minutes). Answered with [`ServerMsg::Saved`].
+    SaveWorld,
     /// A one-off action of the game mode (for Caveland: `attack`, `throw`, `craft`...). The engine
     /// does not interpret it; unknown actions are ignored.
     Action {
@@ -272,6 +302,10 @@ impl ClientMsg {
             ClientMsg::Input { .. } | ClientMsg::Ping { .. } => Channel::Unreliable,
             ClientMsg::SetBlock { .. }
             | ClientMsg::FillBlocks { .. }
+            | ClientMsg::SpawnThing { .. }
+            | ClientMsg::MoveThing { .. }
+            | ClientMsg::DeleteThing { .. }
+            | ClientMsg::SaveWorld
             | ClientMsg::Editor { .. }
             | ClientMsg::Action { .. }
             | ClientMsg::Command { .. }
@@ -355,7 +389,11 @@ pub enum ServerMsg {
         /// Players who have invited `player` and wait for an answer.
         received: Vec<u32>,
     },
-    /// The non-player entities of a game mode, sent with the snapshots.
+    /// The editor's save finished (to everybody, so the others know their work is on disk): how
+    /// many chunks were written, or why it failed.
+    Saved { chunks: u32, error: Option<String> },
+    /// The non-player entities of a game mode, sent with the snapshots. In the plain engine they
+    /// are the things placed with the editor, sent whenever they change and about once a second.
     Things { tick: u64, things: Vec<ThingState> },
     /// Rules-specific news of a game mode: `kind` says what `data` is (Caveland: `state` with
     /// everybody's health and inventory, `events` with sounds and happenings). The engine only
@@ -375,6 +413,7 @@ impl ServerMsg {
             | ServerMsg::ServerRestarting
             | ServerMsg::BlockSet(_)
             | ServerMsg::BlocksSet { .. }
+            | ServerMsg::Saved { .. }
             | ServerMsg::PlayerLeft { .. }
             | ServerMsg::PlayerJoined { .. }
             | ServerMsg::Friends { .. }
@@ -534,6 +573,18 @@ mod tests {
         assert_eq!(ServerMsg::BlockSet(Edit { x: 0, y: 0, z: 0, block: 0 }).channel(), Channel::Reliable);
         assert_eq!(ServerMsg::BlocksSet { edits: vec![] }.channel(), Channel::Reliable);
         assert_eq!(ClientMsg::FillBlocks { x1: 0, y1: 0, x2: 1, y2: 1, z: 0, block: 3 }.channel(), Channel::Reliable);
+        assert_eq!(ClientMsg::SpawnThing { kind: "Wood".into(), pos: [0.0; 3] }.channel(), Channel::Reliable);
+        assert_eq!(ClientMsg::SaveWorld.channel(), Channel::Reliable);
+        assert_eq!(ServerMsg::Saved { chunks: 1, error: None }.channel(), Channel::Reliable);
+    }
+
+    #[test]
+    fn only_pictured_blocks_have_more_than_one_value() {
+        use crate::block::id;
+        assert_eq!(editor_block_values(id::STONE), 2);
+        for other in [id::GRASS, id::DIRT, id::SAND] {
+            assert_eq!(editor_block_values(other), 1);
+        }
     }
 
     #[test]
@@ -543,6 +594,10 @@ mod tests {
             ClientMsg::Input { seq: 7, input: PlayerInput { up: true, jump: true, ..Default::default() } },
             ClientMsg::Ping { client_time: 1234.5, rtt_ms: Some(31.5) },
             ClientMsg::Ping { client_time: 1.0, rtt_ms: None },
+            ClientMsg::SpawnThing { kind: "Torch".into(), pos: [1.5, -2.0, 3.0] },
+            ClientMsg::MoveThing { id: 3, pos: [0.0, 0.5, 1.0] },
+            ClientMsg::DeleteThing { id: 3 },
+            ClientMsg::SaveWorld,
         ];
         for msg in messages {
             let json = serde_json::to_string(&msg).unwrap();

@@ -550,7 +550,16 @@ async fn client(socket: WebSocket, shared: Shared) {
                                 }
                             }
                         }
-                        ClientMsg::Input { .. } | ClientMsg::Editor { .. } | ClientMsg::SetBlock { .. } | ClientMsg::Action { .. } | ClientMsg::Command { .. } => {
+                        ClientMsg::Input { .. }
+                        | ClientMsg::Editor { .. }
+                        | ClientMsg::SetBlock { .. }
+                        | ClientMsg::FillBlocks { .. }
+                        | ClientMsg::SpawnThing { .. }
+                        | ClientMsg::MoveThing { .. }
+                        | ClientMsg::DeleteThing { .. }
+                        | ClientMsg::SaveWorld
+                        | ClientMsg::Action { .. }
+                        | ClientMsg::Command { .. } => {
                             if let Some((id, _)) = &player {
                                 let broadcast = shared.game.lock().unwrap().handle(*id, msg);
                                 if let Some(msg) = broadcast {
