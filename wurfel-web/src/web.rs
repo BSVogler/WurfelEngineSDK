@@ -8,6 +8,7 @@ use glam::Vec3;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlCanvasElement, KeyboardEvent, MessageEvent, MouseEvent, WebSocket, WheelEvent};
+use wurfel_sim::animation::AnimatedBlocks;
 use wurfel_sim::entity::{Entities, EntityId};
 use wurfel_sim::grid::{chunk_of, from_iso, to_iso};
 use wurfel_sim::player::{apply_input, new_player, PlayerInput, PLAYER_HEIGHT, TICK_DT, TICK_RATE};
@@ -186,6 +187,12 @@ struct State {
     render: RenderStorage,
     /// Rebuild the world mesh at the start of the next frame.
     remesh: bool,
+    /// The waves: the surface water around the view moves locally. Cosmetic and deterministic, so
+    /// the server neither simulates nor sends it (that would dirty every saved chunk and flood the
+    /// connection).
+    animated: AnimatedBlocks,
+    /// Chunks whose water is already registered in `animated`.
+    sea_chunks: HashSet<(i32, i32)>,
     /// Bumped whenever blocks change, so the minimap knows to redraw its terrain.
     terrain_version: u64,
     socket: Option<WebSocket>,
@@ -439,6 +446,8 @@ async fn run() -> Result<(), String> {
         view_chunk: (0, 0),
         render,
         remesh: false,
+        animated: AnimatedBlocks::new(),
+        sea_chunks: HashSet::new(),
         terrain_version: 0,
         socket: None,
         connected: false,
@@ -991,6 +1000,8 @@ fn end_session(s: &mut State) {
     hud("show", &JsValue::FALSE);
     hud("closeDialog", &JsValue::UNDEFINED);
     s.world = World::new(IslandGenerator::new(DEFAULT_SEED));
+    s.animated = AnimatedBlocks::new();
+    s.sea_chunks.clear();
     s.view_chunk = (0, 0);
     s.remesh = true;
     s.terrain_version += 1;
@@ -1057,6 +1068,7 @@ fn connect(window: &web_sys::Window, state: &Rc<RefCell<State>>, url: &str) {
             s.net.on_received(bytes.len(), now);
             match decode_chunk(&bytes) {
                 Ok(chunk) => {
+                    s.sea_chunks.remove(&chunk.pos());
                     s.world.insert_chunk(chunk);
                     s.remesh = true;
                     s.terrain_version += 1;
@@ -1182,6 +1194,8 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
             // The server sends the terrain as chunks: this world has no generator of its own and
             // fills up as they arrive.
             s.world = World::remote();
+            s.animated = AnimatedBlocks::new();
+            s.sea_chunks.clear();
             // A game mode brings its own block rules and player: use the same ones as the server.
             s.caveland = (gamemode == caveland_client::MODE).then(|| caveland_client::start(&mut s.world));
             s.things.clear();
@@ -1238,6 +1252,7 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
         }
         ServerMsg::ChunkUnload { cx, cy } => {
             s.world.unload_chunk(cx, cy);
+            s.sea_chunks.remove(&(cx, cy));
             s.remesh = true;
             s.terrain_version += 1;
         }
@@ -1880,8 +1895,40 @@ fn apply_block_edit(s: &mut State, e: wurfel_sim::protocol::Edit) {
         s.particles.block_break(Vec3::new(gx, gy, e.z as f32 + 0.5), crate::mesh::block_color(old));
     }
     s.world.set(e.x, e.y, e.z, Block::from_raw(e.block));
+    s.animated.add_sea(&mut s.world, (e.x, e.y, e.z)); // new water waves like the rest (no-op for other blocks)
     s.remesh = true;
     s.terrain_version += 1;
+}
+
+/// Let the surface water around the view move (the Java `Sea`): register the water of chunks that
+/// came into view and step the frames. Meshes only change when sprites show the frames, and only
+/// the drawn 3x3 chunks are rebuilt for it.
+/// Chunks around the view whose water moves: the drawn 3x3.
+const SEA_RADIUS: i32 = 1;
+
+fn animate_sea(s: &mut State, dt: f32) {
+    if !s.render.has_sprites() {
+        return;
+    }
+    let (vx, vy) = s.view_chunk;
+    s.animated.forget_outside(s.view_chunk, SEA_RADIUS + 1);
+    s.sea_chunks.retain(|&(cx, cy)| (cx - vx).abs().max((cy - vy).abs()) <= SEA_RADIUS + 1);
+    let mut moved = false;
+    for cx in vx - SEA_RADIUS..=vx + SEA_RADIUS {
+        for cy in vy - SEA_RADIUS..=vy + SEA_RADIUS {
+            if s.world.is_loaded(cx, cy) && s.sea_chunks.insert((cx, cy)) {
+                moved |= s.animated.add_sea_in_chunk(&mut s.world, (cx, cy)) > 0;
+            }
+        }
+    }
+    let changes = s.animated.update_changes(&mut s.world, dt);
+    moved |= changes.iter().any(|&(x, y, _)| {
+        let (cx, cy) = chunk_of(x, y);
+        (cx - vx).abs().max((cy - vy).abs()) <= SEA_RADIUS
+    });
+    if moved {
+        s.remesh = true;
+    }
 }
 
 fn start_frame_loop(state: Rc<RefCell<State>>) {
@@ -2055,6 +2102,7 @@ fn frame(s: &mut State, now_ms: f64) {
         send(s, &ClientMsg::Ping { client_time: now_ms, rtt_ms });
     }
 
+    animate_sea(s, dt);
     // Keep the drawn window centred on the player; crossing a chunk border moves it.
     if let Some(p) = local_position(s) {
         let (x, y) = from_iso(p.x, p.y);
