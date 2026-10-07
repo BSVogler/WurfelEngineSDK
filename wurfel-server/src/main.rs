@@ -579,13 +579,17 @@ async fn client(socket: WebSocket, shared: Shared) {
                         | ClientMsg::Action { .. }
                         | ClientMsg::Command { .. } => {
                             if let Some((id, _)) = &player {
-                                let (broadcast, granted) = {
+                                let (broadcast, replies, granted) = {
                                     let mut game = shared.game.lock().unwrap();
                                     let broadcast = game.handle(*id, msg);
-                                    (broadcast, game.take_admin_grant(*id))
+                                    (broadcast, game.take_replies(*id), game.take_admin_grant(*id))
                                 };
                                 if let Some(msg) = broadcast {
                                     let _ = shared.tx.send(encode(&msg));
+                                }
+                                // Console answers are for this connection alone.
+                                for reply in replies {
+                                    alive &= send(Payload::Text(encode(&reply)));
                                 }
                                 // `auth <token>` worked: the user stays an admin from now on.
                                 if let (true, Some(user)) = (granted, user) {

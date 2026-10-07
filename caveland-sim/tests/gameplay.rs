@@ -5,63 +5,25 @@ use caveland_sim::collectible::{CollectibleType as C, Item};
 use caveland_sim::crafting::RecipeResult;
 use caveland_sim::game::{cell_center, cell_floor};
 use caveland_sim::player::{Action, Controls, DROP_PICKUP_BLOCK};
-use caveland_sim::{Caveland, EntityKind, GameEvent, Team, Tuning};
+use caveland_sim::{EntityKind, GameEvent, Team};
 use glam::Vec3;
 use wurfel_sim::block::Block;
 use wurfel_sim::entity::physics::is_on_ground;
-use wurfel_sim::entity::{Entities, EntityId};
+use wurfel_sim::entity::EntityId;
 use wurfel_sim::grid::{from_iso, to_iso};
-use wurfel_sim::{AirGenerator, World};
 
-const DT: f32 = 1.0 / 60.0;
-
-struct Game {
-    world: World,
-    entities: Entities,
-    caveland: Caveland,
-    events: Vec<GameEvent>,
-}
+mod common;
+use common::Game;
 
 impl Game {
-    /// A sand floor at z = 0 around block (10, 40).
-    fn new() -> Game {
-        Game::with_floor_at(40)
-    }
-
+    /// A sand floor at z = 0 for `x` in -10..40 and `y` within 40 of `y_mid`.
     fn with_floor_at(y_mid: i32) -> Game {
-        let mut world = World::new(AirGenerator);
-        Caveland::install(&mut world);
-        for x in -10..40 {
-            for y in y_mid - 40..y_mid + 40 {
-                world.set(x, y, 0, Block::new(ids::SAND, 0));
-            }
-        }
-        Game { world, entities: Entities::new(), caveland: Caveland::new(Tuning::default(), 1), events: Vec::new() }
+        Game::with_floor(ids::SAND, -10..40, y_mid - 40..y_mid + 40)
     }
 
-    fn spawn_player_at(&mut self, x: i32, y: i32) -> EntityId {
-        let (gx, gy) = to_iso(x, y);
-        self.caveland.spawn_player(&mut self.entities, 0, Vec3::new(gx, gy, 1.0))
-    }
-
-    fn step(&mut self, steps: usize) {
-        for _ in 0..steps {
-            let events = self.caveland.tick(&mut self.entities, &mut self.world, DT);
-            self.events.extend(events);
-        }
-    }
-
-    fn seconds(&mut self, s: f32) {
-        self.step((s * 60.0).round() as usize);
-    }
-
-    fn give(&mut self, player: EntityId, kind: C) {
-        assert!(self.caveland.player_mut(player).unwrap().inventory.add(Item::new(kind)));
-    }
-
-    fn act(&mut self, player: EntityId, action: Action) {
-        self.caveland.act(&mut self.entities, &mut self.world, player, action);
-        self.events.extend(self.caveland.drain_events());
+    /// The floor of [`Game::with_floor_at`] around block (10, 40).
+    fn floor() -> Game {
+        Game::with_floor_at(40)
     }
 
     fn controls(&mut self, player: EntityId, c: Controls) {
@@ -69,20 +31,8 @@ impl Game {
         self.events.extend(self.caveland.drain_events());
     }
 
-    fn inventory_types(&self, player: EntityId) -> Vec<C> {
-        self.caveland.player(player).unwrap().inventory.items().iter().map(|i| i.kind).collect()
-    }
-
     fn health(&self, id: EntityId) -> f32 {
         self.entities.get(id).unwrap().health()
-    }
-
-    fn position(&self, id: EntityId) -> Vec3 {
-        self.entities.get(id).unwrap().position
-    }
-
-    fn saw(&self, f: impl Fn(&GameEvent) -> bool) -> bool {
-        self.events.iter().any(f)
     }
 
     fn collectibles(&self, kind: C) -> usize {
@@ -92,8 +42,8 @@ impl Game {
 
 #[test]
 fn the_player_is_ejira_and_stands_on_the_floor() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.seconds(1.0);
     assert_eq!(g.entities.get(id).unwrap().name, "Ejira");
     assert_eq!(g.caveland.kind_of(id), Some(EntityKind::Player { number: 0 }));
@@ -104,7 +54,7 @@ fn the_player_is_ejira_and_stands_on_the_floor() {
 
 #[test]
 fn caveland_blocks_follow_caveland_rules_not_the_engines() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     // A torch is not an obstacle in Caveland (the engine would treat every id but air and water as
     // solid), an oven is.
     g.world.set(10, 40, 1, Block::new(ids::TORCH, 0));
@@ -124,8 +74,8 @@ fn caveland_blocks_follow_caveland_rules_not_the_engines() {
 
 #[test]
 fn jumping_from_the_ground_uses_the_caveland_jump_speed() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.seconds(0.5);
     g.controls(id, Controls { jump: true, ..Default::default() });
     let vz = g.entities.get(id).unwrap().body.as_ref().unwrap().movement.z;
@@ -140,7 +90,7 @@ fn jumping_from_the_ground_uses_the_caveland_jump_speed() {
 
 #[test]
 fn the_jetpack_burns_while_the_key_is_held_in_the_air_and_refills_on_landing() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     let id = g.caveland.spawn_player(&mut g.entities, 0, cell_floor((10, 40, 6)));
     g.step(1);
     let falling = g.entities.get(id).unwrap().body.as_ref().unwrap().movement.z;
@@ -160,7 +110,7 @@ fn the_jetpack_burns_while_the_key_is_held_in_the_air_and_refills_on_landing() {
 
 #[test]
 fn releasing_the_jump_key_stops_the_jetpack() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     let id = g.caveland.spawn_player(&mut g.entities, 0, cell_floor((10, 40, 6)));
     g.controls(id, Controls { jump: true, ..Default::default() });
     assert!(g.caveland.player(id).unwrap().jetpack_on);
@@ -171,12 +121,12 @@ fn releasing_the_jump_key_stops_the_jetpack() {
 
 #[test]
 fn walking_over_a_collectible_picks_it_up() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     let (gx, gy) = to_iso(10, 40);
     let coal = g.caveland.spawn_collectible(&mut g.entities, Item::new(C::Coal), Vec3::new(gx + 0.1, gy, 1.0));
     g.seconds(0.2);
-    assert_eq!(g.inventory_types(id), vec![C::Coal]);
+    assert_eq!(g.pack(id), vec![C::Coal]);
     assert!(g.entities.get(coal).is_none(), "the world entity is gone, it is in the pack now");
     assert!(g.saw(|e| matches!(e, GameEvent::ItemPicked { kind: C::Coal, .. })));
     assert!(g.saw(|e| matches!(e, GameEvent::Sound { name: "collect", .. })));
@@ -184,58 +134,58 @@ fn walking_over_a_collectible_picks_it_up() {
 
 #[test]
 fn a_full_pack_leaves_items_lying() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     for _ in 0..3 {
         g.give(id, C::Stone);
     }
     let (gx, gy) = to_iso(10, 40);
     g.caveland.spawn_collectible(&mut g.entities, Item::new(C::Coal), Vec3::new(gx, gy, 1.0));
     g.seconds(0.5);
-    assert_eq!(g.inventory_types(id), vec![C::Stone; 3]);
+    assert_eq!(g.pack(id), vec![C::Stone; 3]);
     assert_eq!(g.collectibles(C::Coal), 1);
 }
 
 #[test]
 fn a_dropped_item_cannot_be_picked_up_again_right_away() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.give(id, C::Wood);
     g.act(id, Action::Drop);
-    assert!(g.inventory_types(id).is_empty());
+    assert!(g.pack(id).is_empty());
     assert_eq!(g.collectibles(C::Wood), 1);
     g.seconds(DROP_PICKUP_BLOCK - 0.2);
-    assert!(g.inventory_types(id).is_empty(), "still blocked for its owner");
+    assert!(g.pack(id).is_empty(), "still blocked for its owner");
     g.seconds(0.6);
-    assert_eq!(g.inventory_types(id), vec![C::Wood], "after the block it is picked up again");
+    assert_eq!(g.pack(id), vec![C::Wood], "after the block it is picked up again");
 }
 
 #[test]
 fn another_player_may_take_a_dropped_item_immediately() {
-    let mut g = Game::new();
-    let a = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let a = g.player_at(10, 40);
     let (gx, gy) = to_iso(10, 40);
     let b = g.caveland.spawn_player(&mut g.entities, 1, Vec3::new(gx + 0.5, gy, 1.0));
     g.give(a, C::Wood);
     g.act(a, Action::Drop);
     g.seconds(0.3);
-    assert!(g.inventory_types(a).is_empty());
-    assert_eq!(g.inventory_types(b), vec![C::Wood]);
+    assert!(g.pack(a).is_empty());
+    assert_eq!(g.pack(b), vec![C::Wood]);
 }
 
 #[test]
 fn throwing_needs_the_pose_and_launches_the_item() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.give(id, C::Stone);
     g.act(id, Action::Throw);
-    assert_eq!(g.inventory_types(id), vec![C::Stone], "no throw without preparing");
+    assert_eq!(g.pack(id), vec![C::Stone], "no throw without preparing");
     assert!(g.saw(|e| matches!(e, GameEvent::Sound { name: "interactionFail", .. })));
 
     g.act(id, Action::PrepareThrow);
     assert!(g.caveland.player(id).unwrap().movement_locked());
     g.act(id, Action::Throw);
-    assert!(g.inventory_types(id).is_empty());
+    assert!(g.pack(id).is_empty());
     assert!(!g.caveland.player(id).unwrap().prepare_throw);
     let thrown = g
         .entities
@@ -247,8 +197,8 @@ fn throwing_needs_the_pose_and_launches_the_item() {
 
 #[test]
 fn a_prepared_throw_stops_walking() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.give(id, C::Stone);
     g.act(id, Action::PrepareThrow);
     g.controls(id, Controls { right: true, ..Default::default() });
@@ -258,8 +208,8 @@ fn a_prepared_throw_stops_walking() {
 
 #[test]
 fn torches_are_placed_where_the_player_stands() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.give(id, C::Torch);
     g.seconds(0.2);
     let cell = {
@@ -269,13 +219,13 @@ fn torches_are_placed_where_the_player_stands() {
     };
     g.act(id, Action::UseItem);
     assert_eq!(g.world.get(cell.0, cell.1, cell.2).id(), ids::TORCH);
-    assert!(g.inventory_types(id).is_empty(), "used up");
+    assert!(g.pack(id).is_empty(), "used up");
 }
 
 #[test]
 fn a_torch_is_not_placed_inside_a_wall() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.seconds(0.2);
     let p = g.position(id);
     let (x, y) = from_iso(p.x, p.y);
@@ -283,13 +233,13 @@ fn a_torch_is_not_placed_inside_a_wall() {
     g.give(id, C::Torch);
     g.act(id, Action::UseItem);
     assert_eq!(g.world.get(x, y, 1).id(), ids::INDESTRUCTIBLE_OBSTACLE);
-    assert_eq!(g.inventory_types(id), vec![C::Torch], "keeps the torch");
+    assert_eq!(g.pack(id), vec![C::Torch], "keeps the torch");
 }
 
 #[test]
 fn a_lit_explosive_goes_off_after_two_seconds_and_hurts() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.give(id, C::Explosives);
     g.act(id, Action::UseItem);
     assert!(g.caveland.player(id).unwrap().inventory.front().unwrap().is_lit());
@@ -303,7 +253,7 @@ fn a_lit_explosive_goes_off_after_two_seconds_and_hurts() {
 
 #[test]
 fn explosions_dig_but_cannot_break_the_indestructible() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     for x in 8..13 {
         g.world.set(x, 40, 1, Block::new(ids::DIRT, 0));
     }
@@ -321,7 +271,7 @@ fn explosions_dig_but_cannot_break_the_indestructible() {
 
 #[test]
 fn damage_to_a_block_is_gradual_and_destroying_it_drops_loot() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     g.world.set(10, 40, 1, Block::new(ids::COAL, 0));
     let cell = (10, 40, 1);
     assert!(g.caveland.damage_block(&mut g.world, &mut g.entities, cell, 40));
@@ -340,7 +290,7 @@ fn damage_to_a_block_is_gradual_and_destroying_it_drops_loot() {
 
 #[test]
 fn an_indestructible_block_takes_hits_without_breaking() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     g.world.set(10, 40, 1, Block::new(ids::INDESTRUCTIBLE_OBSTACLE, 0));
     for _ in 0..5 {
         assert!(g.caveland.damage_block(&mut g.world, &mut g.entities, (10, 40, 1), 100));
@@ -350,7 +300,7 @@ fn an_indestructible_block_takes_hits_without_breaking() {
 
 #[test]
 fn a_tree_falls_in_two_halves_and_drops_wood_for_each() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     g.world.set(10, 40, 1, Block::new(ids::TREE, 0));
     g.world.set(10, 40, 2, Block::new(ids::TREE, 8)); // top half
     g.caveland.damage_block(&mut g.world, &mut g.entities, (10, 40, 2), 100);
@@ -361,7 +311,7 @@ fn a_tree_falls_in_two_halves_and_drops_wood_for_each() {
 
 #[test]
 fn a_swing_digs_into_the_blocks_in_front() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     // A ring of coal around the player's cell: whichever way the character faces there is coal.
     for dx in -2..=2 {
         for dy in -4..=4 {
@@ -387,7 +337,7 @@ fn a_swing_digs_into_the_blocks_in_front() {
 
 #[test]
 fn a_swing_at_hard_rock_only_makes_dust() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     for dx in -2..=2 {
         for dy in -4..=4 {
             if (dx, dy) != (0, 0) {
@@ -407,8 +357,8 @@ fn a_swing_at_hard_rock_only_makes_dust() {
 
 #[test]
 fn a_second_swing_is_ignored_while_the_first_is_under_way() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.seconds(0.2);
     g.act(id, Action::Attack);
     let before = g.caveland.player(id).unwrap().time_till_impact;
@@ -420,8 +370,8 @@ fn a_second_swing_is_ignored_while_the_first_is_under_way() {
 
 #[test]
 fn a_swing_hurts_and_shoves_an_enemy_robot() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.seconds(0.3);
     let me = g.position(id);
     let aim = g.caveland.player(id).unwrap().aim.extend(0.0);
@@ -435,8 +385,8 @@ fn a_swing_hurts_and_shoves_an_enemy_robot() {
 
 #[test]
 fn holding_attack_charges_a_power_attack_that_dashes() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.seconds(0.3);
     g.act(id, Action::Attack);
     g.seconds(1.2);
@@ -446,8 +396,8 @@ fn holding_attack_charges_a_power_attack_that_dashes() {
 
 #[test]
 fn a_short_press_does_not_release_a_power_attack() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.act(id, Action::Attack);
     g.seconds(0.1);
     g.act(id, Action::ReleaseAttack);
@@ -458,47 +408,47 @@ fn a_short_press_does_not_release_a_power_attack() {
 
 #[test]
 fn crafting_uses_up_ingredients() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.give(id, C::Stone);
     g.give(id, C::Wood);
     g.give(id, C::Coal);
     // The torch is the only one that can be made; the index is the fixed list's.
     let torch = caveland_sim::crafting::recipes().iter().position(|r| r.name == "Torch").unwrap();
     g.act(id, Action::Craft(torch));
-    assert_eq!(g.inventory_types(id), vec![C::Stone, C::Torch]);
+    assert_eq!(g.pack(id), vec![C::Stone, C::Torch]);
     assert!(g.saw(|e| matches!(e, GameEvent::Crafted { result: RecipeResult::Item(C::Torch), .. })));
 }
 
 #[test]
 fn crafting_a_minecart_puts_one_in_the_world() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.give(id, C::Iron);
     g.give(id, C::Iron);
     g.give(id, C::Wood);
     let index = caveland_sim::crafting::recipes().iter().position(|r| r.result == RecipeResult::MineCart).unwrap();
     g.act(id, Action::Craft(index));
-    assert!(g.inventory_types(id).is_empty());
+    assert!(g.pack(id).is_empty());
     assert!(g.entities.iter().any(|e| g.caveland.kind_of(e.id()) == Some(EntityKind::MineCart)));
 }
 
 #[test]
 fn crafting_without_the_ingredients_fails_quietly() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.give(id, C::Stone);
     g.act(id, Action::Craft(0));
-    assert_eq!(g.inventory_types(id), vec![C::Stone]);
+    assert_eq!(g.pack(id), vec![C::Stone]);
     assert!(!g.saw(|e| matches!(e, GameEvent::Crafted { .. })));
     assert!(g.saw(|e| matches!(e, GameEvent::Sound { name: "interactionFail", .. })), "crafting without ingredients fails audibly");
     g.act(id, Action::Craft(999)); // out of range: ignored
-    assert_eq!(g.inventory_types(id), vec![C::Stone]);
+    assert_eq!(g.pack(id), vec![C::Stone]);
 }
 
 #[test]
 fn an_oven_smelts_iron_and_the_bar_pops_out() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     g.world.set(11, 40, 1, Block::new(ids::OVEN, 0));
     let (gx, gy) = to_iso(10, 40);
     let id = g.caveland.spawn_player(&mut g.entities, 0, Vec3::new(gx, gy, 1.0));
@@ -508,7 +458,7 @@ fn an_oven_smelts_iron_and_the_bar_pops_out() {
     // The item in hand goes in first: the coal; then the ore.
     g.act(id, Action::Interact);
     g.act(id, Action::Interact);
-    assert!(g.inventory_types(id).is_empty());
+    assert!(g.pack(id).is_empty());
     let oven = g.caveland.oven((11, 40, 1)).expect("the oven is in use");
     assert!(oven.is_burning());
     g.seconds(4.0);
@@ -517,19 +467,34 @@ fn an_oven_smelts_iron_and_the_bar_pops_out() {
 }
 
 #[test]
+fn the_interaction_sign_floats_over_what_use_would_act_on() {
+    let mut g = Game::floor();
+    g.world.set(11, 40, 1, Block::new(ids::OVEN, 0));
+    let (gx, gy) = to_iso(10, 40);
+    let position = Vec3::new(gx, gy, 1.0);
+    let id = g.caveland.spawn_player(&mut g.entities, 0, position);
+    g.seconds(0.2);
+    let focus = g.caveland.interaction_focus(&g.entities, &g.world, id, position);
+    assert_eq!(focus, Some(cell_center((11, 40, 1))));
+    let (fx, fy) = to_iso(30, 40);
+    let far = g.caveland.interaction_focus(&g.entities, &g.world, id, Vec3::new(fx, fy, 1.0));
+    assert_eq!(far, None, "nothing within reach, no sign");
+}
+
+#[test]
 fn interacting_far_from_any_machine_does_nothing() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     g.world.set(30, 40, 1, Block::new(ids::OVEN, 0));
-    let id = g.spawn_player_at(10, 40);
+    let id = g.player_at(10, 40);
     g.give(id, C::Coal);
     g.act(id, Action::Interact);
-    assert_eq!(g.inventory_types(id), vec![C::Coal]);
+    assert_eq!(g.pack(id), vec![C::Coal]);
     assert!(g.caveland.oven((30, 40, 1)).is_none());
 }
 
 #[test]
 fn breaking_an_oven_returns_what_was_inside() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     g.world.set(11, 40, 1, Block::new(ids::OVEN, 0));
     let (gx, gy) = to_iso(10, 40);
     let id = g.caveland.spawn_player(&mut g.entities, 0, Vec3::new(gx, gy, 1.0));
@@ -544,8 +509,8 @@ fn breaking_an_oven_returns_what_was_inside() {
 
 #[test]
 fn an_evil_robot_hunts_the_player_and_hurts() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     let (gx, gy) = to_iso(10, 40);
     g.caveland.spawn_robot(&mut g.entities, Team::Robots, Vec3::new(gx + 3.0, gy, 1.0));
     g.seconds(8.0);
@@ -555,17 +520,17 @@ fn an_evil_robot_hunts_the_player_and_hurts() {
 
 #[test]
 fn godmode_makes_the_player_immune() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     g.caveland.tuning.godmode = true;
-    let id = g.spawn_player_at(10, 40);
+    let id = g.player_at(10, 40);
     g.caveland.damage_entity(&mut g.entities, id, 60.0);
     assert_eq!(g.health(id), 100.0);
 }
 
 #[test]
 fn damage_delays_health_regeneration() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.caveland.damage_entity(&mut g.entities, id, 60.0);
     assert_eq!(g.health(id), 40.0);
     g.seconds(3.5);
@@ -578,8 +543,8 @@ fn damage_delays_health_regeneration() {
 
 #[test]
 fn friendly_robots_and_neutral_robots_leave_the_player_alone() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     let (gx, gy) = to_iso(10, 40);
     g.caveland.spawn_robot(&mut g.entities, Team::Player, Vec3::new(gx + 1.5, gy, 1.0));
     g.caveland.spawn_robot(&mut g.entities, Team::Neutral, Vec3::new(gx - 1.5, gy, 1.0));
@@ -589,7 +554,7 @@ fn friendly_robots_and_neutral_robots_leave_the_player_alone() {
 
 #[test]
 fn robots_fight_each_other_across_teams() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     let (gx, gy) = to_iso(10, 40);
     let evil = g.caveland.spawn_robot(&mut g.entities, Team::Robots, Vec3::new(gx, gy, 1.0));
     let good = g.caveland.spawn_robot(&mut g.entities, Team::Player, Vec3::new(gx + 1.2, gy, 1.0));
@@ -599,8 +564,8 @@ fn robots_fight_each_other_across_teams() {
 
 #[test]
 fn a_destroyed_enemy_robot_drops_money_which_the_player_collects() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.seconds(0.2);
     let me = g.position(id);
     let robot = g.caveland.spawn_robot(&mut g.entities, Team::Robots, me + Vec3::new(0.0, 0.0, 0.0));
@@ -613,7 +578,7 @@ fn a_destroyed_enemy_robot_drops_money_which_the_player_collects() {
 
 #[test]
 fn a_friendly_robot_drops_no_money() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     let (gx, gy) = to_iso(10, 40);
     let robot = g.caveland.spawn_robot(&mut g.entities, Team::Player, Vec3::new(gx, gy, 1.0));
     g.entities.get_mut(robot).unwrap().set_health(0.0);
@@ -624,8 +589,8 @@ fn a_friendly_robot_drops_no_money() {
 
 #[test]
 fn a_dead_player_is_reported_and_forgotten() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.entities.get_mut(id).unwrap().set_health(0.0);
     g.step(2);
     assert!(g.saw(|e| matches!(e, GameEvent::PlayerDied { player } if *player == id)));
@@ -635,11 +600,11 @@ fn a_dead_player_is_reported_and_forgotten() {
 
 #[test]
 fn the_barrier_block_walls_the_player_in_at_every_height() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     for y in 30..50 {
         g.world.set(14, y, 8, Block::new(ids::INDESTRUCTIBLE_OBSTACLE, 0));
     }
-    let id = g.spawn_player_at(10, 40);
+    let id = g.player_at(10, 40);
     for _ in 0..300 {
         g.controls(id, Controls { right: true, ..Default::default() });
         g.step(1);
@@ -658,7 +623,7 @@ fn caves_have_a_ceiling() {
     g.step(1);
     assert!(g.position(id).z <= 9.0 + 1e-3, "{:?}", g.position(id));
     // On the surface the world is not capped by this rule.
-    let mut s = Game::new();
+    let mut s = Game::floor();
     let (gx, gy) = to_iso(10, 40);
     let id = s.caveland.spawn_player(&mut s.entities, 0, Vec3::new(gx, gy, 9.8));
     s.step(1);
@@ -667,7 +632,7 @@ fn caves_have_a_ceiling() {
 
 #[test]
 fn collectibles_do_not_fall_through_caveland_floors() {
-    let mut g = Game::new();
+    let mut g = Game::floor();
     let (gx, gy) = to_iso(20, 40);
     let c = g.caveland.spawn_collectible(&mut g.entities, Item::new(C::Coal), Vec3::new(gx, gy, 5.0));
     g.seconds(2.0);
@@ -677,8 +642,8 @@ fn collectibles_do_not_fall_through_caveland_floors() {
 #[test]
 fn the_same_inputs_give_the_same_world() {
     let run = || {
-        let mut g = Game::new();
-        let id = g.spawn_player_at(10, 40);
+        let mut g = Game::floor();
+        let id = g.player_at(10, 40);
         let (gx, gy) = to_iso(10, 40);
         g.caveland.spawn_robot(&mut g.entities, Team::Robots, Vec3::new(gx + 3.0, gy, 1.0));
         g.caveland.spawn_robot(&mut g.entities, Team::Neutral, Vec3::new(gx - 3.0, gy, 1.0));
@@ -693,8 +658,8 @@ fn the_same_inputs_give_the_same_world() {
 
 #[test]
 fn a_player_can_come_back_under_the_same_id_with_a_fresh_pack() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.give(id, C::Torch);
     g.caveland.damage_entity(&mut g.entities, id, 100.0);
     g.step(2);
@@ -704,15 +669,15 @@ fn a_player_can_come_back_under_the_same_id_with_a_fresh_pack() {
     let (gx, gy) = to_iso(12, 40);
     let again = g.caveland.spawn_player_as(&mut g.entities, id, 0, Vec3::new(gx, gy, 1.0));
     assert_eq!(again, Some(id));
-    assert!(g.inventory_types(id).is_empty());
+    assert!(g.pack(id).is_empty());
     assert_eq!(g.health(id), 100.0);
     assert_eq!(g.caveland.spawn_player_as(&mut g.entities, id, 0, Vec3::ZERO), None, "the id is taken now");
 }
 
 #[test]
 fn things_lists_everything_but_players_and_the_view_shows_the_pack() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     let torch = g.caveland.spawn_collectible(&mut g.entities, Item::new(C::Torch), cell_floor((14, 40, 1)));
     let money = g.caveland.spawn_money(&mut g.entities, cell_floor((16, 40, 1)));
     let robot = g.caveland.spawn_robot(&mut g.entities, Team::Robots, cell_floor((18, 40, 1)));
@@ -738,7 +703,7 @@ fn things_lists_everything_but_players_and_the_view_shows_the_pack() {
 #[test]
 fn the_engine_events_of_the_last_tick_stay_available_for_clients() {
     use wurfel_sim::entity::Event;
-    let mut g = Game::new();
+    let mut g = Game::floor();
     let (gx, gy) = to_iso(10, 40);
     let id = g.caveland.spawn_player(&mut g.entities, 0, Vec3::new(gx, gy, 3.0)); // falls onto the floor
     let mut landed = false;
@@ -752,8 +717,8 @@ fn the_engine_events_of_the_last_tick_stay_available_for_clients() {
 
 #[test]
 fn a_key_assumed_held_is_not_a_fresh_press() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.step(2);
     let hold = Controls { jump: true, ..Default::default() };
     g.caveland.assume_held(id, hold);
@@ -770,8 +735,8 @@ fn a_key_assumed_held_is_not_a_fresh_press() {
 
 #[test]
 fn an_attack_or_jump_cancels_a_prepared_throw() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.give(id, C::Stone);
     g.seconds(0.3);
     g.act(id, Action::PrepareThrow);
@@ -779,7 +744,7 @@ fn an_attack_or_jump_cancels_a_prepared_throw() {
     assert!(!g.caveland.player(id).unwrap().prepare_throw);
     g.act(id, Action::ReleaseAttack);
     g.act(id, Action::Throw);
-    assert_eq!(g.inventory_types(id), vec![C::Stone], "no throw after the pose was cancelled");
+    assert_eq!(g.pack(id), vec![C::Stone], "no throw after the pose was cancelled");
 
     g.seconds(0.5);
     g.act(id, Action::PrepareThrow);
@@ -789,15 +754,15 @@ fn an_attack_or_jump_cancels_a_prepared_throw() {
 
 #[test]
 fn holding_the_throw_button_for_600_ms_drops_the_item_and_the_release_then_throws_nothing() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.give(id, C::Stone);
     g.seconds(0.3);
     g.act(id, Action::PrepareThrow);
     g.seconds(0.5);
-    assert_eq!(g.inventory_types(id), vec![C::Stone], "not held long enough");
+    assert_eq!(g.pack(id), vec![C::Stone], "not held long enough");
     g.seconds(0.2);
-    assert!(g.inventory_types(id).is_empty(), "dropped");
+    assert!(g.pack(id).is_empty(), "dropped");
     assert!(!g.caveland.player(id).unwrap().prepare_throw);
     g.events.clear();
     g.act(id, Action::Throw);
@@ -806,14 +771,14 @@ fn holding_the_throw_button_for_600_ms_drops_the_item_and_the_release_then_throw
 
 #[test]
 fn releasing_before_the_drop_time_throws() {
-    let mut g = Game::new();
-    let id = g.spawn_player_at(10, 40);
+    let mut g = Game::floor();
+    let id = g.player_at(10, 40);
     g.give(id, C::Stone);
     g.seconds(0.3);
     g.act(id, Action::PrepareThrow);
     g.seconds(0.4);
     g.act(id, Action::Throw);
     g.seconds(1.0);
-    assert!(g.inventory_types(id).is_empty());
+    assert!(g.pack(id).is_empty());
     assert!(g.caveland.player(id).unwrap().throw_held.is_none(), "the hold ended with the release");
 }

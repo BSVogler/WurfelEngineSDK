@@ -2,25 +2,26 @@
 //! things that have one: the Java game gave them to collectibles, the mine cart and the lift
 //! basket.
 //!
-//! The pipeline draws opaque, so a faint shadow cannot be see-through yet: like the particles
-//! (see `particles::SHRINK_WITH_ALPHA`) a fading shadow shrinks with its alpha instead. The spot
-//! is a flat square (the diamond of the isometric ground) just above the surface, not touched by
-//! the light engine.
+//! The spot is a flat square (the diamond of the isometric ground) just above the surface, not
+//! touched by the light engine, and blended with the ground by its opacity (`mesh::set_alpha`).
 
 use glam::Vec3;
 use wurfel_sim::entity::shadow::{shadow_of, Shadow};
 use wurfel_sim::World;
 
-use crate::mesh::{top_face_unlit, Vertex};
+use crate::mesh::{top_face_unlit_alpha, Vertex};
 
 /// Half the side of the full-size spot in blocks (Java: the shadow sprite, about one block wide).
 const HALF: f32 = 0.35;
-/// Colour of the spot: darker than the Java grey, as it covers instead of tinting.
-const COLOR: [f32; 3] = [0.12, 0.12, 0.14];
+/// Colour of the spot, laid over the ground by the layer's opacity.
+const COLOR: [f32; 3] = [0.04, 0.04, 0.06];
+/// The most opaque a spot gets (the Java shadow sprite was not black either).
+const MAX_ALPHA: f32 = 0.6;
 /// Above the surface, so the spot does not fight the ground's own face for the depth test.
 const LIFT: f32 = 0.02;
 
-/// Do things of this kind cast a shadow? (The collectibles, the mine cart and the lift basket.)
+/// Do things of this kind cast a shadow? (The collectibles, the mine cart and the lift basket; the
+/// players get theirs from the renderer.)
 pub fn casts_shadow(kind: &str) -> bool {
     matches!(
         kind,
@@ -32,12 +33,12 @@ pub fn casts_shadow(kind: &str) -> bool {
 /// Add the spot(s) of one shadow.
 pub fn push(out: &mut Vec<Vertex>, shadow: &Shadow) {
     for layer in shadow.layers() {
-        let half = HALF * layer.scale * layer.alpha.sqrt();
-        if half <= 0.0 {
+        let half = HALF * layer.scale;
+        if layer.alpha <= 0.0 {
             continue;
         }
         let Vec3 { x, y, z } = shadow.position;
-        top_face_unlit(out, COLOR, [x - half, x + half, y - half, y + half], z + LIFT);
+        top_face_unlit_alpha(out, COLOR, [x - half, x + half, y - half, y + half], z + LIFT, layer.alpha * MAX_ALPHA);
     }
 }
 

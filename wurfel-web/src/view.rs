@@ -56,12 +56,15 @@ pub struct View {
     pub yaw: f32,
     /// The ground point the world turns about: the player.
     pub pivot: (f32, f32),
+    /// A short extra turn of the picture (screen shake), radians. Only what is drawn follows it; the
+    /// walking keys do not.
+    pub wobble: f32,
 }
 
 impl View {
     /// A point of the ground frame as the camera sees it.
     pub fn rotate(&self, (x, y): (f32, f32)) -> (f32, f32) {
-        let (sin, cos) = self.yaw.sin_cos();
+        let (sin, cos) = (self.yaw + self.wobble).sin_cos();
         let (dx, dy) = (x - self.pivot.0, y - self.pivot.1);
         (self.pivot.0 + cos * dx - sin * dy, self.pivot.1 + sin * dx + cos * dy)
     }
@@ -74,7 +77,7 @@ impl View {
 
     /// `(cos, sin, pivot x, pivot y)`: the `view` member of the camera uniform.
     pub fn uniform(&self) -> [f32; 4] {
-        let (sin, cos) = self.yaw.sin_cos();
+        let (sin, cos) = (self.yaw + self.wobble).sin_cos();
         [cos, sin, self.pivot.0, self.pivot.1]
     }
 
@@ -150,7 +153,7 @@ mod tests {
 
     #[test]
     fn a_turned_camera_walks_in_the_exact_direction_but_keeps_snapped_keys() {
-        let view = View { yaw: 0.2, pivot: (0.0, 0.0) };
+        let view = View { yaw: 0.2, pivot: (0.0, 0.0), wobble: 0.0 };
         let out = view.walk_input(keys(false, false, false, true));
         assert!(out.right && !out.up && !out.down && !out.left, "keys stay on the nearest of eight");
         let dir = wurfel_sim::player::heading_direction(out.heading.expect("a heading"));
@@ -160,7 +163,7 @@ mod tests {
 
     #[test]
     fn no_turn_changes_nothing() {
-        let view = View { yaw: 0.0, pivot: (3.0, 4.0) };
+        let view = View { yaw: 0.0, pivot: (3.0, 4.0), wobble: 0.0 };
         assert_eq!(view.rotate((7.0, -2.0)), (7.0, -2.0));
         assert_eq!(view.screen_position((7.0, -2.0), 1.0), [900.0, 250.0 - 122.0]);
         let input = keys(true, false, false, true);
@@ -169,7 +172,7 @@ mod tests {
 
     #[test]
     fn the_pivot_stays_where_it_is_and_distances_are_kept() {
-        let view = View { yaw: 1.0, pivot: (3.0, 4.0) };
+        let view = View { yaw: 1.0, pivot: (3.0, 4.0), wobble: 0.0 };
         let (x, y) = view.rotate((3.0, 4.0));
         assert!((x - 3.0).abs() < 1e-6 && (y - 4.0).abs() < 1e-6);
         let (x, y) = view.rotate((8.0, 1.0));
@@ -178,14 +181,14 @@ mod tests {
 
     #[test]
     fn a_quarter_turn_takes_ground_x_to_ground_y() {
-        let view = View { yaw: FRAC_PI_2, pivot: (0.0, 0.0) };
+        let view = View { yaw: FRAC_PI_2, pivot: (0.0, 0.0), wobble: 0.0 };
         let (x, y) = view.rotate((1.0, 0.0));
         assert!(x.abs() < 1e-6 && (y - 1.0).abs() < 1e-6);
     }
 
     #[test]
     fn the_uniform_is_cos_sin_and_the_pivot() {
-        let u = View { yaw: PI, pivot: (1.5, -2.0) }.uniform();
+        let u = View { yaw: PI, pivot: (1.5, -2.0), wobble: 0.0 }.uniform();
         assert!((u[0] + 1.0).abs() < 1e-6 && u[1].abs() < 1e-6 && u[2] == 1.5 && u[3] == -2.0);
     }
 
@@ -213,7 +216,7 @@ mod tests {
     #[test]
     fn keys_keep_their_meaning_on_the_screen_whatever_the_turn() {
         for steps in 0..16 {
-            let view = View { yaw: steps as f32 * PI / 8.0, pivot: (0.0, 0.0) };
+            let view = View { yaw: steps as f32 * PI / 8.0, pivot: (0.0, 0.0), wobble: 0.0 };
             for input in [keys(true, false, false, false), keys(false, true, false, false), keys(false, false, true, false), keys(false, false, false, true)] {
                 let wanted = on_screen(View::default(), input);
                 let got = on_screen(view, view.walk_input(input));
@@ -227,7 +230,7 @@ mod tests {
 
     #[test]
     fn a_half_turn_inverts_the_keys_and_keeps_jump() {
-        let view = View { yaw: PI, pivot: (0.0, 0.0) };
+        let view = View { yaw: PI, pivot: (0.0, 0.0), wobble: 0.0 };
         let mut input = keys(true, false, false, false);
         input.jump = true;
         let turned = view.walk_input(input);

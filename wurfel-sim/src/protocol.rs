@@ -286,7 +286,7 @@ pub enum ClientMsg {
     /// `give Torch`, `tpplayer 0 0 10`) or an engine command that changes the shared world
     /// (`killall`, `save`, `teleport 3 4`...; see `console::ExecResult::Forward`). `path` is the
     /// client console's `cd` path. Whether it is allowed is up to the server; the answer comes
-    /// back as a `Rules` message of kind `console`.
+    /// back as a [`ServerMsg::ConsoleReply`] to this client only.
     Command {
         line: String,
         #[serde(default)]
@@ -410,6 +410,8 @@ pub enum ServerMsg {
     /// everybody's health and inventory, `events` with sounds and happenings). The engine only
     /// carries it.
     Rules { kind: String, data: serde_json::Value },
+    /// The answer to a console line this client sent ([`ClientMsg::Command`]), only to that client.
+    ConsoleReply { lines: Vec<crate::console::OutputLine> },
     /// Who you are on this server, right after the `Welcome`. `secret` is only sent when the
     /// server made a new session (the client had none, or one the server does not know): keep
     /// it and send it with the next `Join`.
@@ -445,6 +447,7 @@ impl ServerMsg {
             | ServerMsg::MapCreated { .. }
             | ServerMsg::Rules { .. }
             | ServerMsg::Session { .. }
+            | ServerMsg::ConsoleReply { .. }
             | ServerMsg::Failed { .. } => Channel::Reliable,
         }
     }

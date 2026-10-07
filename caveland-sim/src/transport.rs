@@ -379,6 +379,14 @@ impl Transport {
         found.into_iter().min_by(|a, b| a.0.total_cmp(&b.0))
     }
 
+    /// Where an [`Interaction`] is: the entity's position or the middle of the block.
+    pub fn interaction_position(&self, entities: &Entities, what: Interaction) -> Option<Vec3> {
+        match what {
+            Interaction::Cart(id) | Interaction::ExitPortal(id) => entities.get(id).map(|e| e.position),
+            Interaction::LiftTop(cell) | Interaction::LiftGround(cell) | Interaction::Entry(cell) => Some(cell_center(cell)),
+        }
+    }
+
     /// Use something (`Interactable.interact`).
     pub(crate) fn interact(&mut self, entities: &mut Entities, world: &mut World, actor: EntityId, actor_is_player: bool, what: Interaction) {
         match what {

@@ -18,7 +18,8 @@ pub fn decode_png(bytes: &[u8]) -> Result<Image, String> {
     let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
     decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
     let mut reader = decoder.read_info().map_err(|e| format!("not a PNG: {e}"))?;
-    let mut buffer = vec![0; reader.output_buffer_size()];
+    let size = reader.output_buffer_size().ok_or("PNG is too large")?;
+    let mut buffer = vec![0; size];
     let info = reader.next_frame(&mut buffer).map_err(|e| format!("corrupt PNG: {e}"))?;
     buffer.truncate(info.buffer_size());
     let pixels = info.width as usize * info.height as usize;

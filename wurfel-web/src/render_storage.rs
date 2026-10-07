@@ -314,6 +314,10 @@ impl RenderStorage {
     /// is meshed again.
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // the browser build loads the atlas
     /// Whether the meshes are textured: only then does a block's value (an animation frame) show.
+    pub fn sprites(&self) -> Option<&Rc<Sprites>> {
+        self.sprites.as_ref()
+    }
+
     pub fn has_sprites(&self) -> bool {
         self.sprites.is_some()
     }
@@ -337,6 +341,10 @@ impl RenderStorage {
     /// sends) and every side of every block that no neighbour covers, left to the shader to cull
     /// the ones that turn away. Every chunk is meshed again when this changes, and the window is
     /// adjusted by the next [`update`](Self::update).
+    pub fn is_free_view(&self) -> bool {
+        self.all_faces
+    }
+
     pub fn set_free_view(&mut self, free: bool) {
         if self.all_faces != free {
             self.all_faces = free;

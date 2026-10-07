@@ -27,7 +27,7 @@ use crate::player::*;
 use crate::team::Team;
 use crate::tuning::Tuning;
 use crate::transport::{Interaction, Transport, TransportEvent};
-use crate::extras::{Extras, Other};
+use crate::extras::{Extras, Other, Target};
 
 /// A block cell `(x, y, z)`.
 pub type Cell = (i32, i32, i32);
@@ -136,7 +136,8 @@ pub struct RecipeView {
 pub enum GameEvent {
     /// Play a sound; names are the ones the Java game registers (`"collect"`, `"impact"`, ...).
     Sound { name: &'static str, position: Vec3 },
-    BlockDamaged { cell: Cell, id: u8 },
+    /// A block was hit and still stands, with this much health (1 to 99) left.
+    BlockDamaged { cell: Cell, id: u8, health: u8 },
     BlockDestroyed { cell: Cell, id: u8 },
     /// A hit on something that cannot be broken: dust.
     HardHit { cell: Cell },
@@ -485,7 +486,7 @@ impl Caveland {
             self.destroy_block(world, entities, cell);
         } else {
             world.set_block_health(cell.0, cell.1, cell.2, left);
-            self.events.push(GameEvent::BlockDamaged { cell, id: block.id() });
+            self.events.push(GameEvent::BlockDamaged { cell, id: block.id(), health: left });
         }
         true
     }
@@ -752,6 +753,32 @@ impl Caveland {
     /// The nearest machine the player could use right now.
     pub fn nearest_interactable(&self, world: &World, position: Vec3) -> Option<Cell> {
         self.machines_near(world, position).into_iter().next()
+    }
+
+    /// Where the interaction sign floats for the player `id` at `position` (Java `Ejira.update`'s
+    /// "interactable focus"): the middle of the thing [`Caveland::interact`] would use, or `None`
+    /// when there is nothing to use or the player is busy in a dialog.
+    pub fn interaction_focus(&self, entities: &Entities, world: &World, id: EntityId, position: Vec3) -> Option<Vec3> {
+        if self.x.dialogs.contains_key(&id) {
+            return None;
+        }
+        let oven = self.nearest_interactable(world, position);
+        let oven_distance = oven.map(|cell| cell_center(cell).distance(position + Vec3::Z * 0.5));
+        if let Some((distance, target)) = self.nearest_extra(entities, world, position) {
+            if oven_distance.is_none_or(|d| d >= distance) {
+                return match target {
+                    Target::Site(cell) | Target::Factory(cell) | Target::Turret(cell) | Target::Launcher(cell) => Some(cell_center(cell)),
+                    Target::Entity(eid) => entities.get(eid).map(|e| e.position),
+                };
+            }
+        }
+        let vehicle = self.transport.nearest_interactable(entities, world, position);
+        if let Some((distance, what)) = vehicle {
+            if oven_distance.is_none_or(|d| distance < d) {
+                return self.transport.interaction_position(entities, what);
+            }
+        }
+        oven.map(cell_center)
     }
 
     fn interact(&mut self, entities: &mut Entities, world: &mut World, state: &mut PlayerState, position: Vec3) {

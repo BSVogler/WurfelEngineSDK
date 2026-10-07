@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use super::{splitmix64, Generator};
 use crate::block::{id, Block};
 use crate::grid::{lower_left, lower_right, row_offset, to_iso};
+use crate::caveland::blocks::TREE;
 use crate::CHUNK_SIZE_Z;
 
 /// Terraced highlands with sheer cliffs, lakes and natural arches. Not from the Java engine.
@@ -179,10 +180,27 @@ impl TerrainGenerator {
         ((h ^ (h >> 31)) >> 32) as u32
     }
 
+    /// Does a tree stand on top of this column? Only on grass that is dry, level and not carved
+    /// away, in groves: a slow noise decides how dense the trees are, a hash picks the columns.
+    fn has_tree(&self, x: i32, y: i32, column: &Column) -> bool {
+        if column.ground <= SEA_LEVEL + 1
+            || column.ground >= MAX_GROUND - 3
+            || column.drop > 1
+            || column.tunnel.is_some_and(|t| t.roof + 1 >= column.ground)
+        {
+            return false;
+        }
+        let (gx, gy) = to_iso(x, y);
+        let grove = self.fbm(gx * 0.05, gy * 0.05, 2, 5) * 0.5 + 0.5;
+        // From nothing in the clearings to about one column in five in the thick of a grove.
+        let density = ((grove - 0.45) * 0.9).clamp(0.0, 0.2);
+        (self.hash(x, y, 6) as f32 / u32::MAX as f32) < density
+    }
+
     /// Is this a dry, flat, grassy column to start on?
     fn good_spawn(&self, x: i32, y: i32) -> bool {
         let column = self.column(x, y);
-        column.ground > SEA_LEVEL + 1 && column.drop <= 1 && column.tunnel.is_none()
+        column.ground > SEA_LEVEL + 1 && column.drop <= 1 && column.tunnel.is_none() && !self.has_tree(x, y, &column)
     }
 }
 
@@ -205,6 +223,9 @@ impl Generator for TerrainGenerator {
         }
         let column = self.column(x, y);
 
+        if z == column.ground && self.has_tree(x, y, &column) {
+            return Block::new(TREE, 0);
+        }
         if z >= column.ground || column.tunnel.is_some_and(|t| z >= t.floor && z <= t.roof) {
             return if z <= SEA_LEVEL { Block::new(id::WATER, 0) } else { Block::AIR };
         }
@@ -367,6 +388,24 @@ mod tests {
             assert!(ground > SEA_LEVEL + 1, "seed {seed}: spawn in water at {x},{y}");
             assert!(solid(&g, x, y, ground - 1) && !solid(&g, x, y, ground));
         }
+    }
+
+    #[test]
+    fn trees_grow_in_groves_on_grass() {
+        let g = TerrainGenerator::new(5);
+        let mut trees = 0;
+        for x in 0..300 {
+            for y in 0..600 {
+                let ground = g.ground(x, y);
+                if g.generate(x, y, ground).id() == TREE {
+                    trees += 1;
+                    assert_eq!(g.generate(x, y, ground - 1).id(), id::GRASS, "tree at {x},{y} not on grass");
+                    assert!(g.generate(x, y, ground + 1).is_air());
+                }
+            }
+        }
+        assert!(trees > 300, "trees: {trees}");
+        assert!(trees < 300 * 600 / 5, "too many trees: {trees}");
     }
 
     #[test]

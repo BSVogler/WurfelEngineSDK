@@ -2,19 +2,16 @@
 //! block pipeline: one screen-aligned, rotated square per particle (the Java particles were
 //! camera-facing sprites), flagged `FACE_UNLIT` so the light engine leaves the colour alone.
 //!
-//! The pipeline draws opaque, so opacity cannot be shown as transparency yet: a fading particle
-//! shrinks with its alpha instead (see [`SHRINK_WITH_ALPHA`]). True blending needs an alpha
-//! channel in the vertex and a blend state in a second pipeline.
+//! A fading particle gets see-through (`mesh::set_alpha` style: the vertex's `shade[1]` is its
+//! transparency), and the depth peeling blends the layers like it does for sprites. Particles at
+//! 10% opacity or less are not drawn (`peel::MIN_ALPHA`).
 
 use glam::Vec3;
 use wurfel_sim::light::PointLight;
 use wurfel_sim::particle::{Particle, ParticleEmitter, Particles};
 
 use crate::mesh::{Vertex, FACE_BILLBOARD};
-use crate::sprites;
-
-/// Draw fading particles smaller instead of transparent (the pipeline has no blending).
-pub const SHRINK_WITH_ALPHA: bool = true;
+use crate::sprites::{self, Sprites};
 
 /// Screen width of one block in the projection, and the height of one block on screen: a square
 /// on screen needs `WIDTH / HEIGHT` times its width as vertical extent in `z`.
@@ -98,33 +95,50 @@ impl Jetpack {
 /// anchor at a zero offset: a particle sits in the world where it is, not in front of it.
 const DEPTH_BIAS: f32 = -(1.0 + sprites::DEPTH_Z * sprites::SCREEN_Y / sprites::SCREEN_Z);
 
+/// The sprite every Java particle wears (`new Particle((byte) 22)`: entity 22, a soft blob), tinted by
+/// the particle's colour.
+const PARTICLE_SPRITE: u8 = 22;
+
 /// The six vertices (two triangles) of one particle: a [`FACE_BILLBOARD`] square. Its vertices are
 /// the particle's position with the corner's screen offset in pixels, and the shader makes the
 /// square face the camera, so particles stay flat on the screen when the free camera turns.
-pub fn quad(p: &Particle) -> [Vertex; 6] {
+/// With the atlas the square shows the particle sprite, scaled like the Java sprite (its picture
+/// is smaller than its box); without it the square is flat colour.
+pub fn quad(p: &Particle, sprites: Option<&Sprites>) -> [Vertex; 6] {
     let alpha = p.color()[3].clamp(0.0, 1.0);
-    let half = 0.5 * p.size() * if SHRINK_WITH_ALPHA { alpha.sqrt() } else { 1.0 };
+    let art = sprites.and_then(|s| s.entity(PARTICLE_SPRITE, 0).map(|region| (s, region)));
+    // The picture fills only part of the 200 pixel box of the Java sprite.
+    let fill = art.map_or(1.0, |(_, r)| r.w.max(r.h) as f32 / r.orig_w as f32);
+    let half = 0.5 * p.size() * fill;
     let (sin, cos) = p.rotation().to_radians().sin_cos();
     let c = p.position;
     // Corner in screen units (1 = a block's width), rotated, as pixels from the centre (y down).
     let corner = |u: f32, v: f32| {
         let (ru, rv) = (u * cos - v * sin, u * sin + v * cos);
-        Vertex::flat(
+        let mut vertex = Vertex::flat(
             c.to_array(),
             [p.color()[0], p.color()[1], p.color()[2]],
-            [FACE_BILLBOARD, 0.0],
+            [FACE_BILLBOARD, 1.0 - alpha],
             [ru * half * BLOCK_WIDTH_PX, -rv * half * BLOCK_WIDTH_PX, DEPTH_BIAS],
-        )
+        );
+        if let Some((sprites, region)) = art {
+            let page = &sprites.atlas.pages[region.page];
+            let (u0, u1) = (region.x as f32 / page.width as f32, (region.x + region.w) as f32 / page.width as f32);
+            let (v0, v1) = (region.y as f32 / page.height as f32, (region.y + region.h) as f32 / page.height as f32);
+            vertex.uv = [if u < 0.0 { u0 } else { u1 }, if v < 0.0 { v1 } else { v0 }];
+            vertex.layer = region.page as f32;
+        }
+        vertex
     };
     let (a, b, cc, d) = (corner(-1.0, -1.0), corner(1.0, -1.0), corner(1.0, 1.0), corner(-1.0, 1.0));
     [a, b, cc, a, cc, d]
 }
 
 /// Append all particles to `out`.
-pub fn append(particles: &Particles, out: &mut Vec<Vertex>) {
+pub fn append(particles: &Particles, sprites: Option<&Sprites>, out: &mut Vec<Vertex>) {
     out.reserve(particles.len() * 6);
     for p in particles.iter() {
-        out.extend_from_slice(&quad(p));
+        out.extend_from_slice(&quad(p, sprites));
     }
 }
 
@@ -132,7 +146,7 @@ pub fn append(particles: &Particles, out: &mut Vec<Vertex>) {
 #[cfg(test)]
 fn vertices(particles: &Particles) -> Vec<Vertex> {
     let mut out = Vec::new();
-    append(particles, &mut out);
+    append(particles, None, &mut out);
     out
 }
 
@@ -226,7 +240,7 @@ mod tests {
     #[test]
     fn quad_is_a_square_on_screen_centred_on_the_particle() {
         let particles = spawn(ParticleSpec::regular(), Vec3::new(2.0, 1.0, 4.0));
-        let q = quad(particles.iter().next().unwrap());
+        let q = quad(particles.iter().next().unwrap(), None);
         let pts: Vec<(f32, f32)> = q.iter().map(screen).collect();
         let (cx, cy) = ((2.0 - 1.0) * 100.0, (2.0 + 1.0) * 50.0 - 4.0 * 122.0);
         let (minx, maxx) = pts.iter().fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p.0), b.max(p.0)));
@@ -244,7 +258,7 @@ mod tests {
         let mut spec = ParticleSpec::regular();
         spec.color = [0.1, 0.2, 0.3, 1.0];
         let particles = spawn(spec, Vec3::ZERO);
-        for v in quad(particles.iter().next().unwrap()) {
+        for v in quad(particles.iter().next().unwrap(), None) {
             assert_eq!(v.color, [0.1, 0.2, 0.3]);
             assert_eq!(v.shade, [FACE_BILLBOARD, 0.0]);
         }
@@ -261,24 +275,40 @@ mod tests {
             particles.update(&flat, 1.0 / 60.0);
             let p = particles.iter().next().unwrap();
             let expected = 0.5 * wurfel_sim::particle::SHADES[p.variant() as usize];
-            assert_eq!(quad(p)[0].color, [expected; 3]);
+            assert_eq!(quad(p, None)[0].color, [expected; 3]);
             shades.push(p.variant());
         }
         assert!(shades.iter().any(|&v| v != 0), "the shade should have changed while moving");
     }
 
     #[test]
-    fn fading_particle_shrinks() {
+    fn fading_particle_is_see_through_not_smaller() {
         let mut spec = ParticleSpec::regular();
         spec.kind = ParticleType::Regular;
         spec.color[3] = 0.25;
         let faded = spawn(spec, Vec3::ZERO);
         spec.color[3] = 1.0;
         let full = spawn(spec, Vec3::ZERO);
-        let width = |p: &Particles| {
-            let q = quad(p.iter().next().unwrap());
-            ((q[1].point[0] - q[0].point[0]).powi(2) + (q[1].point[1] - q[0].point[1]).powi(2)).sqrt()
-        };
-        assert!(width(&faded) < width(&full) * 0.6);
+        let first = |p: &Particles| quad(p.iter().next().unwrap(), None);
+        assert_eq!(first(&faded)[0].point, first(&full)[0].point, "same size");
+        assert_eq!(first(&full)[0].shade[1], 0.0, "opaque");
+        assert!((first(&faded)[0].shade[1] - 0.75).abs() < 1e-3, "a quarter opaque");
+    }
+
+    #[test]
+    fn with_the_atlas_a_particle_wears_the_blob_sprite_inside_its_region() {
+        let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/sprites/sprites.atlas")).unwrap();
+        let sprites = Sprites::new(crate::atlas::Atlas::parse(&text).unwrap());
+        let region = sprites.entity(PARTICLE_SPRITE, 0).expect("the atlas has the particle sprite");
+        let page = &sprites.atlas.pages[region.page];
+        let particles = spawn(ParticleSpec::regular(), Vec3::ZERO);
+        let q = quad(particles.iter().next().unwrap(), Some(&sprites));
+        let (u0, u1) = (region.x as f32 / page.width as f32, (region.x + region.w) as f32 / page.width as f32);
+        for v in &q {
+            assert_eq!(v.layer, region.page as f32);
+            assert!(v.uv[0] >= u0 - 1e-6 && v.uv[0] <= u1 + 1e-6, "inside the region, not its neighbours");
+        }
+        let flat = quad(particles.iter().next().unwrap(), None);
+        assert!(flat[0].layer < 0.0 && (q[0].point[0].abs() < flat[0].point[0].abs()), "the picture fills part of its box");
     }
 }

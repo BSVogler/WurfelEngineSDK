@@ -320,6 +320,35 @@ pub fn top_face_unlit(out: &mut Vec<Vertex>, color: [f32; 3], [x0, x1, y0, y1]: 
     quad(out, FACE_UNLIT, color, [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], [0.0; 4], [[0.0; 3]; 4]);
 }
 
+/// A picture laid over a block face (the cracks of a damaged block): `corners` as for the block's own
+/// face, unlit, `alpha` see-through.
+pub fn overlay_face(out: &mut Vec<Vertex>, color: [f32; 3], corners: [[f32; 3]; 4], atlas: &crate::atlas::Atlas, region: &crate::atlas::Region, alpha: f32) {
+    let first = out.len();
+    quad(out, FACE_UNLIT, color, corners, [0.0; 4], [[0.0; 3]; 4]);
+    let uvs = sprites::face_uvs(atlas, region, corners);
+    for vertex in &mut out[first..] {
+        let corner = corners.iter().position(|c| *c == vertex.position).expect("a vertex is one of the corners");
+        vertex.uv = uvs[corner];
+        vertex.layer = region.page as f32;
+    }
+    set_alpha(&mut out[first..], alpha);
+}
+
+/// Make the unlit faces ([`FACE_UNLIT`], [`FACE_BILLBOARD`]) among `vertices` see-through: `alpha` 1 is
+/// opaque, 0 invisible. (Their occlusion slot carries it, see `vs_main`.)
+pub fn set_alpha(vertices: &mut [Vertex], alpha: f32) {
+    for v in vertices {
+        v.shade[1] = 1.0 - alpha.clamp(0.0, 1.0);
+    }
+}
+
+/// [`top_face_unlit`] that blends with what is behind it (a shadow).
+pub fn top_face_unlit_alpha(out: &mut Vec<Vertex>, color: [f32; 3], bounds: [f32; 4], z: f32, alpha: f32) {
+    let first = out.len();
+    top_face_unlit(out, color, bounds, z);
+    set_alpha(&mut out[first..], alpha);
+}
+
 /// Face towards the lower left of the screen (the +y side).
 pub fn left_face(out: &mut Vec<Vertex>, color: [f32; 3], [x0, x1]: [f32; 2], y: f32, [z0, z1]: [f32; 2]) {
     quad(out, FACE_LEFT, color, [[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], [0.0; 4], [[0.0; 3]; 4]);

@@ -289,6 +289,10 @@ fn vs_main(v: VertexIn) -> VertexOut {
         baked = vec3<f32>(0.0);
     }
     out.baked = vec4<f32>(baked, 1.0 - lighting.grading.y * clamp(v.shade.y, 0.0, 1.0));
+    if (face == 3 || face == 7) {
+        // Unlit faces have no occlusion: `shade.y` is how see-through they are (0: opaque).
+        out.baked.a = 1.0 - clamp(v.shade.y, 0.0, 1.0);
+    }
     out.world = seen;
     out.face = f32(face);
     return out;
@@ -395,6 +399,10 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
         if (lit_by_normal_map(i32(in.face + 0.5), in.layer)) {
             color = vec4<f32>(normal_map_color(in, texel), texel.a);
         }
+    }
+    let face = i32(in.face + 0.5);
+    if (face == 3 || face == 7) {
+        color.a = color.a * in.baked.a;  // markers, shadows, damage cracks and particles can fade
     }
     if (color.a <= peel.params.z) {
         discard;

@@ -134,6 +134,9 @@ pub struct CVar {
     value: Value,
     default: Value,
     flags: Flags,
+    /// Owned by the server because it changes the simulation (`gravity`); the console forwards it
+    /// there. See [`CVarSystem::register_server`].
+    server: bool,
 }
 
 impl CVar {
@@ -149,6 +152,10 @@ impl CVar {
     }
     pub fn flags(&self) -> Flags {
         self.flags
+    }
+    /// Does the server own it (see [`CVarSystem::register_server`])?
+    pub fn is_server(&self) -> bool {
+        self.server
     }
     /// Does it still have its default value?
     pub fn is_default(&self) -> bool {
@@ -236,9 +243,18 @@ impl CVarSystem {
                 existing.value = value;
             }
             None => {
-                let cvar = CVar { name: name.to_string(), default: value.clone(), value, flags };
+                let cvar = CVar { name: name.to_string(), default: value.clone(), value, flags, server: false };
                 self.cvars.insert(name.to_lowercase(), cvar);
             }
+        }
+    }
+
+    /// [`register`](Self::register) a cvar that the server owns because it changes the simulation
+    /// (gravity, friction...): the console runs reads and writes of it on the server.
+    pub fn register_server(&mut self, name: &str, value: Value, flags: Flags) {
+        self.register(name, value, flags);
+        if let Some(cvar) = self.cvars.get_mut(key(name).as_ref()) {
+            cvar.server = true;
         }
     }
 
@@ -449,8 +465,8 @@ impl CVarSystem {
     /// The engine wide system with all defaults of Java's `CVarSystemRoot` (`WE.getCVars()`).
     pub fn root() -> Self {
         let mut c = Self::new();
-        c.f("gravity", 9.81);
-        c.i("worldSpinAngle", -40);
+        c.register_server("gravity", Value::Float(9.81), Flags::Archive);
+        c.register_server("worldSpinAngle", Value::Int(-40), Flags::Archive);
         c.b("loadPixmap", false);
         c.f("LEazimutSpeed", 0.00078125);
         c.b("LEnormalMapRendering", false);
@@ -469,7 +485,7 @@ impl CVarSystem {
         c.b("DevMode", false);
         c.b("DevDebugRendering", false);
         c.b("editorVisible", false);
-        c.i("groundBlockID", 2);
+        c.register_server("groundBlockID", Value::Int(2), Flags::Archive);
         c.b("preventUnloading", true);
         c.b("shouldLoadMap", true);
         c.b("clearBeforeRendering", true);
@@ -478,13 +494,13 @@ impl CVarSystem {
         c.f("music", 1.0);
         c.f("sound", 1.0);
         c.i("limitFPS", 60);
-        c.b("loadEntities", true);
+        c.register_server("loadEntities", Value::Bool(true), Flags::Archive);
         c.b("enableMinimap", false);
         c.f("walkingAnimationSpeedCorrection", 1.0);
-        c.f("playerWalkingSpeed", 4.0);
-        c.register("timeSpeed", Value::Float(1.0), Flags::Volatile);
-        c.f("friction", 0.001);
-        c.f("playerfriction", 0.03);
+        c.register_server("playerWalkingSpeed", Value::Float(4.0), Flags::Archive);
+        c.register_server("timeSpeed", Value::Float(1.0), Flags::Volatile);
+        c.register_server("friction", Value::Float(0.001), Flags::Archive);
+        c.register_server("playerfriction", Value::Float(0.03), Flags::Archive);
         c.i("soundDecay", 6000);
         c.b("enableControllers", false);
         c.i("controllermacButtonStart", 4);

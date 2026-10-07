@@ -74,6 +74,7 @@ height, and at most 500 things.
 ## Where things are
 
 - `src/web.rs`: canvas, wgpu setup, input, WebSocket, prediction/interpolation, frame loop. GPU errors are logged to the console.
+- **Camera turn.** In the normal (fixed) camera `1` turns the map a quarter to the left and `2` a quarter to the right, easing round the player; the keys do nothing in the editor, which works unturned. A turned map is meshed with all sides, like the free camera. The free camera (F8, mouse turns it freely) stays as an experimental mode.
 - `src/mesh.rs`: world to triangles; only camera-facing faces next to air. Also the box used for players.
 - `src/editor.rs`: the editor mode (tools, palette, things, values, layer limit, camera pan, what a click does). Pure, unit tested; `editor.js`/`editor.css` are its toolbar.
 - `src/pick.rs`: screen position to block (for placing/breaking, below the layer limit) and to thing. Pure, unit tested.

@@ -211,6 +211,25 @@ pub fn addressed_to(data: &Value, me: u32) -> bool {
     data.get("to").and_then(Value::as_u64) == Some(u64::from(me))
 }
 
+/// The sprite value of the interaction sign: the trigger button (Java `Interactable.RT`, entity
+/// sprite category `i`, id 23).
+const SIGN_VALUE: u32 = 11;
+/// How far above the usable thing the sign floats, in blocks (Java: one `GAME_EDGELENGTH`).
+const SIGN_LIFT: f32 = 1.0;
+
+/// Where the `interact_focus` message puts the sign, or `None` when it says there is nothing to use.
+pub fn parse_interact_focus(data: &Value) -> Option<glam::Vec3> {
+    let a = data.get("pos")?.as_array()?;
+    Some(glam::Vec3::new(a.first()?.as_f64()? as f32, a.get(1)?.as_f64()? as f32, a.get(2)?.as_f64()? as f32))
+}
+
+/// Draw the interaction sign above `focus`, the thing the use button would act on.
+pub fn push_interact_sign(out: &mut Vec<crate::mesh::Vertex>, sprites: &crate::sprites::Sprites, focus: glam::Vec3) {
+    if let Some(region) = sprites.atlas.region(&format!("i23-{SIGN_VALUE}")) {
+        crate::sprites::billboard(out, &sprites.atlas, region, focus + glam::Vec3::Z * SIGN_LIFT, crate::sprites::FOOTPRINT_TIP, false, [1.0; 3]);
+    }
+}
+
 /// The cells of a `power` message.
 pub fn parse_power(data: &Value) -> HashSet<(i32, i32, i32)> {
     let cell = |v: &Value| {
@@ -260,9 +279,13 @@ pub fn hud_json(hud: &Hud) -> String {
 pub enum Happening {
     Sound { name: String, pos: Vec3 },
     Dust { pos: Vec3 },
-    Explosion { pos: Vec3 },
+    /// A block was hit and still stands: the cell and its health left, for the cracks over it.
+    BlockDamaged { cell: (i32, i32, i32), health: u8 },
+    Explosion { pos: Vec3, radius: i32 },
     /// A line for the HUD to show.
     Toast(String),
+    /// We took damage.
+    Hurt,
     /// We died and are back at the start.
     Died,
     /// Something was moved (portal, lift, the console's `tpplayer`): the owner of a predicted
@@ -295,7 +318,8 @@ pub fn parse_events(data: &Value, my_id: u32) -> Vec<Happening> {
         let happening = match event.get("t").and_then(Value::as_str).unwrap_or_default() {
             "sound" => position(&event["pos"]).map(|pos| Happening::Sound { name: text("name").to_string(), pos }),
             "dust" => position(&event["pos"]).map(|pos| Happening::Dust { pos }),
-            "explosion" => position(&event["pos"]).map(|pos| Happening::Explosion { pos }),
+            "explosion" => position(&event["pos"]).map(|pos| Happening::Explosion { pos, radius: event.get("radius").and_then(Value::as_i64).unwrap_or(3) as i32 }),
+            "damaged" if mine => Some(Happening::Hurt),
             "picked" if mine => Some(Happening::Toast(format!("Picked up {}", text("item")))),
             "crafted" if mine => Some(Happening::Toast(format!("Crafted {}", text("item")))),
             "money" if mine => Some(Happening::Toast(format!("Money: {}", event.get("total").and_then(Value::as_u64).unwrap_or(0)))),
@@ -324,6 +348,16 @@ pub fn parse_events(data: &Value, my_id: u32) -> Vec<Happening> {
             _ => None,
         };
         out.extend(happening);
+        if event.get("t").and_then(Value::as_str) == Some("dust") {
+            let cell = event.get("cell").and_then(Value::as_array).filter(|a| a.len() == 3);
+            let health = event.get("health").and_then(Value::as_u64);
+            if let (Some(cell), Some(health)) = (cell, health) {
+                let n = |i: usize| cell[i].as_i64().map(|v| v as i32);
+                if let (Some(x), Some(y), Some(z)) = (n(0), n(1), n(2)) {
+                    out.push(Happening::BlockDamaged { cell: (x, y, z), health: health.min(100) as u8 });
+                }
+            }
+        }
     }
     out
 }
@@ -544,6 +578,15 @@ mod tests {
     }
 
     #[test]
+    fn a_hit_block_is_reported_with_its_cell_and_health_besides_the_dust() {
+        let data = json!([{"t": "dust", "pos": [5.0, 5.0, 5.0], "cell": [3, -4, 7], "health": 62}]);
+        assert_eq!(
+            parse_events(&data, 1),
+            vec![Happening::Dust { pos: Vec3::new(5.0, 5.0, 5.0) }, Happening::BlockDamaged { cell: (3, -4, 7), health: 62 }]
+        );
+    }
+
+    #[test]
     fn events_are_read_and_only_our_own_news_becomes_a_toast() {
         let data = json!([
             {"t": "sound", "name": "collect", "pos": [1.0, 2.0, 3.0]},
@@ -563,7 +606,7 @@ mod tests {
                 Happening::Sound { name: "collect".into(), pos: Vec3::new(1.0, 2.0, 3.0) },
                 Happening::Toast("Picked up Torch".into()),
                 Happening::Toast("Crafted Torch".into()),
-                Happening::Explosion { pos: Vec3::new(0.0, 0.0, 1.0) },
+                Happening::Explosion { pos: Vec3::new(0.0, 0.0, 1.0), radius: 3 },
                 Happening::Dust { pos: Vec3::new(5.0, 5.0, 5.0) },
                 Happening::Died,
             ]
@@ -747,5 +790,17 @@ mod tests {
         let before = world.get(0, 0, 0);
         replay(&mut world, Vec3::new(0.0, 0.0, 1.0), Vec3::ZERO, &[(PlayerInput { up: true, jump: true, ..Default::default() }, 120)]).unwrap();
         assert_eq!(world.get(0, 0, 0), before);
+    }
+}
+
+#[cfg(test)]
+mod interact_sign_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn the_focus_message_gives_a_position_or_nothing() {
+        assert_eq!(parse_interact_focus(&json!({"pos": [1.0, 2.5, 3.0]})), Some(glam::Vec3::new(1.0, 2.5, 3.0)));
+        assert_eq!(parse_interact_focus(&json!({"pos": null})), None);
     }
 }

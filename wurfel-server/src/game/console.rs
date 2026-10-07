@@ -8,8 +8,7 @@
 use std::sync::OnceLock;
 
 use glam::Vec3;
-use serde_json::json;
-use wurfel_sim::console::{CVarTarget, Console, ConsoleHost, Level, OutputLine, Side};
+use wurfel_sim::console::{CVarTarget, Console, ConsoleHost, OutputLine, Side};
 use wurfel_sim::cvar::CVarSystem;
 use wurfel_sim::entity::physics::ground_height;
 use wurfel_sim::entity::EntityId;
@@ -189,23 +188,17 @@ impl Game {
         self.console_reply(player, lines);
     }
 
-    /// Queue a console answer for one player. Everybody receives it (the server only has a
-    /// broadcast); the clients keep what has their id in `to`.
+    /// Keep a console answer for the player who asked; the connection sends it to them alone
+    /// ([`Game::take_replies`]).
     pub(super) fn console_reply(&mut self, player: EntityId, lines: Vec<OutputLine>) {
-        let ok = !lines.iter().any(|l| l.level == Level::Error);
-        let text = lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n");
-        let lines: Vec<_> = lines
-            .iter()
-            .map(|l| {
-                let level = match l.level {
-                    Level::Info => "info",
-                    Level::Warn => "warn",
-                    Level::Error => "error",
-                    Level::Echo => "echo",
-                };
-                json!({"level": level, "text": l.text})
-            })
-            .collect();
-        self.outbox.push(ServerMsg::Rules { kind: "console".into(), data: json!({"to": player, "ok": ok, "text": text, "lines": lines}) });
+        self.replies.push((player, ServerMsg::ConsoleReply { lines }));
     }
+
+    /// Messages for `player` only (console answers), to be sent on their connection.
+    pub fn take_replies(&mut self, player: EntityId) -> Vec<ServerMsg> {
+        let (mine, others) = std::mem::take(&mut self.replies).into_iter().partition(|(p, _)| *p == player);
+        self.replies = others;
+        mine.into_iter().map(|(_, m)| m).collect()
+    }
+
 }

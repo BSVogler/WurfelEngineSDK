@@ -57,6 +57,7 @@ impl EntitySoundConfig {
         EntitySoundConfig { step: Some("step".into()), jump: Some("urfJump".into()), ..Self::engine_default() }
     }
 
+    #[cfg(test)]
     pub fn silent() -> Self {
         EntitySoundConfig { landing: None, step: None, jump: None, falling: None, running: None, splash: None }
     }
@@ -118,11 +119,13 @@ impl Default for EntityState {
 
 impl AudioLogic {
     /// Override the sounds of one entity.
+    #[cfg(test)]
     pub fn set_entity_config(&mut self, id: EntityId, config: EntitySoundConfig) {
         self.entity_configs.insert(id, config);
     }
 
     /// The sounds used for entities without their own configuration.
+    #[cfg(test)]
     pub fn set_default_entity_config(&mut self, config: EntitySoundConfig) {
         self.entity_default = config;
     }

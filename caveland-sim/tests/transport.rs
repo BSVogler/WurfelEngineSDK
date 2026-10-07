@@ -5,43 +5,20 @@ use caveland_sim::collectible::{CollectibleType as C, Item};
 use caveland_sim::game::cell_floor;
 use caveland_sim::minecart::{BOOSTER_SPEED, BOTTOM_HEIGHT, MAX_SPEED};
 use caveland_sim::player::Action;
-use caveland_sim::{Caveland, EntityKind, GameEvent, Team, Tuning, TransportEvent};
+use caveland_sim::{EntityKind, GameEvent, Team, TransportEvent};
 use glam::{Vec2, Vec3};
 use wurfel_sim::block::Block;
-use wurfel_sim::entity::{Entities, EntityId};
+use wurfel_sim::entity::EntityId;
 use wurfel_sim::generator::EntitySpawn;
 use wurfel_sim::grid::{from_iso, lower_right, to_iso};
-use wurfel_sim::{AirGenerator, World};
 
-const DT: f32 = 1.0 / 60.0;
-
-struct Game {
-    world: World,
-    entities: Entities,
-    caveland: Caveland,
-    events: Vec<GameEvent>,
-    notes: Vec<TransportEvent>,
-}
+mod common;
+use common::Game;
 
 impl Game {
     /// Stone at z = 0 for `x` in -20..60 and `y` in -20..80, and nothing else.
-    fn new() -> Game {
-        let mut world = World::new(AirGenerator);
-        Caveland::install(&mut world);
-        for x in -20..60 {
-            for y in -20..80 {
-                world.set(x, y, 0, Block::new(ids::STONE, 0));
-            }
-        }
-        Game { world, entities: Entities::new(), caveland: Caveland::new(Tuning::default(), 1), events: Vec::new(), notes: Vec::new() }
-    }
-
-    fn step(&mut self, steps: usize) {
-        for _ in 0..steps {
-            let events = self.caveland.tick(&mut self.entities, &mut self.world, DT);
-            self.events.extend(events);
-            self.notes.extend(self.caveland.drain_transport_events());
-        }
+    fn stone() -> Game {
+        Game::with_floor(ids::STONE, -20..60, -20..80)
     }
 
     /// Set a block and tell the game, like whatever builds it does.
@@ -50,19 +27,11 @@ impl Game {
         self.caveland.block_changed(&self.world, cell);
     }
 
-    fn seconds(&mut self, s: f32) {
-        self.step((s * 60.0).round() as usize);
-    }
-
-    fn pos(&self, id: EntityId) -> Vec3 {
-        self.entities.get(id).expect("the entity exists").position
-    }
-
     fn speed(&self, id: EntityId) -> f32 {
         self.entities.get(id).and_then(|e| e.body.as_ref()).expect("a body").speed_hor()
     }
 
-    fn player_at(&mut self, cell: (i32, i32, i32)) -> EntityId {
+    fn player_in(&mut self, cell: (i32, i32, i32)) -> EntityId {
         self.caveland.spawn_player(&mut self.entities, 0, cell_floor(cell) + Vec3::Z * 0.01)
     }
 
@@ -97,7 +66,7 @@ fn lay_rails(game: &mut Game, start: (i32, i32), z: i32, len: usize) -> Vec<(i32
 
 #[test]
 fn a_cart_that_is_pushed_runs_along_the_rails_at_full_speed() {
-    let mut game = Game::new();
+    let mut game = Game::stone();
     let cells = lay_rails(&mut game, (2, 10), 1, 12);
     let start = cell_floor(cells[0]);
     let cart = game.caveland.spawn_minecart(&mut game.entities, start);
@@ -108,7 +77,7 @@ fn a_cart_that_is_pushed_runs_along_the_rails_at_full_speed() {
     game.push(cart, Vec2::new(1.0, 0.0));
     game.step(60);
 
-    let p = game.pos(cart);
+    let p = game.position(cart);
     assert!((game.speed(cart) - MAX_SPEED).abs() < 1e-3, "a pushed cart rolls at {MAX_SPEED} b/s, not {}", game.speed(cart));
     assert!(p.x - start.x > 5.5 && p.x - start.x < 6.3, "a second at full speed is about six blocks, got {}", p.x - start.x);
     assert!((p.y - start.y).abs() < 1e-3, "it stays on the line, off by {}", p.y - start.y);
@@ -118,7 +87,7 @@ fn a_cart_that_is_pushed_runs_along_the_rails_at_full_speed() {
 
 #[test]
 fn a_cart_that_leaves_the_rails_slows_down_and_stops() {
-    let mut game = Game::new();
+    let mut game = Game::stone();
     let cells = lay_rails(&mut game, (2, 10), 1, 4);
     let cart = game.caveland.spawn_minecart(&mut game.entities, cell_floor(cells[0]));
     game.step(2);
@@ -129,7 +98,7 @@ fn a_cart_that_leaves_the_rails_slows_down_and_stops() {
 
     game.seconds(3.0);
     assert_eq!(game.speed(cart), 0.0, "friction stops it off the rails");
-    let x = game.pos(cart).x;
+    let x = game.position(cart).x;
     assert!(x > end_of_rails && x < end_of_rails + 4.0, "it coasted a few blocks past the rails: {x} vs {end_of_rails}");
     assert!(!game.caveland.transport().cart(cart).unwrap().on_rails());
     assert!(
@@ -141,7 +110,7 @@ fn a_cart_that_leaves_the_rails_slows_down_and_stops() {
 #[test]
 fn a_booster_shoots_the_cart_on_when_it_has_power_and_stops_it_without() {
     for powered in [false, true] {
-        let mut game = Game::new();
+        let mut game = Game::stone();
         let cells = lay_rails(&mut game, (2, 10), 1, 10);
         let booster = cells[4];
         game.world.set(booster.0, booster.1, booster.2, Block::new(ids::BOOSTER_RAILS, 1));
@@ -166,10 +135,10 @@ fn a_booster_shoots_the_cart_on_when_it_has_power_and_stops_it_without() {
         let booster_x = cell_floor(booster).x;
         if powered {
             assert!((fastest - BOOSTER_SPEED).abs() < 1e-3, "powered boosters give {BOOSTER_SPEED} b/s, got {fastest}");
-            assert!(game.pos(cart).x > booster_x + 3.0, "and carry the cart on");
+            assert!(game.position(cart).x > booster_x + 3.0, "and carry the cart on");
         } else {
             assert!(fastest <= MAX_SPEED + 1e-3, "no power, no boost: {fastest}");
-            assert!(game.pos(cart).x < booster_x + 1.0, "an unpowered booster stops the cart on it");
+            assert!(game.position(cart).x < booster_x + 1.0, "an unpowered booster stops the cart on it");
             assert_eq!(game.speed(cart), 0.0);
         }
     }
@@ -177,20 +146,20 @@ fn a_booster_shoots_the_cart_on_when_it_has_power_and_stops_it_without() {
 
 #[test]
 fn a_player_gets_in_rides_along_and_is_left_behind_when_they_jump_high() {
-    let mut game = Game::new();
+    let mut game = Game::stone();
     let cells = lay_rails(&mut game, (2, 10), 1, 14);
     let cart = game.caveland.spawn_minecart(&mut game.entities, cell_floor(cells[1]));
-    let player = game.player_at(cells[1]);
+    let player = game.player_in(cells[1]);
     game.step(5);
 
     game.interact(player);
     assert!(game.notes.contains(&TransportEvent::Boarded { cart, passenger: player }));
     assert_eq!(game.caveland.transport().cart(cart).unwrap().passenger(), Some(player));
-    assert_eq!(game.caveland.nearest_interactable(&game.world, game.pos(player)), None, "a full cart cannot be used again");
+    assert_eq!(game.caveland.nearest_interactable(&game.world, game.position(player)), None, "a full cart cannot be used again");
 
     game.push(cart, Vec2::new(1.0, 0.0));
     game.step(90);
-    let (c, p) = (game.pos(cart), game.pos(player));
+    let (c, p) = (game.position(cart), game.position(player));
     assert!(c.x > cell_floor(cells[1]).x + 6.0, "the cart rolled");
     assert!(Vec2::new(c.x - p.x, c.y - p.y).length() < 0.01, "the passenger is in the middle of the cart");
     assert!((p.z - (c.z + BOTTOM_HEIGHT)).abs() < 0.01, "and sits on its floor: {} vs {}", p.z, c.z);
@@ -206,13 +175,13 @@ fn a_player_gets_in_rides_along_and_is_left_behind_when_they_jump_high() {
 
 #[test]
 fn an_empty_cart_loads_what_falls_into_it_up_to_five_items() {
-    let mut game = Game::new();
+    let mut game = Game::stone();
     let cells = lay_rails(&mut game, (2, 10), 1, 4);
     let cart = game.caveland.spawn_minecart(&mut game.entities, cell_floor(cells[1]));
     game.step(2);
     let mut items = Vec::new();
     for _ in 0..6 {
-        let at = game.pos(cart) + Vec3::Z * 0.3;
+        let at = game.position(cart) + Vec3::Z * 0.3;
         items.push(game.caveland.spawn_collectible(&mut game.entities, Item::new(C::Iron), at));
         game.step(3);
     }
@@ -226,7 +195,7 @@ fn an_empty_cart_loads_what_falls_into_it_up_to_five_items() {
 
 #[test]
 fn a_cart_on_a_curve_stays_on_its_circle() {
-    let mut game = Game::new();
+    let mut game = Game::stone();
     // Value 5: a circle of half a block around the point one half diagonal right of the block's middle.
     game.world.set(5, 10, 1, Block::new(ids::RAILS, 5));
     let (gx, gy) = to_iso(5, 10);
@@ -238,7 +207,7 @@ fn a_cart_on_a_curve_stays_on_its_circle() {
     game.push(cart, wurfel_sim::entity::screen_to_iso(Vec2::new(0.0, 1.0)));
     for tick in 0..5 {
         game.step(1);
-        let p = game.pos(cart);
+        let p = game.position(cart);
         let radius = Vec2::new(p.x, p.y).distance(anchor);
         assert!((radius - 0.5).abs() < 1e-3, "tick {tick}: {radius} from the circle's middle");
         assert!((p.z - 1.0).abs() < 1e-3, "the height is kept: {}", p.z);
@@ -249,7 +218,7 @@ fn a_cart_on_a_curve_stays_on_its_circle() {
 fn a_ramp_launches_a_cart_that_drives_up_it_and_lets_a_standing_one_roll_down() {
     // Value 6 climbs towards the top right of the screen: the isometric -y direction. A line of
     // ramp blocks along it: the cells whose middle is (8, 5), (8, 4), ...
-    let mut game = Game::new();
+    let mut game = Game::stone();
     for k in 0..6 {
         let (x, y) = from_iso(8.0, 5.0 - k as f32);
         game.world.set(x, y, 1, Block::new(ids::RAILS, 6));
@@ -260,12 +229,12 @@ fn a_ramp_launches_a_cart_that_drives_up_it_and_lets_a_standing_one_roll_down() 
     let mut highest = 0.0f32;
     for _ in 0..40 {
         game.step(1);
-        highest = highest.max(game.pos(cart).z);
+        highest = highest.max(game.position(cart).z);
     }
     assert!(highest > 1.15, "the cart took off from the ramp, got to {highest}");
 
     // A cart at rest on the ramp rolls down: towards the lower left of the screen, iso +y.
-    let mut game = Game::new();
+    let mut game = Game::stone();
     let (x, y) = from_iso(8.0, 5.0);
     game.world.set(x, y, 1, Block::new(ids::RAILS, 6));
     let cart = game.caveland.spawn_minecart(&mut game.entities, Vec3::new(8.0, 5.0, 1.0));
@@ -276,7 +245,7 @@ fn a_ramp_launches_a_cart_that_drives_up_it_and_lets_a_standing_one_roll_down() 
 
 #[test]
 fn a_cart_throws_things_in_its_way_aside() {
-    let mut game = Game::new();
+    let mut game = Game::stone();
     let cells = lay_rails(&mut game, (2, 10), 1, 10);
     let cart = game.caveland.spawn_minecart(&mut game.entities, cell_floor(cells[0]));
     let robot_at = cell_floor(cells[3]) + Vec3::new(0.0, 0.0, 0.2);
@@ -284,16 +253,16 @@ fn a_cart_throws_things_in_its_way_aside() {
     game.step(2);
     game.push(cart, Vec2::new(1.0, 0.0));
     game.seconds(1.5);
-    let moved = game.pos(robot);
+    let moved = game.position(robot);
     assert!(moved.x > robot_at.x + 0.5 || moved.z > robot_at.z + 0.05, "the robot was hit and went flying: {moved} from {robot_at}");
 }
 
 #[test]
 fn a_destroyed_cart_drops_iron_and_lets_its_passenger_go() {
-    let mut game = Game::new();
+    let mut game = Game::stone();
     let cells = lay_rails(&mut game, (2, 10), 1, 4);
     let cart = game.caveland.spawn_minecart(&mut game.entities, cell_floor(cells[1]));
-    let player = game.player_at(cells[1]);
+    let player = game.player_in(cells[1]);
     game.step(3);
     game.interact(player);
     game.step(2);
@@ -314,7 +283,7 @@ fn a_destroyed_cart_drops_iron_and_lets_its_passenger_go() {
 
 #[test]
 fn a_portal_takes_whatever_lands_in_it_and_the_exit_does_not_send_it_back() {
-    let mut game = Game::new();
+    let mut game = Game::stone();
     let portal = game.caveland.transport_mut().spawn_portal(&mut game.entities, (5, 10, 1), (12, 20, 1), false);
     // The far end: an exit portal that leads back up to the block above the entrance.
     let exit = game.caveland.transport_mut().spawn_portal(&mut game.entities, (12, 20, 1), (5, 10, 2), true);
@@ -327,7 +296,7 @@ fn a_portal_takes_whatever_lands_in_it_and_the_exit_does_not_send_it_back() {
     let player = game.caveland.spawn_player(&mut game.entities, 0, cell_floor((5, 10, 1)) + Vec3::Z * 3.0);
     game.seconds(2.0);
     assert!(game.notes.iter().any(|n| matches!(n, TransportEvent::Teleported { entity, .. } if *entity == player)));
-    let at = game.pos(player);
+    let at = game.position(player);
     let target = cell_floor((12, 20, 1));
     assert!(Vec2::new(at.x - target.x, at.y - target.y).length() < 0.5, "arrived at the exit: {at} vs {target}");
     let teleports = game.notes.iter().filter(|n| matches!(n, TransportEvent::Teleported { .. })).count();
@@ -335,19 +304,19 @@ fn a_portal_takes_whatever_lands_in_it_and_the_exit_does_not_send_it_back() {
 
     // Using the exit portal by hand goes back, to the block above the entrance.
     game.interact(player);
-    let back = game.pos(player);
+    let back = game.position(player);
     let above = cell_floor((5, 10, 2));
     assert!((back - above).length() < 0.2, "back above the entrance: {back} vs {above}");
 }
 
 #[test]
 fn a_closed_portal_teleports_nothing_and_the_target_can_be_changed() {
-    let mut game = Game::new();
+    let mut game = Game::stone();
     // An exit portal is closed.
     let closed = game.caveland.transport_mut().spawn_portal(&mut game.entities, (8, 10, 1), (30, 30, 1), true);
-    let waiting = game.player_at((8, 10, 1));
+    let waiting = game.player_in((8, 10, 1));
     game.seconds(1.0);
-    let at = game.pos(waiting);
+    let at = game.position(waiting);
     let here = cell_floor((8, 10, 1));
     assert!(Vec2::new(at.x - here.x, at.y - here.y).length() < 0.5, "stayed at the closed portal: {at}");
     assert!(!game.notes.iter().any(|n| matches!(n, TransportEvent::Teleported { .. })));
@@ -356,16 +325,16 @@ fn a_closed_portal_teleports_nothing_and_the_target_can_be_changed() {
     // An open one follows `portaltarget`.
     let open = game.caveland.transport_mut().spawn_portal(&mut game.entities, (5, 10, 1), (12, 20, 1), false);
     assert!(game.caveland.transport_mut().set_portal_target(&[open], (30, 30, 1)));
-    let player = game.player_at((5, 10, 1));
+    let player = game.player_in((5, 10, 1));
     game.seconds(1.0);
-    let at = game.pos(player);
+    let at = game.position(player);
     let target = cell_floor((30, 30, 1));
     assert!(Vec2::new(at.x - target.x, at.y - target.y).length() < 0.5, "sent to the new target: {at} vs {target}");
 }
 
 #[test]
 fn the_generator_creates_portals_and_a_cave_exit_sends_robots() {
-    let mut game = Game::new();
+    let mut game = Game::stone();
     // The portal of cave 0 as the Caveland generator places it.
     let spawn = EntitySpawn {
         kind: "ExitPortal",
@@ -392,7 +361,7 @@ fn the_generator_creates_portals_and_a_cave_exit_sends_robots() {
 
 #[test]
 fn nothing_spawns_while_a_player_is_near_the_cave_exit() {
-    let mut game = Game::new();
+    let mut game = Game::stone();
     let spawn = EntitySpawn {
         kind: "ExitPortal",
         cell: (21, 1212, 4),
@@ -412,7 +381,7 @@ fn nothing_spawns_while_a_player_is_near_the_cave_exit() {
 /// A hole in the surface at (3, 10, 1) (even row), the way down to cave 0 at (21, 1266, 7), a floor
 /// in that cave.
 fn hole_game() -> Game {
-    let mut game = Game::new();
+    let mut game = Game::stone();
     game.place((3, 10, 1), Block::new(ids::ENTRY, 0));
     for x in 15..30 {
         for y in 1260..1272 {
@@ -430,7 +399,7 @@ fn a_hole_in_the_ground_takes_a_player_to_the_caves() {
     assert_eq!(game.world.get(3, 10, 1), Block::new(ids::ENTRY, 0));
     let player = game.caveland.spawn_player(&mut game.entities, 0, cell_floor((3, 10, 1)) + Vec3::Z * 2.0);
     game.seconds(2.0);
-    let at = game.pos(player);
+    let at = game.position(player);
     let (gx, gy) = to_iso(21, 1266);
     assert!(Vec2::new(at.x - gx, at.y - gy).length() < 1.0, "in cave 0, below its way up: {at}");
     assert!(at.z < 7.5, "and falling, or standing on its floor: {}", at.z);
@@ -452,7 +421,7 @@ fn something_built_over_the_hole_closes_it() {
 fn using_the_hole_offers_a_lift_and_confirming_places_a_construction_site() {
     let mut game = hole_game();
     game.step(3);
-    let player = game.player_at((3, 11, 1));
+    let player = game.player_in((3, 11, 1));
     // Standing next to the hole, which is the nearest thing to use.
     game.interact(player);
     let offered = game.notes.iter().find_map(|n| match n {
@@ -493,22 +462,22 @@ fn a_lift_takes_a_player_down_to_the_cave_and_back_up() {
     assert_eq!(game.caveland.transport().portal(exit).unwrap().target, (3, 10, 2));
     assert_eq!(game.world.get(21, 1266, 0).id(), ids::LIFT_GROUND);
     let stand = cell_floor((3, 10, 2));
-    assert!(Vec2::new(game.pos(basket).x - stand.x, game.pos(basket).y - stand.y).length() < 0.1);
+    assert!(Vec2::new(game.position(basket).x - stand.x, game.position(basket).y - stand.y).length() < 0.1);
 
     // Down.
-    let player = game.player_at((3, 11, 2));
+    let player = game.player_in((3, 11, 2));
     game.entities.get_mut(player).unwrap().position = stand + Vec3::new(0.3, 0.0, 0.0);
     game.interact(player);
     assert_eq!(game.caveland.transport().basket(basket).unwrap().passenger(), Some(player));
     assert_eq!(game.caveland.transport().basket(basket).unwrap().movement_dir(), -1);
     game.seconds(4.0);
     let (gx, gy) = to_iso(21, 1266);
-    let basket_at = game.pos(basket);
+    let basket_at = game.position(basket);
     assert!(Vec2::new(basket_at.x - gx, basket_at.y - gy).length() < 0.1, "the basket is in the cave: {basket_at}");
     assert!(basket_at.z < 1.2, "on the lift ground: {}", basket_at.z);
     assert_eq!(game.caveland.transport().basket(basket).unwrap().movement_dir(), 0, "it stopped");
     assert_eq!(game.caveland.transport().basket(basket).unwrap().passenger(), None, "and let the player out");
-    let down = game.pos(player);
+    let down = game.position(player);
     assert!(Vec2::new(down.x - gx, down.y - gy).length() < 3.0 && down.z < 1.5, "the player is in the cave: {down}");
     assert!(game.entities.get(player).unwrap().health() > 99.0, "unhurt");
 
@@ -519,7 +488,7 @@ fn a_lift_takes_a_player_down_to_the_cave_and_back_up() {
     assert_eq!(game.caveland.transport().basket(basket).unwrap().passenger(), Some(player));
     assert_eq!(game.caveland.transport().basket(basket).unwrap().movement_dir(), 1);
     game.seconds(5.0);
-    let top = game.pos(player);
+    let top = game.position(player);
     assert!(Vec2::new(top.x - stand.x, top.y - stand.y).length() < 3.0, "back on the surface: {top}");
     assert!(top.z > 1.5 && top.z < 3.5, "at the lift's height: {}", top.z);
     assert_eq!(game.caveland.transport().basket(basket).unwrap().movement_dir(), 0);
@@ -538,7 +507,7 @@ fn a_lift_that_is_dug_out_takes_its_basket_with_it() {
 
 #[test]
 fn a_lift_without_a_hole_under_it_does_nothing() {
-    let mut game = Game::new();
+    let mut game = Game::stone();
     game.place((3, 10, 2), Block::new(ids::LIFT, 0));
     game.step(5);
     assert!(game.caveland.things().is_empty());
@@ -556,7 +525,7 @@ fn a_cart_rolls_into_the_basket_and_rides_down() {
     assert_eq!(game.caveland.transport().basket(basket).unwrap().passenger(), Some(cart), "the basket took the cart");
     game.seconds(4.0);
     let (gx, gy) = to_iso(21, 1266);
-    let at = game.pos(cart);
+    let at = game.position(cart);
     assert!(Vec2::new(at.x - gx, at.y - gy).length() < 3.0 && at.z < 2.0, "the cart is in the cave: {at}");
 }
 
@@ -564,7 +533,7 @@ fn a_cart_rolls_into_the_basket_and_rides_down() {
 
 #[test]
 fn the_spaceship_flies_in_with_the_players_hidden_and_crashes() {
-    let mut game = Game::new();
+    let mut game = Game::stone();
     let target = (10, 40, 1);
     let start = cell_floor(target) + Vec3::new(-40.0, 0.0, 29.0);
     let ship = game.caveland.transport_mut().spawn_spaceship(&mut game.entities, start);
@@ -576,7 +545,7 @@ fn the_spaceship_flies_in_with_the_players_hidden_and_crashes() {
 
     // On its way: the player moves with the ship.
     game.seconds(0.5);
-    let (s, p) = (game.pos(ship), game.pos(player));
+    let (s, p) = (game.position(ship), game.position(player));
     assert!(s.x > start.x + 3.0, "the ship flies towards the crash site: {s}");
     assert!((s - p).length() < 0.3, "the player is inside it: {s} vs {p}");
     assert!(game.caveland.is_hidden(player));
@@ -592,7 +561,7 @@ fn the_spaceship_flies_in_with_the_players_hidden_and_crashes() {
     assert_eq!(game.entities.get(player).unwrap().health(), 100.0, "and is unhurt: the explosion spares the passengers");
     let explosions = game.events.iter().filter(|e| matches!(e, GameEvent::Explosion { .. })).count();
     assert_eq!(explosions, 2, "a harmless one in the air, a real one on the ground");
-    assert!(game.pos(ship).z < 2.0, "the wreck is on the ground");
+    assert!(game.position(ship).z < 2.0, "the wreck is on the ground");
     let before = game.notes.len();
     game.seconds(2.0);
     assert_eq!(game.notes.len(), before, "it crashes once");
@@ -600,10 +569,10 @@ fn the_spaceship_flies_in_with_the_players_hidden_and_crashes() {
 
 #[test]
 fn a_ship_without_a_crash_site_just_floats_where_it_is() {
-    let mut game = Game::new();
+    let mut game = Game::stone();
     let start = cell_floor((10, 40, 1)) + Vec3::Z * 20.0;
     let ship = game.caveland.transport_mut().spawn_spaceship(&mut game.entities, start);
     game.seconds(1.0);
-    assert!(game.pos(ship).z < start.z, "without enable_crash it is an ordinary falling body");
+    assert!(game.position(ship).z < start.z, "without enable_crash it is an ordinary falling body");
     assert!(!game.caveland.transport().ship(ship).unwrap().crashed);
 }

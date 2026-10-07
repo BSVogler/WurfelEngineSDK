@@ -41,23 +41,18 @@
 //! The Java engine had two volumes (the CVars `sound` and `music`, both default 1). Master and mute
 //! are additions for the browser; the effective gains are `master * music` and `master * effects`.
 
-// The public API is called from web.rs by the game loop; until then it is only used by the tests.
-#![allow(dead_code)]
-
 pub mod entity_sounds;
 pub mod music;
 
 #[cfg(target_arch = "wasm32")]
 mod web;
 #[cfg(target_arch = "wasm32")]
-#[allow(unused_imports)] // until web.rs creates one
-pub use web::{Audio, AudioStatus};
+pub use web::Audio;
 
 use std::collections::HashMap;
 
 pub use entity_sounds::{EntityInfo, EntitySoundConfig};
-#[allow(unused_imports)]
-pub use music::{Music, MusicCommand, PlaybackMode};
+pub use music::{Music, MusicCommand};
 use wurfel_sim::entity::EntityId;
 
 /// A position in the isometric ground frame: `[gx, gy, z]` in blocks (see
@@ -185,10 +180,12 @@ impl SoundBank {
         self.sounds.keys().map(String::as_str)
     }
 
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.sounds.len()
     }
 
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.sounds.is_empty()
     }
@@ -288,6 +285,7 @@ pub enum SoundCommand {
     SetLoop { handle: LoopHandle, volume: f32, pan: f32 },
     StopLoop { handle: LoopHandle },
     /// Stop every effect (not the music), `stopEverySound`.
+    #[allow(dead_code)] // only tests stop everything so far
     StopAll,
     Music(MusicCommand),
     /// Set the gain of the effects and music buses.
@@ -347,14 +345,11 @@ impl AudioLogic {
         &self.bank
     }
 
-    pub fn bank_mut(&mut self) -> &mut SoundBank {
-        &mut self.bank
-    }
-
     pub fn music(&self) -> &Music {
         &self.music
     }
 
+    #[allow(dead_code)] // read by `Audio::status`, which nothing calls yet
     pub fn settings(&self) -> AudioSettings {
         self.settings
     }
@@ -468,6 +463,7 @@ impl AudioLogic {
         }
     }
 
+    #[cfg(test)]
     pub fn stop_all(&mut self) {
         self.loops.clear();
         self.entities.clear();
@@ -477,6 +473,7 @@ impl AudioLogic {
     // ---- music
 
     /// Start the playlist (the title music, then the overworld).
+    #[allow(dead_code)] // music is ported but the game loop never starts it yet
     pub fn start_music(&mut self) {
         self.music.start();
     }
@@ -486,6 +483,7 @@ impl AudioLogic {
         self.music.play(track)
     }
 
+    #[allow(dead_code)] // music is ported but the game loop never starts it yet
     pub fn stop_music(&mut self) {
         self.music.stop();
     }

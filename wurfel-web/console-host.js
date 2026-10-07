@@ -43,13 +43,11 @@
       return suggest ? Array.from(suggest(String(prefix))) : [];
     },
 
-    /** The server's answer, as JSON {ok, text, lines?}, called by the client. */
+    /** The server's answer to a forwarded line, as JSON {lines}, called by the client. */
     reply(json) {
       let answer;
       try { answer = typeof json === 'string' ? JSON.parse(json) : json; } catch (e) { return; }
-      const answered = Array.isArray(answer.lines) && answer.lines.length
-        ? answer.lines
-        : [{ level: answer.ok ? 'info' : 'error', text: String(answer.text || (answer.ok ? 'done' : 'failed')) }];
+      const answered = Array.isArray(answer.lines) ? answer.lines : [];
       const entry = waiting.shift();
       if (entry) {
         clearTimeout(entry.timer);

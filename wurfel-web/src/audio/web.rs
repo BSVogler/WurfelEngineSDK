@@ -158,6 +158,7 @@ impl Backend {
         Ok(())
     }
 
+    #[allow(dead_code)] // only `Audio::status` asks
     fn is_available(&self) -> bool {
         self.ctx.is_some()
     }
@@ -571,6 +572,7 @@ fn install_listeners(shared: &Rc<Shared>) {
 // ----------------------------------------------------------------------------------- the facade
 
 /// What the audio system is doing, for a debug overlay and for tests.
+#[allow(dead_code)] // no debug overlay shows it yet
 #[derive(Debug, Clone, PartialEq)]
 pub struct AudioStatus {
     /// A WebAudio context could be created.
@@ -608,11 +610,6 @@ impl Audio {
         Audio { logic, backend, shared }
     }
 
-    /// Whether the browser gave us an audio context at all.
-    pub fn is_available(&self) -> bool {
-        self.backend.is_available()
-    }
-
     /// The platform-independent part, for settings, the bank, per-entity sound configs...
     pub fn logic_mut(&mut self) -> &mut AudioLogic {
         &mut self.logic
@@ -642,6 +639,7 @@ impl Audio {
         self.logic.on_jump(id, position);
     }
 
+    #[allow(dead_code)] // music is ported but the game loop never starts it yet
     /// Start the music (title first). Works before a user gesture: it begins at the first one.
     pub fn start_music(&mut self) {
         self.logic.start_music();
@@ -651,6 +649,7 @@ impl Audio {
         self.logic.play_music(track)
     }
 
+    #[allow(dead_code)] // music is ported but the game loop never starts it yet
     pub fn stop_music(&mut self) {
         self.logic.stop_music();
     }
@@ -678,6 +677,7 @@ impl Audio {
 
     /// Snapshot of the audio state. Reads the output level, so call it for a HUD or a test, not
     /// every frame.
+    #[allow(dead_code)] // no debug overlay shows it yet
     pub fn status(&self) -> AudioStatus {
         let buffers = self.shared.buffers.borrow();
         let mut sounds_failed: Vec<String> =

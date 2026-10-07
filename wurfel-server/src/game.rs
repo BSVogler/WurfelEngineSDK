@@ -6,6 +6,7 @@ use glam::Vec3;
 use wurfel_sim::animation::{AnimatedBlocks, BlockAnimation};
 use wurfel_sim::block::id;
 use wurfel_sim::entity::benchmark::{benchmark_ball, BenchmarkSpawner};
+use wurfel_sim::console::OutputLine;
 use wurfel_sim::particle::Rng;
 use wurfel_sim::entity::physics::occupied_cells;
 use wurfel_sim::entity::{Entities, EntityId, Event};
@@ -126,8 +127,8 @@ pub struct Game {
     balls: Vec<(EntityId, u64)>,
     /// How long the last tick took, for the benchmark's "is the server still fast" test.
     last_tick_secs: f32,
-    /// Answers to engine console lines, sent with the next `drain_outbox`.
-    outbox: Vec<ServerMsg>,
+    /// Console answers, each for one player only (see [`Game::take_replies`]).
+    replies: Vec<(EntityId, ServerMsg)>,
     /// Players who logged in with `auth <token>` (see [`Game::is_admin`]).
     admins: HashSet<EntityId>,
     /// Wrong `auth` tokens per player, to stop guessing.
@@ -183,7 +184,7 @@ impl Game {
             benchmark: None,
             balls: Vec::new(),
             last_tick_secs: 0.0,
-            outbox: Vec::new(),
+            replies: Vec::new(),
             admins: HashSet::new(),
             auth_failures: HashMap::new(),
             admin_grants: Vec::new(),
@@ -220,7 +221,6 @@ impl Game {
     /// the plain engine.
     pub fn drain_outbox(&mut self) -> Vec<ServerMsg> {
         let mut out = self.mode.as_mut().map(CavelandMode::drain_outbox).unwrap_or_default();
-        out.append(&mut self.outbox);
         // Animated blocks: one message per batch, each cell at most once (the newest value).
         let mut edits = std::mem::take(&mut self.animation_edits);
         edits.reverse();
@@ -465,6 +465,7 @@ impl Game {
         self.admins.remove(&id);
         self.auth_failures.remove(&id);
         self.admin_grants.retain(|&p| p != id);
+        self.replies.retain(|(p, _)| *p != id);
         if self.benchmark.as_ref().is_some_and(|(_, owner)| *owner == id) {
             self.benchmark = None;
         }
@@ -621,11 +622,18 @@ impl Game {
             ClientMsg::Command { line, path } => {
                 // Only admins (and the host) may use cheats and change the world.
                 let admin = self.is_admin(player);
-                let line = line.trim().trim_start_matches(['/', ':']);
-                let name = line.split_whitespace().next().unwrap_or("").to_lowercase();
+                let line = wurfel_sim::console::normalize_line(&line);
+                let name = wurfel_sim::console::command_name(line);
                 match self.mode.as_mut() {
                     // The game mode's own commands (Caveland: `give`, `tpplayer`...).
-                    Some(mode) if CavelandMode::has_command(&name) => mode.command(&mut self.entities, &mut self.world, player, line, admin),
+                    Some(mode) if CavelandMode::has_command(&name) => {
+                        let answer = mode.command(&mut self.entities, &mut self.world, player, line, admin);
+                        let line = match answer {
+                            Ok(text) => OutputLine::info(text),
+                            Err(text) => OutputLine::error(text),
+                        };
+                        self.console_reply(player, vec![line]);
+                    }
                     _ => self.engine_command(player, line, &path),
                 }
                 None
@@ -1285,40 +1293,59 @@ mod game_mode_tests {
         for id in [guest, host] {
             game.handle(id, ClientMsg::Command { line: "give Torch".into(), path: String::new() });
         }
-        let answers: Vec<(u64, bool)> = game
-            .drain_outbox()
-            .into_iter()
-            .filter_map(|m| match m {
-                ServerMsg::Rules { kind, data } if kind == "console" => Some((data["to"].as_u64().unwrap(), data["ok"].as_bool().unwrap())),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(answers, vec![(guest as u64, false), (host as u64, true)]);
+        // Each answer goes to the player who asked, and nobody else hears of it.
+        let answers: Vec<(u32, bool)> = [guest, host].into_iter().flat_map(|id| replies_ok(&mut game, id).into_iter().map(move |ok| (id, ok))).collect();
+        let broadcast = game.drain_outbox();
+        assert!(!broadcast.iter().any(|m| matches!(m, ServerMsg::ConsoleReply { .. })));
+        assert!(!broadcast.iter().any(|m| matches!(m, ServerMsg::Rules { kind, .. } if kind == "console")));
+        assert_eq!(answers, vec![(guest, false), (host, true)]);
         // The plain engine has no Caveland commands: its own console answers.
         let mut engine = Game::island(1);
         let me = engine.add_player();
         assert_eq!(engine.handle(me, ClientMsg::Command { line: "give Torch".into(), path: String::new() }), None);
-        let answer = console_answers(&mut engine).pop().unwrap();
+        let answer = replies(&mut engine, me).pop().unwrap();
         assert_eq!(answer["ok"], false);
         assert!(answer["text"].as_str().unwrap().contains("command not found"), "{answer}");
     }
 
-    fn console_answers(game: &mut Game) -> Vec<serde_json::Value> {
-        game.drain_outbox()
+    /// The console answers kept for `id`, as `{ok, text, lines}` for short assertions.
+    fn replies(game: &mut Game, id: u32) -> Vec<serde_json::Value> {
+        game.take_replies(id)
             .into_iter()
-            .filter_map(|m| match m {
-                ServerMsg::Rules { kind, data } if kind == "console" => Some(data),
-                _ => None,
+            .map(|m| match m {
+                ServerMsg::ConsoleReply { lines } => {
+                    let ok = !lines.iter().any(|l| l.level == wurfel_sim::console::Level::Error);
+                    let text = lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n");
+                    serde_json::json!({"ok": ok, "text": text, "lines": lines})
+                }
+                other => panic!("not a console reply: {other:?}"),
             })
             .collect()
     }
 
+    fn replies_ok(game: &mut Game, id: u32) -> Vec<bool> {
+        replies(game, id).iter().map(|r| r["ok"] == true).collect()
+    }
+
     fn command(game: &mut Game, id: u32, line: &str) -> serde_json::Value {
         game.handle(id, ClientMsg::Command { line: line.into(), path: String::new() });
-        let mut answers = console_answers(game);
+        let mut answers = replies(game, id);
         assert_eq!(answers.len(), 1, "one answer for '{line}'");
-        assert_eq!(answers[0]["to"], id);
         answers.pop().unwrap()
+    }
+
+    #[test]
+    fn console_answers_reach_only_the_player_who_asked() {
+        let mut game = Game::island(1);
+        let (host, guest) = (game.add_player(), game.add_player());
+        game.handle(guest, ClientMsg::Command { line: "auth wrong".into(), path: String::new() });
+        assert!(game.take_replies(host).is_empty(), "the host does not see the guest's login");
+        assert!(game.drain_outbox().iter().all(|m| !matches!(m, ServerMsg::ConsoleReply { .. })), "not broadcast");
+        assert_eq!(replies_ok(&mut game, guest), vec![false]);
+        // A player who leaves takes their unsent answers along.
+        game.handle(guest, ClientMsg::Command { line: "printmap".into(), path: String::new() });
+        game.remove_player(guest);
+        assert!(game.take_replies(guest).is_empty());
     }
 
     #[test]
@@ -1378,10 +1405,8 @@ mod game_mode_tests {
         assert!(game.things.is_empty());
 
         let (cx, cy) = chunk_of(x, y);
-        game.handle(host, ClientMsg::Command { line: format!("fillwithair {} {}", cx + 3, cy), path: String::new() });
-        let out = game.drain_outbox();
-        assert!(out.iter().any(|m| matches!(m, ServerMsg::Rules { data, .. } if data["ok"] == true)), "{out:?}");
-        assert!(out.iter().any(|m| matches!(m, ServerMsg::BlocksSet { .. })), "the clients hear of it");
+        assert_eq!(command(&mut game, host, &format!("fillwithair {} {}", cx + 3, cy))["ok"], true);
+        assert!(game.drain_outbox().iter().any(|m| matches!(m, ServerMsg::BlocksSet { .. })), "the clients hear of it");
         let top = (cx + 3) * wurfel_sim::CHUNK_SIZE_X;
         assert!((0..CHUNK_SIZE_Z).all(|z| game.world.get(top, cy * wurfel_sim::CHUNK_SIZE_Y, z).is_air()));
 

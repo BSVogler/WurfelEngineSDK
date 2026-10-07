@@ -156,6 +156,16 @@ pub struct SaveData {
     pub launchers: Vec<(Cell, Launcher)>,
 }
 
+/// Something a player can talk to or operate (see `Caveland::nearest_extra`).
+#[derive(Clone, Copy)]
+pub(crate) enum Target {
+    Site(Cell),
+    Factory(Cell),
+    Turret(Cell),
+    Launcher(Cell),
+    Entity(EntityId),
+}
+
 impl Caveland {
     // ---- spawning -------------------------------------------------------------------------
 
@@ -405,27 +415,9 @@ impl Caveland {
 
     // ---- interaction ----------------------------------------------------------------------
 
-    /// The interactable thing nearest to the player, if one is nearer than the nearest oven (which
-    /// the core rules handle). Returns whether something was used.
-    pub(crate) fn interact_extra(
-        &mut self,
-        entities: &mut Entities,
-        world: &World,
-        id: EntityId,
-        state: &mut PlayerState,
-        position: Vec3,
-    ) -> bool {
-        if self.x.dialogs.contains_key(&id) {
-            return true; // busy talking
-        }
-        #[derive(Clone, Copy)]
-        enum Target {
-            Site(Cell),
-            Factory(Cell),
-            Turret(Cell),
-            Launcher(Cell),
-            Entity(EntityId),
-        }
+    /// The characters, flags and machines of the logic blocks the player at `position` could use,
+    /// the nearest first.
+    pub(crate) fn nearest_extra(&self, entities: &Entities, world: &World, position: Vec3) -> Option<(f32, Target)> {
         let mut best: Option<(f32, Target)> = None;
         let mut offer = |distance: f32, target: Target| {
             if best.is_none_or(|(d, _)| distance < d) {
@@ -466,7 +458,23 @@ impl Caveland {
                 offer(d, Target::Entity(eid));
             }
         }
-        let Some((distance, target)) = best else { return false };
+        best
+    }
+
+    /// The interactable thing nearest to the player, if one is nearer than the nearest oven (which
+    /// the core rules handle). Returns whether something was used.
+    pub(crate) fn interact_extra(
+        &mut self,
+        entities: &mut Entities,
+        world: &World,
+        id: EntityId,
+        state: &mut PlayerState,
+        position: Vec3,
+    ) -> bool {
+        if self.x.dialogs.contains_key(&id) {
+            return true; // busy talking
+        }
+        let Some((distance, target)) = self.nearest_extra(entities, world, position) else { return false };
         // An oven that is closer wins; the core rules use it.
         if let Some(oven) = self.machines_near(world, position).first() {
             if cell_center(*oven).distance(position + Vec3::Z * 0.5) < distance {

@@ -22,9 +22,6 @@
 //! the diamonds tile without gaps. Screen space below means the space of `shader.wgsl`: pixels at
 //! zoom 1, y down, a ground point `(x, y)` at `(200 * (x + 0.5 * odd), 50 * y)`.
 
-// The module is complete but only used once `web.rs` calls it.
-#![allow(dead_code)]
-
 use wurfel_sim::block::id;
 use wurfel_sim::grid::from_iso;
 use wurfel_sim::{Block, World, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z};
@@ -52,6 +49,7 @@ pub enum Mode {
     /// Java `Minimap`.
     Map,
     /// Java `MiniMapChunkDebug`.
+    #[allow(dead_code)] // ported and tested; no key toggles it yet
     ChunkGrid,
 }
 
@@ -61,6 +59,7 @@ pub enum ChunkState {
     /// Data is here.
     Loaded,
     /// Asked the server, no answer yet.
+    #[allow(dead_code)] // the client does not track pending chunk requests yet
     Requested,
     /// Not loaded and not requested.
     Missing,
@@ -148,6 +147,7 @@ impl Layout {
     }
 
     /// Centre of block column `(x, y)` in pixels.
+    #[cfg(test)]
     fn center(&self, x: i32, y: i32) -> (f32, f32) {
         let s = self.scale;
         (
@@ -338,6 +338,7 @@ fn chunk_color(state: ChunkState) -> [u8; 4] {
 // ------------------------------------------------------------------------------------ rasteriser
 
 /// Renders without keeping state. Prefer [`MinimapRenderer`] when drawing every frame.
+#[cfg(test)]
 pub fn render(data: &MinimapData, width: u32, height: u32) -> Vec<u8> {
     MinimapRenderer::default().render(data, width, height).to_vec()
 }
@@ -620,16 +621,10 @@ mod glue {
                 let _ = self.context.put_image_data(&image, 0.0, 0.0);
             }
         }
-
-        /// Remove the canvas from the page.
-        pub fn remove(&self) {
-            self.canvas.remove();
-        }
     }
 }
 
 #[cfg(target_arch = "wasm32")]
-#[allow(unused_imports)] // until web.rs creates one
 pub use glue::Minimap;
 
 // ------------------------------------------------------------------------------------------ tests

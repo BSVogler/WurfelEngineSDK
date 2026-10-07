@@ -2,75 +2,20 @@
 
 use caveland_sim::blocks::ids;
 use caveland_sim::cells::neighbour;
-use caveland_sim::collectible::{CollectibleType as C, Item};
+use caveland_sim::collectible::CollectibleType as C;
 use caveland_sim::game::{cell_center, cell_floor, Cell};
 use caveland_sim::player::{Action, Controls};
 use caveland_sim::power::TargetMode;
-use caveland_sim::{Caveland, DialogMode, EntityKind, ExtraEvent, GameEvent, Team, Tuning};
+use caveland_sim::{DialogMode, EntityKind, ExtraEvent, GameEvent, Team};
 use glam::Vec3;
 use wurfel_sim::block::Block;
-use wurfel_sim::entity::{Entities, EntityId};
+use wurfel_sim::entity::EntityId;
 use wurfel_sim::grid::{from_iso, to_iso};
-use wurfel_sim::{AirGenerator, World};
 
-const DT: f32 = 1.0 / 60.0;
-
-struct Game {
-    world: World,
-    entities: Entities,
-    caveland: Caveland,
-    events: Vec<GameEvent>,
-    extra: Vec<ExtraEvent>,
-}
+mod common;
+use common::Game;
 
 impl Game {
-    /// A sand floor at z = 0 around block (10, 40).
-    fn new() -> Game {
-        let mut world = World::new(AirGenerator);
-        Caveland::install(&mut world);
-        for x in -10..60 {
-            for y in -20..100 {
-                world.set(x, y, 0, Block::new(ids::SAND, 0));
-            }
-        }
-        Game { world, entities: Entities::new(), caveland: Caveland::new(Tuning::default(), 1), events: Vec::new(), extra: Vec::new() }
-    }
-
-    fn player_at(&mut self, x: i32, y: i32) -> EntityId {
-        let (gx, gy) = to_iso(x, y);
-        self.caveland.spawn_player(&mut self.entities, 0, Vec3::new(gx, gy, 1.0))
-    }
-
-    fn step(&mut self, steps: usize) {
-        for _ in 0..steps {
-            let events = self.caveland.tick(&mut self.entities, &mut self.world, DT);
-            self.events.extend(events);
-            self.extra.extend(self.caveland.drain_extra_events());
-        }
-    }
-
-    fn seconds(&mut self, s: f32) {
-        self.step((s * 60.0).round() as usize);
-    }
-
-    fn act(&mut self, player: EntityId, action: Action) {
-        self.caveland.act(&mut self.entities, &mut self.world, player, action);
-        self.events.extend(self.caveland.drain_events());
-        self.extra.extend(self.caveland.drain_extra_events());
-    }
-
-    fn give(&mut self, player: EntityId, kind: C) {
-        assert!(self.caveland.player_mut(player).unwrap().inventory.add(Item::new(kind)));
-    }
-
-    fn pack(&self, player: EntityId) -> Vec<C> {
-        self.caveland.player(player).unwrap().inventory.items().iter().map(|i| i.kind).collect()
-    }
-
-    fn position(&self, id: EntityId) -> Vec3 {
-        self.entities.get(id).unwrap().position
-    }
-
     fn cell(&self, id: EntityId) -> Cell {
         let p = self.position(id);
         let (x, y) = from_iso(p.x, p.y);
@@ -89,14 +34,6 @@ impl Game {
         let e = self.entities.get_mut(id).unwrap();
         e.position = cell_floor(cell);
         e.body.as_mut().unwrap().movement = Vec3::ZERO;
-    }
-
-    fn saw_extra(&self, f: impl Fn(&ExtraEvent) -> bool) -> bool {
-        self.extra.iter().any(f)
-    }
-
-    fn saw(&self, f: impl Fn(&GameEvent) -> bool) -> bool {
-        self.events.iter().any(f)
     }
 
     fn dialog_text(&self, player: EntityId) -> Option<String> {

@@ -2,6 +2,19 @@
 members = ["wurfel-sim", "caveland-sim", "wurfel-web", "wurfel-server"]
 resolver = "2"
 
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "BSD-3-Clause"
+
+# Shared versions: crates write `name.workspace = true` (adding features locally when needed).
+[workspace.dependencies]
+wurfel-sim = { path = "wurfel-sim" }
+caveland-sim = { path = "caveland-sim" }
+glam = "0.34.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+
 # Fast iteration: dependencies are optimised (wgpu is unusable at opt-level 0), our own code is
 # lightly optimised so world generation and meshing do not dominate rebuild-and-reload cycles.
 [profile.dev]

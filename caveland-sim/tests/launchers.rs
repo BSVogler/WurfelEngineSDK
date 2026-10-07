@@ -7,60 +7,22 @@ use caveland_sim::launcher::{simulate_flight, Launcher, CANNON_CAPACITY, CATAPUL
 use caveland_sim::player::{Action, Controls};
 use caveland_sim::{Caveland, EntityKind, ExtraEvent, GameEvent, Tuning};
 use glam::Vec3;
-use wurfel_sim::block::Block;
 use wurfel_sim::entity::{Entities, EntityId};
 use wurfel_sim::grid::to_iso;
-use wurfel_sim::{AirGenerator, World};
 
-const DT: f32 = 1.0 / 60.0;
 const MACHINE: Cell = (10, 40, 1);
 
-struct Game {
-    world: World,
-    entities: Entities,
-    caveland: Caveland,
-    events: Vec<GameEvent>,
-    extra: Vec<ExtraEvent>,
-}
+mod common;
+use common::Game;
 
 impl Game {
-    fn new() -> Game {
-        let mut world = World::new(AirGenerator);
-        Caveland::install(&mut world);
-        for x in -10..60 {
-            for y in -20..100 {
-                world.set(x, y, 0, Block::new(ids::SAND, 0));
-            }
-        }
-        Game { world, entities: Entities::new(), caveland: Caveland::new(Tuning::default(), 1), events: Vec::new(), extra: Vec::new() }
-    }
-
     /// A game with a machine at [`MACHINE`] and a player one block away.
     fn with(block: u8) -> (Game, EntityId) {
         let mut g = Game::new();
         assert!(g.caveland.place_machine(&mut g.world, MACHINE, block));
-        let (gx, gy) = to_iso(10, 42);
-        let player = g.caveland.spawn_player(&mut g.entities, 0, Vec3::new(gx, gy, 1.0));
+        let player = g.player_at(10, 42);
         g.step(2);
         (g, player)
-    }
-
-    fn step(&mut self, steps: usize) {
-        for _ in 0..steps {
-            let events = self.caveland.tick(&mut self.entities, &mut self.world, DT);
-            self.events.extend(events);
-            self.extra.extend(self.caveland.drain_extra_events());
-        }
-    }
-
-    fn seconds(&mut self, s: f32) {
-        self.step((s * 60.0).round() as usize);
-    }
-
-    fn act(&mut self, player: EntityId, action: Action) {
-        self.caveland.act(&mut self.entities, &mut self.world, player, action);
-        self.events.extend(self.caveland.drain_events());
-        self.extra.extend(self.caveland.drain_extra_events());
     }
 
     /// Open the machine's menu and pick an option (0 launch me, 1 launch item, 2 shell, 3 load).
@@ -69,18 +31,6 @@ impl Game {
             self.act(player, Action::Interact);
         }
         self.act(player, Action::Choose(option));
-    }
-
-    fn give(&mut self, player: EntityId, kind: C) {
-        assert!(self.caveland.player_mut(player).unwrap().inventory.add(Item::new(kind)));
-    }
-
-    fn pack(&self, player: EntityId) -> Vec<C> {
-        self.caveland.player(player).unwrap().inventory.items().iter().map(|i| i.kind).collect()
-    }
-
-    fn position(&self, id: EntityId) -> Vec3 {
-        self.entities.get(id).unwrap().position
     }
 
     fn velocity(&self, id: EntityId) -> Vec3 {

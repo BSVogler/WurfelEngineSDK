@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use caveland_sim::collectible::{CollectibleType, Item};
 use caveland_sim::commands::{CommandOutcome, COMMANDS};
+use wurfel_sim::console::{command_name, normalize_line};
 use caveland_sim::crafting::RecipeResult;
 use caveland_sim::{Action, Caveland, Controls, DialogMode, EntityKind, ExtraEvent, GameEvent, Team, TransportEvent, Tuning};
 use glam::Vec3;
@@ -45,6 +46,8 @@ const SHIP_TARGET: Vec3 = Vec3::ZERO;
 const THINGS_EVERY: u64 = 2;
 /// The players' state is checked this often (ten times a second) and only sent when it changed.
 const STATE_EVERY: u64 = 6;
+/// How often the players' interaction signs are looked up, in steps.
+const FOCUS_EVERY: u64 = 3;
 /// Most things sent at once. A cave full of items would otherwise swamp the connection.
 const MAX_THINGS: usize = 256;
 /// Most catapults and cannons described at once.
@@ -60,6 +63,8 @@ pub struct CavelandMode {
     last_state: String,
     /// What the last `launchers` message said.
     last_launchers: String,
+    /// Where each player was last told their interaction sign floats (quantized, `None` = hidden).
+    last_focus: HashMap<EntityId, Option<[f32; 3]>>,
     /// Where players (re)start.
     spawn: Option<Vec3>,
     /// The first player finds a few things lying around.
@@ -96,6 +101,7 @@ impl CavelandMode {
             action_happenings: Vec::new(),
             last_state: String::new(),
             last_launchers: String::new(),
+            last_focus: HashMap::new(),
             spawn: None,
             seeded: false,
             numbers: HashMap::new(),
@@ -149,6 +155,7 @@ impl CavelandMode {
 
     pub fn remove_player(&mut self, id: EntityId) {
         self.numbers.remove(&id);
+        self.last_focus.remove(&id);
         self.riding.remove(&id);
         self.pending_lift.remove(&id);
     }
@@ -323,6 +330,9 @@ impl CavelandMode {
             cells.truncate(512);
             self.outbox.push(ServerMsg::Rules { kind: "power".into(), data: json!({ "cells": cells }) });
         }
+        if tick % FOCUS_EVERY == 0 {
+            self.send_interaction_focus(entities, world);
+        }
         if tick % STATE_EVERY == 0 {
             let launchers = self.launchers().to_string();
             if launchers != self.last_launchers {
@@ -333,6 +343,21 @@ impl CavelandMode {
             if state != self.last_state {
                 self.outbox.push(ServerMsg::Rules { kind: "state".into(), data: serde_json::from_str(&state).expect("just made") });
                 self.last_state = state;
+            }
+        }
+    }
+
+    /// Tell each player where their interaction sign belongs (what pressing "use" would act on), when
+    /// that changed. The position is rounded so a walking character does not resend every time.
+    fn send_interaction_focus(&mut self, entities: &Entities, world: &World) {
+        let mut ids: Vec<_> = self.numbers.keys().copied().collect();
+        ids.sort_unstable();
+        for id in ids {
+            let Some(position) = entities.get(id).map(|e| e.position) else { continue };
+            let focus = self.caveland.interaction_focus(entities, world, id, position).map(|p| [p.x, p.y, p.z].map(|v| (v * 4.0).round() / 4.0));
+            if self.last_focus.get(&id) != Some(&focus) {
+                self.last_focus.insert(id, focus);
+                self.private(id, "interact_focus", json!({ "pos": focus }));
             }
         }
     }
@@ -417,10 +442,11 @@ impl CavelandMode {
 
     /// A console line of a player. Only an admin (`auth <token>`, or the host: the player who has
     /// been here longest) may run them: `give` and `tpplayer` are cheats.
-    pub fn command(&mut self, entities: &mut Entities, world: &mut World, player: EntityId, line: &str, host: bool) {
-        let line = line.trim().trim_start_matches(['/', ':']);
-        let name = line.split_whitespace().next().unwrap_or("");
-        let reply = if !COMMANDS.iter().any(|(n, _)| *n == name) {
+    /// Returns the answer for the player's console (`Err` for a refusal or a failure).
+    pub fn command(&mut self, entities: &mut Entities, world: &mut World, player: EntityId, line: &str, host: bool) -> Result<String, String> {
+        let line = normalize_line(line);
+        let name = command_name(line);
+        if !COMMANDS.iter().any(|(n, _)| *n == name) {
             Err(format!("unknown command '{name}' (try: {})", COMMANDS.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")))
         } else if !host {
             Err("only the host or an admin can use commands (log in with `auth <token>`)".to_string())
@@ -462,12 +488,7 @@ impl CavelandMode {
                 }
                 Err(e) => Err(e),
             }
-        };
-        let (ok, text) = match reply {
-            Ok(text) => (true, text),
-            Err(text) => (false, text),
-        };
-        self.private(player, "console", json!({"ok": ok, "text": text}));
+        }
     }
 
     /// Keep what the blocks do not: money, machines, the respawn point, the intro. Next to the save
@@ -580,7 +601,12 @@ fn pos(p: Vec3) -> Value {
 fn describe(event: &GameEvent) -> Value {
     match event {
         GameEvent::Sound { name, position } => json!({"t": "sound", "name": name, "pos": pos(*position)}),
-        GameEvent::BlockDamaged { cell, .. } | GameEvent::HardHit { cell } => {
+        GameEvent::BlockDamaged { cell, health, .. } => {
+            let (gx, gy) = to_iso(cell.0, cell.1);
+            // The cell and what is left of it are for the cracks drawn over the block.
+            json!({"t": "dust", "pos": pos(Vec3::new(gx, gy, cell.2 as f32 + 0.5)), "cell": [cell.0, cell.1, cell.2], "health": health})
+        }
+        GameEvent::HardHit { cell } => {
             let (gx, gy) = to_iso(cell.0, cell.1);
             json!({"t": "dust", "pos": pos(Vec3::new(gx, gy, cell.2 as f32 + 0.5))})
         }
@@ -819,12 +845,9 @@ mod tests {
     fn the_host_places_a_catapult_and_firing_it_tells_the_clients_the_launch() {
         let mut s = Setup::new();
         s.sent.clear();
-        s.mode.command(&mut s.entities, &mut s.world, s.player, "place catapult", true);
-        s.mode.command(&mut s.entities, &mut s.world, s.player, "place cannon", false);
+        assert_eq!(s.mode.command(&mut s.entities, &mut s.world, s.player, "place catapult", true), Ok("placed".into()));
+        assert!(s.mode.command(&mut s.entities, &mut s.world, s.player, "place cannon", false).is_err(), "only the host places machines");
         s.run(8);
-        let answers: Vec<&Value> = rules(&s.sent, "console").collect();
-        assert_eq!(answers[0]["text"], "placed");
-        assert_eq!(answers[1]["ok"], false, "only the host places machines");
         let launchers: Vec<&Value> = rules(&s.sent, "launchers").collect();
         let list = launchers.last().expect("the aim is announced")["launchers"].as_array().unwrap();
         assert_eq!(list.len(), 1);
@@ -910,22 +933,16 @@ mod tests {
     }
 
     #[test]
-    fn commands_are_for_the_host_only_and_answer_privately() {
+    fn commands_are_for_the_host_only_and_nothing_is_broadcast() {
         let mut s = Setup::new();
         s.sent.clear();
-        s.mode.command(&mut s.entities, &mut s.world, s.player, "give Torch", false);
-        s.mode.command(&mut s.entities, &mut s.world, s.player, "fly", true);
-        s.mode.command(&mut s.entities, &mut s.world, s.player, "/give Torch", true);
-        s.mode.command(&mut s.entities, &mut s.world, s.player, "give Unobtainium", true);
+        let run = |s: &mut Setup, line: &str, host: bool| s.mode.command(&mut s.entities, &mut s.world, s.player, line, host);
+        assert_eq!(run(&mut s, "give Torch", false), Err("only the host or an admin can use commands (log in with `auth <token>`)".into()));
+        assert!(run(&mut s, "fly", true).unwrap_err().contains("unknown command 'fly'"));
+        assert!(run(&mut s, "/give Torch", true).is_ok(), "a leading slash is allowed");
+        assert!(run(&mut s, "give Unobtainium", true).is_err(), "bad item names are explained");
         s.sent.extend(s.mode.drain_outbox());
-        let answers: Vec<&Value> = rules(&s.sent, "console").collect();
-        assert_eq!(answers.len(), 4);
-        assert!(answers.iter().all(|a| a["to"] == json!(s.player)));
-        assert_eq!((answers[0]["ok"].clone(), answers[0]["text"].clone()), (json!(false), json!("only the host or an admin can use commands (log in with `auth <token>`)")));
-        assert_eq!(answers[1]["ok"], false);
-        assert!(answers[1]["text"].as_str().unwrap().contains("unknown command 'fly'"));
-        assert_eq!(answers[2]["ok"], true, "a leading slash is allowed");
-        assert_eq!(answers[3]["ok"], false, "bad item names are explained: {}", answers[3]);
+        assert_eq!(rules(&s.sent, "console").count(), 0, "the answers go to the caller alone");
         s.run(12);
         assert_eq!(s.state_of(s.player)["items"], json!(["Torch"]), "only the allowed give worked");
     }

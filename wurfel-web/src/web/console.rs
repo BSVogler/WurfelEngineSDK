@@ -4,8 +4,8 @@
 //! [`ClientMsg::Command`], and so do the game mode's own commands (Caveland's `give`...).
 
 use glam::Vec3;
-use serde_json::{json, Value};
-use wurfel_sim::console::{CVarTarget, Console, ConsoleHost, ExecResult, Level, OutputLine, Side};
+use serde_json::json;
+use wurfel_sim::console::{command_name, normalize_line, CVarTarget, Console, ConsoleHost, ExecResult, OutputLine, Side};
 use wurfel_sim::cvar::CVarSystem;
 use wurfel_sim::grid::to_iso;
 
@@ -21,8 +21,6 @@ pub(super) struct ClientConsole {
     cvars: CVarSystem,
     /// `tp`: the camera looks at this point until we walk.
     pub(super) camera_hold: Option<Vec3>,
-    /// `screenshake`: amplitude (px), time left and total time (ms).
-    shake: Option<(f32, f32, f32)>,
 }
 
 impl ClientConsole {
@@ -31,20 +29,7 @@ impl ClientConsole {
         if let Some(text) = storage().and_then(|s| s.get_item(CVARS_KEY).ok().flatten()) {
             cvars.load_str(&text);
         }
-        ClientConsole { console: Console::new(Side::Client), cvars, camera_hold: None, shake: None }
-    }
-
-    /// The camera offset of a running `screenshake`, in screen pixels; counts the time down.
-    pub(super) fn shake_offset(&mut self, dt_ms: f32) -> [f32; 2] {
-        let Some((amplitude, left, total)) = self.shake.as_mut() else { return [0.0, 0.0] };
-        *left -= dt_ms;
-        if *left <= 0.0 {
-            self.shake = None;
-            return [0.0, 0.0];
-        }
-        let strength = *amplitude * *left / *total;
-        let random = || (js_sys::Math::random() as f32 * 2.0 - 1.0) * strength;
-        [random(), random()]
+        ClientConsole { console: Console::new(Side::Client), cvars, camera_hold: None }
     }
 }
 
@@ -114,7 +99,7 @@ impl ConsoleHost for ClientHost<'_> {
         if camera != 0 {
             return Err("Camera ID out of range".into());
         }
-        self.s.console.shake = (millis > 0.0).then_some((amplitude, millis, millis));
+        self.s.shake.add(amplitude, millis);
         Ok(())
     }
 }
@@ -128,27 +113,17 @@ fn mode_commands(s: &State) -> &'static [(&'static str, &'static str)] {
     }
 }
 
-fn lines_json(lines: &[OutputLine]) -> Vec<Value> {
-    lines
-        .iter()
-        .map(|l| {
-            let level = match l.level {
-                Level::Info => "info",
-                Level::Warn => "warn",
-                Level::Error => "error",
-                Level::Echo => "echo",
-            };
-            json!({"level": level, "text": l.text})
-        })
-        .collect()
+/// The server answered a forwarded line: hand it to the page's console.
+pub(super) fn reply(lines: &[OutputLine]) {
+    call_js("wurfelConsoleHost", "reply", &wasm_bindgen::JsValue::from_str(&json!({"lines": lines}).to_string()));
 }
 
 /// Run a console line. Returns JSON: `{"lines": [...], "clear": bool}` when it is done, or
 /// `{"forwarded": true, "lines": [...]}` when it went to the server, whose answer arrives as a
-/// `console` rules message.
+/// [`ServerMsg::ConsoleReply`](wurfel_sim::protocol::ServerMsg::ConsoleReply) (see [`reply`]).
 pub(super) fn execute(s: &mut State, line: &str) -> String {
-    let line = line.trim().trim_start_matches(['/', ':']);
-    let name = line.split_whitespace().next().unwrap_or("").to_lowercase();
+    let line = normalize_line(line);
+    let name = command_name(line);
     let echo = OutputLine::echo(format!("{}{}", s.console.console.prompt(), line));
     if mode_commands(s).iter().any(|(n, _)| *n == name) {
         return forward(s, line, String::new(), vec![echo]);
@@ -168,7 +143,7 @@ pub(super) fn execute(s: &mut State, line: &str) -> String {
             if name == "help" {
                 output.lines.extend(mode_commands(s).iter().map(|(n, manual)| OutputLine::info(format!("{n:<14}{}", manual.lines().next().unwrap_or("")))));
             }
-            json!({"lines": lines_json(&output.lines), "clear": output.clear}).to_string()
+            json!({"lines": output.lines, "clear": output.clear}).to_string()
         }
         ExecResult::Forward { line, path, echo } => forward(s, &line, path, echo),
     }
@@ -178,10 +153,10 @@ fn forward(s: &mut State, line: &str, path: String, echo: Vec<OutputLine>) -> St
     if !s.connected {
         let mut lines = echo;
         lines.push(OutputLine::error("Not connected to a game."));
-        return json!({"lines": lines_json(&lines)}).to_string();
+        return json!({"lines": lines}).to_string();
     }
     super::send(s, &wurfel_sim::protocol::ClientMsg::Command { line: line.to_string(), path });
-    json!({"forwarded": true, "lines": lines_json(&echo)}).to_string()
+    json!({"forwarded": true, "lines": echo}).to_string()
 }
 
 /// Tab completion: whole replacement lines for the text before the caret.

@@ -104,18 +104,22 @@ impl Music {
         self.playlist = playlist;
     }
 
+    #[allow(dead_code)] // music is ported but the game loop never starts it yet
     pub fn set_mode(&mut self, mode: PlaybackMode) {
         self.mode = mode;
     }
 
+    #[allow(dead_code)] // music is ported but the game loop never starts it yet
     pub fn mode(&self) -> PlaybackMode {
         self.mode
     }
 
+    #[allow(dead_code)] // music is ported but the game loop never starts it yet
     pub fn set_fade_seconds(&mut self, seconds: f32) {
         self.fade_seconds = seconds.max(0.0);
     }
 
+    #[allow(dead_code)] // music is ported but the game loop never starts it yet
     pub fn current(&self) -> Option<&str> {
         self.current.as_deref()
     }
@@ -157,6 +161,7 @@ impl Music {
     }
 
     /// Start the first track of the playlist if nothing is playing yet.
+    #[allow(dead_code)] // music is ported but the game loop never starts it yet
     pub fn start(&mut self) {
         if self.current.is_none() {
             if let Some(first) = self.playlist.first().cloned() {
@@ -166,6 +171,7 @@ impl Music {
     }
 
     /// Fade the current track out and stop it.
+    #[allow(dead_code)] // music is ported but the game loop never starts it yet
     pub fn stop(&mut self) {
         if let Some(previous) = self.current.take() {
             let progress = 1.0 - self.fade_in.progress;

@@ -36,6 +36,8 @@
 
 use std::collections::VecDeque;
 
+use serde::{Deserialize, Serialize};
+
 use crate::cvar::{CVarSystem, Value};
 
 /// Version shown by `credits` (Java: `WE.VERSION`).
@@ -48,7 +50,9 @@ const PRINTMAP_MAX: (i32, i32) = (80, 60);
 
 // ------------------------------------------------------------------------------------- output
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Written in lowercase on the wire (`"info"`), which is also what the HTML console expects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Level {
     Info,
     Warn,
@@ -57,7 +61,7 @@ pub enum Level {
     Echo,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutputLine {
     pub level: Level,
     pub text: String,
@@ -98,6 +102,17 @@ pub enum ExecResult {
     Forward { line: String, path: String, echo: Vec<OutputLine> },
 }
 
+/// A line as typed, without surrounding space and the `/` or `:` a chat-style console may put in
+/// front (`/give Torch` is `give Torch`).
+pub fn normalize_line(line: &str) -> &str {
+    line.trim().trim_start_matches(['/', ':'])
+}
+
+/// The command word of a (normalized) line, in lowercase: `Give Torch` is `give`.
+pub fn command_name(line: &str) -> String {
+    line.split_whitespace().next().unwrap_or("").to_lowercase()
+}
+
 // ------------------------------------------------------------------------------------ commands
 
 /// Where a command (or cvar) is executed.
@@ -107,76 +122,262 @@ pub enum Scope {
     Server,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct CommandInfo {
     pub name: &'static str,
     pub manual: &'static str,
     pub scope: Scope,
     /// Needs [`ConsoleHost::is_admin`].
     pub admin_only: bool,
+    /// Runs the command; returns whether it succeeded (a failure adds `Failed executing command.`).
+    run: Handler,
 }
 
-const fn cmd(name: &'static str, scope: Scope, admin_only: bool, manual: &'static str) -> CommandInfo {
-    CommandInfo { name, manual, scope, admin_only }
+impl std::fmt::Debug for CommandInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CommandInfo").field("name", &self.name).field("scope", &self.scope).field("admin_only", &self.admin_only).finish()
+    }
+}
+
+/// What a command's handler gets: its arguments, the console (`cd` changes its path), the game.
+pub struct Call<'a> {
+    console: &'a mut Console,
+    args: &'a [String],
+    path: &'a str,
+    host: &'a mut dyn ConsoleHost,
+    out: &'a mut Output,
+}
+
+type Handler = fn(&mut Call<'_>) -> Success;
+
+const fn cmd(name: &'static str, scope: Scope, admin_only: bool, manual: &'static str, run: Handler) -> CommandInfo {
+    CommandInfo { name, manual, scope, admin_only, run }
 }
 
 /// All commands, in the order `help` lists them (alphabetical). Manuals are the Java texts.
 pub const COMMANDS: &[CommandInfo] = &[
-    cmd("auth", Scope::Server, false, "log in as administrator: auth <token>"),
-    cmd("benchmark", Scope::Server, true, "spawns a benchmark ball"),
-    cmd("cd", Scope::Client, false, "change the directory"),
-    cmd("clear", Scope::Client, false, "clear the content of the console"),
-    cmd("credits", Scope::Client, false, "outputs the credits in the console"),
-    cmd("editor", Scope::Client, false, "loads the editor"),
-    cmd("exit", Scope::Client, false, "exits the game"),
-    cmd("fillwithair", Scope::Server, true, "fills chunk <x> <y> with air "),
-    cmd("fullscreen", Scope::Client, false, "toggles the fullscreen"),
-    cmd("help", Scope::Client, false, "lists all commands"),
-    cmd("killall", Scope::Server, true, "disposes every entity on the map"),
-    cmd("le", Scope::Client, false, "toggles the light engine"),
-    cmd("loadmap", Scope::Server, true, "tries to load a map at a new save slot"),
-    cmd("ls", Scope::Client, false, "shows the content of the directory."),
-    cmd("man", Scope::Client, false, "outputs the manual entry for this command"),
-    cmd("menu", Scope::Client, false, "goes to the main menu"),
+    cmd("auth", Scope::Server, false, "log in as administrator: auth <token>", run_auth),
+    cmd("benchmark", Scope::Server, true, "spawns a benchmark ball", |c| report(c.out, c.host.spawn_benchmark_ball())),
+    cmd("cd", Scope::Client, false, "change the directory", |c| c.console.change_directory(c.args, c.host, c.out)),
+    cmd("clear", Scope::Client, false, "clear the content of the console", |c| {
+        c.out.clear = true;
+        true
+    }),
+    cmd("credits", Scope::Client, false, "outputs the credits in the console", run_credits),
+    cmd("editor", Scope::Client, false, "loads the editor", |c| report(c.out, c.host.start_editor())),
+    // The Java command returns false on purpose ("hey, you're getting a response"); here the host
+    // decides what leaving means and a success is a success.
+    cmd("exit", Scope::Client, false, "exits the game", |c| report(c.out, c.host.exit())),
+    cmd("fillwithair", Scope::Server, true, "fills chunk <x> <y> with air ", run_fill_with_air),
+    cmd("fullscreen", Scope::Client, false, "toggles the fullscreen", |c| report(c.out, c.host.toggle_fullscreen())),
+    cmd("help", Scope::Client, false, "lists all commands", run_help),
+    cmd("killall", Scope::Server, true, "disposes every entity on the map", |c| {
+        let killed = c.host.kill_all_entities().map(|n| format!("disposed {n} entities"));
+        report_message(c.out, killed)
+    }),
+    cmd("le", Scope::Client, false, "toggles the light engine", |c| report(c.out, c.host.toggle_light_engine())),
+    cmd("loadmap", Scope::Server, true, "tries to load a map at a new save slot", |c| {
+        let Some(name) = c.args.first().filter(|n| !n.is_empty()) else { return false };
+        let loaded = c.host.load_map(name);
+        report_message(c.out, loaded)
+    }),
+    cmd("ls", Scope::Client, false, "shows the content of the directory.", run_ls),
+    cmd("man", Scope::Client, false, "outputs the manual entry for this command", run_man),
+    cmd("menu", Scope::Client, false, "goes to the main menu", |c| report(c.out, c.host.show_menu())),
     cmd(
         "printmap",
         Scope::Server,
         false,
         "prints a slice of the map in the console. Parameters: [x] [y] [z] [width] [height]",
+        run_printmap,
     ),
-    cmd("reloadshaders", Scope::Client, false, "reloads the shaders"),
-    cmd("save", Scope::Server, true, "saves the currently loaded map in the currenty active save slot"),
+    cmd("reloadshaders", Scope::Client, false, "reloads the shaders", |c| report(c.out, c.host.reload_shaders())),
+    cmd("save", Scope::Server, true, "saves the currently loaded map in the currenty active save slot", |c| {
+        let saved = c.host.save();
+        report_message(c.out, saved)
+    }),
     cmd(
         "screenshake",
         Scope::Client,
         false,
         "Shakes the screen. works only if in the game. Parameters: [cameraID] [amplitude] [time]",
+        run_screenshake,
     ),
-    cmd("teleport", Scope::Server, true, "moves your player to a block column.\nParameters: [x] [y]"),
-    cmd("tp", Scope::Client, false, "set the focus of the camera.\nParameters: [x game world][y game world]"),
+    cmd("teleport", Scope::Server, true, "moves your player to a block column.\nParameters: [x] [y]", |c| {
+        column_command(c, |host, x, y| host.teleport_player(x, y))
+    }),
+    cmd("tp", Scope::Client, false, "set the focus of the camera.\nParameters: [x game world][y game world]", |c| {
+        column_command(c, |host, x, y| host.camera_focus(x, y))
+    }),
 ];
+
+// ------------------------------------------------------------------------------- the handlers
+
+/// An error from the host is printed; success is quiet.
+fn report(out: &mut Output, result: Result<(), String>) -> Success {
+    report_message(out, result.map(|()| String::new()))
+}
+
+/// Like [`report`], but a success prints its message (if any).
+fn report_message(out: &mut Output, result: Result<String, String>) -> Success {
+    match result {
+        Ok(message) => {
+            if !message.is_empty() {
+                out.lines.push(OutputLine::info(message));
+            }
+            true
+        }
+        Err(e) => {
+            out.lines.push(OutputLine::error(e));
+            false
+        }
+    }
+}
+
+/// Java parses with `Integer.valueOf` and answers a bad number with a crash message (which counts
+/// as handled: the caller returns `true`).
+fn int(out: &mut Output, text: &str) -> Option<i32> {
+    text.parse().map_err(|_| crashed(out, text)).ok()
+}
+
+fn float(out: &mut Output, text: &str) -> Option<f32> {
+    text.parse().map_err(|_| crashed(out, text)).ok()
+}
+
+fn crashed(out: &mut Output, text: &str) {
+    out.lines.push(OutputLine::error(format!("Command crashed: For input string: \"{text}\"")));
+}
+
+fn run_auth(c: &mut Call<'_>) -> Success {
+    match c.args.first() {
+        None => {
+            c.out.lines.push(OutputLine::error("Parameter missing"));
+            false
+        }
+        Some(token) if c.host.authenticate(token) => {
+            c.out.lines.push(OutputLine::info("logged in as administrator"));
+            true
+        }
+        Some(_) => {
+            c.out.lines.push(OutputLine::error("wrong token"));
+            false
+        }
+    }
+}
+
+fn run_credits(c: &mut Call<'_>) -> Success {
+    c.out.lines.push(OutputLine::info(format!(
+        "Wurfel Engine Version:{VERSION}\nFor a list of available commands visit the GitHub Wiki.\n\
+         Wurfel Engine ({VERSION})\n\nCreated by:\nBenedikt S. Vogler\n\nThanks to:\nThomas Vogt\n\n\
+         Wurfel Engine uses libGDX."
+    )));
+    true
+}
+
+fn run_fill_with_air(c: &mut Call<'_>) -> Success {
+    let Some(x) = c.args.first() else { return false };
+    let Some(y) = c.args.get(1) else {
+        c.out.lines.push(OutputLine::error("Expected more parameters"));
+        return false;
+    };
+    let (Some(x), Some(y)) = (int(c.out, x), int(c.out, y)) else { return true };
+    report(c.out, c.host.fill_chunk_with_air(x, y))
+}
+
+fn run_help(c: &mut Call<'_>) -> Success {
+    for command in COMMANDS {
+        let first_line = command.manual.lines().next().unwrap_or("");
+        c.out.lines.push(OutputLine::info(format!("{:<14}{}", command.name, first_line)));
+    }
+    true
+}
+
+fn run_ls(c: &mut Call<'_>) -> Success {
+    let entries = if c.path.is_empty() { c.host.worlds() } else { c.host.saves(c.path.split(':').next().unwrap_or(c.path)) };
+    c.out.lines.extend(entries.into_iter().map(OutputLine::info));
+    true
+}
+
+fn run_man(c: &mut Call<'_>) -> Success {
+    let Some(name) = c.args.first() else {
+        c.out.lines.push(OutputLine::error("Parameter missing"));
+        return false;
+    };
+    match command(name) {
+        Some(found) => {
+            c.out.lines.push(OutputLine::info(found.manual));
+            true
+        }
+        None => {
+            c.out.lines.push(OutputLine::error("Not found"));
+            false
+        }
+    }
+}
+
+fn run_printmap(c: &mut Call<'_>) -> Success {
+    let args = c.args;
+    let number = |i: usize, default: i32, out: &mut Output| match args.get(i) {
+        Some(text) => int(out, text),
+        None => Some(default),
+    };
+    let (Some(x), Some(y), Some(z), Some(w), Some(h)) =
+        (number(0, 0, c.out), number(1, 0, c.out), number(2, 1, c.out), number(3, 40, c.out), number(4, 20, c.out))
+    else {
+        return true;
+    };
+    if w <= 0 || h <= 0 || w > PRINTMAP_MAX.0 || h > PRINTMAP_MAX.1 {
+        c.out.lines.push(OutputLine::error(format!("slice must be 1..{} wide and 1..{} high", PRINTMAP_MAX.0, PRINTMAP_MAX.1)));
+        return false;
+    }
+    match c.host.print_map(x, y, z, w, h) {
+        Ok(rows) => {
+            c.out.lines.extend(rows.into_iter().map(OutputLine::info));
+            true
+        }
+        Err(e) => report(c.out, Err(e)),
+    }
+}
+
+fn run_screenshake(c: &mut Call<'_>) -> Success {
+    let mut numbers = [10.0f32, 500.0];
+    let id = match c.args.first() {
+        Some(text) => match int(c.out, text) {
+            Some(id) => id,
+            None => return true,
+        },
+        None => 0,
+    };
+    for (slot, text) in numbers.iter_mut().zip(c.args.iter().skip(1)) {
+        match float(c.out, text) {
+            Some(v) => *slot = v,
+            None => return true,
+        }
+    }
+    report(c.out, c.host.screenshake(id, numbers[0], numbers[1]))
+}
+
+/// `teleport` and `tp`: two numbers, a block column.
+fn column_command(c: &mut Call<'_>, act: fn(&mut dyn ConsoleHost, i32, i32) -> Result<(), String>) -> Success {
+    let (Some(x), Some(y)) = (c.args.first(), c.args.get(1)) else {
+        c.out.lines.push(OutputLine::error("Expected more parameters"));
+        return false;
+    };
+    let (Some(x), Some(y)) = (int(c.out, x), int(c.out, y)) else { return true };
+    report(c.out, act(c.host, x, y))
+}
 
 pub fn command(name: &str) -> Option<&'static CommandInfo> {
     COMMANDS.iter().find(|c| c.name == name)
 }
 
-/// Root cvars that the server owns because they change the simulation. Everything else in the
-/// root system (rendering, sound, key bindings...) is the client's own business.
-const SERVER_CVARS: &[&str] = &[
-    "gravity",
-    "friction",
-    "playerfriction",
-    "playerwalkingspeed",
-    "timespeed",
-    "groundblockid",
-    "worldspinangle",
-    "loadentities",
-];
-
-/// Which side owns a cvar of the given system. Map and save cvars always belong to the server.
-pub fn cvar_scope(target: &CVarTarget, name: &str) -> Scope {
+/// Which side owns a cvar of the given system: map and save cvars always belong to the server,
+/// root cvars to the server when they were registered as server cvars (they change the simulation,
+/// see [`CVarSystem::register_server`]), and everything else (rendering, sound, keys...) to the
+/// client. `cvars` is the system as this side knows it.
+pub fn cvar_scope(target: &CVarTarget, cvars: Option<&CVarSystem>, name: &str) -> Scope {
     match target {
-        CVarTarget::Root if !SERVER_CVARS.contains(&name.to_lowercase().as_str()) => Scope::Client,
+        CVarTarget::Root if !cvars.and_then(|c| c.get(name)).is_some_and(|c| c.is_server()) => Scope::Client,
         _ => Scope::Server,
     }
 }
@@ -534,7 +735,7 @@ impl Console {
             (first.clone(), args)
         };
         let target = CVarTarget::from_path(path);
-        let scope = cvar_scope(&target, &name);
+        let scope = cvar_scope(&target, host.cvars(&target).map(|c| &*c), &name);
         if self.side == Side::Client && scope == Scope::Server {
             // Not ours to answer, and the server knows whether the name exists.
             return Dispatched::Forward;
@@ -593,191 +794,7 @@ impl Console {
         host: &mut dyn ConsoleHost,
         out: &mut Output,
     ) -> Success {
-        fn report(out: &mut Output, result: Result<(), String>) -> Success {
-            match result {
-                Ok(()) => true,
-                Err(e) => {
-                    out.lines.push(OutputLine::error(e));
-                    false
-                }
-            }
-        }
-        // Java parses with `Integer.valueOf` and answers a bad number with a crash message.
-        fn int(out: &mut Output, text: &str) -> Option<i32> {
-            text.parse().map_err(|_| crashed(out, text)).ok()
-        }
-        fn float(out: &mut Output, text: &str) -> Option<f32> {
-            text.parse().map_err(|_| crashed(out, text)).ok()
-        }
-        fn crashed(out: &mut Output, text: &str) {
-            out.lines.push(OutputLine::error(format!("Command crashed: For input string: \"{text}\"")));
-        }
-
-        match info.name {
-            "auth" => match args.first() {
-                None => {
-                    out.lines.push(OutputLine::error("Parameter missing"));
-                    false
-                }
-                Some(token) if host.authenticate(token) => {
-                    out.lines.push(OutputLine::info("logged in as administrator"));
-                    true
-                }
-                Some(_) => {
-                    out.lines.push(OutputLine::error("wrong token"));
-                    false
-                }
-            },
-            "benchmark" => report(out, host.spawn_benchmark_ball()),
-            "cd" => self.change_directory(args, host, out),
-            "clear" => {
-                out.clear = true;
-                true
-            }
-            "credits" => {
-                out.lines.push(OutputLine::info(format!(
-                    "Wurfel Engine Version:{VERSION}\nFor a list of available commands visit the GitHub Wiki.\n\
-                     Wurfel Engine ({VERSION})\n\nCreated by:\nBenedikt S. Vogler\n\nThanks to:\nThomas Vogt\n\n\
-                     Wurfel Engine uses libGDX."
-                )));
-                true
-            }
-            "editor" => report(out, host.start_editor()),
-            // The Java command returns false on purpose ("hey, you're getting a response"); here the
-            // host decides what leaving means and a success is a success.
-            "exit" => report(out, host.exit()),
-            "fillwithair" => {
-                let Some(x) = args.first() else { return false };
-                let Some(y) = args.get(1) else {
-                    out.lines.push(OutputLine::error("Expected more parameters"));
-                    return false;
-                };
-                let (Some(x), Some(y)) = (int(out, x), int(out, y)) else { return true };
-                report(out, host.fill_chunk_with_air(x, y))
-            }
-            "fullscreen" => report(out, host.toggle_fullscreen()),
-            "help" => {
-                for c in COMMANDS {
-                    let first_line = c.manual.lines().next().unwrap_or("");
-                    out.lines.push(OutputLine::info(format!("{:<14}{}", c.name, first_line)));
-                }
-                true
-            }
-            "killall" => match host.kill_all_entities() {
-                Ok(n) => {
-                    out.lines.push(OutputLine::info(format!("disposed {n} entities")));
-                    true
-                }
-                Err(e) => report(out, Err(e)),
-            },
-            "le" => report(out, host.toggle_light_engine()),
-            "loadmap" => {
-                let Some(name) = args.first().filter(|n| !n.is_empty()) else { return false };
-                match host.load_map(name) {
-                    Ok(message) => {
-                        out.lines.push(OutputLine::info(message));
-                        true
-                    }
-                    Err(e) => report(out, Err(e)),
-                }
-            }
-            "ls" => {
-                let entries = if path.is_empty() {
-                    host.worlds()
-                } else {
-                    host.saves(path.split(':').next().unwrap_or(path))
-                };
-                out.lines.extend(entries.into_iter().map(OutputLine::info));
-                true
-            }
-            "man" => match args.first() {
-                None => {
-                    out.lines.push(OutputLine::error("Parameter missing"));
-                    false
-                }
-                Some(name) => match command(name) {
-                    Some(c) => {
-                        out.lines.push(OutputLine::info(c.manual));
-                        true
-                    }
-                    None => {
-                        out.lines.push(OutputLine::error("Not found"));
-                        false
-                    }
-                },
-            },
-            "menu" => report(out, host.show_menu()),
-            "printmap" => {
-                let number = |i: usize, default: i32, out: &mut Output| match args.get(i) {
-                    Some(text) => int(out, text),
-                    None => Some(default),
-                };
-                let (Some(x), Some(y), Some(z), Some(w), Some(h)) = (
-                    number(0, 0, out),
-                    number(1, 0, out),
-                    number(2, 1, out),
-                    number(3, 40, out),
-                    number(4, 20, out),
-                ) else {
-                    return true;
-                };
-                if w <= 0 || h <= 0 || w > PRINTMAP_MAX.0 || h > PRINTMAP_MAX.1 {
-                    out.lines.push(OutputLine::error(format!(
-                        "slice must be 1..{} wide and 1..{} high",
-                        PRINTMAP_MAX.0, PRINTMAP_MAX.1
-                    )));
-                    return false;
-                }
-                match host.print_map(x, y, z, w, h) {
-                    Ok(rows) => {
-                        out.lines.extend(rows.into_iter().map(OutputLine::info));
-                        true
-                    }
-                    Err(e) => report(out, Err(e)),
-                }
-            }
-            "reloadshaders" => report(out, host.reload_shaders()),
-            "save" => match host.save() {
-                Ok(message) => {
-                    out.lines.push(OutputLine::info(message));
-                    true
-                }
-                Err(e) => report(out, Err(e)),
-            },
-            "screenshake" => {
-                let mut numbers = [0.0f32, 10.0, 500.0];
-                let id = match args.first() {
-                    Some(text) => match int(out, text) {
-                        Some(id) => id,
-                        None => return true,
-                    },
-                    None => 0,
-                };
-                for (slot, text) in numbers.iter_mut().skip(1).zip(args.iter().skip(1)) {
-                    match float(out, text) {
-                        Some(v) => *slot = v,
-                        None => return true,
-                    }
-                }
-                report(out, host.screenshake(id, numbers[1], numbers[2]))
-            }
-            "teleport" | "tp" => {
-                let (Some(x), Some(y)) = (args.first(), args.get(1)) else {
-                    out.lines.push(OutputLine::error("Expected more parameters"));
-                    return false;
-                };
-                let (Some(x), Some(y)) = (int(out, x), int(out, y)) else { return true };
-                if info.name == "tp" {
-                    report(out, host.camera_focus(x, y))
-                } else {
-                    report(out, host.teleport_player(x, y))
-                }
-            }
-            other => {
-                out.lines.push(OutputLine::error(format!("{other}: not implemented")));
-                false
-            }
-        }
+        (info.run)(&mut Call { console: self, args, path, host, out })
     }
 
     /// `cd`: `/` goes to the root, `..` up one level, anything else descends (map, then save slot).
@@ -1145,7 +1162,11 @@ mod tests {
         }
         assert_eq!(host.root.get_f32("gravity"), Ok(9.81), "the local copy is untouched");
         assert!(matches!(console.execute("music 0.3", &mut host), ExecResult::Done(_)));
-        assert_eq!(cvar_scope(&CVarTarget::Map("m".into()), "mapname"), Scope::Server);
+        assert_eq!(cvar_scope(&CVarTarget::Map("m".into()), None, "mapname"), Scope::Server);
+        // The owner is a property of the cvar, set when it is registered.
+        let root = CVarSystem::root();
+        assert_eq!(cvar_scope(&CVarTarget::Root, Some(&root), "timeSpeed"), Scope::Server);
+        assert_eq!(cvar_scope(&CVarTarget::Root, Some(&root), "music"), Scope::Client);
     }
 
     #[test]

@@ -135,6 +135,10 @@ struct State {
     emitters: Vec<wurfel_sim::particle::ParticleEmitter>,
     /// The exhaust of our own jetpack, lit while Caveland's rules say it burns.
     jetpack: crate::particles::Jetpack,
+    /// Blocks the server said were hit, which wear cracks until they break (see `damage.rs`).
+    damaged: crate::damage::Damaged,
+    /// Where the interaction sign floats: the thing the use button would act on, as the server said.
+    interact_focus: Option<Vec3>,
     /// The Caveland ruleset, when the world is played by it (the local player is predicted with it).
     caveland: Option<caveland_sim::Caveland>,
     /// Items, robots... of the game mode, as the server last said.
@@ -186,6 +190,11 @@ struct State {
     /// the fixed camera.
     view: View,
     camera_mode: CameraMode,
+    /// Where the quarter turns of the fixed camera (keys 1 and 2) are turning `view.yaw` to,
+    /// radians: a multiple of a quarter turn.
+    turn_target: f32,
+    /// Screen shake of blasts and hits (see `shake.rs`).
+    shake: crate::shake::Shake,
 
     // --- game
     world: World,
@@ -316,7 +325,8 @@ async fn run() -> Result<(), String> {
     let mut render = RenderStorage::new();
     render.update(&mut world, (0, 0));
     let world_vertices = render.vertices();
-    let world_buffer = vertex_buffer_with(&device, &world_vertices);
+    let mut world_buffer = world_mesh_buffer(&device, 0);
+    upload_world_mesh(&device, &queue, &mut world_buffer, &world_vertices);
     let dynamic_buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("dynamic mesh"),
         size: DYNAMIC_VERTICES * std::mem::size_of::<Vertex>() as u64,
@@ -425,6 +435,8 @@ async fn run() -> Result<(), String> {
         menu_zoom: None,
         view: View::default(),
         camera_mode: CameraMode::Fixed,
+        turn_target: 0.0,
+        shake: Default::default(),
         canvas,
         surface,
         config,
@@ -438,6 +450,8 @@ async fn run() -> Result<(), String> {
         particles: wurfel_sim::particle::Particles::default(),
         emitters: Vec::new(),
         jetpack: crate::particles::Jetpack::new(),
+        damaged: Default::default(),
+        interact_focus: None,
         caveland: None,
         things: Vec::new(),
         riding: false,
@@ -642,14 +656,26 @@ fn place_model(s: &mut State) {
     s.model_placed = Some(PlacedModel { buffer, draws });
 }
 
-fn vertex_buffer_with(device: &wgpu::Device, vertices: &[Vertex]) -> wgpu::Buffer {
-    use wgpu::util::DeviceExt;
-    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+/// The world mesh's buffer, with room for `vertices` (at least one: wgpu rejects empty buffers).
+fn world_mesh_buffer(device: &wgpu::Device, vertices: usize) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("world mesh"),
-        // wgpu rejects zero-sized buffers; a world with no geometry still needs a valid one.
-        contents: if vertices.is_empty() { &[0u8; 24] } else { bytemuck::cast_slice(vertices) },
-        usage: wgpu::BufferUsages::VERTEX,
+        size: (vertices.max(1) * std::mem::size_of::<Vertex>()) as u64,
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
     })
+}
+
+/// Write a new world mesh, reusing the buffer while it fits. It grows with headroom, so walking
+/// around (the mesh size wobbles) does not reallocate on every remesh.
+fn upload_world_mesh(device: &wgpu::Device, queue: &wgpu::Queue, buffer: &mut wgpu::Buffer, vertices: &[Vertex]) {
+    let bytes = (vertices.len() * std::mem::size_of::<Vertex>()) as u64;
+    if bytes > buffer.size() {
+        *buffer = world_mesh_buffer(device, vertices.len() + vertices.len() / 4);
+    }
+    if !vertices.is_empty() {
+        queue.write_buffer(buffer, 0, bytemuck::cast_slice(vertices));
+    }
 }
 
 fn fit_canvas(canvas: &HtmlCanvasElement) {
@@ -1307,6 +1333,7 @@ fn handle_server_message(s: &mut State, msg: ServerMsg, now: f64) {
         ServerMsg::Saved { chunks, error: None } => show_banner(&format!("World saved ({chunks} chunk(s) written)"), Tone::Ok),
         ServerMsg::Saved { error: Some(error), .. } => report_error(&format!("Saving the world failed: {error}")),
         ServerMsg::Rules { kind, data } => handle_rules(s, &kind, &data),
+        ServerMsg::ConsoleReply { lines } => console::reply(&lines),
         ServerMsg::Session { secret, .. } => {
             if let Some(secret) = secret {
                 console::store_session(&s.server_url, &secret);
@@ -1369,9 +1396,9 @@ fn handle_rules(s: &mut State, kind: &str, data: &serde_json::Value) {
             s.aiming = false;
             hud("closeDialog", &JsValue::UNDEFINED)
         }
+        "interact_focus" if caveland_client::addressed_to(data, me) => s.interact_focus = caveland_client::parse_interact_focus(data),
         "launchers" => s.launchers = caveland_client::parse_launchers(data),
         "lift_offer" if caveland_client::addressed_to(data, me) => hud("liftOffer", &JsValue::from_str(&data.to_string())),
-        "console" if caveland_client::addressed_to(data, me) => call_js("wurfelConsoleHost", "reply", &JsValue::from_str(&data.to_string())),
         "power" => s.powered = caveland_client::parse_power(data),
         "events" => {
             let ours = local_position(s).unwrap_or(Vec3::ZERO);
@@ -1394,25 +1421,11 @@ fn handle_rules(s: &mut State, kind: &str, data: &serde_json::Value) {
                             s.audio.logic_mut().stop_loop(handle);
                         }
                     }
-                    Happening::Teleported { entity, pos } if entity == me => {
-                        if let Some(entity) = s.local_id.and_then(|id| s.entities.get_mut(id)) {
-                            entity.position = pos;
-                            if let Some(body) = entity.body.as_mut() {
-                                body.movement = Vec3::ZERO;
-                            }
-                        }
-                        s.visual_offset.clear();
-                    }
+                    Happening::Teleported { entity, pos } if entity == me => place_local_player(s, pos, Vec3::ZERO),
                     // Thrown by a catapult or cannon: only a position and a velocity, then the same
                     // movement rules as the server (control by speed, bounces) run the flight.
                     Happening::Launched { player, pos, vel } if player == me => {
-                        if let Some(entity) = s.local_id.and_then(|id| s.entities.get_mut(id)) {
-                            entity.position = pos;
-                            if let Some(body) = entity.body.as_mut() {
-                                body.set_movement(vel);
-                            }
-                        }
-                        s.visual_offset.clear();
+                        place_local_player(s, pos, vel);
                     }
                     Happening::Launched { .. } => {} // others are interpolated from the snapshots
                     Happening::Teleported { .. } => {} // others are interpolated, a big jump counts as a teleport there
@@ -1427,12 +1440,19 @@ fn handle_rules(s: &mut State, kind: &str, data: &serde_json::Value) {
                         s.particles.block_break(pos, [1.0, 0.55, 0.1]);
                     }
                     Happening::Dust { pos } => s.particles.block_break(pos, [0.6, 0.55, 0.5]),
-                    Happening::Explosion { pos } => {
+                    Happening::BlockDamaged { cell, health } => {
+                        s.world.set_block_health(cell.0, cell.1, cell.2, health);
+                        s.damaged.insert(cell, health);
+                    }
+                    Happening::Explosion { pos, radius } => {
+                        let distance = local_position(s).map_or(f32::MAX, |me| me.distance(pos));
+                        s.shake.add(crate::shake::blast_amplitude(radius, distance), 350.0);
                         s.particles.block_break(pos, [1.0, 0.55, 0.1]);
                         s.particles.block_break(pos + Vec3::Z * 0.5, [0.3, 0.3, 0.3]);
                     }
                     Happening::Toast(text) => hud("toast", &JsValue::from_str(&text)),
                     Happening::Action { player, name, ok } => s.actors.announced(player, player == me, &name, ok),
+                    Happening::Hurt => s.shake.add(14.0, 220.0),
                     Happening::Died => {
                         show_banner("You died. Back at the start.", Tone::Error);
                         s.visual_offset.clear();
@@ -1459,6 +1479,17 @@ fn apply_snapshot(s: &mut State, tick: u64, players: &[PlayerState]) {
     }
 }
 
+/// Put our player somewhere outright (teleport, launch, ride): no prediction error to fade out.
+fn place_local_player(s: &mut State, position: Vec3, velocity: Vec3) {
+    if let Some(entity) = s.local_id.and_then(|id| s.entities.get_mut(id)) {
+        entity.position = position;
+        if let Some(body) = entity.body.as_mut() {
+            body.set_movement(velocity);
+        }
+    }
+    s.visual_offset.clear();
+}
+
 /// Our own player runs ahead of the server, so the two never agree at the moment a snapshot
 /// arrives. The snapshot says where the server was after some number of ticks under one of our
 /// inputs; replay our inputs from there up to the present and compare with where we are. What is
@@ -1467,13 +1498,7 @@ fn apply_snapshot(s: &mut State, tick: u64, players: &[PlayerState]) {
 fn reconcile(s: &mut State, server: &PlayerState) {
     if s.riding {
         // A vehicle or the ship moves us: take the server's word, there is nothing to predict.
-        if let Some(entity) = s.local_id.and_then(|id| s.entities.get_mut(id)) {
-            entity.position = Vec3::from(server.pos);
-            if let Some(body) = entity.body.as_mut() {
-                body.movement = Vec3::from(server.vel);
-            }
-        }
-        s.visual_offset.clear();
+        place_local_player(s, Vec3::from(server.pos), Vec3::from(server.vel));
         return;
     }
     let Some(plan) = s.history.replay_plan(server.input_seq, server.input_ticks) else { return };
@@ -1560,95 +1585,73 @@ fn install_menu_events(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
 /// `wurfelNet.heart(playerId, on)` is the heart in the Tab player list.
 fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     let net = js_sys::Object::new();
-    let s = state.clone();
-    let action = Closure::<dyn FnMut(String, i32)>::new(move |name: String, arg: i32| {
-        send(&mut s.borrow_mut(), &ClientMsg::Action { name, arg });
+    // Each method gets its own handle on the state and lives as long as the page.
+    let expose = |name: &str, closure: &dyn Fn(Rc<RefCell<State>>) -> JsValue| {
+        let _ = js_sys::Reflect::set(&net, &name.into(), &closure(state.clone()));
+    };
+    fn js<T: ?Sized + wasm_bindgen::closure::WasmClosure>(closure: Closure<T>) -> JsValue {
+        closure.into_js_value()
+    }
+    expose("action", &|s| {
+        js(Closure::<dyn FnMut(String, i32)>::new(move |name: String, arg: i32| {
+            send(&mut s.borrow_mut(), &ClientMsg::Action { name, arg });
+        }))
     });
-    let _ = js_sys::Reflect::set(&net, &"action".into(), action.as_ref());
-    action.forget();
-    let s = state.clone();
-    let command = Closure::<dyn FnMut(String) -> String>::new(move |line: String| console::execute(&mut s.borrow_mut(), &line));
-    let _ = js_sys::Reflect::set(&net, &"command".into(), command.as_ref());
-    command.forget();
-    let s = state.clone();
-    let suggest = Closure::<dyn FnMut(String) -> js_sys::Array>::new(move |prefix: String| {
-        console::suggest(&mut s.borrow_mut(), &prefix).into_iter().map(JsValue::from).collect()
+    expose("command", &|s| {
+        js(Closure::<dyn FnMut(String) -> String>::new(move |line: String| console::execute(&mut s.borrow_mut(), &line)))
     });
-    let _ = js_sys::Reflect::set(&net, &"suggest".into(), suggest.as_ref());
-    suggest.forget();
-    let s = state.clone();
-    let prompt = Closure::<dyn FnMut() -> String>::new(move || console::prompt(&s.borrow()));
-    let _ = js_sys::Reflect::set(&net, &"prompt".into(), prompt.as_ref());
-    prompt.forget();
+    expose("suggest", &|s| {
+        js(Closure::<dyn FnMut(String) -> js_sys::Array>::new(move |prefix: String| {
+            console::suggest(&mut s.borrow_mut(), &prefix).into_iter().map(JsValue::from).collect()
+        }))
+    });
+    expose("prompt", &|s| js(Closure::<dyn FnMut() -> String>::new(move || console::prompt(&s.borrow()))));
     // The editor toolbar and the `editor` console command (editor.js, console-host.js).
-    let s = state.clone();
-    let editor_set = Closure::<dyn FnMut(String) -> String>::new(move |mode: String| {
-        let mut s = s.borrow_mut();
-        let on = match mode.as_str() {
-            "on" => true,
-            "off" => false,
-            _ => !s.editor.active(),
-        };
-        match set_editor(&mut s, on) {
-            Ok(()) => String::new(),
-            Err(message) => message.to_string(),
-        }
+    expose("editor", &|s| {
+        js(Closure::<dyn FnMut(String) -> String>::new(move |mode: String| {
+            let mut s = s.borrow_mut();
+            let on = match mode.as_str() {
+                "on" => true,
+                "off" => false,
+                _ => !s.editor.active(),
+            };
+            match set_editor(&mut s, on) {
+                Ok(()) => String::new(),
+                Err(message) => message.to_string(),
+            }
+        }))
     });
-    let _ = js_sys::Reflect::set(&net, &"editor".into(), editor_set.as_ref());
-    editor_set.forget();
-    let s = state.clone();
-    let editor_tool = Closure::<dyn FnMut(String)>::new(move |name: String| {
-        if let Some(tool) = Tool::parse(&name) {
-            s.borrow_mut().editor.select_tool(tool);
-        }
+    expose("editorTool", &|s| {
+        js(Closure::<dyn FnMut(String)>::new(move |name: String| {
+            if let Some(tool) = Tool::parse(&name) {
+                s.borrow_mut().editor.select_tool(tool);
+            }
+        }))
     });
-    let _ = js_sys::Reflect::set(&net, &"editorTool".into(), editor_tool.as_ref());
-    editor_tool.forget();
-    let s = state.clone();
-    let editor_block = Closure::<dyn FnMut(u32)>::new(move |index: u32| {
-        s.borrow_mut().editor.select_block(index as usize);
+    expose("editorBlock", &|s| {
+        js(Closure::<dyn FnMut(u32)>::new(move |index: u32| {
+            s.borrow_mut().editor.select_block(index as usize);
+        }))
     });
-    let _ = js_sys::Reflect::set(&net, &"editorBlock".into(), editor_block.as_ref());
-    editor_block.forget();
-    let s = state.clone();
-    let editor_thing = Closure::<dyn FnMut(u32)>::new(move |index: u32| {
-        s.borrow_mut().editor.select_thing_kind(index as usize);
+    expose("editorThing", &|s| {
+        js(Closure::<dyn FnMut(u32)>::new(move |index: u32| s.borrow_mut().editor.select_thing_kind(index as usize)))
     });
-    let _ = js_sys::Reflect::set(&net, &"editorThing".into(), editor_thing.as_ref());
-    editor_thing.forget();
-    let s = state.clone();
-    let editor_value = Closure::<dyn FnMut(i32)>::new(move |step: i32| {
-        s.borrow_mut().editor.step_value(step);
+    expose("editorValue", &|s| js(Closure::<dyn FnMut(i32)>::new(move |step: i32| s.borrow_mut().editor.step_value(step))));
+    expose("editorLayer", &|s| js(Closure::<dyn FnMut(i32)>::new(move |steps: i32| {
+            s.borrow_mut().editor.step_layer(steps);
+        })));
+    expose("editorSave", &|s| {
+        js(Closure::<dyn FnMut()>::new(move || {
+            let mut s = s.borrow_mut();
+            if s.editor.active() {
+                send(&mut s, &ClientMsg::SaveWorld);
+            }
+        }))
     });
-    let _ = js_sys::Reflect::set(&net, &"editorValue".into(), editor_value.as_ref());
-    editor_value.forget();
-    let s = state.clone();
-    let editor_layer = Closure::<dyn FnMut(i32)>::new(move |steps: i32| {
-        s.borrow_mut().editor.step_layer(steps);
+    expose("editorHistory", &|s| js(Closure::<dyn FnMut(bool)>::new(move |undo: bool| editor_history(&mut s.borrow_mut(), undo))));
+    expose("heart", &|s| {
+        js(Closure::<dyn FnMut(u32, bool)>::new(move |to: u32, on: bool| send(&mut s.borrow_mut(), &ClientMsg::Heart { to, on })))
     });
-    let _ = js_sys::Reflect::set(&net, &"editorLayer".into(), editor_layer.as_ref());
-    editor_layer.forget();
-    let s = state.clone();
-    let editor_save = Closure::<dyn FnMut()>::new(move || {
-        let mut s = s.borrow_mut();
-        if s.editor.active() {
-            send(&mut s, &ClientMsg::SaveWorld);
-        }
-    });
-    let _ = js_sys::Reflect::set(&net, &"editorSave".into(), editor_save.as_ref());
-    editor_save.forget();
-    let s = state.clone();
-    let editor_history_call = Closure::<dyn FnMut(bool)>::new(move |undo: bool| {
-        editor_history(&mut s.borrow_mut(), undo);
-    });
-    let _ = js_sys::Reflect::set(&net, &"editorHistory".into(), editor_history_call.as_ref());
-    editor_history_call.forget();
-    let s = state.clone();
-    let heart = Closure::<dyn FnMut(u32, bool)>::new(move |to: u32, on: bool| {
-        send(&mut s.borrow_mut(), &ClientMsg::Heart { to, on });
-    });
-    let _ = js_sys::Reflect::set(&net, &"heart".into(), heart.as_ref());
-    heart.forget();
     let _ = js_sys::Reflect::set(window, &"wurfelNet".into(), &net);
 }
 
@@ -1878,6 +1881,11 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
                 }
                 return;
             }
+            "1" | "2" if !input_blocked() && !e.repeat() && !e.ctrl_key() && !e.meta_key() && !e.alt_key() => {
+                // The map turns a quarter to the left (1) or to the right (2).
+                turn_map(&mut s, if key == "1" { 1 } else { -1 });
+                return;
+            }
             "f8" if !window_flag("wurfelMenuOpen") => {
                 e.prevent_default();
                 if !e.repeat() {
@@ -1962,15 +1970,55 @@ fn set_camera_mode(s: &mut State, mode: CameraMode) {
     s.camera_mode = mode;
     s.render.set_free_view(mode.is_free());
     s.remesh = true;
+    s.turn_target = 0.0;
     if mode.is_free() {
         // Moving the mouse turns the camera: lock the pointer so it never reaches the screen edge.
         s.canvas.request_pointer_lock();
-        show_banner("Free camera: move the mouse to turn it, F8 to leave", Tone::Info);
+        show_banner("Experimental free camera: move the mouse to turn it, F8 to leave", Tone::Info);
     } else {
         s.view.yaw = 0.0;
         if let Some(document) = web_sys::window().and_then(|w| w.document()) {
             document.exit_pointer_lock();
         }
+    }
+}
+
+/// Turn the map of the fixed camera a quarter (keys 1 and 2): `quarters` 1 to the left, -1 to the
+/// right. The picture eases round (`step_map_turn`). Not in the editor, whose picking assumes the
+/// unturned projection, and not with the free camera, which turns by the mouse.
+fn turn_map(s: &mut State, quarters: i32) {
+    if s.camera_mode.is_free() || s.editor.active() {
+        return;
+    }
+    s.turn_target += quarters as f32 * std::f32::consts::FRAC_PI_2;
+}
+
+/// Ease `view.yaw` to the target of the quarter turns, and mesh the sides that look away while the
+/// map is turned at all (the same meshing the free camera uses).
+fn step_map_turn(s: &mut State, dt: f32) {
+    if s.camera_mode.is_free() {
+        return;
+    }
+    if s.editor.active() {
+        // The editor works in the unturned view.
+        s.turn_target = 0.0;
+        s.view.yaw = 0.0;
+    }
+    let diff = s.turn_target - s.view.yaw;
+    if diff.abs() < 0.002 {
+        s.view.yaw = s.turn_target.rem_euclid(std::f32::consts::TAU);
+        s.turn_target = s.view.yaw;
+        if s.view.yaw > std::f32::consts::TAU - 0.002 {
+            s.view.yaw = 0.0;
+            s.turn_target = 0.0;
+        }
+    } else {
+        s.view.yaw += diff * (1.0 - (-14.0 * dt).exp());
+    }
+    let turned = s.view.yaw != 0.0 || s.turn_target != 0.0;
+    if s.render.is_free_view() != turned {
+        s.render.set_free_view(turned);
+        s.remesh = true;
     }
 }
 
@@ -2008,6 +2056,7 @@ fn apply_block_edit(s: &mut State, e: wurfel_sim::protocol::Edit) {
         s.particles.block_break(Vec3::new(gx, gy, e.z as f32 + 0.5), crate::mesh::block_color(old));
     }
     s.world.set(e.x, e.y, e.z, Block::from_raw(e.block));
+    s.damaged.remove(&(e.x, e.y, e.z)); // a new block is whole
     s.animated.add_sea(&mut s.world, (e.x, e.y, e.z)); // new water waves like the rest (no-op for other blocks)
     s.remesh = true;
     s.terrain_version += 1;
@@ -2179,6 +2228,7 @@ fn frame(s: &mut State, now_ms: f64) {
         .into_iter()
         .chain(s.remotes.iter().map(|(&id, remote)| (id, remote.pos)))
         .collect();
+    step_map_turn(s, dt);
     s.actors.set_yaw(s.view.yaw);
     s.actors.update(dt, drawn, &s.things);
 
@@ -2189,9 +2239,10 @@ fn frame(s: &mut State, now_ms: f64) {
         // Like the Java camera: the player may walk inside the leap radius before the picture follows.
         s.camera.center = view::follow_within_leap(s.camera.center, target, view::CAMERA_LEAP_RADIUS);
     }
-    let [shake_x, shake_y] = s.console.shake_offset(dt * 1000.0);
-    s.camera.center[0] += shake_x;
-    s.camera.center[1] += shake_y;
+    let jolt = s.shake.step(dt * 1000.0, || js_sys::Math::random() as f32 * 2.0 - 1.0);
+    s.camera.center[0] += jolt.screen[0];
+    s.camera.center[1] += jolt.screen[1];
+    s.view.wobble = jolt.yaw;
     s.camera.zoom = s.camera.zoom.clamp(0.1 * s.dpr, 4.0 * s.dpr);
 
     // The server accepted the connection (or not) but never sent the world.
@@ -2246,7 +2297,7 @@ fn frame(s: &mut State, now_ms: f64) {
         s.remesh = false;
         s.render.update(&mut s.world, s.view_chunk);
         let vertices = s.render.vertices();
-        s.world_buffer = vertex_buffer_with(&s.device, &vertices);
+        upload_world_mesh(&s.device, &s.queue, &mut s.world_buffer, &vertices);
         s.world_vertices = vertices.len() as u32;
     }
 
@@ -2494,12 +2545,14 @@ fn upload_dynamic_mesh(s: &mut State, target: Option<Pick>) {
     let mut vertices: Vec<Vertex> = Vec::new();
     if let Some((id, pos)) = s.my_id.zip(local_position(s)).filter(|(id, _)| !s.hidden.contains(id)) {
         let color = player_color(&s.roster, id);
+        crate::shadow::push_under(&mut vertices, &s.world, pos);
         if !s.actors.push_player(&mut vertices, id, pos, color) {
             push_player(&mut vertices, color, pos);
         }
     }
     for (&id, remote) in s.remotes.iter().filter(|(id, _)| !s.hidden.contains(id)) {
         let color = player_color(&s.roster, id);
+        crate::shadow::push_under(&mut vertices, &s.world, remote.pos);
         if !s.actors.push_player(&mut vertices, id, remote.pos, color) {
             push_player(&mut vertices, color, remote.pos);
         }
@@ -2539,7 +2592,13 @@ fn upload_dynamic_mesh(s: &mut State, target: Option<Pick>) {
         // Just above the targeted block's top face.
         mesh::top_face_unlit(&mut vertices, MARKER_COLOR, [gx - 0.5, gx + 0.5, gy - 0.5, gy + 0.5], z as f32 + 1.03);
     }
-    crate::particles::append(&s.particles, &mut vertices);
+    if let Some(sprites) = s.render.sprites().cloned() {
+        crate::damage::push(&mut vertices, &sprites, &s.world, &mut s.damaged);
+        if let Some(focus) = s.interact_focus {
+            caveland_client::push_interact_sign(&mut vertices, &sprites, focus);
+        }
+    }
+    crate::particles::append(&s.particles, s.render.sprites().map(|r| &**r), &mut vertices);
     vertices.truncate(DYNAMIC_VERTICES as usize);
     s.dynamic_vertices = vertices.len() as u32;
     if !vertices.is_empty() {
