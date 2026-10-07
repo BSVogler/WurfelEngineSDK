@@ -18,6 +18,8 @@
  *                      (both only remember the form; the world you play in is described by wurfel:play)
  *     fpsLimit         integer 0..1000: frame rate cap in FPS, 0 = unlimited (default 60)
  *     ambientOcclusion bool     for the light engine, once it exists
+ *     grass            bool     grass blades on grass blocks (default true)
+ *     grassDensity     integer 0..20  blades per block near the player (default 10)
  *     showFps, showHelp bool    (JS handles the FPS counter and hides #info itself)
  *     keys             { action: [primary, alternate] } with actions
  *                      up, down, left, right, jump, players.
@@ -131,7 +133,7 @@
       masterVolume: 0.8, musicVolume: 0.6, effectsVolume: 0.8,
       zoom: 0.5,
       generator: 'island', seed: Math.floor(Math.random() * 1000000),
-      fpsLimit: 60, ambientOcclusion: false, showFps: false, showHelp: true,
+      fpsLimit: 60, ambientOcclusion: false, grass: true, grassDensity: 10, showFps: false, showHelp: true,
       keys: clone(DEFAULT_KEYS),
     };
   }
@@ -149,9 +151,10 @@
     for (const [key, [lo, hi]] of Object.entries(RANGES)) {
       if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) out[key] = Math.min(hi, Math.max(lo, raw[key]));
     }
-    for (const key of ['ambientOcclusion', 'showFps', 'showHelp']) {
+    for (const key of ['ambientOcclusion', 'grass', 'showFps', 'showHelp']) {
       if (typeof raw[key] === 'boolean') out[key] = raw[key];
     }
+    if (typeof raw.grassDensity === 'number' && Number.isFinite(raw.grassDensity)) out.grassDensity = Math.min(20, Math.max(0, Math.round(raw.grassDensity)));
     if (typeof raw.fpsLimit === 'number' && Number.isFinite(raw.fpsLimit)) out.fpsLimit = Math.min(1000, Math.max(0, Math.round(raw.fpsLimit)));
     else if (raw.limitFps === false) out.fpsLimit = 0; // migrate the old checkbox
     if (raw.keys && typeof raw.keys === 'object') {
@@ -1130,7 +1133,7 @@
       S[key] = Math.min(hi, Math.max(lo, Number(el.value) / (Number(el.dataset.scale) || 1)));
     } else if (el.type === 'number') {
       const n = Math.round(Number(el.value));
-      if (Number.isFinite(n) && el.value !== '') S[key] = Math.min(1000, Math.max(0, n));
+      if (Number.isFinite(n) && el.value !== '') S[key] = Math.min(key === 'grassDensity' ? 20 : 1000, Math.max(0, n));
     } else {
       S[key] = key === 'playerName' ? el.value.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, NAME_MAX) : el.value.slice(0, 200);
       for (const other of $$(`[data-setting="${key}"]`, menu)) if (other !== el) other.value = S[key];
