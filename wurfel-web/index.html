@@ -174,12 +174,16 @@
 
           <fieldset>
             <legend>Graphics</legend>
+            <div class="frametime" aria-label="Frame time diagram">
+              <canvas id="frametime-canvas" width="480" height="120"></canvas>
+              <div class="frametime-stats" id="frametime-stats">Frame time</div>
+            </div>
             <label class="row"><span>FPS limit <small>(0 = unlimited)</small></span><input type="number" data-nav data-setting="fpsLimit" min="0" max="1000" step="1" /></label>
             <label class="row check"><input type="checkbox" data-nav data-setting="ambientOcclusion" /><span>Ambient occlusion <small>(darkens corners where blocks meet)</small></span></label>
             <label class="row check"><input type="checkbox" data-nav data-setting="sunShadows" /><span>Sun shadows <small>(blocks and creatures cast shadows; applies at once)</small></span></label>
             <label class="row"><span>Shadow method <small>(voxel: exact straight edges from a grid of the blocks; map: one shadow map)</small></span><select data-nav data-setting="shadowMethod"><option value="map">Shadow map</option><option value="voxel">Voxel (sharp edges)</option></select></label>
             <label class="row"><span>Shadow softness <small>(voxel method: edges blur the further they are from what casts them)</small></span><input type="range" data-nav data-setting="shadowSoftness" data-scale="100" min="0" max="100" step="5" /><output></output></label>
-            <label class="row"><span>Shadow map quality <small>(for the shadow map method; high needs 64 MB of video memory)</small></span><select data-nav data-setting="shadowQuality"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+            <label class="row"><span>Shadow quality <small>(map method: size of the shadow map, high needs 64 MB of video memory; voxel method: how finely the soft edges are traced)</small></span><select data-nav data-setting="shadowQuality"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
             <label class="row check"><input type="checkbox" data-nav data-setting="cloudShadows" /><span>Cloud shadows <small>(clouds drift overhead and shade the ground)</small></span></label>
             <label class="row"><span>Cloud speed <small>(0 = still)</small></span><input type="range" data-nav data-setting="cloudSpeed" data-scale="100" min="0" max="400" step="10" /><output></output></label>
             <label class="row check"><input type="checkbox" data-nav data-setting="linearBlend" /><span>Linear blending <small>(physically correct blending of transparent things; makes them lighter; applies at once)</small></span></label>

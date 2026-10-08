@@ -22,7 +22,7 @@
  *     sunShadows       bool     the sun casts shadows of blocks and sprites (default true, applies at once)
  *     shadowMethod     'map' | 'voxel'   how blocks cast sun shadows: one shadow map, or exact edges from a grid of the blocks (default map, applies at once)
  *     shadowSoftness   0..1  how much the edges of voxel shadows blur with the distance from what casts them (default 0.4, applies at once)
- *     shadowQuality    'low' | 'medium' | 'high'   size of the shadow map, for the 'map' method (default medium, applies at once)
+ *     shadowQuality    'low' | 'medium' | 'high'   size of the shadow map for the 'map' method, how finely the soft edges are traced for the 'voxel' one (default medium, applies at once)
  *     cloudShadows     bool     clouds drift overhead and shade the ground (default true, applies at once)
  *     cloudSpeed       0..4     how fast the cloud shadows drift, 1 = normal, 0 = still (default 1, applies at once)
  *     linearBlend      bool     blend translucent layers and glow in linear light (physically right, but lighter and weaker than the display-colour blending the art was made for; default false). Replaces the older `linearLight`, whose saved value is ignored.
@@ -1523,8 +1523,57 @@
   }
 
   // ---------------------------------------------------------------------------------- loop
+  // Frame time diagram: one bar per frame (ms between animation frames), drawn only while the
+  // graphics options are showing.
+  const FT_N = 120;
+  const ftTimes = new Float32Array(FT_N);
+  let ftHead = 0, ftCount = 0, ftLast = 0;
+  const ftCanvas = $('#frametime-canvas');
+  const ftStats = $('#frametime-stats');
+  function ftRecord(now) {
+    if (ftLast) {
+      ftTimes[ftHead] = Math.min(now - ftLast, 1000);
+      ftHead = (ftHead + 1) % FT_N;
+      ftCount = Math.min(ftCount + 1, FT_N);
+    }
+    ftLast = now;
+  }
+  function ftDraw() {
+    if (!ftCanvas || ftCanvas.offsetParent === null || !ftCount) return;
+    const w = ftCanvas.width, h = ftCanvas.height;
+    const g = ftCanvas.getContext('2d');
+    const css = getComputedStyle(document.documentElement);
+    const col = (n, d) => css.getPropertyValue(n).trim() || d;
+    let max = 0, sum = 0, worst = 0;
+    for (let i = 0; i < ftCount; i++) { const v = ftTimes[(ftHead - ftCount + i + FT_N) % FT_N]; sum += v; if (v > worst) worst = v; }
+    max = Math.max(33.4, Math.ceil(worst / 10) * 10);
+    g.clearRect(0, 0, w, h);
+    const y = (ms) => h - (ms / max) * (h - 4) - 2;
+    g.font = '10px ui-monospace, Menlo, monospace';
+    g.textBaseline = 'bottom';
+    g.fillStyle = col('--muted', '#9aa7bd');
+    g.strokeStyle = 'rgba(160,170,190,0.35)';
+    g.lineWidth = 1;
+    for (const ms of [8.33, 16.67, 33.33]) {
+      if (ms > max) continue;
+      g.beginPath(); g.moveTo(0, Math.round(y(ms)) + 0.5); g.lineTo(w, Math.round(y(ms)) + 0.5); g.stroke();
+      g.fillText(`${Math.round(ms)} ms`, 3, y(ms) - 1);
+    }
+    const bw = w / FT_N;
+    for (let i = 0; i < ftCount; i++) {
+      const v = ftTimes[(ftHead - ftCount + i + FT_N) % FT_N];
+      g.fillStyle = v <= 16.9 ? col('--accent', '#6fcf4f') : v <= 33.5 ? '#ffd24d' : col('--danger', '#ff7a6b');
+      const x = (FT_N - ftCount + i) * bw;
+      g.fillRect(x, y(v), Math.max(1, bw - 1), h - y(v));
+    }
+    const avg = sum / ftCount;
+    ftStats.textContent = `avg ${avg.toFixed(1)} ms (${Math.round(1000 / avg)} FPS) · worst ${worst.toFixed(1)} ms · last ${ftTimes[(ftHead - 1 + FT_N) % FT_N].toFixed(1)} ms`;
+  }
+
   let lastStatusRefresh = 0;
   function tick(now) {
+    ftRecord(now);
+    ftDraw();
     frames++;
     if (now - lastFpsTime >= 1000) {
       fps = (frames * 1000) / (now - lastFpsTime);

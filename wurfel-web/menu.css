@@ -339,3 +339,8 @@ kbd {
 .gen-preview { flex: none; width: 120px; height: 120px; image-rendering: pixelated; border-radius: 6px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.18); }
 
 .map-hint { margin: 4px 0; font-weight: 600; color: #ffd966; }
+
+/* Frame time diagram in the graphics options. */
+.frametime { display: grid; gap: 4px; margin-bottom: 8px; }
+.frametime canvas { width: 100%; height: 120px; display: block; background: var(--field); border: 1px solid var(--panel-border); border-radius: 8px; }
+.frametime-stats { color: var(--muted); font: 0.75rem var(--mono); }
