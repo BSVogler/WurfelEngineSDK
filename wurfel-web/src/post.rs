@@ -1,5 +1,5 @@
 //! What happens to the picture after the scene is drawn and its depth peeling layers are blended
-//! (`peel.rs`): bloom, the tone map and FXAA.
+//! (`peel.rs`): the depth of field blur, bloom, the tone map and FXAA.
 //!
 //! ```text
 //! blended HDR picture ──► bloom (bloom.wgsl: cut, blur down, blur up) ─┐
@@ -22,6 +22,10 @@ use bytemuck::{Pod, Zeroable};
 pub const DEFAULT_BLOOM: f32 = 0.1;
 /// The most the page can ask for.
 pub const MAX_BLOOM: f32 = 2.0;
+/// How strong the depth of field blur is when the page does not say (1 = the full blur of `tonemap.wgsl`).
+pub const DEFAULT_DEPTH_OF_FIELD: f32 = 0.5;
+/// The most the page can ask for.
+pub const MAX_DEPTH_OF_FIELD: f32 = 1.0;
 
 /// What the post-process passes do. Everything can be switched off on its own.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -32,23 +36,28 @@ pub struct PostSettings {
     pub bloom: f32,
     /// Smooth the edges of the finished picture.
     pub fxaa: bool,
+    /// The miniature look: blur what is far from the focus plane (the depth of the middle of the
+    /// screen); 0 skips it.
+    pub depth_of_field: f32,
 }
 
 impl Default for PostSettings {
     fn default() -> Self {
-        PostSettings { linear: false, bloom: DEFAULT_BLOOM, fxaa: true }
+        PostSettings { linear: false, bloom: DEFAULT_BLOOM, fxaa: true, depth_of_field: DEFAULT_DEPTH_OF_FIELD }
     }
 }
 
 impl PostSettings {
     /// The settings from the menu (`wurfelSettings`, see `menu.js`); what is missing keeps its default.
-    /// `bloom` is clamped to 0..=[`MAX_BLOOM`] and a value that is not a number counts as missing.
-    pub fn from_menu(linear: Option<bool>, bloom: Option<f64>, fxaa: Option<bool>) -> Self {
+    /// `bloom` is clamped to 0..=[`MAX_BLOOM`], `depth_of_field` to 0..=[`MAX_DEPTH_OF_FIELD`]; a value that is
+    /// not a number counts as missing.
+    pub fn from_menu(linear: Option<bool>, bloom: Option<f64>, fxaa: Option<bool>, depth_of_field: Option<f64>) -> Self {
         let d = PostSettings::default();
         PostSettings {
             linear: linear.unwrap_or(d.linear),
             bloom: bloom.filter(|v| v.is_finite()).map_or(d.bloom, |v| (v as f32).clamp(0.0, MAX_BLOOM)),
             fxaa: fxaa.unwrap_or(d.fxaa),
+            depth_of_field: depth_of_field.filter(|v| v.is_finite()).map_or(d.depth_of_field, |v| (v as f32).clamp(0.0, MAX_DEPTH_OF_FIELD)),
         }
     }
 
@@ -62,8 +71,14 @@ impl PostSettings {
         }
     }
 
-    pub fn uniform(&self) -> PostUniform {
-        PostUniform { params: [self.bloom, if self.linear { 1.0 } else { 0.0 }, 0.0, 0.0] }
+    /// `px_per_depth`: how many screen pixels one unit of view depth moves the ground (50 * zoom).
+    /// `focus_depth`: the view depth (relative to the camera's `center_depth`) that is sharp, the
+    /// depth of the player.
+    pub fn uniform(&self, px_per_depth: f32, focus_depth: f32) -> PostUniform {
+        PostUniform {
+            params: [self.bloom, if self.linear { 1.0 } else { 0.0 }, self.depth_of_field, 0.0],
+            dof: [px_per_depth, focus_depth, 0.0, 0.0],
+        }
     }
 }
 
@@ -71,8 +86,10 @@ impl PostSettings {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct PostUniform {
-    /// x: bloom intensity, y: 1 for linear light, zw: unused.
+    /// x: bloom intensity, y: 1 for linear light, z: depth of field strength, w: unused.
     pub params: [f32; 4],
+    /// x: screen pixels per unit of view depth, y: the view depth in focus, zw: unused.
+    pub dof: [f32; 4],
 }
 
 /// Browser only: the textures and passes.
@@ -152,6 +169,7 @@ pub mod gpu {
             color_format: wgpu::TextureFormat,
             screen_format: wgpu::TextureFormat,
             blended: &wgpu::TextureView,
+            depth: &wgpu::TextureView,
             width: u32,
             height: u32,
         ) -> Self {
@@ -179,13 +197,24 @@ pub mod gpu {
             let tonemap_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("tone map"),
                 entries: &[
-                    texture_entry(0, false),
+                    texture_entry(0, true),
                     texture_entry(1, true),
                     sampler_entry(2),
                     wgpu::BindGroupLayoutEntry {
                         binding: 3,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
+                        count: None,
+                    },
+                    // The depth of the nearest surface, for the depth of field.
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Depth,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
                         count: None,
                     },
                 ],
@@ -233,7 +262,7 @@ pub mod gpu {
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
-            let targets = Self::create_targets(device, &sampled_layout, &tonemap_layout, &sampler, &uniform, color_format, screen_format, blended, width, height);
+            let targets = Self::create_targets(device, &sampled_layout, &tonemap_layout, &sampler, &uniform, color_format, screen_format, blended, depth, width, height);
             Post {
                 sampled_layout,
                 tonemap_layout,
@@ -250,8 +279,8 @@ pub mod gpu {
             }
         }
 
-        /// The canvas changed size; `blended` is the new blended picture of `Peeling`.
-        pub fn resize(&mut self, device: &wgpu::Device, blended: &wgpu::TextureView, width: u32, height: u32) {
+        /// The canvas changed size; `blended` and `depth` are the new pictures of `Peeling`.
+        pub fn resize(&mut self, device: &wgpu::Device, blended: &wgpu::TextureView, depth: &wgpu::TextureView, width: u32, height: u32) {
             self.targets = Self::create_targets(
                 device,
                 &self.sampled_layout,
@@ -261,6 +290,7 @@ pub mod gpu {
                 self.color_format,
                 self.screen_format,
                 blended,
+                depth,
                 width,
                 height,
             );
@@ -276,6 +306,7 @@ pub mod gpu {
             color_format: wgpu::TextureFormat,
             screen_format: wgpu::TextureFormat,
             blended: &wgpu::TextureView,
+            depth: &wgpu::TextureView,
             width: u32,
             height: u32,
         ) -> Targets {
@@ -316,6 +347,7 @@ pub mod gpu {
                     wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&levels[0]) },
                     wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(sampler) },
                     wgpu::BindGroupEntry { binding: 3, resource: uniform.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(depth) },
                 ],
             });
             let ldr = texture("tone mapped", screen_format, width, height);
@@ -323,9 +355,18 @@ pub mod gpu {
             Targets { levels, prefilter_group, down_groups, up_groups, tonemap_group, ldr, fxaa_group }
         }
 
-        /// Run the passes on the blended picture and draw the result onto `screen`.
-        pub fn render(&self, encoder: &mut wgpu::CommandEncoder, queue: &wgpu::Queue, screen: &wgpu::TextureView, settings: &PostSettings) {
-            queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&settings.uniform()));
+        /// Run the passes on the blended picture and draw the result onto `screen`. `px_per_depth` is
+        /// and `focus_depth` are what [`PostSettings::uniform`] takes.
+        pub fn render(
+            &self,
+            encoder: &mut wgpu::CommandEncoder,
+            queue: &wgpu::Queue,
+            screen: &wgpu::TextureView,
+            settings: &PostSettings,
+            px_per_depth: f32,
+            focus_depth: f32,
+        ) {
+            queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&settings.uniform(px_per_depth, focus_depth)));
             let targets = &self.targets;
 
             if settings.bloom > 0.0 {
@@ -410,16 +451,23 @@ mod tests {
     }
 
     #[test]
-    fn the_tone_map_shader_binds_the_picture_the_bloom_the_sampler_and_the_settings() {
+    fn the_tone_map_shader_binds_the_picture_the_bloom_the_sampler_the_settings_and_the_depth() {
         let module = validated("tonemap.wgsl", include_str!("tonemap.wgsl"));
         let entries = entry_points(&module);
         assert!(entries.contains(&("vs_main".into(), naga::ShaderStage::Vertex)), "{entries:?}");
         assert!(entries.contains(&("fs_main".into(), naga::ShaderStage::Fragment)), "{entries:?}");
-        assert_eq!(bindings(&module), vec![(0, 0), (0, 1), (0, 2), (0, 3)]);
-        // `Post` is one vec4, like `PostUniform`.
+        assert_eq!(bindings(&module), vec![(0, 0), (0, 1), (0, 2), (0, 3), (0, 4)]);
+        // `Post` is two vec4s, like `PostUniform`.
         let post = module.types.iter().find(|(_, t)| t.name.as_deref() == Some("Post")).expect("struct Post").1;
         let naga::TypeInner::Struct { span, .. } = &post.inner else { panic!("Post is not a struct") };
         assert_eq!(*span as usize, std::mem::size_of::<PostUniform>());
+    }
+
+    #[test]
+    fn the_depth_of_field_reads_depth_like_the_scene_writes_it() {
+        let source = include_str!("tonemap.wgsl");
+        assert!(source.contains(&format!("const DEPTH_SCALE = {};", crate::peel::DEPTH_SCALE)), "DEPTH_SCALE no longer matches peel.rs");
+        assert!(source.contains("(0.5 - textureLoad(depth, texel, 0)) / DEPTH_SCALE"), "peel::clip_depth is 0.5 - depth * DEPTH_SCALE");
     }
 
     #[test]
@@ -460,25 +508,28 @@ mod tests {
         let d = PostSettings::default();
         assert!(!d.linear, "the art was made for blending display colours: linear light is opt-in");
         assert!(d.fxaa && d.bloom > 0.0);
-        assert_eq!(PostSettings::from_menu(None, None, None), d);
+        assert_eq!(PostSettings::from_menu(None, None, None, None), d);
     }
 
     #[test]
     fn each_menu_value_changes_one_thing() {
         let d = PostSettings::default();
-        assert_eq!(PostSettings::from_menu(None, None, Some(false)), PostSettings { fxaa: false, ..d });
-        assert_eq!(PostSettings::from_menu(Some(false), None, None), PostSettings { linear: false, ..d });
-        assert_eq!(PostSettings::from_menu(None, Some(0.0), None), PostSettings { bloom: 0.0, ..d });
-        assert_eq!(PostSettings::from_menu(None, Some(0.25), None), PostSettings { bloom: 0.25, ..d });
+        assert_eq!(PostSettings::from_menu(None, None, Some(false), None), PostSettings { fxaa: false, ..d });
+        assert_eq!(PostSettings::from_menu(Some(false), None, None, None), PostSettings { linear: false, ..d });
+        assert_eq!(PostSettings::from_menu(None, Some(0.0), None, None), PostSettings { bloom: 0.0, ..d });
+        assert_eq!(PostSettings::from_menu(None, Some(0.25), None, None), PostSettings { bloom: 0.25, ..d });
+        assert_eq!(PostSettings::from_menu(None, None, None, Some(0.0)), PostSettings { depth_of_field: 0.0, ..d });
     }
 
     #[test]
     fn nonsense_from_the_menu_is_ignored_or_clamped() {
         let d = PostSettings::default();
-        assert_eq!(PostSettings::from_menu(None, Some(f64::NAN), None), d);
-        assert_eq!(PostSettings::from_menu(None, Some(f64::INFINITY), None), d);
-        assert_eq!(PostSettings::from_menu(None, Some(99.0), None).bloom, MAX_BLOOM);
-        assert_eq!(PostSettings::from_menu(None, Some(-3.0), None).bloom, 0.0);
+        assert_eq!(PostSettings::from_menu(None, Some(f64::NAN), None, Some(f64::NAN)), d);
+        assert_eq!(PostSettings::from_menu(None, Some(f64::INFINITY), None, Some(f64::INFINITY)), d);
+        assert_eq!(PostSettings::from_menu(None, Some(99.0), None, Some(99.0)).bloom, MAX_BLOOM);
+        assert_eq!(PostSettings::from_menu(None, None, None, Some(99.0)).depth_of_field, MAX_DEPTH_OF_FIELD);
+        assert_eq!(PostSettings::from_menu(None, None, None, Some(-1.0)).depth_of_field, 0.0);
+        assert_eq!(PostSettings::from_menu(None, Some(-3.0), None, None).bloom, 0.0);
     }
 
     #[test]
@@ -492,8 +543,9 @@ mod tests {
 
     #[test]
     fn the_uniform_carries_the_settings() {
-        let u = PostSettings { linear: true, bloom: 0.25, fxaa: true }.uniform();
-        assert_eq!(u.params, [0.25, 1.0, 0.0, 0.0]);
-        assert_eq!(PostSettings { linear: false, bloom: 0.0, fxaa: false }.uniform().params, [0.0; 4]);
+        let u = PostSettings { linear: true, bloom: 0.25, fxaa: true, depth_of_field: 0.5 }.uniform(25.0, 13.0);
+        assert_eq!(u.params, [0.25, 1.0, 0.5, 0.0]);
+        assert_eq!(u.dof, [25.0, 13.0, 0.0, 0.0]);
+        assert_eq!(PostSettings { linear: false, bloom: 0.0, fxaa: false, depth_of_field: 0.0 }.uniform(0.0, 0.0).params, [0.0; 4]);
     }
 }

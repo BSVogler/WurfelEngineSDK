@@ -28,7 +28,7 @@
  *     linearBlend      bool     blend translucent layers and glow in linear light (physically right, but lighter and weaker than the display-colour blending the art was made for; default false). Replaces the older `linearLight`, whose saved value is ignored.
  *     bloom            0..0.5   glow of very bright things, 0 = off (default 0.1)
  *     fxaa             bool     smooth edges (default true)
- *     depthOfField     0..1     miniature look: blur what is far from the focus (the middle of the screen), by depth, 0 = off (default 0.5, applies at once)
+ *     depthOfField     0..1     miniature look: blur what is far from the player (the focus), by depth, 0 = off (default 0.5, applies at once)
  *     grass            bool     grass blades on grass blocks (default true)
  *     grassDensity     integer 0..20  blades per block near the player (default 10)
  *     showFps, showHelp bool    (JS handles the FPS counter and hides #info itself)

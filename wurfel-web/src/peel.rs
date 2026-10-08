@@ -353,6 +353,12 @@ pub mod gpu {
             self.color_format
         }
 
+        /// The depth of the nearest surface of every pixel (layer 0's depth buffer, which the later
+        /// layers do not write), for the depth of field. A new texture after [`Self::resize`].
+        pub fn nearest_depth(&self) -> &wgpu::TextureView {
+            &self.targets.depth[0]
+        }
+
         /// The blended picture, which [`Self::render`] leaves for the post-process passes (`post.rs`).
         /// A new texture after [`Self::resize`].
         pub fn blended(&self) -> &wgpu::TextureView {
