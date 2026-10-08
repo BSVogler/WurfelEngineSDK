@@ -13,7 +13,7 @@ pub const TILE_BLOCKS: f32 = 48.0;
 /// Height of the cloud layer above the ground (blocks); sets how far a shadow shifts with the sun.
 pub const HEIGHT: f32 = 24.0;
 /// How much of the sun the heart of a cloud blocks (0 none, 1 all of it; the ambient light stays).
-pub const DEFAULT_STRENGTH: f32 = 0.7;
+pub const DEFAULT_STRENGTH: f32 = 0.4;
 
 /// A deterministic hash of a lattice point to 0..1.
 fn hash(x: u32, y: u32, seed: u32) -> f32 {

@@ -55,8 +55,10 @@ impl ShadowQuality {
 pub const RADIUS: f32 = 48.0;
 /// The same for the voxel method, where the map only holds the standing sprites (trees, creatures).
 pub const SPRITE_RADIUS: f32 = 32.0;
+/// The menu's default `shadowSoftness` (0..1 of [`MAX_SOFT`]); `menu.js` has the same number.
+pub const DEFAULT_SOFTNESS: f32 = 0.4;
 /// The softest the sun's disc can be: the tangent of its angular radius (about 17 degrees). The real sun
-/// is 0.005; a game wants the blur to be seen. The menu's default is half of this.
+/// is 0.005; a game wants the blur to be seen. The menu's default is [`DEFAULT_SOFTNESS`] of it.
 pub const MAX_SOFT: f32 = 0.3;
 /// The size of that map: the sprites' shadows are soft, so it does not have to be fine.
 pub const SPRITE_MAP_SIZE: u32 = 1024;

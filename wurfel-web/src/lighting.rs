@@ -331,6 +331,7 @@ mod tests {
                 (0, 6, "voxels".to_string()),
                 (0, 7, "voxel_sampler".to_string()),
                 (0, 8, "mirror_image".to_string()),
+                (0, 9, "voxel_field".to_string()),
                 (1, 0, "atlas".to_string()),
                 (1, 1, "atlas_sampler".to_string()),
                 (1, 2, "normals".to_string()),
@@ -338,6 +339,16 @@ mod tests {
                 (2, 1, "previous_depth".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn the_shader_mixes_the_occlusion_of_the_corners_per_pixel() {
+        let source = include_str!("shader.wgsl");
+        assert!(source.contains("fn pixel_occlusion("));
+        assert!(source.contains(&format!("const OCCLUSION_FLAG = {:.1};", crate::mesh::OCCLUSION_FLAG)));
+        // Both lighting paths apply it.
+        assert!(source.contains("in.color * shadowed * occlusion"));
+        assert!(source.contains("* in.baked.a * occlusion"));
     }
 
     #[test]
@@ -417,8 +428,8 @@ mod tests {
                 (location, components)
             })
             .collect();
-        // position (3 floats), colour (3), shade (2), baked point light (3), atlas uv (2), page (1)
-        assert_eq!(formats, vec![(0, 3), (1, 3), (2, 2), (3, 3), (4, 2), (5, 1)]);
+        // position (3 floats), colour (3), shade (2), baked point light (3), atlas uv (2), page (1), occlusion (1)
+        assert_eq!(formats, vec![(0, 3), (1, 3), (2, 2), (3, 3), (4, 2), (5, 1), (6, 1)]);
         let floats: usize = formats.iter().map(|f| f.1).sum();
         assert_eq!(floats * 4, size_of::<Vertex>());
         assert_eq!(entry.function.arguments.len(), 1);

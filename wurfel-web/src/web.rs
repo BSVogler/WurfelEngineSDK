@@ -442,6 +442,17 @@ async fn run() -> Result<(), String> {
                 },
                 count: None,
             },
+            // The voxel grid as distances to the nearest block, for the soft shadows.
+            wgpu::BindGroupLayoutEntry {
+                binding: 9,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D3,
+                    multisampled: false,
+                },
+                count: None,
+            },
         ],
     });
     let (cloud_view, cloud_sampler) = crate::clouds::gpu::create(&device, &queue);
@@ -1634,12 +1645,12 @@ fn listen<E: JsCast + 'static>(window: &web_sys::Window, event: &str, mut handle
     closure.forget();
 }
 
-/// The graphics settings of the menu (`linearLight`, `bloom`, `fxaa`); the defaults while
+/// The graphics settings of the menu (`linearBlend`, `bloom`, `fxaa`); the defaults while
 /// the menu has not run.
 fn post_settings_from_menu() -> PostSettings {
     let settings = web_sys::window().map(|w| js_get(&w, "wurfelSettings")).unwrap_or(JsValue::UNDEFINED);
     PostSettings::from_menu(
-        js_get(&settings, "linearLight").as_bool(),
+        js_get(&settings, "linearBlend").as_bool(),
         js_get(&settings, "bloom").as_f64(),
         js_get(&settings, "fxaa").as_bool(),
     )
@@ -1664,7 +1675,7 @@ fn sun_shadow_quality_from_menu() -> crate::sunshadow::ShadowQuality {
 
 /// The menu's `shadowSoftness` (0 to 1) as the tangent of the sun's angular radius.
 fn sun_shadow_softness_from_menu() -> f32 {
-    let softness = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "shadowSoftness").as_f64()).unwrap_or(0.5);
+    let softness = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "shadowSoftness").as_f64()).unwrap_or(crate::sunshadow::DEFAULT_SOFTNESS as f64);
     if softness.is_finite() { softness.clamp(0.0, 1.0) as f32 * crate::sunshadow::MAX_SOFT } else { 0.0 }
 }
 
@@ -1677,7 +1688,11 @@ fn sun_shadow_method_from_menu() -> crate::sunshadow::ShadowMethod {
 /// Take the menu's shadow method and quality into the running game. The map's size follows both (the
 /// voxel method needs only a small one); the scene's bind group holds the map, so it is made again when it changes.
 fn apply_sun_shadow_quality(s: &mut State) {
-    s.shadow_softness = sun_shadow_softness_from_menu();
+    let softness = sun_shadow_softness_from_menu();
+    if (softness > 0.001) != (s.shadow_softness > 0.001) {
+        s.voxels_stale = true;  // the distance field is only made while the soft shadows are on
+    }
+    s.shadow_softness = softness;
     let method = sun_shadow_method_from_menu();
     if method != s.shadow_method {
         s.shadow_method = method;
@@ -1714,6 +1729,7 @@ impl SceneGroupParts<'_> {
                 wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(self.voxels.view()) },
                 wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::Sampler(self.voxels.sampler()) },
                 wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(mirror_image) },
+                wgpu::BindGroupEntry { binding: 9, resource: wgpu::BindingResource::TextureView(self.voxels.field_view()) },
             ],
         })
     }
@@ -2513,7 +2529,7 @@ fn frame(s: &mut State, now_ms: f64) {
     // The grid of the blocks for the voxel shadows follows the render window and the edits.
     if s.voxels_stale && s.shadow_method == crate::sunshadow::ShadowMethod::Voxel {
         s.voxels_stale = false;
-        s.voxels.set(&s.queue, crate::voxels::VoxelGrid::build(&s.render));
+        s.voxels.set(&s.queue, crate::voxels::VoxelGrid::build(&s.render), s.shadow_softness > 0.001);
     }
 
     // The hover marker and the cursor info belong to the editor.

@@ -712,6 +712,37 @@ mod tests {
     }
 
     #[test]
+    fn every_lit_face_carries_the_occlusion_of_all_its_corners_for_the_shader() {
+        let mut world = stone_on_floor();
+        let mut storage = RenderStorage::new();
+        storage.update_area(&mut world, (0, 0), (0, 0));
+        let vertices = storage.vertices();
+        let lit: Vec<_> = vertices.iter().filter(|v| v.shade[0] == mesh::FACE_TOP || v.shade[0] == mesh::FACE_LEFT || v.shade[0] == mesh::FACE_RIGHT).collect();
+        assert!(!lit.is_empty());
+        let decode = |v: &Vertex| {
+            assert!(v.occlusion >= mesh::OCCLUSION_FLAG, "a lit face has no corners' occlusion: {v:?}");
+            let packed = (v.occlusion - mesh::OCCLUSION_FLAG) as u32;
+            ([0, 1, 2, 3].map(|i| ((packed >> (2 * i)) & 3) as u8), (packed >> 8) as usize)
+        };
+        let mut seen_dark = false;
+        // A face is two triangles, six vertices in a row, which share the corners' counts and show every corner.
+        for quad in vertices.chunks(6).filter(|q| mesh::FACE_TOP == q[0].shade[0] || mesh::FACE_LEFT == q[0].shade[0] || mesh::FACE_RIGHT == q[0].shade[0]) {
+            let (counts, _) = decode(&quad[0]);
+            let mut corners: Vec<usize> = quad.iter().map(|v| decode(v).1).collect();
+            for v in quad {
+                let (c, corner) = decode(v);
+                assert_eq!(c, counts, "the corners' counts differ inside one face");
+                assert!((v.shade[1] * 3.0 - counts[corner] as f32).abs() < 1e-4, "the vertex's own occlusion is its corner's count");
+            }
+            corners.sort_unstable();
+            corners.dedup();
+            assert_eq!(corners, vec![0, 1, 2, 3]);
+            seen_dark |= counts.iter().any(|&c| c > 0);
+        }
+        assert!(seen_dark, "the floor next to the block is occluded");
+    }
+
+    #[test]
     fn meshes_carry_ambient_occlusion_next_to_walls_and_none_in_the_open() {
         let mut world = stone_on_floor();
         let mut storage = RenderStorage::new();

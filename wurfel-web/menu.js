@@ -21,11 +21,11 @@
  *     ambientOcclusion bool     darken corners where blocks meet (applies at once)
  *     sunShadows       bool     the sun casts shadows of blocks and sprites (default true, applies at once)
  *     shadowMethod     'map' | 'voxel'   how blocks cast sun shadows: one shadow map, or exact edges from a grid of the blocks (default map, applies at once)
- *     shadowSoftness   0..1  how much the edges of voxel shadows blur with the distance from what casts them (default 0.5, applies at once)
+ *     shadowSoftness   0..1  how much the edges of voxel shadows blur with the distance from what casts them (default 0.4, applies at once)
  *     shadowQuality    'low' | 'medium' | 'high'   size of the shadow map, for the 'map' method (default medium, applies at once)
  *     cloudShadows     bool     clouds drift overhead and shade the ground (default true, applies at once)
  *     cloudSpeed       0..4     how fast the cloud shadows drift, 1 = normal, 0 = still (default 1, applies at once)
- *     linearLight      bool     light and blend in linear light, encode at the end (default true)
+ *     linearBlend      bool     blend translucent layers and glow in linear light (physically right, but lighter and weaker than the display-colour blending the art was made for; default false). Replaces the older `linearLight`, whose saved value is ignored.
  *     bloom            0..0.5   glow of very bright things, 0 = off (default 0.1)
  *     fxaa             bool     smooth edges (default true)
  *     grass            bool     grass blades on grass blocks (default true)
@@ -145,7 +145,7 @@
       masterVolume: 0.8, musicVolume: 0.6, effectsVolume: 0.8,
       zoom: 0.5,
       generator: 'island', seed: Math.floor(Math.random() * 1000000),
-      fpsLimit: 60, ambientOcclusion: false, cloudShadows: true, cloudSpeed: 1, sunShadows: true, shadowMethod: 'map', shadowSoftness: 0.5, shadowQuality: 'medium', linearLight: true, bloom: 0.1, fxaa: true, grass: true, grassDensity: 10, showFps: false, showHelp: true,
+      fpsLimit: 60, ambientOcclusion: false, cloudShadows: true, cloudSpeed: 1, sunShadows: true, shadowMethod: 'map', shadowSoftness: 0.4, shadowQuality: 'medium', linearBlend: false, bloom: 0.1, fxaa: true, grass: true, grassDensity: 10, showFps: false, showHelp: true,
       keys: clone(DEFAULT_KEYS),
     };
   }
@@ -165,7 +165,7 @@
     for (const [key, [lo, hi]] of Object.entries(RANGES)) {
       if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) out[key] = Math.min(hi, Math.max(lo, raw[key]));
     }
-    for (const key of ['ambientOcclusion', 'cloudShadows', 'sunShadows', 'linearLight', 'fxaa', 'grass', 'showFps', 'showHelp']) {
+    for (const key of ['ambientOcclusion', 'cloudShadows', 'sunShadows', 'linearBlend', 'fxaa', 'grass', 'showFps', 'showHelp']) {
       if (typeof raw[key] === 'boolean') out[key] = raw[key];
     }
     if (typeof raw.grassDensity === 'number' && Number.isFinite(raw.grassDensity)) out.grassDensity = Math.min(20, Math.max(0, Math.round(raw.grassDensity)));

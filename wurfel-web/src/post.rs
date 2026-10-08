@@ -36,7 +36,7 @@ pub struct PostSettings {
 
 impl Default for PostSettings {
     fn default() -> Self {
-        PostSettings { linear: true, bloom: DEFAULT_BLOOM, fxaa: true }
+        PostSettings { linear: false, bloom: DEFAULT_BLOOM, fxaa: true }
     }
 }
 
@@ -458,7 +458,8 @@ mod tests {
     #[test]
     fn the_new_look_is_the_default() {
         let d = PostSettings::default();
-        assert!(d.linear && d.fxaa && d.bloom > 0.0 && true);
+        assert!(!d.linear, "the art was made for blending display colours: linear light is opt-in");
+        assert!(d.fxaa && d.bloom > 0.0);
         assert_eq!(PostSettings::from_menu(None, None, None), d);
     }
 

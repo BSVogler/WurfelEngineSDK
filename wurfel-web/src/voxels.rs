@@ -40,12 +40,17 @@ pub const SIZE_Z: usize = CHUNK_SIZE_Z as usize;
 /// How much light water stops (of 255): a lake shades what is under it a little.
 pub const WATER: u8 = 70;
 /// Steps of the sphere tracing at most. It takes big steps in the open, so it is far fewer than the walk.
-pub const SOFT_STEPS: u32 = 64;
+pub const SOFT_STEPS: u32 = 96;
 /// How much of the distance field a step uses: the field is made from the centres of the cells and
 /// overestimates a little at corners, so a full step could jump into a block.
-pub const SPHERE_STEP: f32 = 0.7;
+pub const SPHERE_STEP: f32 = 0.5;
 /// The shortest step, in cells.
-pub const MIN_STEP: f32 = 0.05;
+pub const MIN_STEP: f32 = 0.03;
+/// Inside a penumbra a step is at most this part of its width, so the edge does not crawl with the sun.
+pub const WIDTH_STEP: f32 = 0.2;
+/// Steps inside a block at most (how deep the ray goes is looked for there) and the shortest of them.
+pub const INSIDE_STEPS: u32 = 24;
+pub const INSIDE_MIN_STEP: f32 = 0.03;
 /// A surface's own blur must not reach its own block: the sun's `soft` is at most this times the
 /// cosine of the angle between the surface's normal and the sun.
 pub const SELF_CLEARANCE: f32 = 0.95;
@@ -233,13 +238,15 @@ impl VoxelGrid {
     /// angular radius `atan(soft)` in the direction `to_sun`, and `normal` is the way the surface at `start`
     /// faces. `field` is [`Self::distance_field`]. Mirrors `voxel_visibility` in `shader.wgsl` (its soft part).
     pub fn soft_visibility(&self, field: &[f32], start: Vec3, to_sun: Vec3, normal: Vec3, soft: f32) -> f32 {
+        // Start a little off the surface, as the shader does, so the surface's own block is not hit.
+        let start = start + normal * 0.02 + to_sun * 0.02;
         // The blur of a surface that is hardly turned to the sun must not reach its own block.
         let soft = soft.min(SELF_CLEARANCE * normal.dot(to_sun));
         if soft <= 0.001 {
             return self.transmittance(start, to_sun, MAX_STEPS);
         }
         let q = start + Vec3::new(0.5, 0.5, 0.0) - Vec3::new(self.origin.0 as f32, self.origin.1 as f32, 0.0);
-        let (mut visible, mut previous, mut t) = (1.0f32, 1.0e20f32, 0.0f32);
+        let (mut visible, mut t) = (1.0f32, 0.0f32);
         for _ in 0..SOFT_STEPS {
             let p = q + to_sun * t;
             if p.z >= SIZE_Z as f32 || p.z < 0.0 || p.x < 0.0 || p.y < 0.0 || p.x >= SIZE_XY as f32 || p.y >= SIZE_XY as f32 {
@@ -247,18 +254,49 @@ impl VoxelGrid {
             }
             let d = Self::sample_field(field, p);
             if d <= 0.0 {
-                return 0.0;
+                // The ray is in a block. How deep it goes decides how much of the sun's disc is hidden
+                // (a graze hides half of it, a ray that goes through hides all): go on inside until the
+                // deepest point is known, so the shadow is continuous across the edge of the ray's hit.
+                let (mut deepest, mut deepest_t) = (d, t);
+                for _ in 0..INSIDE_STEPS {
+                    if 0.5 + 0.5 * deepest / (soft * deepest_t.max(0.001)) <= 0.0 {
+                        break;
+                    }
+                    t += (-deepest * SPHERE_STEP).max(INSIDE_MIN_STEP);
+                    let p = q + to_sun * t;
+                    if p.z >= SIZE_Z as f32 || p.z < 0.0 || p.x < 0.0 || p.y < 0.0 || p.x >= SIZE_XY as f32 || p.y >= SIZE_XY as f32 {
+                        break;
+                    }
+                    let inside = Self::sample_field(field, p);
+                    if inside < deepest {
+                        (deepest, deepest_t) = (inside, t);
+                    }
+                    if inside > 0.0 {
+                        break;
+                    }
+                }
+                // The disc is as wide as it is where the ray was deepest, not where the search ended.
+                return smooth(visible.min((0.5 + 0.5 * deepest / (soft * deepest_t.max(0.001))).clamp(0.0, 1.0)));
             }
-            // The closest the ray came to the block between this sample and the one before is a bit
-            // nearer than `d` (the spheres of the two overlap): this removes the bands of a plain minimum.
-            let y = d * d / (2.0 * previous);
-            let closest = (d * d - y * y).max(0.0).sqrt();
-            visible = visible.min((0.5 + 0.5 * closest / (soft * (t - y).max(0.001))).clamp(0.0, 1.0));
-            previous = d;
-            t += (d * SPHERE_STEP).max(MIN_STEP);
+            // The closest the ray comes to a block is between two samples at most `SPHERE_STEP / 2` of
+            // the distance off, so the shadow is within a few percent of the exact value everywhere.
+            visible = visible.min((0.5 + 0.5 * d / (soft * t.max(0.001))).clamp(0.0, 1.0));
+            let mut step = d * SPHERE_STEP;
+            if d < 2.0 * soft * t {
+                step = step.min(soft * t * WIDTH_STEP); // near the edge of a shadow: look closer
+            }
+            t += step.max(MIN_STEP);
         }
-        visible
+        smooth(visible)
     }
+}
+
+/// The coverage of the sun's disc by a straight edge goes from 0 to 1 over the disc's width as an S, not
+/// as a line: smoothstep. It has no corner where the penumbra starts and ends, which the eye sees as a
+/// band even when the steps are small. `smoothstep(0, 1, x)` in `shader.wgsl`.
+fn smooth(x: f32) -> f32 {
+    let x = x.clamp(0.0, 1.0);
+    x * x * (3.0 - 2.0 * x)
 }
 
 /// The distance from every cell to the nearest cell whose `solid` flag is `target` (0 for those cells
@@ -555,108 +593,123 @@ mod tests {
         assert_eq!(grid.transmittance(Vec3::new(80.0, 80.0, 1.0), Vec3::new(0.7, 0.7, 0.0).normalize(), 5), 1.0);
     }
 
-    fn wall(height: usize) -> VoxelGrid {
+    /// A wall along y, `thickness` cells thick from x = 50, `height` cells high.
+    fn thick_wall(height: usize, thickness: usize) -> VoxelGrid {
         let mut grid = VoxelGrid::empty((0, 0));
         for y in 0..SIZE_XY {
             for z in 0..height {
-                grid.data[index(50, y, z)] = 255;
+                for x in 50..50 + thickness {
+                    grid.data[index(x, y, z)] = 255;
+                }
             }
         }
         grid
     }
 
-    /// How far along x (in cells) the light goes from at most 10 % to at least 90 % behind a wall of this
-    /// height, receivers on the ground at z = 0.1, the sun 45 degrees high towards -x.
-    fn penumbra_width(height: usize, soft: f32) -> f32 {
-        let grid = wall(height);
-        let mips = grid.mips();
-        let sun = Vec3::new(-1.0, 0.0, 1.0).normalize();
-        let (mut dark, mut light) = (None, None);
-        let mut x = 50.6;
-        while x < 80.0 {
-            let v = grid.soft_transmittance(&mips, Vec3::new(x, 10.0, 0.1), sun, Vec3::Z, soft);
-            if v <= 0.1 {
-                dark = Some(x);
-            }
-            if v >= 0.9 && light.is_none() && dark.is_some() {
-                light = Some(x);
-            }
-            x += 0.02;
-        }
-        light.expect("the light comes back") - dark.expect("there is shadow")
+    fn wall(height: usize) -> VoxelGrid {
+        thick_wall(height, 1)
     }
 
-    #[test]
-    fn the_mip_chain_averages_two_cubes_and_keeps_a_filled_grid_filled() {
+    fn ground(thickness: usize) -> VoxelGrid {
         let mut grid = VoxelGrid::empty((0, 0));
-        grid.data[index(0, 0, 0)] = 255;
-        let mips = grid.mips();
-        assert_eq!(mips.len(), MIP_LEVELS);
-        assert_eq!(mips[1][0], 32, "one solid cell in eight");
-        assert_eq!(mips[5].len(), 5 * 5);
-        assert_eq!(VoxelGrid::mip_size(5), (5, 5, 1));
-        let full = VoxelGrid { origin: (0, 0), data: vec![255; SIZE_XY * SIZE_XY * SIZE_Z] };
-        assert!(full.mips().iter().all(|level| level.iter().all(|&v| v == 255)));
-    }
-
-    #[test]
-    fn sampling_a_level_reads_the_cell_at_its_centre_and_blends_between_levels() {
-        let mut grid = VoxelGrid::empty((0, 0));
-        grid.data[index(10, 10, 5)] = 255;
-        let mips = grid.mips();
-        assert!((VoxelGrid::sample(&mips, Vec3::new(10.5, 10.5, 5.5), 0.0) - 1.0).abs() < 1e-5);
-        assert!(VoxelGrid::sample(&mips, Vec3::new(12.5, 10.5, 5.5), 0.0) < 1e-5);
-        let blend = VoxelGrid::sample(&mips, Vec3::new(10.5, 10.5, 5.5), 0.5);
-        assert!(blend > VoxelGrid::sample(&mips, Vec3::new(10.5, 10.5, 5.5), 1.0) && blend < 1.0);
-    }
-
-    #[test]
-    fn without_a_disc_the_soft_walk_is_the_exact_one() {
-        let grid = wall(4);
-        let mips = grid.mips();
-        let sun = Vec3::new(-1.0, 0.0, 1.0).normalize();
-        for x in [51.5, 54.3, 54.6, 60.0] {
-            let at = Vec3::new(x, 10.0, 0.1);
-            assert_eq!(grid.soft_transmittance(&mips, at, sun, Vec3::Z, 0.0), grid.transmittance(at, sun, MAX_STEPS));
-        }
-    }
-
-    #[test]
-    fn a_shadow_edge_is_blurrier_the_further_it_is_from_what_casts_it() {
-        // The shadow tip of a tall wall comes from an edge further up and away than that of a low wall.
-        let (low, tall) = (penumbra_width(2, 0.1), penumbra_width(8, 0.1));
-        assert!(tall > 1.5 * low, "tall {tall} vs low {low}");
-        // A wider sun blurs more, a point sun not at all (the edge is one step of the scan).
-        assert!(penumbra_width(8, 0.2) > penumbra_width(8, 0.05));
-        assert!(penumbra_width(8, 0.0) < 0.1, "{}", penumbra_width(8, 0.0));
-    }
-
-    #[test]
-    fn even_the_short_shadow_of_a_low_wall_has_a_visible_edge_at_the_default_softness() {
-        // The default of the menu: half of the softest (a quarter of a block of blur per block of distance).
-        let soft = 0.5 * crate::sunshadow::MAX_SOFT;
-        let (hard, soft_width) = (penumbra_width(2, 0.0), penumbra_width(2, soft));
-        assert!(hard < 0.1, "{hard}");
-        assert!(soft_width > 0.4, "a 2 block wall's shadow edge is only {soft_width} cells wide");
-        assert!(soft_width < 3.0, "but not a smear: {soft_width}");
-    }
-
-    #[test]
-    fn open_ground_is_not_shaded_by_its_own_blur_at_any_sun_height() {
-        let mut grid = VoxelGrid::empty((0, 0));
-        for z in 0..3 {
+        for z in 0..thickness {
             for y in 0..SIZE_XY {
                 for x in 0..SIZE_XY {
                     grid.data[index(x, y, z)] = 255;
                 }
             }
         }
-        let mips = grid.mips();
+        grid
+    }
+
+    /// The sun 45 degrees high towards -x.
+    fn sun() -> Vec3 {
+        Vec3::new(-1.0, 0.0, 1.0).normalize()
+    }
+
+    /// The light along the ground behind a wall of `height` cells and `thickness`, from its far side
+    /// outwards, in steps of 0.02 cells, for a sun with the softness `soft`.
+    fn scan(height: usize, thickness: usize, soft: f32) -> Vec<(f32, f32)> {
+        let grid = thick_wall(height, thickness);
+        let field = grid.distance_field();
+        let mut x = 49.5 + thickness as f32 + 0.1;
+        let mut out = Vec::new();
+        while x < 90.0 {
+            out.push((x, grid.soft_visibility(&field, Vec3::new(x, 10.0, 0.1), sun(), Vec3::Z, soft)));
+            x += 0.02;
+        }
+        out
+    }
+
+    /// How far along x the light goes from at most 10 % to at least 90 %, and the largest change between two
+    /// neighbouring samples (a step in the picture).
+    fn penumbra(height: usize, thickness: usize, soft: f32) -> (f32, f32) {
+        let samples = scan(height, thickness, soft);
+        let dark = samples.iter().rev().find(|(_, v)| *v <= 0.1).map(|(x, _)| *x).expect("there is shadow");
+        let light = samples.iter().find(|(x, v)| *x > dark && *v >= 0.9).map(|(x, _)| *x).expect("the light comes back");
+        let step = samples.windows(2).map(|w| (w[1].1 - w[0].1).abs()).fold(0.0, f32::max);
+        (light - dark, step)
+    }
+
+    #[test]
+    fn halves_are_converted_exactly_for_the_values_the_field_holds() {
+        assert_eq!(f32_to_f16(0.0), 0x0000);
+        assert_eq!(f32_to_f16(1.0), 0x3c00);
+        assert_eq!(f32_to_f16(-0.5), 0xb800);
+        assert_eq!(f32_to_f16(0.5), 0x3800);
+        assert_eq!(f32_to_f16(32.0), 0x5000);
+        assert_eq!(f32_to_f16(-32.0), 0xd000);
+        assert_eq!(f32_to_f16(1.0e9), 0x7bff, "too large: the largest half");
+        // 0.1 is not exact in a half: it rounds to the nearest (0x2e66 = 0.0999756).
+        assert_eq!(f32_to_f16(0.1), 0x2e66);
+        // Near what a distance is: the error is below a thousandth of a cell for 0.25 .. 32.
+        let to_f32 = |h: u16| {
+            let (e, m) = (((h >> 10) & 0x1f) as i32, (h & 0x3ff) as f32);
+            let v = (1.0 + m / 1024.0) * 2f32.powi(e - 15);
+            if h & 0x8000 != 0 { -v } else { v }
+        };
+        for v in [0.25f32, 0.5, 0.73, 1.0, 1.41, 2.5, 7.77, 15.3, 31.9] {
+            assert!((to_f32(f32_to_f16(v)) - v).abs() < v * 0.001, "{v}");
+        }
+    }
+
+    #[test]
+    fn the_field_is_half_a_cell_at_the_centre_next_to_a_block_and_zero_at_its_surface() {
+        let mut grid = VoxelGrid::empty((0, 0));
+        grid.data[index(80, 80, 10)] = 255;
+        let field = grid.distance_field();
+        let at = |x: usize, y: usize, z: usize| field[index(x, y, z)];
+        assert!((at(80, 80, 10) + 0.5).abs() < 1e-4, "the middle of a lone block is half a cell inside: {}", at(80, 80, 10));
+        assert!((at(81, 80, 10) - 0.5).abs() < 1e-4, "next to a face");
+        assert!((at(83, 80, 10) - 2.5).abs() < 1e-4, "three cells along an axis");
+        assert!((at(81, 81, 10) - (2f32.sqrt() - 0.5)).abs() < 1e-4, "diagonal");
+        // The border between the block and the air is exactly 0 with linear sampling in between.
+        let border = VoxelGrid::sample_field(&field, Vec3::new(81.0, 80.5, 10.5));
+        assert!(border.abs() < 1e-4, "{border}");
+    }
+
+    #[test]
+    fn over_flat_ground_the_field_is_the_height_above_it() {
+        let grid = ground(3);
+        let field = grid.distance_field();
+        for z in [3.25, 3.5, 4.7, 9.0] {
+            let d = VoxelGrid::sample_field(&field, Vec3::new(60.5, 70.5, z));
+            assert!((d - (z - 3.0)).abs() < 1e-3, "at {z}: {d}");
+        }
+        assert!(VoxelGrid::sample_field(&field, Vec3::new(60.5, 70.5, 2.0)) < 0.0, "inside is negative");
+        // Nothing solid anywhere: far everywhere.
+        assert!(VoxelGrid::empty((0, 0)).distance_field().iter().all(|&d| d >= MAX_DISTANCE - 1e-3));
+    }
+
+    #[test]
+    fn open_ground_is_not_shaded_by_its_own_blur_at_any_sun_height() {
+        let grid = ground(3);
+        let field = grid.distance_field();
         for height in [0.12f32, 0.2, 0.35, 0.6, 0.9] {
             let sun = Vec3::new(-(1.0 - height * height).sqrt(), 0.0, height);
             for soft in [0.05, 0.15, crate::sunshadow::MAX_SOFT] {
                 for x in [40.0, 80.3, 101.7] {
-                    let v = grid.soft_transmittance(&mips, Vec3::new(x, 60.0, 3.0), sun, Vec3::Z, soft);
+                    let v = grid.soft_visibility(&field, Vec3::new(x, 60.0, 3.0), sun, Vec3::Z, soft);
                     assert!(v > 0.97, "ground is {v} lit with the sun {height} high and softness {soft}");
                 }
             }
@@ -665,33 +718,119 @@ mod tests {
 
     #[test]
     fn a_wall_does_not_shade_itself_on_its_sunny_side() {
-        // The wall faces +x here; the sun is on that side.
         let grid = wall(8);
-        let mips = grid.mips();
+        let field = grid.distance_field();
         let sun = Vec3::new(0.7, 0.0, 0.7).normalize();
         for z in [0.5, 3.5, 7.2] {
-            let v = grid.soft_transmittance(&mips, Vec3::new(50.5, 10.0, z), sun, Vec3::X, 0.15);
+            let v = grid.soft_visibility(&field, Vec3::new(50.5, 10.0, z), sun, Vec3::X, 0.15);
             assert!(v > 0.95, "wall face at z {z}: {v}");
         }
     }
 
     #[test]
-    fn the_blur_leaves_the_middle_of_a_shadow_dark_and_the_open_light() {
-        let grid = wall(8);
-        let mips = grid.mips();
-        let sun = Vec3::new(-1.0, 0.0, 1.0).normalize();
-        assert!(grid.soft_transmittance(&mips, Vec3::new(51.5, 10.0, 0.5), sun, Vec3::Z, 0.1) < 0.05, "right behind the wall");
-        assert!(grid.soft_transmittance(&mips, Vec3::new(75.0, 10.0, 0.5), sun, Vec3::Z, 0.1) > 0.95, "far from it");
-        assert!(grid.soft_transmittance(&mips, Vec3::new(30.0, 10.0, 0.5), sun, Vec3::Z, 0.1) > 0.99, "on the sun's side");
+    fn the_middle_of_a_shadow_is_dark_and_the_open_is_light() {
+        let grid = thick_wall(8, 4);
+        let field = grid.distance_field();
+        let at = |x: f32| grid.soft_visibility(&field, Vec3::new(x, 10.0, 0.5), sun(), Vec3::Z, 0.15);
+        assert!(at(54.0) < 0.05, "right behind the wall: {}", at(54.0));
+        assert!(at(56.0) < 0.05, "well inside the shadow: {}", at(56.0));
+        assert!(at(80.0) > 0.95, "far from it: {}", at(80.0));
+        assert!(at(30.0) > 0.99, "on the sun's side: {}", at(30.0));
     }
 
     #[test]
-    fn the_shader_walk_has_the_same_shape_as_the_reference() {
+    fn the_shadow_edge_is_smooth_with_no_steps() {
+        for (height, thickness, soft) in [(2, 3, 0.15), (4, 3, 0.15), (8, 4, 0.15), (3, 3, 0.3), (8, 4, 0.05), (2, 1, 0.15), (8, 1, 0.15)] {
+            let (width, step) = penumbra_or_none(height, thickness, soft);
+            // The light rises over `width` cells, 0.02 cells at a time: even the steepest step is a small part of it.
+            assert!(step < 0.08, "wall {height}x{thickness}, softness {soft}: a step of {step} (edge {width} cells wide)");
+        }
+    }
+
+    /// `penumbra`, but a wall too thin for its shadow to get dark gives only the step.
+    fn penumbra_or_none(height: usize, thickness: usize, soft: f32) -> (f32, f32) {
+        let samples = scan(height, thickness, soft);
+        let step = samples.windows(2).map(|w| (w[1].1 - w[0].1).abs()).fold(0.0, f32::max);
+        let width = penumbra_width_of(&samples);
+        (width, step)
+    }
+
+    fn penumbra_width_of(samples: &[(f32, f32)]) -> f32 {
+        let dark = samples.iter().rev().find(|(_, v)| *v <= 0.1).map(|(x, _)| *x);
+        let light = dark.and_then(|dark| samples.iter().find(|(x, v)| *x > dark && *v >= 0.9).map(|(x, _)| *x - dark));
+        light.unwrap_or(0.0)
+    }
+
+    #[test]
+    fn a_shadow_edge_is_blurrier_the_further_it_is_from_what_casts_it() {
+        let (low, _) = penumbra(2, 4, 0.15);
+        let (tall, _) = penumbra(8, 4, 0.15);
+        assert!(tall > 1.8 * low, "tall {tall} vs low {low}");
+        // A wider sun blurs more.
+        assert!(penumbra(8, 4, 0.3).0 > 1.5 * penumbra(8, 4, 0.1).0);
+    }
+
+    #[test]
+    fn the_width_of_the_edge_is_the_width_of_the_sun_at_that_distance() {
+        // The shadow tip of an 8 high wall is fed by its top edge on the sun's side, 8 * sqrt(2) cells along
+        // the ray: the disc is 2 * soft * that wide and the light goes over it as an S, of which 10 % to 90 %
+        // is 61 %. Moving the receiver along x by 1 moves the ray by sin(45 degrees) of that.
+        let soft = 0.15;
+        let (width, _) = penumbra(8, 4, soft);
+        let expected = 0.61 * 2.0 * soft * 8.0 * 2f32.sqrt() / 0.7071;
+        assert!((width - expected).abs() < 0.35 * expected, "{width} vs {expected}");
+    }
+
+    #[test]
+    fn even_the_short_shadow_of_a_low_wall_has_a_visible_edge_at_the_default_softness() {
+        let soft = crate::sunshadow::DEFAULT_SOFTNESS * crate::sunshadow::MAX_SOFT;
+        let (width, _) = penumbra(2, 3, soft);
+        assert!(width > 0.3, "a 2 block wall's shadow edge is only {width} cells wide");
+        assert!(width < 3.0, "but not a smear: {width}");
+    }
+
+    #[test]
+    fn at_the_foot_of_the_wall_the_shadow_is_sharp() {
+        // Contact hardening: right behind the wall the light changes within a fraction of a cell.
+        let grid = wall(4);
+        let field = grid.distance_field();
+        let at = |x: f32| grid.soft_visibility(&field, Vec3::new(x, 10.0, 0.1), sun(), Vec3::Z, 0.15);
+        assert!(at(51.0) < 0.05);
+        // A receiver 0.5 cells in front of the wall's foot is lit (the sun is on that side).
+        assert!(at(49.0) > 0.95);
+    }
+
+    #[test]
+    fn a_zero_softness_is_the_exact_walk() {
+        let grid = wall(4);
+        let field = grid.distance_field();
+        for x in [51.5, 54.3, 54.6, 60.0] {
+            let at = Vec3::new(x, 10.0, 0.1);
+            assert_eq!(grid.soft_visibility(&field, at, sun(), Vec3::Z, 0.0), grid.transmittance(at, sun(), MAX_STEPS));
+        }
+    }
+
+    #[test]
+    fn the_shader_has_the_same_shape_as_the_reference() {
         let source = include_str!("shader.wgsl");
-        for needle in ["fn voxel_visibility(", "textureLoad(voxels", "textureSampleLevel(voxels", "0.02", "* (1.0 - ", "const SOFT_STEPS = 48;", "const CONE_START = 0.25;", "const SELF_CLEARANCE = 0.3;", "const NOISE_FLOOR = 0.04;"] {
+        for needle in [
+            "fn voxel_visibility(",
+            "textureLoad(voxels",
+            "textureSampleLevel(voxel_field",
+            "0.02",
+            "* (1.0 - ",
+            "const SOFT_STEPS = 96;",
+            "const SPHERE_STEP = 0.5;",
+            "const MIN_STEP = 0.03;",
+            "const WIDTH_STEP = 0.2;",
+            "const INSIDE_STEPS = 24;",
+            "const INSIDE_MIN_STEP = 0.03;",
+            "const SELF_CLEARANCE = 0.95;",
+        ] {
             assert!(source.contains(needle), "{needle} missing in shader.wgsl");
         }
         assert_eq!(MAX_STEPS, 128, "the uniform carries the same step budget as the reference");
-        assert_eq!((SOFT_STEPS, CONE_START, SELF_CLEARANCE), (48, 0.25, 0.3));
+        assert_eq!((SOFT_STEPS, SPHERE_STEP, MIN_STEP, SELF_CLEARANCE), (96, 0.5, 0.03, 0.95));
+        assert_eq!((INSIDE_STEPS, INSIDE_MIN_STEP), (24, 0.03));
     }
 }

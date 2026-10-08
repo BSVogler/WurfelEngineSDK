@@ -39,13 +39,27 @@ pub struct Vertex {
     /// Atlas page (the layer of the texture array) the sprite is on, or [`NO_SPRITE`] for a
     /// vertex that is shown in its flat `color`. With a sprite, `color` is a tint that multiplies it.
     pub layer: f32,
+    /// The ambient occlusion of all four corners of the face, so the shader can interpolate it
+    /// bilinearly per pixel: 0 for none (then `shade[1]` is used per vertex), else
+    /// [`OCCLUSION_FLAG`] + 256 * this vertex's corner (0..=3, in the corner order of the face) + the
+    /// four counts (0..=3) as 2 bits each, corner 0 in the lowest bits.
+    pub occlusion: f32,
 }
 
 impl Vertex {
     /// A vertex without a sprite.
     pub const fn flat(position: [f32; 3], color: [f32; 3], shade: [f32; 2], point: [f32; 3]) -> Self {
-        Vertex { position, color, shade, point, uv: [0.0; 2], layer: NO_SPRITE }
+        Vertex { position, color, shade, point, uv: [0.0; 2], layer: NO_SPRITE, occlusion: 0.0 }
     }
+}
+
+/// Added to `Vertex::occlusion` of a face that has its corners' occlusion in it (a plain 0 means none).
+pub const OCCLUSION_FLAG: f32 = 1024.0;
+
+/// `Vertex::occlusion` of the vertex at `corner` (0..=3) of a face with these corner counts (0..=3 each).
+pub fn pack_occlusion(counts: [u8; 4], corner: usize) -> f32 {
+    let bits = counts.iter().enumerate().fold(0u32, |bits, (i, &c)| bits | ((c.min(3) as u32) << (2 * i)));
+    OCCLUSION_FLAG + 256.0 * corner as f32 + bits as f32
 }
 
 /// `Vertex::layer` of a vertex that has no sprite.
@@ -77,10 +91,10 @@ pub const FLAT_SHADES: [f32; 3] = [0.78, 1.0, 0.58];
 
 #[cfg(target_arch = "wasm32")]
 impl Vertex {
-    /// The vertex buffer layout matching `shader.wgsl` (`@location(0..=5)`).
+    /// The vertex buffer layout matching `shader.wgsl` (`@location(0..=6)`).
     pub fn layout() -> wgpu::VertexBufferLayout<'static> {
-        const ATTRIBUTES: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
-            0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x3, 4 => Float32x2, 5 => Float32
+        const ATTRIBUTES: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
+            0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x3, 4 => Float32x2, 5 => Float32, 6 => Float32
         ];
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as u64,
@@ -278,15 +292,17 @@ fn lit_quad(
     sprite: Option<Sprite>,
 ) {
     let mut ao = [0.0f32; 4];
+    let mut counts = [0u8; 4];
     let mut point = [[0.0f32; 3]; 4];
     for (i, &(du, dv)) in CORNER_SIGNS.iter().enumerate() {
-        ao[i] = face_vertex_ao_with(ctx.opaque, cell, face, du, dv) as f32 / 3.0;
+        counts[i] = face_vertex_ao_with(ctx.opaque, cell, face, du, dv);
+        ao[i] = counts[i] as f32 / 3.0;
         if !ctx.lights.is_empty() {
             point[i] = bake_point_lights_with(ctx.opaque, ctx.lights, Vec3::from(corners[i]), face).to_array();
         }
     }
     let first = out.len();
-    quad(out, face_id(face), color, corners, ao, point);
+    quad_occluded(out, face_id(face), color, corners, ao, point, Some(counts));
     if let Some(Sprite { atlas, region }) = sprite {
         // `quad` chose the diagonal; its vertices are copies of the four corners, so find each
         // one's atlas coordinates by position.
@@ -384,7 +400,20 @@ pub fn cuboid(out: &mut Vec<Vertex>, color: [f32; 3], [x0, x1, y0, y1]: [f32; 4]
 /// Two triangles. The diagonal is chosen so that a single dark corner does not smear across the
 /// whole face: it goes between the corners 1 and 3 when 0 and 2 are the darker pair.
 fn quad(out: &mut Vec<Vertex>, face: f32, color: [f32; 3], corners: [[f32; 3]; 4], ao: [f32; 4], point: [[f32; 3]; 4]) {
-    let vertex = |i: usize| Vertex::flat(corners[i], color, [face, ao[i]], point[i]);
+    quad_occluded(out, face, color, corners, ao, point, None);
+}
+
+/// [`quad`] for a face whose corners' occlusion counts (0..=3) are given: the vertices carry all four
+/// (`Vertex::occlusion`), so the shader interpolates the occlusion bilinearly over the face instead of
+/// along the two triangles, which shows as triangular blotches.
+fn quad_occluded(out: &mut Vec<Vertex>, face: f32, color: [f32; 3], corners: [[f32; 3]; 4], ao: [f32; 4], point: [[f32; 3]; 4], counts: Option<[u8; 4]>) {
+    let vertex = |i: usize| {
+        let mut v = Vertex::flat(corners[i], color, [face, ao[i]], point[i]);
+        if let Some(counts) = counts {
+            v.occlusion = pack_occlusion(counts, i);
+        }
+        v
+    };
     let order = if ao[0] + ao[2] > ao[1] + ao[3] { [1, 2, 3, 1, 3, 0] } else { [0, 1, 2, 0, 2, 3] };
     for i in order {
         out.push(vertex(i));
@@ -409,6 +438,21 @@ mod tests {
         fn generate(&self, x: i32, y: i32, z: i32) -> Block {
             if (x, y, z) == (5, 5, 0) { Block::new(id::STONE, 0) } else { Block::AIR }
         }
+    }
+
+    #[test]
+    fn the_occlusion_of_the_corners_is_packed_two_bits_each_with_the_vertexs_own_corner() {
+        let packed = pack_occlusion([1, 2, 3, 0], 2);
+        assert!(packed >= OCCLUSION_FLAG);
+        let bits = (packed - OCCLUSION_FLAG) as u32;
+        assert_eq!(bits & 255, 1 | (2 << 2) | (3 << 4));
+        assert_eq!(bits >> 8, 2);
+        // The largest value is exactly representable (a float holds 24 bits).
+        assert_eq!(pack_occlusion([3; 4], 3) as u32, 1024 + 3 * 256 + 255);
+        // A face without any is 0, and a back quad has none.
+        let mut out = Vec::new();
+        back_quad(&mut out, FACE_BACK_Y, [1.0; 3], [[0.0; 3], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 0.0, 1.0]], None);
+        assert!(out.iter().all(|v| v.occlusion == 0.0));
     }
 
     #[test]
@@ -498,7 +542,7 @@ mod tests {
 
     #[test]
     fn a_vertex_is_56_bytes_with_the_fields_the_shader_reads_in_order() {
-        assert_eq!(std::mem::size_of::<Vertex>(), 56);
+        assert_eq!(std::mem::size_of::<Vertex>(), 60);
         assert_eq!(std::mem::offset_of!(Vertex, uv), 44);
         assert_eq!(std::mem::offset_of!(Vertex, layer), 52);
         assert_eq!(std::mem::offset_of!(Vertex, position), 0);
