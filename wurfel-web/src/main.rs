@@ -1,3 +1,7 @@
+// The game runs in the browser (wasm). Natively this binary only exists to run the tests, so most of the
+// code looks unused there.
+#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+
 mod actors;
 mod animation;
 mod atlas;

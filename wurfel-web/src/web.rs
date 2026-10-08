@@ -1677,7 +1677,11 @@ fn sun_shadow_method_from_menu() -> crate::sunshadow::ShadowMethod {
 /// Take the menu's shadow method and quality into the running game. The map's size follows both (the
 /// voxel method needs only a small one); the scene's bind group holds the map, so it is made again when it changes.
 fn apply_sun_shadow_quality(s: &mut State) {
-    s.shadow_softness = sun_shadow_softness_from_menu();
+    let softness = sun_shadow_softness_from_menu();
+    if (softness > 0.0) != (s.shadow_softness > 0.0) {
+        s.voxels_stale = true; // the distance field is only made while the soft shadows are on
+    }
+    s.shadow_softness = softness;
     let method = sun_shadow_method_from_menu();
     if method != s.shadow_method {
         s.shadow_method = method;
@@ -2513,7 +2517,7 @@ fn frame(s: &mut State, now_ms: f64) {
     // The grid of the blocks for the voxel shadows follows the render window and the edits.
     if s.voxels_stale && s.shadow_method == crate::sunshadow::ShadowMethod::Voxel {
         s.voxels_stale = false;
-        s.voxels.set(&s.queue, crate::voxels::VoxelGrid::build(&s.render));
+        s.voxels.set(&s.queue, crate::voxels::VoxelGrid::build(&s.render), s.shadow_softness > 0.0);
     }
 
     // The hover marker and the cursor info belong to the editor.
