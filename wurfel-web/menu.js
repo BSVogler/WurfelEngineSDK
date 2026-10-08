@@ -28,6 +28,7 @@
  *     linearBlend      bool     blend translucent layers and glow in linear light (physically right, but lighter and weaker than the display-colour blending the art was made for; default false). Replaces the older `linearLight`, whose saved value is ignored.
  *     bloom            0..0.5   glow of very bright things, 0 = off (default 0.1)
  *     fxaa             bool     smooth edges (default true)
+ *     depthOfField     0..1     miniature look: blur what is far from the focus (the middle of the screen), by depth, 0 = off (default 0.5, applies at once)
  *     grass            bool     grass blades on grass blocks (default true)
  *     grassDensity     integer 0..20  blades per block near the player (default 10)
  *     showFps, showHelp bool    (JS handles the FPS counter and hides #info itself)
@@ -133,7 +134,7 @@
     jump: [' ', ''], players: ['tab', ''],
   };
   const RANGES = {
-    masterVolume: [0, 1], musicVolume: [0, 1], effectsVolume: [0, 1], zoom: [0.2, 2], shadowSoftness: [0, 1], bloom: [0, 0.5], cloudSpeed: [0, 4],
+    masterVolume: [0, 1], musicVolume: [0, 1], effectsVolume: [0, 1], zoom: [0.2, 2], shadowSoftness: [0, 1], bloom: [0, 0.5], depthOfField: [0, 1], cloudSpeed: [0, 4],
   };
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -145,7 +146,7 @@
       masterVolume: 0.8, musicVolume: 0.6, effectsVolume: 0.8,
       zoom: 0.5,
       generator: 'island', seed: Math.floor(Math.random() * 1000000),
-      fpsLimit: 60, ambientOcclusion: false, cloudShadows: true, cloudSpeed: 1, sunShadows: true, shadowMethod: 'map', shadowSoftness: 0.4, shadowQuality: 'medium', linearBlend: false, bloom: 0.1, fxaa: true, grass: true, grassDensity: 10, showFps: false, showHelp: true,
+      fpsLimit: 60, ambientOcclusion: false, cloudShadows: true, cloudSpeed: 1, sunShadows: true, shadowMethod: 'map', shadowSoftness: 0.4, shadowQuality: 'medium', linearBlend: false, bloom: 0.1, fxaa: true, depthOfField: 0.5, grass: true, grassDensity: 10, showFps: false, showHelp: true,
       keys: clone(DEFAULT_KEYS),
     };
   }
@@ -1607,5 +1608,14 @@
     show(text) { $('#loading-text').textContent = String(text || 'Loading…'); $('#loading').hidden = false; },
     hide() { $('#loading').hidden = true; },
   };
-  window.wurfelMenu = { openMenu, resume, leave, startGame, resolveServer, resolve, sanitize, defaults, generators, timeouts: TIMEOUTS };
+  /** The game's `limitFPS` cvar is the one frame rate cap; it shows its value here (no wurfel:settings event). */
+  function showFpsLimit(n) {
+    const limit = Math.min(1000, Math.max(0, Math.round(Number(n))));
+    if (!Number.isFinite(limit) || limit === S.fpsLimit) return;
+    S.fpsLimit = limit;
+    saveSettings();
+    syncControls();
+  }
+
+  window.wurfelMenu = { showFpsLimit, openMenu, resume, leave, startGame, resolveServer, resolve, sanitize, defaults, generators, timeouts: TIMEOUTS };
 })();

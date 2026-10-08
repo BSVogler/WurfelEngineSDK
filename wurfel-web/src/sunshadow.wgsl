@@ -26,6 +26,7 @@ struct SunShadow {
     params: vec4<f32>,
     grid_origin: vec4<f32>,
     grid_dims: vec4<f32>,  // w: 1 = only standing sprites cast (the blocks are in the voxel grid)
+    soft_quality: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;

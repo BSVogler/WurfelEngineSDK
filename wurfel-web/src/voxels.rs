@@ -37,6 +37,13 @@ use crate::render_storage::RenderStorage;
 
 /// Cells along x and y. The 5x5 window of the free camera is about 152 cells across in isometric
 /// ground coordinates, the 3x3 one about 92.
+/// Counters of the soft walk, for `examples/shadow_bench.rs`: pixels, steps, steps near a surface, exact
+/// looks, steps inside blocks.
+pub static STATS: [std::sync::atomic::AtomicU64; 5] = [const { std::sync::atomic::AtomicU64::new(0) }; 5];
+fn count(i: usize) {
+    STATS[i].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
 pub const SIZE_XY: usize = 160;
 /// Cells along z: the height of the world.
 pub const SIZE_Z: usize = CHUNK_SIZE_Z as usize;
@@ -57,6 +64,12 @@ pub const INSIDE_MIN_STEP: f32 = 0.03;
 /// A surface's own blur must not reach its own block: the sun's `soft` is at most this times the
 /// cosine of the angle between the surface's normal and the sun.
 pub const SELF_CLEARANCE: f32 = 0.95;
+/// The least sideways part of a surface's normal: a ray that runs along a surface does not make the depth
+/// infinite (`field_at`).
+pub const MIN_ACROSS: f32 = 0.25;
+/// A sample in the air is looked at exactly (`field_at`) when the field puts it nearer to a block than the
+/// sun's width there plus this (about the most the field is off by at an edge).
+pub const EXACT_MARGIN: f32 = 0.35;
 /// Distances are stored up to this far (cells); beyond it nothing is near.
 pub const MAX_DISTANCE: f32 = 32.0;
 /// Steps of the ray walk the shader takes at most. A ray is done when it leaves the grid, which for a
@@ -125,6 +138,13 @@ impl VoxelGrid {
             }
         }
         grid
+    }
+
+    /// How many layers of the grid have anything in them: a ray above this is out in the open, so the
+    /// shader stops it there instead of at the top of the world.
+    pub fn top(&self) -> usize {
+        let layer = SIZE_XY * SIZE_XY;
+        (0..SIZE_Z).rev().find(|&z| self.data[z * layer..(z + 1) * layer].iter().any(|&v| v > 0)).map_or(0, |z| z + 1)
     }
 
     /// The opacity of the cell with these grid coordinates; 0 outside the grid.
@@ -198,14 +218,93 @@ impl VoxelGrid {
         let solid: Vec<bool> = self.data.iter().map(|&v| v >= 128).collect();
         let to_solid = euclidean_distance(&solid, true);
         let to_air = euclidean_distance(&solid, false);
-        solid
+        let mut field: Vec<f32> = solid
             .iter()
             .zip(to_solid.iter().zip(&to_air))
             .map(|(&is_solid, (&near_solid, &near_air))| {
                 let d = if is_solid { 0.5 - near_air } else { near_solid - 0.5 };
                 d.clamp(-MAX_DISTANCE, MAX_DISTANCE)
             })
-            .collect()
+            .collect();
+        // Centre to centre minus half a cell is exact beside a face but too far around a convex edge or
+        // corner (up to 0.2 cells on the diagonal), which pulls the whole shadow towards the light. Near
+        // the surface take the distance to the boxes of the solid cells themselves.
+        const NEAR: i32 = 2;
+        for z in 0..SIZE_Z {
+            for y in 0..SIZE_XY {
+                for x in 0..SIZE_XY {
+                    let i = index(x, y, z);
+                    if solid[i] || to_solid[i] > NEAR as f32 {
+                        continue;
+                    }
+                    let mut best = f32::MAX;
+                    for dz in -NEAR..=NEAR {
+                        let nz = z as i32 + dz;
+                        if nz < 0 || nz >= SIZE_Z as i32 {
+                            continue;
+                        }
+                        for dy in -NEAR..=NEAR {
+                            let ny = y as i32 + dy;
+                            if ny < 0 || ny >= SIZE_XY as i32 {
+                                continue;
+                            }
+                            for dx in -NEAR..=NEAR {
+                                let nx = x as i32 + dx;
+                                if nx < 0 || nx >= SIZE_XY as i32 || !solid[index(nx as usize, ny as usize, nz as usize)] {
+                                    continue;
+                                }
+                                let gap = |d: i32| (d.abs() as f32 - 0.5).max(0.0);
+                                best = best.min(gap(dx) * gap(dx) + gap(dy) * gap(dy) + gap(dz) * gap(dz));
+                            }
+                        }
+                    }
+                    if best < f32::MAX {
+                        field[i] = best.sqrt();
+                    }
+                }
+            }
+        }
+        field
+    }
+
+    /// For every cell which of the 27 cells around it (itself and its 26 neighbours) are solid, as bits:
+    /// bit `(dz + 1) * 9 + (dy + 1) * 3 + (dx + 1)` is the cell at offset `(dx, dy, dz)`. The shader reads
+    /// all of a cell's surroundings with one load instead of one per neighbour (`field_at`). Layout as
+    /// [`VoxelGrid::data`].
+    pub fn neighbourhood(&self) -> Vec<u32> {
+        let n = self.data.len();
+        // Three passes, one axis each, every one widening the pattern: along x (3 bits), then y (9), then z (27).
+        let mut a = vec![0u32; n];
+        for z in 0..SIZE_Z {
+            for y in 0..SIZE_XY {
+                for x in 0..SIZE_XY {
+                    let solid = |x: i32| x >= 0 && x < SIZE_XY as i32 && self.data[index(x as usize, y, z)] >= 128;
+                    let x = x as i32;
+                    a[index(x as usize, y, z)] = solid(x - 1) as u32 | (solid(x) as u32) << 1 | (solid(x + 1) as u32) << 2;
+                }
+            }
+        }
+        let mut b = vec![0u32; n];
+        for z in 0..SIZE_Z {
+            for y in 0..SIZE_XY {
+                for x in 0..SIZE_XY {
+                    let at = |y: i32| if y >= 0 && y < SIZE_XY as i32 { a[index(x, y as usize, z)] } else { 0 };
+                    let y = y as i32;
+                    b[index(x, y as usize, z)] = at(y - 1) | at(y) << 3 | at(y + 1) << 6;
+                }
+            }
+        }
+        let mut c = vec![0u32; n];
+        for z in 0..SIZE_Z {
+            for y in 0..SIZE_XY {
+                for x in 0..SIZE_XY {
+                    let at = |z: i32| if z >= 0 && z < SIZE_Z as i32 { b[index(x, y, z as usize)] } else { 0 };
+                    let z = z as i32;
+                    c[index(x, y, z as usize)] = at(z - 1) | at(z) << 9 | at(z + 1) << 18;
+                }
+            }
+        }
+        c
     }
 
     /// The same, as the 16 bit floats of the 3D texture.
@@ -237,10 +336,74 @@ impl VoxelGrid {
         sum
     }
 
+    /// The field at `p`, made exact near the surface for the soft walk.
+    ///
+    /// The field is blended trilinearly from the cell centres, which cannot show the kink at an edge: at a
+    /// convex corner it reads about 0.3 too far, at a concave one (a tread beside a riser) too near, even
+    /// negative in the air. So within a cell of a block the exact distances are used.
+    ///
+    /// In the air: the distance to the boxes of the solid cells in the octant of the cell that `p` is nearer
+    /// to, when the field puts a block within the sun's width there (`width`) plus `EXACT_MARGIN`.
+    ///
+    /// In a block: the sideways distance the ray has to move to leave: for each face of the cell that is open
+    /// to the air, the distance to it over the sideways part of its normal (the ray's direction `to_sun`), the
+    /// least of them, negative.
+    fn field_at(&self, field: &[f32], p: Vec3, to_sun: Vec3, width: f32) -> f32 {
+        let d = Self::sample_field(field, p);
+        let cell = [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32];
+        if self.at(cell) < 128 {
+            // Further from a block than the sun is wide there, the light is saturated whatever the distance is,
+            // so the exact look is only needed inside the penumbra (and the field is off by 0.3 at most).
+            if d >= (width + EXACT_MARGIN).min(1.0) {
+                return d;
+            }
+            // Only the cells on the side of the cell that `p` is nearer to: a cell on the other side is half a
+            // cell away at least, so for what matters (the edge of a shadow) the 8 of this octant are enough.
+            let side = |p: f32, c: i32| if p - (c as f32) < 0.5 { -1 } else { 1 };
+            let (sx, sy, sz) = (side(p.x, cell[0]), side(p.y, cell[1]), side(p.z, cell[2]));
+            let mut nearest = f32::MAX;
+            for dz in [0, sz] {
+                for dy in [0, sy] {
+                    for dx in [0, sx] {
+                        let c = [cell[0] + dx, cell[1] + dy, cell[2] + dz];
+                        if self.at(c) < 128 {
+                            continue;
+                        }
+                        let gap = |p: f32, c: i32| (c as f32 - p).max(p - (c as f32 + 1.0)).max(0.0);
+                        let (gx, gy, gz) = (gap(p.x, c[0]), gap(p.y, c[1]), gap(p.z, c[2]));
+                        nearest = nearest.min(gx * gx + gy * gy + gz * gz);
+                    }
+                }
+            }
+            count(3);
+            return if nearest < 1.0 { nearest.sqrt().max(0.0001) } else { d };
+        }
+        let inside = [p.x - cell[0] as f32, p.y - cell[1] as f32, p.z - cell[2] as f32];
+        let direction = to_sun.to_array();
+        let mut leave = f32::MAX;
+        for axis in 0..3 {
+            let across = (1.0 - direction[axis] * direction[axis]).max(0.0).sqrt().max(MIN_ACROSS);
+            for (step, distance) in [(-1, inside[axis]), (1, 1.0 - inside[axis])] {
+                let mut next = cell;
+                next[axis] += step;
+                if self.at(next) < 128 {
+                    leave = leave.min(distance / across);
+                }
+            }
+        }
+        d.min(-leave.min(MAX_DISTANCE)).min(-0.001)
+    }
+
     /// How much of the sun's disc is visible from `start` (1: all, 0: none) when the sun is a disc of
     /// angular radius `atan(soft)` in the direction `to_sun`, and `normal` is the way the surface at `start`
     /// faces. `field` is [`Self::distance_field`]. Mirrors `voxel_visibility` in `shader.wgsl` (its soft part).
     pub fn soft_visibility(&self, field: &[f32], start: Vec3, to_sun: Vec3, normal: Vec3, soft: f32) -> f32 {
+        self.soft_visibility_with(field, start, to_sun, normal, soft, [SOFT_STEPS as f32, WIDTH_STEP, INSIDE_STEPS as f32])
+    }
+
+    /// The same for the steps of a quality (`VoxelQuality::params`: steps, width step, steps inside a block).
+    pub fn soft_visibility_with(&self, field: &[f32], start: Vec3, to_sun: Vec3, normal: Vec3, soft: f32, quality: [f32; 3]) -> f32 {
+        let (soft_steps, width_step, inside_steps) = (quality[0] as u32, quality[1], quality[2] as u32);
         // Start a little off the surface, as the shader does, so the surface's own block is not hit.
         let start = start + normal * 0.02 + to_sun * 0.02;
         // The blur of a surface that is hardly turned to the sun must not reach its own block.
@@ -250,27 +413,33 @@ impl VoxelGrid {
         }
         let q = start + Vec3::new(0.5, 0.5, 0.0) - Vec3::new(self.origin.0 as f32, self.origin.1 as f32, 0.0);
         let (mut visible, mut t) = (1.0f32, 0.0f32);
-        for _ in 0..SOFT_STEPS {
+        count(0);
+        for _ in 0..soft_steps {
+            count(1);
             let p = q + to_sun * t;
             if p.z >= SIZE_Z as f32 || p.z < 0.0 || p.x < 0.0 || p.y < 0.0 || p.x >= SIZE_XY as f32 || p.y >= SIZE_XY as f32 {
                 break;
             }
-            let d = Self::sample_field(field, p);
+            let d = self.field_at(field, p, to_sun, soft * t);
+            if d < 1.0 {
+                count(2);
+            }
             if d <= 0.0 {
                 // The ray is in a block. How deep it goes decides how much of the sun's disc is hidden
                 // (a graze hides half of it, a ray that goes through hides all): go on inside until the
                 // deepest point is known, so the shadow is continuous across the edge of the ray's hit.
                 let (mut deepest, mut deepest_t) = (d, t);
-                for _ in 0..INSIDE_STEPS {
+                for _ in 0..inside_steps {
                     if 0.5 + 0.5 * deepest / (soft * deepest_t.max(0.001)) <= 0.0 {
                         break;
                     }
+                    count(4);
                     t += (-deepest * SPHERE_STEP).max(INSIDE_MIN_STEP);
                     let p = q + to_sun * t;
                     if p.z >= SIZE_Z as f32 || p.z < 0.0 || p.x < 0.0 || p.y < 0.0 || p.x >= SIZE_XY as f32 || p.y >= SIZE_XY as f32 {
                         break;
                     }
-                    let inside = Self::sample_field(field, p);
+                    let inside = self.field_at(field, p, to_sun, soft * t);
                     if inside < deepest {
                         (deepest, deepest_t) = (inside, t);
                     }
@@ -286,7 +455,7 @@ impl VoxelGrid {
             visible = visible.min((0.5 + 0.5 * d / (soft * t.max(0.001))).clamp(0.0, 1.0));
             let mut step = d * SPHERE_STEP;
             if d < 2.0 * soft * t {
-                step = step.min(soft * t * WIDTH_STEP); // near the edge of a shadow: look closer
+                step = step.min(soft * t * width_step); // near the edge of a shadow: look closer
             }
             t += step.max(MIN_STEP);
         }
@@ -395,17 +564,22 @@ pub mod gpu {
     pub const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
     /// The signed distance field (the soft shadows): half floats are filterable everywhere.
     pub const FIELD_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R16Float;
+    /// Which cells around each are solid, 27 bits (`VoxelGrid::neighbourhood`).
+    pub const NEIGHBOUR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Uint;
 
     pub struct VoxelTexture {
         texture: wgpu::Texture,
         view: wgpu::TextureView,
         field_texture: wgpu::Texture,
         field_view: wgpu::TextureView,
+        neighbour_texture: wgpu::Texture,
+        neighbour_view: wgpu::TextureView,
         /// Linear between cells: the soft part reads the distance between the centres from it.
         sampler: wgpu::Sampler,
         /// What the textures hold, to skip uploads of an unchanged grid.
         grid: VoxelGrid,
         field_valid: bool,
+        top: usize,
     }
 
     impl VoxelTexture {
@@ -422,15 +596,17 @@ pub mod gpu {
                     view_formats: &[],
                 })
             };
+            let neighbour_texture = texture("voxel neighbours", NEIGHBOUR_FORMAT);
             let (texture, field_texture) = (texture("voxels", FORMAT), texture("voxel distances", FIELD_FORMAT));
             let (view, field_view) = (texture.create_view(&Default::default()), field_texture.create_view(&Default::default()));
+            let neighbour_view = neighbour_texture.create_view(&Default::default());
             let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("voxels"),
                 mag_filter: wgpu::FilterMode::Linear,
                 min_filter: wgpu::FilterMode::Linear,
                 ..Default::default()
             });
-            VoxelTexture { texture, view, field_texture, field_view, sampler, grid: VoxelGrid::empty((i32::MIN, i32::MIN)), field_valid: false }
+            VoxelTexture { texture, view, field_texture, field_view, neighbour_texture, neighbour_view, sampler, grid: VoxelGrid::empty((i32::MIN, i32::MIN)), field_valid: false, top: 0 }
         }
 
         pub fn view(&self) -> &wgpu::TextureView {
@@ -441,8 +617,17 @@ pub mod gpu {
             &self.field_view
         }
 
+        pub fn neighbours_view(&self) -> &wgpu::TextureView {
+            &self.neighbour_view
+        }
+
         pub fn sampler(&self) -> &wgpu::Sampler {
             &self.sampler
+        }
+
+        /// How many layers of the grid have anything in them (`VoxelGrid::top`).
+        pub fn top(&self) -> usize {
+            self.top
         }
 
         /// The cell that cell (0, 0) of the texture is.
@@ -470,9 +655,11 @@ pub mod gpu {
             if changed {
                 self.write(&self.texture, queue, &grid.data);
                 self.field_valid = false;
+                self.top = grid.top();
             }
             if with_field {
                 self.write(&self.field_texture, queue, &grid.distance_texels());
+                self.write(&self.neighbour_texture, queue, &grid.neighbourhood());
                 self.field_valid = true;
             }
             self.grid = grid;
@@ -685,7 +872,7 @@ mod tests {
         assert!((at(80, 80, 10) + 0.5).abs() < 1e-4, "the middle of a lone block is half a cell inside: {}", at(80, 80, 10));
         assert!((at(81, 80, 10) - 0.5).abs() < 1e-4, "next to a face");
         assert!((at(83, 80, 10) - 2.5).abs() < 1e-4, "three cells along an axis");
-        assert!((at(81, 81, 10) - (2f32.sqrt() - 0.5)).abs() < 1e-4, "diagonal");
+        assert!((at(81, 81, 10) - 0.5 * 2f32.sqrt()).abs() < 1e-4, "diagonal: the distance to the edge of the block, not to its centre");
         // The border between the block and the air is exactly 0 with linear sampling in between.
         let border = VoxelGrid::sample_field(&field, Vec3::new(81.0, 80.5, 10.5));
         assert!(border.abs() < 1e-4, "{border}");
@@ -727,6 +914,128 @@ mod tests {
         for z in [0.5, 3.5, 7.2] {
             let v = grid.soft_visibility(&field, Vec3::new(50.5, 10.0, z), sun, Vec3::X, 0.15);
             assert!(v > 0.95, "wall face at z {z}: {v}");
+        }
+    }
+
+    #[test]
+    fn the_neighbourhood_has_a_bit_for_each_of_the_27_cells_around_a_cell() {
+        let mut grid = VoxelGrid::empty((0, 0));
+        grid.data[index(80, 80, 10)] = 255;
+        grid.data[index(0, 0, 0)] = 255;
+        let around = grid.neighbourhood();
+        let bit = |dx: i32, dy: i32, dz: i32| 1u32 << ((dz + 1) * 9 + (dy + 1) * 3 + (dx + 1));
+        // The cell next to the block on its +x side sees it at offset -x; the block itself at 0.
+        assert_eq!(around[index(81, 80, 10)], bit(-1, 0, 0));
+        assert_eq!(around[index(80, 80, 10)], bit(0, 0, 0));
+        assert_eq!(around[index(79, 81, 9)], bit(1, -1, 1));
+        assert_eq!(around[index(82, 80, 10)], 0, "two cells away sees nothing");
+        // The border of the grid: nothing outside counts as solid.
+        assert_eq!(around[index(1, 1, 1)], bit(-1, -1, -1));
+        assert_eq!(around[index(0, 0, 0)], bit(0, 0, 0));
+    }
+
+    #[test]
+    fn every_quality_gives_the_light_of_the_finest_one_around_pillars_and_steps() {
+        // The depth of a ray inside a block needs enough steps to be found: with too few the ray reads as
+        // barely inside and a gap of light shows in the shadow. Low must stay close to High.
+        let mut grid = ground(1);
+        for (x, y, h) in [(60usize, 60usize, 4usize), (66, 60, 2), (60, 66, 6), (66, 66, 3), (63, 63, 1)] {
+            for z in 1..=h {
+                grid.data[index(x, y, z)] = 255;
+            }
+        }
+        for x in 70..76 {
+            for z in 1..(x - 68) {
+                for y in 55..70 {
+                    grid.data[index(x, y, z)] = 255;
+                }
+            }
+        }
+        let field = grid.distance_field();
+        let sun_dir = Vec3::new(-0.6, -0.3, 0.74).normalize();
+        let high = crate::sunshadow::VoxelQuality::High.params();
+        for quality in [crate::sunshadow::VoxelQuality::Low, crate::sunshadow::VoxelQuality::Medium] {
+            let q = quality.params();
+            let mut worst = 0.0f32;
+            let mut x = 56.0f32;
+            while x < 90.0 {
+                let mut y = 54.0f32;
+                while y < 74.0 {
+                    let at = Vec3::new(x, y, 1.0);
+                    let a = grid.soft_visibility_with(&field, at, sun_dir, Vec3::Z, 0.15, [q[0], q[1], q[2]]);
+                    let b = grid.soft_visibility_with(&field, at, sun_dir, Vec3::Z, 0.15, [high[0], high[1], high[2]]);
+                    worst = worst.max((a - b).abs());
+                    y += 0.1;
+                }
+                x += 0.1;
+            }
+            assert!(worst < 0.12, "{quality:?} differs from High by {worst}");
+        }
+    }
+
+    #[test]
+    fn the_half_light_line_of_a_soft_shadow_is_the_edge_of_the_hard_one() {
+        // The middle of the blur must be where the sharp shadow ends, whatever the softness, and the blur
+        // must reach as far into the light as into the shadow.
+        for (height, thickness) in [(2usize, 3usize), (8, 4), (1, 1)] {
+            let grid = thick_wall(height, thickness);
+            let field = grid.distance_field();
+            let scan = |soft: f32| -> Vec<(f32, f32)> {
+                let mut x = 49.5 + thickness as f32 + 0.5;
+                let mut out = vec![];
+                while x < 90.0 {
+                    out.push((x, grid.soft_visibility(&field, Vec3::new(x, 10.0, 0.1), sun(), Vec3::Z, soft)));
+                    x += 0.01;
+                }
+                out
+            };
+            let half = |v: &[(f32, f32)]| v.iter().find(|(_, l)| *l >= 0.5).map(|p| p.0).unwrap();
+            let hard = half(&scan(0.0));
+            for soft in [0.05, 0.15, 0.3] {
+                let v = scan(soft);
+                let middle = half(&v);
+                assert!((middle - hard).abs() < 0.12, "wall {height}x{thickness}, softness {soft}: the half-light line is {middle}, the hard edge {hard}");
+                let lo = v.iter().rev().find(|(_, l)| *l <= 0.1).map_or(v[0].0, |p| p.0);
+                let hi = v.iter().find(|(x, l)| *x > lo && *l >= 0.9).unwrap().0;
+                let (before, after) = (hard - lo, hi - hard);
+                assert!((before - after).abs() < 0.3 * (before + after) + 0.1, "wall {height}x{thickness}, softness {soft}: {before} cells of blur in the shadow and {after} in the light");
+            }
+        }
+    }
+
+    #[test]
+    fn the_top_is_the_number_of_layers_with_anything_in_them() {
+        assert_eq!(VoxelGrid::empty((0, 0)).top(), 0);
+        assert_eq!(ground(3).top(), 3);
+        assert_eq!(wall(8).top(), 8);
+    }
+
+    #[test]
+    fn a_staircase_facing_a_high_sun_is_lit_on_every_tread_and_riser() {
+        // Heights rise by one block per cell along x; the sun is high on the low side.
+        let mut grid = VoxelGrid::empty((0, 0));
+        for x in 50..54 {
+            for y in 0..SIZE_XY {
+                for z in 0..(x - 49) {
+                    grid.data[index(x, y, z)] = 255;
+                }
+            }
+        }
+        let field = grid.distance_field();
+        let sun = Vec3::new(-0.3, 0.0, 0.95).normalize();
+        for soft in [0.0, 0.05, 0.15] {
+            for x in 50..54usize {
+                let top = (x - 49) as f32;
+                let cx = x as f32 - 0.5;
+                for dx in [0.1, 0.5, 0.9] {
+                    let v = grid.soft_visibility(&field, Vec3::new(cx + dx, 10.0, top), sun, Vec3::Z, soft);
+                    assert!(v > 0.8, "tread of step {x} at +{dx}, softness {soft}: {v}");
+                }
+                for z in [0.1, 0.5, 0.9] {
+                    let v = grid.soft_visibility(&field, Vec3::new(cx, 10.0, top - 1.0 + z), sun, -Vec3::X, soft);
+                    assert!(v > 0.8, "riser of step {x} at +{z}, softness {soft}: {v}");
+                }
+            }
         }
     }
 
@@ -822,13 +1131,13 @@ mod tests {
             "textureSampleLevel(voxel_field",
             "0.02",
             "* (1.0 - ",
-            "const SOFT_STEPS = 96;",
             "const SPHERE_STEP = 0.5;",
             "const MIN_STEP = 0.03;",
-            "const WIDTH_STEP = 0.2;",
-            "const INSIDE_STEPS = 24;",
             "const INSIDE_MIN_STEP = 0.03;",
             "const SELF_CLEARANCE = 0.95;",
+            "const MIN_ACROSS = 0.25;",
+            "textureLoad(neighbours",
+            "sun_shadow.soft_quality",
         ] {
             assert!(source.contains(needle), "{needle} missing in shader.wgsl");
         }

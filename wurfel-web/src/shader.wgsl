@@ -62,6 +62,7 @@ struct SunShadow {
     params: vec4<f32>,  // x: strength 0..1 (0 = no shadows); y: a texel in blocks; z: map size in texels; w: 1 = blocks cast through the voxel grid
     grid_origin: vec4<f32>,  // xy: the ground cell that cell (0, 0) of the voxel grid is; z: tangent of the sun's angular radius (0 = hard shadows); w: steps of the ray walk
     grid_dims: vec4<f32>,    // xyz: size of the voxel grid in cells
+    soft_quality: vec4<f32>, // x: steps of the soft tracing at most; y: part of a penumbra's width a step is at most; z: steps inside a block at most; w: layers of the grid with anything in them
 };
 @group(0) @binding(4) var<uniform> sun_shadow: SunShadow;
 @group(0) @binding(5) var shadow_map: texture_depth_2d;
@@ -73,6 +74,8 @@ struct SunShadow {
 @group(0) @binding(7) var voxel_sampler: sampler;
 // The same as a signed distance field (voxels.rs `distance_field`): how far each cell is from the nearest block.
 @group(0) @binding(9) var voxel_field: texture_3d<f32>;
+// Which of the 27 cells around each are solid, one bit each (voxels.rs `neighbourhood`): an edge is one load.
+@group(0) @binding(10) var neighbours: texture_3d<u32>;
 
 @group(1) @binding(0) var atlas: texture_2d_array<f32>;
 @group(1) @binding(1) var atlas_sampler: sampler;
@@ -415,7 +418,7 @@ fn face_normal(face: i32, to_sun: vec3<f32>) -> vec3<f32> {
 
 // How much of the sun reaches `pos` through the shadow map: 1 in the light, 0 in shadow, in between
 // at the soft edge (about five map texels wide).
-fn map_visibility(pos: vec3<f32>, face: i32) -> f32 {
+fn map_visibility(pos: vec3<f32>, face: i32, reach: i32) -> f32 {
     let to_sun = sun_shadow.dir.xyz;
     let n = face_normal(face, to_sun);
     let texel = sun_shadow.params.y;
@@ -442,23 +445,81 @@ fn map_visibility(pos: vec3<f32>, face: i32) -> f32 {
     let corner = vec2<i32>(floor(position));
     let fraction = position - floor(position);
     var lit = 0.0;
-    for (var dy = -2; dy <= 3; dy = dy + 1) {
+    for (var dy = -reach; dy <= reach + 1; dy = dy + 1) {
         var wy = 1.0;
-        if (dy == -2) {
+        if (dy == -reach) {
             wy = 1.0 - fraction.y;
-        } else if (dy == 3) {
+        } else if (dy == reach + 1) {
             wy = fraction.y;
         }
-        for (var dx = -2; dx <= 3; dx = dx + 1) {
+        for (var dx = -reach; dx <= reach + 1; dx = dx + 1) {
             var wx = 1.0;
-            if (dx == -2) {
+            if (dx == -reach) {
                 wx = 1.0 - fraction.x;
-            } else if (dx == 3) {
+            } else if (dx == reach + 1) {
                 wx = fraction.x;
             }
             let at = clamp(corner + vec2<i32>(dx, dy), vec2<i32>(0), vec2<i32>(last));
             if (depth <= textureLoad(shadow_map, at, 0) + bias) {
                 lit = lit + wx * wy;
+            }
+        }
+    }
+    let width = f32(2 * reach + 1);
+    return lit / (width * width);
+}
+
+// Soft shadows from the shadow map (percentage-closer soft shadows): a search for what blocks the sun in a
+// small window finds how far the blocker is, which sets how wide the sun's disc is there (`2 * soft * distance`),
+// and that is the width of the window the lit share is counted over. `soft` is the tangent of the sun's angular
+// radius, as for the voxel method. A fixed number of reads: 16 for the search and 25 for the filter.
+const SEARCH_BLOCKS = 12.0;  // how far from the receiver a blocker is looked for, in blocks along the sun's ray
+fn map_visibility_soft(pos: vec3<f32>, face: i32, soft: f32) -> f32 {
+    let to_sun = sun_shadow.dir.xyz;
+    let n = face_normal(face, to_sun);
+    let texel = sun_shadow.params.y;
+    let cos_angle = clamp(dot(n, to_sun), 0.0, 1.0);
+    let slope = min(sqrt(max(1.0 - cos_angle * cos_angle, 0.0)) / max(cos_angle, 0.1), 4.0);
+    let rel = pos + n * texel * 1.5 - sun_shadow.center.xyz;
+    let uv = vec2<f32>(
+        dot(rel, sun_shadow.right.xyz) * sun_shadow.center.w * 0.5 + 0.5,
+        0.5 - dot(rel, sun_shadow.up.xyz) * sun_shadow.center.w * 0.5,
+    );
+    if (uv.x <= 0.0 || uv.x >= 1.0 || uv.y <= 0.0 || uv.y >= 1.0) {
+        return 1.0;
+    }
+    let depth = 0.5 - dot(rel, to_sun) * sun_shadow.dir.w;
+    let bias = (texel * (1.0 + slope) + 0.02) * sun_shadow.dir.w;
+    let size = sun_shadow.params.z;
+    let last = vec2<i32>(i32(size) - 1);
+    let centre = uv * size;
+    // The blocker search: a window as wide as the penumbra of a blocker `SEARCH_BLOCKS` away.
+    let reach = clamp(soft * SEARCH_BLOCKS / texel, 2.0, 24.0);
+    var blockers = 0.0;
+    var count = 0.0;
+    for (var j = 0; j < 4; j = j + 1) {
+        for (var i = 0; i < 4; i = i + 1) {
+            let offset = ((vec2<f32>(f32(i), f32(j)) + 0.5) / 4.0 - 0.5) * 2.0 * reach;
+            let at = clamp(vec2<i32>(floor(centre + offset)), vec2<i32>(0), last);
+            let z = textureLoad(shadow_map, at, 0);
+            if (z < depth - bias) {
+                blockers = blockers + z;
+                count = count + 1.0;
+            }
+        }
+    }
+    if (count < 0.5) {
+        return 1.0;
+    }
+    let distance = (depth - blockers / count) / sun_shadow.dir.w;
+    let width = clamp(2.0 * soft * distance / texel, 2.0, 2.0 * reach);
+    var lit = 0.0;
+    for (var j = 0; j < 5; j = j + 1) {
+        for (var i = 0; i < 5; i = i + 1) {
+            let offset = ((vec2<f32>(f32(i), f32(j)) + 0.5) / 5.0 - 0.5) * width;
+            let at = clamp(vec2<i32>(floor(centre + offset)), vec2<i32>(0), last);
+            if (depth <= textureLoad(shadow_map, at, 0) + bias) {
+                lit = lit + 1.0;
             }
         }
     }
@@ -489,18 +550,84 @@ fn ray_step(d: f32) -> i32 {
 // of everything it passes it keeps how much of the sun's disc, which is `2 * soft * t` wide after t, the
 // nearest block hides: `0.5 + 0.5 * d / (soft * t)` for a block `d` away from the ray. That is smooth in
 // the receiver's position, so the penumbra has no steps. voxels.rs `soft_visibility` is the same on the CPU.
-const SOFT_STEPS = 96;
 const SPHERE_STEP = 0.5;
 const MIN_STEP = 0.03;
-// Inside a penumbra a step is at most this part of its width, so the closest approach between two samples
-// is hardly missed and the edge does not crawl when the sun moves.
-const WIDTH_STEP = 0.2;
+// (The steps of the tracing and how fine it looks inside a penumbra, so that the closest approach between
+// two samples is hardly missed and the edge does not crawl when the sun moves, come from the voxel quality:
+// `soft_quality` of the uniform.)
 // A surface's own blur must not reach its own block: the softness is at most this times the cosine of
 // the angle between its normal and the sun.
 const SELF_CLEARANCE = 0.95;
 // Steps inside a block at most (how deep the ray goes is looked for there) and the shortest of them.
-const INSIDE_STEPS = 24;
 const INSIDE_MIN_STEP = 0.03;
+
+// The field at `p`, made exact near the surface for the soft walk (voxels.rs `field_at`).
+//
+// The field is blended trilinearly from the cell centres, which cannot show the kink at an edge: at a convex
+// corner it reads about 0.3 too far, at a concave one too near, even negative in the air. So within a cell of
+// a block the exact distances are used.
+//
+// In the air: the distance to the boxes of the solid cells in the octant of the cell that `p` is nearer to.
+// In a block: the sideways distance the ray has to move to leave, over the faces of the cell open to the air.
+const EXACT_MARGIN = 0.35;  // the field is off by 0.3 at an edge; further than the sun is wide plus this, the light is saturated
+const MIN_ACROSS = 0.25;
+// Is the cell at this offset from the middle of the 27 solid? (voxels.rs `neighbourhood`.)
+fn solid_around(mask: u32, offset: vec3<i32>) -> bool {
+    let k = u32((offset.z + 1) * 9 + (offset.y + 1) * 3 + (offset.x + 1));
+    return ((mask >> k) & 1u) != 0u;
+}
+
+fn field_at(p: vec3<f32>, size: vec3<f32>, to_sun: vec3<f32>, width: f32) -> f32 {
+    // Both loads depend on `p` only, so they are in flight together: the trace is a chain of waits for the
+    // texture unit, and a second load that has to wait for the first makes every step twice as long.
+    let cell = vec3<i32>(floor(p));
+    let d = textureSampleLevel(voxel_field, voxel_sampler, p / size, 0.0).r;
+    let mask = textureLoad(neighbours, cell, 0).r;
+    // Far from every block (a solid cell's value is below the margin: the field is off by 0.3 at most): no look.
+    if (d >= min(width + EXACT_MARGIN, 1.0)) {
+        return d;
+    }
+    let air = ((mask >> 13u) & 1u) == 0u;  // bit 13 is the cell itself
+    if (air) {
+        if (mask == 0u) {
+            return d;  // nothing solid around the cell
+        }
+        // Only the cells on the side of the cell that `p` is nearer to: the 7 other cells of this octant are
+        // enough. The gap to the neighbour on a side is the distance to the face between them, and a diagonal
+        // neighbour is as far as the gaps of its sides together (Pythagoras).
+        let side = select(vec3<i32>(1), vec3<i32>(-1), p - vec3<f32>(cell) < vec3<f32>(0.5));
+        let into = p - vec3<f32>(cell);
+        let g = select(1.0 - into, into, side < vec3<i32>(0));
+        let g2 = g * g;
+        let far = 1.0e30;
+        var nearest = far;
+        nearest = min(nearest, select(far, g2.x, solid_around(mask, vec3<i32>(side.x, 0, 0))));
+        nearest = min(nearest, select(far, g2.y, solid_around(mask, vec3<i32>(0, side.y, 0))));
+        nearest = min(nearest, select(far, g2.z, solid_around(mask, vec3<i32>(0, 0, side.z))));
+        nearest = min(nearest, select(far, g2.x + g2.y, solid_around(mask, vec3<i32>(side.x, side.y, 0))));
+        nearest = min(nearest, select(far, g2.x + g2.z, solid_around(mask, vec3<i32>(side.x, 0, side.z))));
+        nearest = min(nearest, select(far, g2.y + g2.z, solid_around(mask, vec3<i32>(0, side.y, side.z))));
+        nearest = min(nearest, select(far, g2.x + g2.y + g2.z, solid_around(mask, side)));
+        if (nearest < 1.0) {
+            return max(sqrt(nearest), 0.0001);
+        }
+        return d;
+    }
+    let inside = p - vec3<f32>(cell);
+    var leave = 1.0e30;
+    for (var axis = 0; axis < 3; axis = axis + 1) {
+        var unit = vec3<i32>(0);
+        unit[axis] = 1;
+        let across = max(sqrt(max(1.0 - to_sun[axis] * to_sun[axis], 0.0)), MIN_ACROSS);
+        if (!solid_around(mask, -unit)) {
+            leave = min(leave, inside[axis] / across);
+        }
+        if (!solid_around(mask, unit)) {
+            leave = min(leave, (1.0 - inside[axis]) / across);
+        }
+    }
+    return min(min(d, -min(leave, 32.0)), -0.001);
+}
 
 fn voxel_visibility(pos: vec3<f32>, face: i32) -> f32 {
     let to_sun = sun_shadow.dir.xyz;
@@ -517,14 +644,18 @@ fn voxel_visibility(pos: vec3<f32>, face: i32) -> f32 {
     let soft = min(sun_shadow.grid_origin.z, SELF_CLEARANCE * facing);
 
     if (soft > 0.001) {
+        let soft_steps = i32(sun_shadow.soft_quality.x);
+        let width_step = sun_shadow.soft_quality.y;
+        let inside_steps = i32(sun_shadow.soft_quality.z);
+        let top = sun_shadow.soft_quality.w;
         var visible = 1.0;
         var t = 0.0;
-        for (var i = 0; i < SOFT_STEPS; i = i + 1) {
+        for (var i = 0; i < soft_steps; i = i + 1) {
             let p = q + to_sun * t;
-            if (p.z >= size.z || p.z < 0.0 || p.x < 0.0 || p.y < 0.0 || p.x >= size.x || p.y >= size.y) {
+            if (p.z >= top || p.z < 0.0 || p.x < 0.0 || p.y < 0.0 || p.x >= size.x || p.y >= size.y) {
                 break;  // out of the grid: above the highest block, or nothing is known out there
             }
-            let d = textureSampleLevel(voxel_field, voxel_sampler, p / size, 0.0).r;
+            let d = field_at(p, size, to_sun, soft * t);
             if (d <= 0.0) {
                 // The ray is in a block. How deep it goes decides how much of the sun's disc is hidden (a graze
                 // hides half of it, a ray that goes through hides all): go on inside until the deepest point is
@@ -532,16 +663,16 @@ fn voxel_visibility(pos: vec3<f32>, face: i32) -> f32 {
                 var deepest = d;
                 var deepest_t = t;
                 var inside_t = t;
-                for (var k = 0; k < INSIDE_STEPS; k = k + 1) {
+                for (var k = 0; k < inside_steps; k = k + 1) {
                     if (0.5 + 0.5 * deepest / (soft * max(deepest_t, 0.001)) <= 0.0) {
                         break;
                     }
                     inside_t = inside_t + max(-deepest * SPHERE_STEP, INSIDE_MIN_STEP);
                     let inside_p = q + to_sun * inside_t;
-                    if (inside_p.z >= size.z || inside_p.z < 0.0 || inside_p.x < 0.0 || inside_p.y < 0.0 || inside_p.x >= size.x || inside_p.y >= size.y) {
+                    if (inside_p.z >= top || inside_p.z < 0.0 || inside_p.x < 0.0 || inside_p.y < 0.0 || inside_p.x >= size.x || inside_p.y >= size.y) {
                         break;
                     }
-                    let inside = textureSampleLevel(voxel_field, voxel_sampler, inside_p / size, 0.0).r;
+                    let inside = field_at(inside_p, size, to_sun, soft * t);
                     if (inside < deepest) {
                         deepest = inside;
                         deepest_t = inside_t;
@@ -557,7 +688,7 @@ fn voxel_visibility(pos: vec3<f32>, face: i32) -> f32 {
             visible = min(visible, clamp(0.5 + 0.5 * d / (soft * max(t, 0.001)), 0.0, 1.0));
             var step = d * SPHERE_STEP;
             if (d < 2.0 * soft * t) {
-                step = min(step, soft * t * WIDTH_STEP);  // near the edge of a shadow: look closer
+                step = min(step, soft * t * width_step);  // near the edge of a shadow: look closer
             }
             t = t + max(step, MIN_STEP);
         }
@@ -565,6 +696,7 @@ fn voxel_visibility(pos: vec3<f32>, face: i32) -> f32 {
         return smoothstep(0.0, 1.0, visible);
     }
 
+    let dims_top = i32(sun_shadow.soft_quality.w);
     var cell = vec3<i32>(floor(q));
     let x = ray_axis(q.x, to_sun.x);
     let y = ray_axis(q.y, to_sun.y);
@@ -575,7 +707,7 @@ fn voxel_visibility(pos: vec3<f32>, face: i32) -> f32 {
     var transmittance = 1.0;
     let steps = i32(sun_shadow.grid_origin.w);
     for (var i = 0; i < steps; i = i + 1) {
-        if (cell.z >= dims.z || cell.z < 0 || cell.x < 0 || cell.y < 0 || cell.x >= dims.x || cell.y >= dims.y) {
+        if (cell.z >= dims_top || cell.z < 0 || cell.x < 0 || cell.y < 0 || cell.x >= dims.x || cell.y >= dims.y) {
             break;
         }
         transmittance = transmittance * (1.0 - textureLoad(voxels, cell, 0).r);
@@ -603,9 +735,15 @@ fn sun_visibility(pos: vec3<f32>, face: i32) -> f32 {
     if (strength <= 0.0 || face == 3 || face == 7) {
         return 1.0;
     }
-    var seen = map_visibility(pos, face);
+    // The map holds everything (a 5 x 5 window) or, with the voxel method, only the sprites, whose shadows
+    // are soft anyway (3 x 3: a quarter of the taps).
+    var seen = 1.0;
     if (sun_shadow.params.w > 0.5) {
-        seen = min(seen, voxel_visibility(pos, face));
+        seen = min(map_visibility(pos, face, 1), voxel_visibility(pos, face));
+    } else if (sun_shadow.grid_origin.z > 0.001) {
+        seen = map_visibility_soft(pos, face, sun_shadow.grid_origin.z);
+    } else {
+        seen = map_visibility(pos, face, 2);
     }
     return mix(1.0, seen, strength);
 }
@@ -806,26 +944,18 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     // when the vertex has a sprite. The sprites are cut out: pixels that are (nearly) transparent are
     // discarded, the rest keep their alpha, which the compositing of the layers blends.
     let texel = textureSampleLevel(atlas, atlas_sampler, in.uv, i32(max(in.layer, 0.0) + 0.5), 0.0);
-    // 1: the sun reaches this point, 0: something is in the way. Unlit things (markers, particles) have no sun.
-    let sun_seen = sun_visibility(in.ground, i32(in.face + 0.5)) * cloud_light(in.ground, i32(in.face + 0.5));
-    // The vertex colour holds the sun's light already; a shadow takes the sun's share of it away.
-    let shadowed = 1.0 - in.sun_share * (1.0 - sun_seen);
-    let occlusion = pixel_occlusion(in);
-    var color = vec4<f32>(in.color * shadowed * occlusion, 1.0);
-    if (in.layer > -0.5) {
-        color = vec4<f32>(texel.rgb * in.color * shadowed * occlusion, texel.a);
-        if (lit_by_normal_map(i32(in.face + 0.5), in.layer)) {
-            color = vec4<f32>(normal_map_color(in, texel, sun_seen, occlusion), texel.a);
-        }
-    }
-    if (in.water > 0.5) {
-        color = vec4<f32>(water_reflection(color.rgb, in, sun_seen), color.a);
-    }
     let face = i32(in.face + 0.5);
-    if (face == 3 || face == 7) {
-        color.a = color.a * in.baked.a;  // markers, shadows, damage cracks and particles can fade
+    // What gets thrown away is decided first: the shadows below are the most expensive thing this shader does,
+    // and the peeling draws the scene once per layer, so most of what a layer discards (everything the nearer
+    // layer shows) used to be traced for nothing. The alpha is what the colour's alpha is below.
+    var alpha = 1.0;
+    if (in.layer > -0.5) {
+        alpha = texel.a;
     }
-    if (color.a <= peel.params.z) {
+    if (face == 3 || face == 7) {
+        alpha = alpha * in.baked.a;  // markers, shadows, damage cracks and particles can fade
+    }
+    if (alpha <= peel.params.z) {
         discard;
     }
     // The mirror pass keeps what is above the water: blocks by their height (a side that reaches below
@@ -846,6 +976,24 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
         if (in.clip.z - peel.params.y <= behind) {
             discard;
         }
+    }
+    // 1: the sun reaches this point, 0: something is in the way. Unlit things (markers, particles) have no sun.
+    let sun_seen = sun_visibility(in.ground, face) * cloud_light(in.ground, face);
+    // The vertex colour holds the sun's light already; a shadow takes the sun's share of it away.
+    let shadowed = 1.0 - in.sun_share * (1.0 - sun_seen);
+    let occlusion = pixel_occlusion(in);
+    var color = vec4<f32>(in.color * shadowed * occlusion, 1.0);
+    if (in.layer > -0.5) {
+        color = vec4<f32>(texel.rgb * in.color * shadowed * occlusion, texel.a);
+        if (lit_by_normal_map(face, in.layer)) {
+            color = vec4<f32>(normal_map_color(in, texel, sun_seen, occlusion), texel.a);
+        }
+    }
+    if (in.water > 0.5) {
+        color = vec4<f32>(water_reflection(color.rgb, in, sun_seen), color.a);
+    }
+    if (face == 3 || face == 7) {
+        color.a = color.a * in.baked.a;
     }
     if (lighting.flat_shades.w > 0.5) {
         // The colours above are display colours (the palette, the sprites and the light were made for

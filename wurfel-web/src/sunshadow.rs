@@ -51,6 +51,37 @@ impl ShadowQuality {
     }
 }
 
+/// How carefully the soft shadows of the voxel method are traced: steps of the sphere tracing along the
+/// sun's ray and how fine it looks near the edge of a shadow. More is smoother edges (no crawling or
+/// banding in the penumbra) and costs more per pixel. Medium is what `voxels.rs` mirrors on the CPU.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VoxelQuality {
+    Low,
+    #[default]
+    Medium,
+    High,
+}
+
+impl VoxelQuality {
+    /// The menu's `shadowQuality` value, read for the voxel method; anything else is the default.
+    pub fn from_name(name: &str) -> Self {
+        match name {
+            "low" => VoxelQuality::Low,
+            "high" => VoxelQuality::High,
+            _ => VoxelQuality::Medium,
+        }
+    }
+
+    /// `[steps, width step, steps inside a block, 0]` for the shader (`soft_quality`).
+    pub fn params(self) -> [f32; 4] {
+        match self {
+            VoxelQuality::Low => [48.0, 0.4, 24.0, 0.0],
+            VoxelQuality::Medium => [crate::voxels::SOFT_STEPS as f32, crate::voxels::WIDTH_STEP, crate::voxels::INSIDE_STEPS as f32, 0.0],
+            VoxelQuality::High => [160.0, 0.1, 40.0, 0.0],
+        }
+    }
+}
+
 /// Half the width of the map in blocks: the shadows reach this far from the focus.
 pub const RADIUS: f32 = 48.0;
 /// The same for the voxel method, where the map only holds the standing sprites (trees, creatures).
@@ -112,7 +143,7 @@ const FULL_AT: f32 = 0.35;
 /// ... and below this height none.
 const NONE_AT: f32 = 0.1;
 
-/// `SunShadow` in `shader.wgsl` and `sunshadow.wgsl`: seven `vec4`s.
+/// `SunShadow` in `shader.wgsl` and `sunshadow.wgsl`: eight `vec4`s.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct SunShadowUniform {
@@ -132,6 +163,10 @@ pub struct SunShadowUniform {
     /// xyz: the size of the voxel grid in cells. w: 1 in the pass that draws the world, where only the
     /// standing sprites cast (the blocks are in the grid); 0 for everything else.
     pub grid_dims: [f32; 4],
+    /// x: steps of the soft sphere tracing at most. y: the part of a penumbra's width a step is at most.
+    /// z: steps inside a block at most ([`VoxelQuality::params`]). w: the layers of the voxel grid that have
+    /// anything in them (a ray above is in the open).
+    pub soft_quality: [f32; 4],
 }
 
 fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
@@ -171,6 +206,7 @@ pub fn uniform(focus: Vec3, to_sun: Vec3, strength: f32, size: u32, radius: f32)
         params: [strength.clamp(0.0, 1.0), texel, size as f32, 0.0],
         grid_origin: [0.0; 4],
         grid_dims: [0.0; 4],
+        soft_quality: VoxelQuality::default().params(),
     }
 }
 
@@ -178,10 +214,20 @@ impl SunShadowUniform {
     /// The blocks' shadows come from the voxel grid whose first cell is the ground cell `origin`. `soft` is
     /// the tangent of the angular radius of the sun's disc: 0 gives hard, exact edges, more blurs them with
     /// the distance from what casts them.
-    pub fn with_voxels(mut self, origin: (i32, i32), soft: f32) -> Self {
+    pub fn with_voxels(mut self, origin: (i32, i32), soft: f32, quality: VoxelQuality, top: usize) -> Self {
         self.params[3] = 1.0;
+        self.soft_quality = quality.params();
+        self.soft_quality[3] = top as f32;
         self.grid_origin = [origin.0 as f32, origin.1 as f32, soft.clamp(0.0, MAX_SOFT), crate::voxels::MAX_STEPS as f32];
         self.grid_dims = [crate::voxels::SIZE_XY as f32, crate::voxels::SIZE_XY as f32, crate::voxels::SIZE_Z as f32, 0.0];
+        self
+    }
+
+    /// The shadow map's own soft edge (percentage-closer soft shadows): `soft` is the tangent of the sun's
+    /// angular radius, as for [`Self::with_voxels`]. 0 keeps the fixed filter.
+    #[allow(dead_code)] // measured by examples/shadow_bench.rs, not used by the game (yet)
+    pub fn with_map_softness(mut self, soft: f32) -> Self {
+        self.grid_origin[2] = soft.clamp(0.0, MAX_SOFT);
         self
     }
 
@@ -395,10 +441,21 @@ mod tests {
     }
 
     #[test]
-    fn the_uniform_is_seven_vec4s_in_both_shaders() {
-        assert_eq!(std::mem::size_of::<SunShadowUniform>(), 112);
+    fn the_voxel_quality_names_pick_the_steps_and_medium_is_what_the_cpu_mirror_uses() {
+        assert_eq!(VoxelQuality::from_name("low"), VoxelQuality::Low);
+        assert_eq!(VoxelQuality::from_name("high"), VoxelQuality::High);
+        assert_eq!(VoxelQuality::from_name("anything"), VoxelQuality::Medium);
+        let (low, medium, high) = (VoxelQuality::Low.params(), VoxelQuality::Medium.params(), VoxelQuality::High.params());
+        assert!(low[0] < medium[0] && medium[0] < high[0], "steps");
+        assert!(low[1] > medium[1] && medium[1] > high[1], "a finer look near the edge");
+        assert_eq!(medium[..3], [crate::voxels::SOFT_STEPS as f32, crate::voxels::WIDTH_STEP, crate::voxels::INSIDE_STEPS as f32]);
+    }
+
+    #[test]
+    fn the_uniform_is_eight_vec4s_in_both_shaders() {
+        assert_eq!(std::mem::size_of::<SunShadowUniform>(), 128);
         for source in [include_str!("shader.wgsl"), include_str!("sunshadow.wgsl")] {
-            assert_eq!(struct_size(&validated_or_parsed(source), "SunShadow"), 112);
+            assert_eq!(struct_size(&validated_or_parsed(source), "SunShadow"), 128);
         }
     }
 
@@ -531,11 +588,11 @@ mod tests {
     fn the_voxel_uniform_switches_the_scene_on_and_only_the_world_pass_skips_blocks() {
         let plain = uniform(Vec3::ZERO, Vec3::Z, 1.0, SIZE, RADIUS);
         assert_eq!(plain.params[3], 0.0);
-        let voxel = plain.with_voxels((-12, 34), 0.1);
+        let voxel = plain.with_voxels((-12, 34), 0.1, VoxelQuality::Medium, 5);
         assert_eq!(voxel.params[3], 1.0);
         assert_eq!(&voxel.grid_origin[..2], &[-12.0, 34.0]);
         assert_eq!(voxel.grid_origin[2], 0.1);
-        assert_eq!(plain.with_voxels((0, 0), 9.0).grid_origin[2], MAX_SOFT);
+        assert_eq!(plain.with_voxels((0, 0), 9.0, VoxelQuality::High, 5).grid_origin[2], MAX_SOFT);
         assert_eq!(voxel.grid_origin[3], crate::voxels::MAX_STEPS as f32);
         assert_eq!(&voxel.grid_dims[..3], &[crate::voxels::SIZE_XY as f32, crate::voxels::SIZE_XY as f32, crate::voxels::SIZE_Z as f32]);
         assert_eq!(voxel.grid_dims[3], 0.0, "the moving things cast as blocks too");

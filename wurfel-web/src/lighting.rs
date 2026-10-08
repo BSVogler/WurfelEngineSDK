@@ -332,6 +332,7 @@ mod tests {
                 (0, 7, "voxel_sampler".to_string()),
                 (0, 8, "mirror_image".to_string()),
                 (0, 9, "voxel_field".to_string()),
+                (0, 10, "neighbours".to_string()),
                 (1, 0, "atlas".to_string()),
                 (1, 1, "atlas_sampler".to_string()),
                 (1, 2, "normals".to_string()),

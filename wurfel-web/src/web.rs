@@ -195,6 +195,8 @@ struct State {
     sun_shadows: bool,
     /// How the blocks' shadows are made (the menu's `shadowMethod`) and the grid of the blocks for the voxel one.
     shadow_method: crate::sunshadow::ShadowMethod,
+    /// How carefully the voxel method traces the soft shadows (the menu's `shadowQuality`, as for the map).
+    voxel_quality: crate::sunshadow::VoxelQuality,
     voxels: crate::voxels::gpu::VoxelTexture,
     /// The blocks may have changed since the grid was made.
     voxels_stale: bool,
@@ -455,6 +457,17 @@ async fn run() -> Result<(), String> {
                 },
                 count: None,
             },
+            // Which cells around each are solid, 27 bits: the soft shadows look at an edge with one load.
+            wgpu::BindGroupLayoutEntry {
+                binding: 10,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Uint,
+                    view_dimension: wgpu::TextureViewDimension::D3,
+                    multisampled: false,
+                },
+                count: None,
+            },
         ],
     });
     let (cloud_view, cloud_sampler) = crate::clouds::gpu::create(&device, &queue);
@@ -497,7 +510,7 @@ async fn run() -> Result<(), String> {
     let mirror_bind_group = scene.make(&device, &mirror_camera_buffer, reflection.blank());
     let post_settings = post_settings_from_menu().limited_by(hdr_ok);
     web_sys::console::log_1(&format!("render: {post_settings:?}").into());
-    let post = Post::new(&device, scene_format, config.format, peeling.blended(), config.width, config.height);
+    let post = Post::new(&device, scene_format, config.format, peeling.blended(), peeling.nearest_depth(), config.width, config.height);
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("blocks"),
         bind_group_layouts: &[Some(&bind_group_layout), Some(&atlas_layout), Some(peeling.peel_layout())],
@@ -547,6 +560,7 @@ async fn run() -> Result<(), String> {
         sun_shadow,
         sun_shadows: sun_shadows_from_menu(),
         shadow_method,
+        voxel_quality: sun_shadow_voxel_quality_from_menu(),
         voxels,
         voxels_stale: true,
         shadow_softness: sun_shadow_softness_from_menu(),
@@ -1657,7 +1671,7 @@ fn listen<E: JsCast + 'static>(window: &web_sys::Window, event: &str, mut handle
     closure.forget();
 }
 
-/// The graphics settings of the menu (`linearBlend`, `bloom`, `fxaa`); the defaults while
+/// The graphics settings of the menu (`linearBlend`, `bloom`, `fxaa`, `depthOfField`); the defaults while
 /// the menu has not run.
 fn post_settings_from_menu() -> PostSettings {
     let settings = web_sys::window().map(|w| js_get(&w, "wurfelSettings")).unwrap_or(JsValue::UNDEFINED);
@@ -1665,6 +1679,7 @@ fn post_settings_from_menu() -> PostSettings {
         js_get(&settings, "linearBlend").as_bool(),
         js_get(&settings, "bloom").as_f64(),
         js_get(&settings, "fxaa").as_bool(),
+        js_get(&settings, "depthOfField").as_f64(),
     )
 }
 
@@ -1691,6 +1706,12 @@ fn sun_shadow_softness_from_menu() -> f32 {
     if softness.is_finite() { softness.clamp(0.0, 1.0) as f32 * crate::sunshadow::MAX_SOFT } else { 0.0 }
 }
 
+/// The menu's `shadowQuality` for the voxel method (low, medium or high).
+fn sun_shadow_voxel_quality_from_menu() -> crate::sunshadow::VoxelQuality {
+    let name = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "shadowQuality").as_string());
+    crate::sunshadow::VoxelQuality::from_name(name.as_deref().unwrap_or(""))
+}
+
 /// The menu's `shadowMethod` (map or voxel).
 fn sun_shadow_method_from_menu() -> crate::sunshadow::ShadowMethod {
     let name = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "shadowMethod").as_string());
@@ -1705,6 +1726,7 @@ fn apply_sun_shadow_quality(s: &mut State) {
         s.voxels_stale = true;  // the distance field is only made while the soft shadows are on
     }
     s.shadow_softness = softness;
+    s.voxel_quality = sun_shadow_voxel_quality_from_menu();
     let method = sun_shadow_method_from_menu();
     if method != s.shadow_method {
         s.shadow_method = method;
@@ -1742,6 +1764,7 @@ impl SceneGroupParts<'_> {
                 wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::Sampler(self.voxels.sampler()) },
                 wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(mirror_image) },
                 wgpu::BindGroupEntry { binding: 9, resource: wgpu::BindingResource::TextureView(self.voxels.field_view()) },
+                wgpu::BindGroupEntry { binding: 10, resource: wgpu::BindingResource::TextureView(self.voxels.neighbours_view()) },
             ],
         })
     }
@@ -1773,16 +1796,24 @@ fn sun_shadow_uniform(s: &State) -> crate::sunshadow::SunShadowUniform {
     let uniform = crate::sunshadow::uniform(focus, state.sun_direction, strength, s.sun_shadow.size(), s.shadow_method.radius());
     match s.shadow_method {
         crate::sunshadow::ShadowMethod::Map => uniform,
-        crate::sunshadow::ShadowMethod::Voxel => uniform.with_voxels(s.voxels.origin(), s.shadow_softness),
+        crate::sunshadow::ShadowMethod::Voxel => uniform.with_voxels(s.voxels.origin(), s.shadow_softness, s.voxel_quality, s.voxels.top()),
     }
 }
 
 /// Events from the HTML menu (see the contract at the top of `menu.js`).
 fn install_menu_events(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
+    // The cvar (saved in this browser) wins over the menu's own saved copy.
+    console::show_fps_limit_in_menu(state.borrow().console.fps_limit());
     let s = state.clone();
     listen(window, "wurfel:settings", move |_: web_sys::Event| {
         let mut s = s.borrow_mut();
         s.bindings = read_bindings();
+        // The menu's "FPS limit" edits the `limitFPS` cvar, which is the one cap.
+        if let Some(limit) = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "fpsLimit").as_f64()) {
+            if limit as u32 != s.console.fps_limit() {
+                s.console.set_fps_limit(limit as u32);
+            }
+        }
         if let Some(on) = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "ambientOcclusion").as_bool()) {
             s.lighting.ambient_occlusion = on;
         }
@@ -2036,7 +2067,7 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         s.peeling.resize(&s.device, s.config.width, s.config.height);
         s.reflection = Reflection::new(&s.device, s.scene_format, s.config.width, s.config.height);
         remake_scene_groups(s);
-        s.post.resize(&s.device, s.peeling.blended(), s.config.width, s.config.height);
+        s.post.resize(&s.device, s.peeling.blended(), s.peeling.nearest_depth(), s.config.width, s.config.height);
     });
 
     let s = state.clone();
@@ -2352,9 +2383,7 @@ fn start_frame_loop(state: Rc<RefCell<State>>) {
     *next.borrow_mut() = Some(Closure::new(move |now_ms: f64| {
         // `fpsLimit` from the menu: 0 is unlimited. Skip callbacks that arrive too early; the 1 ms slack
         // keeps a 60 FPS cap from dropping to 30 on a 60 Hz display whose callbacks jitter.
-        let limit = web_sys::window()
-            .and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "fpsLimit").as_f64())
-            .unwrap_or(60.0);
+        let limit = state.borrow().console.fps_limit() as f64;
         if limit < 1.0 || now_ms - last_frame >= 1000.0 / limit - 1.0 {
             last_frame = now_ms;
             frame(&mut state.borrow_mut(), now_ms);
@@ -2999,7 +3028,12 @@ fn render(s: &mut State) {
         draw_scene(s, &mut pass, &s.mirror_bind_group);
     }
     s.peeling.render(&mut encoder, background, |pass| draw_scene(s, pass, &s.bind_group));
-    s.post.render(&mut encoder, &s.queue, &view, &s.post_settings);
+    // The player is in focus. Its depth is `x + y + 0.82 z` like in the vertex shader, minus the camera's
+    // (the camera aims at the player's chest, 0.7 up, but may trail it inside the leap radius and
+    // shakes, so this is not zero). Without a player nothing is blurred more than the rest of the view.
+    let focus_depth = local_position(s).map_or(0.0, |p| p.x + p.y + crate::sprites::DEPTH_Z * (p.z + 0.7) - uniform.center_depth);
+    // One step of x + y moves the ground 50 px down at zoom 1 (see `center_depth` above).
+    s.post.render(&mut encoder, &s.queue, &view, &s.post_settings, 50.0 * s.camera.zoom, focus_depth);
     s.queue.submit(Some(encoder.finish()));
     s.queue.present(output);
 }

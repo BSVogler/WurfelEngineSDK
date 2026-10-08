@@ -36,6 +36,11 @@ web-sys = { version = "0.3", features = [
   "Performance", "Storage", "Request", "RequestInit", "RequestCache", "Headers", "BinaryType",
 ] }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+# examples/shadow_bench.rs: times the shadow code of shader.wgsl on the native GPU.
+wgpu = "30"
+pollster = "0.3"
+
 [dev-dependencies]
 # Validates shader.wgsl in a native unit test (same version as the one wgpu uses).
 naga = { version = "30", features = ["wgsl-in"] }
