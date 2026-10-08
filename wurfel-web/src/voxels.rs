@@ -24,6 +24,9 @@
 //! has no steps, and it is as wide as the disc: nothing at the contact and more with the distance.
 //! [`VoxelGrid::soft_visibility`] is that on the CPU; `shader.wgsl` (`voxel_visibility`) the same on the GPU.
 
+// The soft-shadow walk is the CPU reference for the shader's: only the tests call it until the shader uses it.
+#![allow(dead_code)]
+
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
 use glam::Vec3;

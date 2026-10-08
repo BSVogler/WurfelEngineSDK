@@ -51,6 +51,7 @@ pub use web::Audio;
 
 use std::collections::HashMap;
 
+#[cfg_attr(not(target_arch = "wasm32"), allow(unused_imports))] // web.rs, which only exists in the browser, uses it
 pub use entity_sounds::{EntityInfo, EntitySoundConfig};
 pub use music::{Music, MusicCommand};
 use wurfel_sim::entity::EntityId;
