@@ -26,7 +26,7 @@ web-sys = { version = "0.3", features = [
   "Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement",
   "KeyboardEvent", "MouseEvent", "WheelEvent", "EventTarget", "console",
   "WebSocket", "MessageEvent", "CloseEvent", "Location", "Event",
-  "CanvasRenderingContext2d", "ImageData", "CssStyleDeclaration", "Node",
+  "CanvasRenderingContext2d", "ImageData", "CssStyleDeclaration", "Node", "DomRect",
   # audio (src/audio/web.rs)
   "AudioContext", "AudioContextState", "BaseAudioContext", "AudioDestinationNode", "AudioNode",
   "AudioParam", "AudioBuffer", "AudioBufferSourceNode", "AudioScheduledSourceNode", "GainNode",

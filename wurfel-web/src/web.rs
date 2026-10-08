@@ -285,6 +285,8 @@ struct State {
     light_diagram: Option<LightDiagram>,
     /// The debug display (F3 or the page's Debug button): network, light and minimap overlays.
     show_net: bool,
+    /// The left button went down on the sun diagram: the pointer's x turns the sun until release.
+    sun_drag: bool,
     minimap: Option<Minimap>,
     next_ping_ms: f64,
     next_overlay_ms: f64,
@@ -634,6 +636,7 @@ async fn run() -> Result<(), String> {
         light_overlay,
         light_diagram,
         show_net: false,
+        sun_drag: false,
         minimap,
         next_ping_ms: 0.0,
         next_overlay_ms: 0.0,
@@ -914,6 +917,15 @@ impl LightDiagram {
         document.body()?.append_child(&canvas).ok()?;
         let context: web_sys::CanvasRenderingContext2d = canvas.get_context("2d").ok()??.dyn_into().ok()?;
         Some(LightDiagram { canvas, context, pixel_ratio: pixel_ratio as f64 })
+    }
+
+    /// Where the pointer (device pixels) is across the diagram: 0 at its left edge, 1 at its right
+    /// edge, outside that range when beside it. Also whether the pointer is on the diagram at all.
+    fn pointer_x(&self, pointer: (f32, f32), dpr: f32) -> (f32, bool) {
+        let rect = self.canvas.get_bounding_client_rect();
+        let (x, y) = (pointer.0 / dpr, pointer.1 / dpr);
+        let inside = x >= rect.left() as f32 && x <= rect.right() as f32 && y >= rect.top() as f32 && y <= rect.bottom() as f32;
+        ((x - rect.left() as f32) / rect.width().max(1.0) as f32, inside)
     }
 
     fn set_visible(&self, visible: bool) {
@@ -2045,9 +2057,17 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
             return;
         }
         s.keys.insert(format!("mouse{}", e.button()));
-        // While the debug display is on the left button turns the sun instead of acting in the game.
+        // While the debug display is on, the left button on the sun diagram turns the sun instead
+        // of acting in the game.
         if s.show_net && e.button() == 0 {
-            return;
+            let on_diagram = match (&s.light_diagram, s.pointer) {
+                (Some(d), Some(p)) => d.pointer_x(p, s.dpr).1,
+                _ => false,
+            };
+            if on_diagram {
+                s.sun_drag = true;
+                return;
+            }
         }
         if let Some((name, arg)) = s.mode.as_ref().and_then(|m| m.mouse_action(e.button(), true)) {
             send_action(&mut s, name, arg);
@@ -2058,6 +2078,9 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     listen(window, "mouseup", move |e: MouseEvent| {
         let mut s = s.borrow_mut();
         s.keys.remove(&format!("mouse{}", e.button()));
+        if e.button() == 0 {
+            s.sun_drag = false;
+        }
         editor_release(&mut s, e.button());
         if let Some((name, arg)) = s.mode.as_ref().and_then(|m| m.mouse_action(e.button(), false)) {
             send_action(&mut s, name, arg);
@@ -2488,12 +2511,13 @@ fn frame(s: &mut State, now_ms: f64) {
     // Like the Java editor (`timespeed` 0) the time of day stands still while editing, so the light
     // does not change under the editor's hands. Everybody else's clock is not touched.
     s.lighting.update(if s.editor.active() { 0.0 } else { dt * 1000.0 });
-    // Debug display on: holding the left button sets the sun's position from the pointer's x, like
-    // the Java light engine's debug mode (the moon turns with it, the day clock is paused meanwhile).
-    if s.show_net && s.keys.contains("mouse0") {
-        if let Some((px, _)) = s.pointer {
-            let azimuth = (px / s.config.width as f32).clamp(0.0, 1.0) * 360.0;
-            s.lighting.engine.set_azimuth(azimuth);
+    // Debug display on: dragging on the sun diagram (bottom left) sets the sun's position from the
+    // pointer's x across it, like the Java light engine's debug mode (the moon turns with it).
+    if s.show_net && s.sun_drag {
+        let (pointer, dpr) = (s.pointer, s.dpr);
+        if let (Some(d), Some(p)) = (&s.light_diagram, pointer) {
+            let x = d.pointer_x(p, dpr).0;
+            s.lighting.engine.set_azimuth(x.clamp(0.0, 1.0) * 360.0);
         }
     }
 
