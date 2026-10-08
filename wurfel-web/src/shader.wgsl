@@ -634,7 +634,7 @@ fn voxel_visibility(pos: vec3<f32>, face: i32) -> f32 {
     let n = face_normal(face, to_sun);
     let facing = dot(n, to_sun);
     if (facing <= 0.0) {
-        return 1.0;  // turned away from the sun: it has no sun light to take away
+        return 0.0;  // turned away from the sun: in its own shadow, as in the map (the normal map must not light it)
     }
     let dims = vec3<i32>(sun_shadow.grid_dims.xyz);
     let size = vec3<f32>(dims);
