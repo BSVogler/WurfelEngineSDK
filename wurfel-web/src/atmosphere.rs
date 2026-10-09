@@ -64,8 +64,9 @@ pub struct Draw {
 }
 
 /// The draw calls of a frame for the settings and the sun's height; kinds with nothing to show are left out.
-pub fn plan(settings: &Settings, sun_z: f32) -> Vec<Draw> {
-    let strengths = Strengths::at(sun_z, settings.weather);
+pub fn plan(settings: &Settings, sun_z: f32, seconds: f32) -> Vec<Draw> {
+    let weather = settings.weather.at(seconds);
+    let strengths = Strengths::at(sun_z, weather);
     let mut out = Vec::new();
     let mut add = |kind: Kind, density: f32, amount: f32| {
         let count = kind.count(density);
@@ -85,8 +86,8 @@ pub fn plan(settings: &Settings, sun_z: f32) -> Vec<Draw> {
         add(Kind::Leaf, d, strengths.leaves);
         add(Kind::Firefly, d, strengths.fireflies);
     }
-    match settings.weather {
-        Weather::Clear => {}
+    match weather {
+        Weather::Clear | Weather::Changing => {}
         Weather::Rain => {
             add(Kind::Splash, settings.weather_density, 1.0);
             add(Kind::Rain, settings.weather_density, 1.0);
@@ -424,41 +425,41 @@ mod tests {
     #[test]
     fn noon_shows_pollen_and_dusk_shows_fireflies_and_beams() {
         let s = Settings::default();
-        let noon = kinds(&plan(&s, 0.9));
+        let noon = kinds(&plan(&s, 0.9, 0.0));
         assert!(noon.contains(&Kind::Pollen) && !noon.contains(&Kind::Firefly) && !noon.contains(&Kind::GodRay));
-        let dusk = kinds(&plan(&s, 0.12));
+        let dusk = kinds(&plan(&s, 0.12, 0.0));
         assert!(dusk.contains(&Kind::Firefly) && dusk.contains(&Kind::GodRay) && dusk.contains(&Kind::Mote));
-        let night = kinds(&plan(&s, -0.5));
+        let night = kinds(&plan(&s, -0.5, 0.0));
         assert!(night.contains(&Kind::Firefly) && !night.contains(&Kind::Pollen));
     }
 
     #[test]
     fn switches_and_density_remove_things() {
         let off = Settings { ambient: false, volumetrics: false, ..Settings::default() };
-        assert!(plan(&off, 0.12).is_empty(), "no weather, no ambient, no fog");
+        assert!(plan(&off, 0.12, 0.0).is_empty(), "no weather, no ambient, no fog");
         let none = Settings { ambient_density: 0.0, ..Settings::default() };
-        assert!(plan(&none, 0.12).is_empty());
+        assert!(plan(&none, 0.12, 0.0).is_empty());
         let fog_only = Settings { ambient: false, ..Settings::default() };
-        assert!(kinds(&plan(&fog_only, 0.12)).iter().all(|k| matches!(k, Kind::Fog | Kind::GodRay)));
+        assert!(kinds(&plan(&fog_only, 0.12, 0.0)).iter().all(|k| matches!(k, Kind::Fog | Kind::GodRay)));
     }
 
     #[test]
     fn rain_and_snow_draw_their_own_kinds_within_the_caps() {
         let rain = Settings { weather: Weather::Rain, weather_density: sim::MAX_DENSITY, ..Settings::default() };
-        let p = plan(&rain, 0.9);
+        let p = plan(&rain, 0.9, 0.0);
         let find = |k: Kind| p.iter().find(|d| d.kind == k).copied();
         assert_eq!(find(Kind::Rain).unwrap().count, Kind::Rain.cap());
         assert_eq!(find(Kind::Splash).unwrap().count, Kind::Rain.cap(), "one ring for every drop");
         assert!(find(Kind::Snow).is_none() && find(Kind::GodRay).is_none());
         assert!(find(Kind::Pollen).map_or(true, |d| d.amount < 0.2), "rain takes the pollen away");
         let snow = Settings { weather: Weather::Snow, ..Settings::default() };
-        assert!(kinds(&plan(&snow, 0.9)).contains(&Kind::Snow));
-        assert!(!kinds(&plan(&snow, 0.9)).contains(&Kind::Rain));
-        let total: u32 = plan(&rain, 0.12).iter().map(|d| d.count).sum();
+        assert!(kinds(&plan(&snow, 0.9, 0.0)).contains(&Kind::Snow));
+        assert!(!kinds(&plan(&snow, 0.9, 0.0)).contains(&Kind::Rain));
+        let total: u32 = plan(&rain, 0.12, 0.0).iter().map(|d| d.count).sum();
         assert!(total <= Kind::ALL.iter().map(|k| k.cap()).sum::<u32>());
         // At most one draw per kind: the uniform buffer has one slot each.
         for s in [&rain, &snow, &Settings::default()] {
-            assert!(plan(s, 0.12).len() <= Kind::ALL.len());
+            assert!(plan(s, 0.12, 0.0).len() <= Kind::ALL.len());
         }
     }
 

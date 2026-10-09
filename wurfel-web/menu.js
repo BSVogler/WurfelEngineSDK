@@ -34,7 +34,7 @@
  *     grassDensity     integer 0..20  blades per block near the player (default 10)
  *     atmosphere       bool     ambient particles: pollen, fireflies, dust motes, leaves, mist (default true)
  *     atmosphereDensity 0..2    how many of them (and of the fog sprites), 1 = normal (default 1)
- *     weather          'clear' | 'rain' | 'snow'   what falls from the sky (default clear)
+ *     weather          'clear' | 'rain' | 'snow' | 'changing' what falls from the sky (default clear)
  *     weatherDensity   0..2     how much rain or snow, 1 = normal (default 1)
  *     volumetrics      bool     soft fog banks and god rays (default true)
  *     spriteShadows    bool     soft sun-oriented blobs under sprites (default true)
@@ -169,7 +169,7 @@
     if (typeof raw.serverUrl === 'string') out.serverUrl = raw.serverUrl.trim().slice(0, 200);
     if (['low', 'medium', 'high'].includes(raw.shadowQuality)) out.shadowQuality = raw.shadowQuality;
     if (['map', 'voxel'].includes(raw.shadowMethod)) out.shadowMethod = raw.shadowMethod;
-    if (['clear', 'rain', 'snow'].includes(raw.weather)) out.weather = raw.weather;
+    if (['clear', 'rain', 'snow', 'changing'].includes(raw.weather)) out.weather = raw.weather;
     if (typeof raw.generator === 'string' && /^[\w-]{1,32}$/.test(raw.generator)) out.generator = raw.generator;
     if (Number.isSafeInteger(raw.seed) && raw.seed >= 0) out.seed = raw.seed;
     for (const [key, [lo, hi]] of Object.entries(RANGES)) {

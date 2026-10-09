@@ -82,15 +82,40 @@ pub enum Weather {
     Clear,
     Rain,
     Snow,
+    /// Clear most of the time, with a spell of rain now and then (see [`Weather::at`]).
+    Changing,
 }
 
+/// How long one weather slot of [`Weather::Changing`] lasts, seconds.
+pub const WEATHER_SLOT: f32 = 150.0;
+/// The share of the slots of [`Weather::Changing`] that rain.
+pub const RAIN_SHARE: f32 = 0.3;
+
 impl Weather {
+    /// What actually falls at `seconds`: the setting itself, except [`Weather::Changing`], which rains in
+    /// some slots (a hash of the slot number decides, so it is the same for everyone and never settles).
+    pub fn at(self, seconds: f32) -> Weather {
+        if self != Weather::Changing {
+            return self;
+        }
+        let slot = (seconds.max(0.0) / WEATHER_SLOT) as u32;
+        let h = slot.wrapping_mul(0x9E37_79B1) ^ 0x85EB_CA6B;
+        let h = (h ^ (h >> 15)).wrapping_mul(0x2C1B_3C6D);
+        let h = h ^ (h >> 12);
+        if ((h & 0xFFFF) as f32 / 65536.0) < RAIN_SHARE {
+            Weather::Rain
+        } else {
+            Weather::Clear
+        }
+    }
+
     /// `clear`, `rain` or `snow` (also `none`, `off`, `0`), any case. `None` for anything else.
     pub fn parse(text: &str) -> Option<Weather> {
         match text.trim().to_ascii_lowercase().as_str() {
             "clear" | "none" | "off" | "0" | "false" => Some(Weather::Clear),
             "rain" => Some(Weather::Rain),
             "snow" => Some(Weather::Snow),
+            "changing" | "sometimes" | "random" => Some(Weather::Changing),
             _ => None,
         }
     }
@@ -100,12 +125,13 @@ impl Weather {
             Weather::Clear => "clear",
             Weather::Rain => "rain",
             Weather::Snow => "snow",
+            Weather::Changing => "changing",
         }
     }
 
     /// 1 while something falls, 0 under a clear sky: what takes the sun's beams and the pollen away.
     pub fn overcast(self) -> f32 {
-        if self == Weather::Clear {
+        if matches!(self, Weather::Clear | Weather::Changing) {
             0.0
         } else {
             1.0
@@ -392,12 +418,21 @@ mod tests {
     }
 
     #[test]
+    fn changing_weather_rains_only_sometimes() {
+        let slots = 400;
+        let rainy = (0..slots).filter(|i| Weather::Changing.at(*i as f32 * WEATHER_SLOT + 1.0) == Weather::Rain).count();
+        assert!(rainy > slots / 10 && rainy < slots / 2, "{rainy} of {slots}");
+        assert_eq!(Weather::Changing.at(5.0), Weather::Changing.at(WEATHER_SLOT - 5.0), "steady within a slot");
+        assert_eq!(Weather::Snow.at(123.0), Weather::Snow);
+    }
+
+    #[test]
     fn weather_names_parse_and_unknown_ones_do_not() {
         assert_eq!(Weather::parse("rain"), Some(Weather::Rain));
         assert_eq!(Weather::parse(" SNOW "), Some(Weather::Snow));
         assert_eq!(Weather::parse("off"), Some(Weather::Clear));
         assert_eq!(Weather::parse("hail"), None);
-        for w in [Weather::Clear, Weather::Rain, Weather::Snow] {
+        for w in [Weather::Clear, Weather::Rain, Weather::Snow, Weather::Changing] {
             assert_eq!(Weather::parse(w.name()), Some(w));
         }
     }

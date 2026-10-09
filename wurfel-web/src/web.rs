@@ -3142,7 +3142,7 @@ fn upload_grass(s: &mut State, dt: f32) {
 }
 
 /// The atmosphere settings: the menu's `atmosphere`, `atmosphereDensity`, `weather` (`clear`, `rain`,
-/// `snow`), `weatherDensity` and `volumetrics` (`window.wurfelSettings`), which the page
+/// `snow`, `changing`), `weatherDensity` and `volumetrics` (`window.wurfelSettings`), which the page
 /// address overrides (`?atmosphere=0`, `?atmospheredensity=N`, `?weather=rain`, `?weatherdensity=N`,
 /// `?volumetrics=0`). Default: everything on, density 1, clear weather.
 fn apply_atmosphere_settings(s: &mut State) {
@@ -3194,7 +3194,7 @@ fn update_atmosphere(s: &mut State, dt: f32) {
         Vec3::new(gx, gy, wurfel_sim::CHUNK_SIZE_Z as f32 / 2.0)
     });
     let sun_z = s.lighting.uniform().sun_dir[2];
-    s.atmo_draws = crate::atmosphere::plan(&s.atmo_settings, sun_z);
+    s.atmo_draws = crate::atmosphere::plan(&s.atmo_settings, sun_z, s.atmo_time);
     if s.atmo_draws.is_empty() {
         return;
     }
