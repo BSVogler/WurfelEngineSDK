@@ -23,6 +23,7 @@
  *     shadowMethod     'map' | 'voxel'   how blocks cast sun shadows: one shadow map, or exact edges from a grid of the blocks (default map, applies at once)
  *     shadowSoftness   0..1  how much the edges of voxel shadows blur with the distance from what casts them (default 0.4, applies at once)
  *     shadowQuality    'low' | 'medium' | 'high'   size of the shadow map for the 'map' method, how finely the soft edges are traced for the 'voxel' one (default medium, applies at once)
+ *     windDirection    0..360   degrees the wind blows to (game space, 37 = the original), shared by grass, plants, clouds and particles (default 37, applies at once)
  *     cloudShadows     bool     clouds drift overhead and shade the ground (default true, applies at once)
  *     cloudSpeed       0..4     how fast the cloud shadows drift, 1 = normal, 0 = still (default 1, applies at once)
  *     linearBlend      bool     blend translucent layers and glow in linear light (physically right, but lighter and weaker than the display-colour blending the art was made for; default false). Replaces the older `linearLight`, whose saved value is ignored.
@@ -31,6 +32,13 @@
  *     depthOfField     0..1     miniature look: blur what is far from the player (the focus), by depth, 0 = off (default 0.5, applies at once)
  *     grass            bool     grass blades on grass blocks (default true)
  *     grassDensity     integer 0..20  blades per block near the player (default 10)
+ *     atmosphere       bool     ambient particles: pollen, fireflies, dust motes, leaves, mist (default true)
+ *     atmosphereDensity 0..2    how many of them (and of the fog sprites), 1 = normal (default 1)
+ *     weather          'clear' | 'rain' | 'snow'   what falls from the sky (default clear)
+ *     weatherDensity   0..2     how much rain or snow, 1 = normal (default 1)
+ *     volumetrics      bool     soft fog banks and god rays (default true)
+ *     spriteShadows    bool     soft sun-oriented blobs under sprites (default true)
+ *     waterReflection  bool     the water mirrors the scene (default true; off: only the sky)
  *     showFps, showHelp bool    (JS handles the FPS counter and hides #info itself)
  *     keys             { action: [primary, alternate] } with actions
  *                      up, down, left, right, jump, players.
@@ -134,7 +142,7 @@
     jump: [' ', ''], players: ['tab', ''],
   };
   const RANGES = {
-    masterVolume: [0, 1], musicVolume: [0, 1], effectsVolume: [0, 1], zoom: [0.2, 2], shadowSoftness: [0, 1], bloom: [0, 0.5], depthOfField: [0, 1], cloudSpeed: [0, 4],
+    masterVolume: [0, 1], musicVolume: [0, 1], effectsVolume: [0, 1], zoom: [0.2, 2], shadowSoftness: [0, 1], bloom: [0, 0.5], depthOfField: [0, 1], cloudSpeed: [0, 4], windDirection: [0, 360], atmosphereDensity: [0, 2], weatherDensity: [0, 2],
   };
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -146,7 +154,7 @@
       masterVolume: 0.8, musicVolume: 0.6, effectsVolume: 0.8,
       zoom: 0.5,
       generator: 'island', seed: Math.floor(Math.random() * 1000000),
-      fpsLimit: 60, ambientOcclusion: false, cloudShadows: true, cloudSpeed: 1, sunShadows: true, shadowMethod: 'map', shadowSoftness: 0.4, shadowQuality: 'medium', linearBlend: false, bloom: 0.1, fxaa: true, depthOfField: 0.5, grass: true, grassDensity: 10, showFps: false, showHelp: true,
+      fpsLimit: 60, ambientOcclusion: false, windDirection: 37, cloudShadows: true, cloudSpeed: 1, sunShadows: true, shadowMethod: 'map', shadowSoftness: 0.4, shadowQuality: 'medium', linearBlend: false, bloom: 0.1, fxaa: true, depthOfField: 0.5, grass: true, grassDensity: 10, atmosphere: true, atmosphereDensity: 1, weather: 'clear', weatherDensity: 1, volumetrics: true, spriteShadows: true, waterReflection: true, showFps: false, showHelp: true,
       keys: clone(DEFAULT_KEYS),
     };
   }
@@ -161,12 +169,13 @@
     if (typeof raw.serverUrl === 'string') out.serverUrl = raw.serverUrl.trim().slice(0, 200);
     if (['low', 'medium', 'high'].includes(raw.shadowQuality)) out.shadowQuality = raw.shadowQuality;
     if (['map', 'voxel'].includes(raw.shadowMethod)) out.shadowMethod = raw.shadowMethod;
+    if (['clear', 'rain', 'snow'].includes(raw.weather)) out.weather = raw.weather;
     if (typeof raw.generator === 'string' && /^[\w-]{1,32}$/.test(raw.generator)) out.generator = raw.generator;
     if (Number.isSafeInteger(raw.seed) && raw.seed >= 0) out.seed = raw.seed;
     for (const [key, [lo, hi]] of Object.entries(RANGES)) {
       if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) out[key] = Math.min(hi, Math.max(lo, raw[key]));
     }
-    for (const key of ['ambientOcclusion', 'cloudShadows', 'sunShadows', 'linearBlend', 'fxaa', 'grass', 'showFps', 'showHelp']) {
+    for (const key of ['ambientOcclusion', 'cloudShadows', 'sunShadows', 'linearBlend', 'fxaa', 'grass', 'atmosphere', 'volumetrics', 'spriteShadows', 'waterReflection', 'showFps', 'showHelp']) {
       if (typeof raw[key] === 'boolean') out[key] = raw[key];
     }
     if (typeof raw.grassDensity === 'number' && Number.isFinite(raw.grassDensity)) out.grassDensity = Math.min(20, Math.max(0, Math.round(raw.grassDensity)));
@@ -1129,6 +1138,8 @@
         el.setAttribute('aria-valuetext', Math.round(S[key] * scale) + ' percent');
       } else if (document.activeElement !== el) el.value = S[key];
     }
+    syncDependents();
+    syncQuality();
     syncPlayerPanel();
     const fs = $('#fullscreen-btn .label');
     if (fs) fs.textContent = document.fullscreenElement ? 'Leave fullscreen' : 'Enter fullscreen';
@@ -1138,7 +1149,50 @@
     $('#storage-note').hidden = storageWorks;
   }
 
+  /**
+   * Rows with `data-when` only show while the setting they depend on is on. The value is a comma
+   * separated list of conditions that must all hold: `key` (truthy), `key=value` or `key!=value`.
+   */
+  function syncDependents() {
+    for (const row of $$('[data-when]', menu)) {
+      row.hidden = !row.dataset.when.split(',').every((cond) => {
+        const [, key, op, value] = /^(\w+)(!?=)?(.*)$/.exec(cond.trim());
+        if (!op) return !!S[key];
+        return (String(S[key]) === value) === (op === '=');
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------------- quality presets
+  const PRESETS = window.wurfelPresets || [];
+  let lastPreset = Math.min(3, PRESETS.length - 1); // where the slider rests while the settings are Manual
+  const same = (a, b) => (typeof a === 'number' ? Math.abs(a - b) < 1e-6 : a === b);
+  /** Index of the preset whose settings all equal the current ones, or -1 (Manual). */
+  function matchingPreset() {
+    return PRESETS.findIndex((p) => Object.entries(p.settings).every(([k, v]) => same(S[k], v)));
+  }
+  function syncQuality() {
+    const slider = $('#quality-preset');
+    if (!slider || !PRESETS.length) return;
+    const match = matchingPreset();
+    if (match >= 0) lastPreset = match;
+    slider.max = String(PRESETS.length - 1);
+    slider.value = String(lastPreset);
+    slider.classList.toggle('manual', match < 0);
+    const name = match >= 0 ? PRESETS[match].name : 'Manual';
+    $('#quality-name').textContent = name;
+    slider.setAttribute('aria-valuetext', name);
+  }
+  function applyPreset(index) {
+    const preset = PRESETS[index];
+    if (!preset) return;
+    lastPreset = index;
+    Object.assign(S, preset.settings);
+    changed();
+  }
+
   function onSettingInput(e) {
+    if (e.target && e.target.id === 'quality-preset') { applyPreset(Number(e.target.value)); return; }
     const el = e.target;
     const key = el.dataset && el.dataset.setting;
     if (!key) return;
@@ -1148,7 +1202,7 @@
       S[key] = Math.min(hi, Math.max(lo, Number(el.value) / (Number(el.dataset.scale) || 1)));
     } else if (el.type === 'number') {
       const n = Math.round(Number(el.value));
-      if (Number.isFinite(n) && el.value !== '') S[key] = Math.min(key === 'grassDensity' ? 20 : 1000, Math.max(0, n));
+      if (Number.isFinite(n) && el.value !== '') S[key] = Math.min(key === 'grassDensity' || key === 'detailDensity' ? 20 : 1000, Math.max(0, n));
     } else {
       S[key] = key === 'playerName' ? el.value.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, NAME_MAX) : el.value.slice(0, 200);
       for (const other of $$(`[data-setting="${key}"]`, menu)) if (other !== el) other.value = S[key];

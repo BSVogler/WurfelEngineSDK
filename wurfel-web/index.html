@@ -7,6 +7,7 @@
   <title>Wurfel Engine</title>
   <link data-trunk rel="rust" data-wasm-opt="z" />
   <link data-trunk rel="css" href="menu.css" />
+  <link data-trunk rel="copy-file" href="presets.js" />
   <link data-trunk rel="copy-file" href="menu.js" />
   <link data-trunk rel="css" href="hud.css" />
   <link data-trunk rel="copy-file" href="hud.js" />
@@ -179,19 +180,28 @@
               <div class="frametime-stats" id="frametime-stats">Frame time</div>
             </div>
             <label class="row"><span>FPS limit <small>(0 = unlimited)</small></span><input type="number" data-nav data-setting="fpsLimit" min="0" max="1000" step="1" /></label>
+            <label class="row quality"><span>Quality <small>(sets the options below; changing one of them switches to Manual)</small></span><input type="range" data-nav id="quality-preset" min="0" max="4" step="1" aria-label="Graphics quality" /><output id="quality-name"></output></label>
             <label class="row check"><input type="checkbox" data-nav data-setting="ambientOcclusion" /><span>Ambient occlusion <small>(darkens corners where blocks meet)</small></span></label>
             <label class="row check"><input type="checkbox" data-nav data-setting="sunShadows" /><span>Sun shadows <small>(blocks and creatures cast shadows; applies at once)</small></span></label>
-            <label class="row"><span>Shadow method <small>(voxel: exact straight edges from a grid of the blocks; map: one shadow map)</small></span><select data-nav data-setting="shadowMethod"><option value="map">Shadow map</option><option value="voxel">Voxel (sharp edges)</option></select></label>
-            <label class="row"><span>Shadow softness <small>(voxel method: edges blur the further they are from what casts them)</small></span><input type="range" data-nav data-setting="shadowSoftness" data-scale="100" min="0" max="100" step="5" /><output></output></label>
-            <label class="row"><span>Shadow quality <small>(map method: size of the shadow map, high needs 64 MB of video memory; voxel method: how finely the soft edges are traced)</small></span><select data-nav data-setting="shadowQuality"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+            <label class="row sub" data-when="sunShadows"><span>Shadow method <small>(voxel: exact straight edges from a grid of the blocks; map: one shadow map)</small></span><select data-nav data-setting="shadowMethod"><option value="map">Shadow map</option><option value="voxel">Voxel (sharp edges)</option></select></label>
+            <label class="row sub" data-when="sunShadows,shadowMethod=voxel"><span>Shadow softness <small>(voxel method: edges blur the further they are from what casts them)</small></span><input type="range" data-nav data-setting="shadowSoftness" data-scale="100" min="0" max="100" step="5" /><output></output></label>
+            <label class="row sub" data-when="sunShadows"><span>Shadow quality <small>(map method: size of the shadow map, high needs 64 MB of video memory; voxel method: how finely the soft edges are traced)</small></span><select data-nav data-setting="shadowQuality"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+            <label class="row"><span>Wind direction <small>(degrees; the grass, plants, clouds, leaves and rain all follow it)</small></span><input type="range" data-nav data-setting="windDirection" min="0" max="360" step="5" /><output></output></label>
             <label class="row check"><input type="checkbox" data-nav data-setting="cloudShadows" /><span>Cloud shadows <small>(clouds drift overhead and shade the ground)</small></span></label>
-            <label class="row"><span>Cloud speed <small>(0 = still)</small></span><input type="range" data-nav data-setting="cloudSpeed" data-scale="100" min="0" max="400" step="10" /><output></output></label>
+            <label class="row sub" data-when="cloudShadows"><span>Cloud speed <small>(0 = still)</small></span><input type="range" data-nav data-setting="cloudSpeed" data-scale="100" min="0" max="400" step="10" /><output></output></label>
             <label class="row check"><input type="checkbox" data-nav data-setting="linearBlend" /><span>Linear blending <small>(physically correct blending of transparent things; makes them lighter; applies at once)</small></span></label>
             <label class="row"><span>Bloom <small>(glow of bright lights, 0 = off)</small></span><input type="range" data-nav data-setting="bloom" data-scale="100" min="0" max="50" step="5" /><output></output></label>
             <label class="row"><span>Depth of field <small>(blurs what is far from the focus, for a miniature look, 0 = off)</small></span><input type="range" data-nav data-setting="depthOfField" data-scale="100" min="0" max="100" step="10" /><output></output></label>
             <label class="row check"><input type="checkbox" data-nav data-setting="fxaa" /><span>Anti-aliasing <small>(FXAA)</small></span></label>
-            <label class="row check"><input type="checkbox" data-nav data-setting="grass" /><span>Grass blades</span></label>
-            <label class="row"><span>Grass density <small>(blades per block, 0 to 20)</small></span><input type="number" data-nav data-setting="grassDensity" min="0" max="20" step="1" /></label>
+            <label class="row check"><input type="checkbox" data-nav data-setting="grass" /><span>Grass blades <small>(also the pebbles and rocks on dirt, sand and stone)</small></span></label>
+            <label class="row sub" data-when="grass"><span>Grass density <small>(blades per block, 0 to 20)</small></span><input type="number" data-nav data-setting="grassDensity" min="0" max="20" step="1" /></label>
+            <label class="row check"><input type="checkbox" data-nav data-setting="atmosphere" /><span>Ambient life <small>(pollen, fireflies at dusk, dust motes, drifting leaves, mist over water)</small></span></label>
+            <label class="row sub" data-when="atmosphere"><span>Ambient density <small>(0 = none, 100% = normal, 200% = most)</small></span><input type="range" data-nav data-setting="atmosphereDensity" data-scale="100" min="0" max="200" step="10" /><output></output></label>
+            <label class="row"><span>Weather <small>(applies at once)</small></span><select data-nav data-setting="weather"><option value="clear">Clear</option><option value="rain">Rain</option><option value="snow">Snow</option></select></label>
+            <label class="row sub" data-when="weather!=clear"><span>Weather density <small>(amount of rain or snow)</small></span><input type="range" data-nav data-setting="weatherDensity" data-scale="100" min="0" max="200" step="10" /><output></output></label>
+            <label class="row check"><input type="checkbox" data-nav data-setting="volumetrics" /><span>Fog and god rays <small>(soft fog banks and beams of light)</small></span></label>
+            <label class="row check"><input type="checkbox" data-nav data-setting="spriteShadows" /><span>Sprite shadows <small>(soft blobs under players and things)</small></span></label>
+            <label class="row check"><input type="checkbox" data-nav data-setting="waterReflection" /><span>Water reflection <small>(the water mirrors what stands near it; off: only the sky)</small></span></label>
             <div class="row check"><button class="item compact" type="button" data-nav data-action="fullscreen" id="fullscreen-btn"><span class="label">Enter fullscreen</span></button></div>
             <p class="note" id="backend-note">V-Sync is controlled by the browser. The graphics backend (WebGPU or WebGL2) is picked automatically.</p>
           </fieldset>
@@ -221,7 +231,7 @@
         <div class="form">
           <p class="note">Select a slot, then press a key or mouse button. <kbd>Esc</kbd> cancels, <kbd>Backspace</kbd> clears the slot.</p>
           <div class="bindings" id="bindings" role="table" aria-label="Key bindings"></div>
-          <p class="note">The number keys <kbd>1</kbd>–<kbd>4</kbd> pick the block to place and cannot be changed.</p>
+          <p class="note">The keys <kbd>1</kbd> and <kbd>2</kbd> turn the camera and cannot be changed.</p>
           <p class="note" id="gamepad-note" role="status" aria-live="polite">Gamepad: none detected. Press a button on it to wake it up.</p>
           <div class="buttons">
             <button class="item compact" type="button" data-nav data-action="reset-keys"><span class="label">Restore default keys</span></button>
@@ -311,6 +321,7 @@
   <script src="editor.js"></script>
   <script src="console.js"></script>
   <script src="console-host.js"></script>
+  <script src="presets.js"></script>
   <script src="menu.js"></script>
   <script src="scoreboard.js"></script>
   <script src="devoverlay.js"></script>

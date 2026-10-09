@@ -35,7 +35,11 @@ const FOCUS_HALF = 0.14;
 const FOCUS_FALLOFF = 0.36;
 // The blur radius at full strength and on a 1080 pixel high screen (it scales with the height).
 const BLUR_MAX = 14.0;
+// A circle of confusion needs about two taps per pixel of radius to look smooth (the turn of the
+// spiral and the filtered reads cover the rest): the taps are spent only where the blur is big, down to
+// BLUR_TAPS_MIN, and at most BLUR_TAPS.
 const BLUR_TAPS = 36;
+const BLUR_TAPS_MIN = 8;
 const GOLDEN_ANGLE = 2.39996323;
 // Window depth per unit of view depth, as in shader.wgsl (`depth * 0.002`).
 const DEPTH_SCALE = 0.002;
@@ -103,11 +107,12 @@ fn focused(frag: vec2<f32>, size: vec2<f32>) -> vec3<f32> {
     }
     let last = vec2<i32>(size) - vec2<i32>(1);
     let turn = pixel_noise(frag) * 6.2831853;
+    let taps = clamp(i32(ceil(radius * 2.0)), BLUR_TAPS_MIN, BLUR_TAPS);
     var sum = sharp;
     var weight = 1.0;
-    for (var i = 1; i < BLUR_TAPS; i = i + 1) {
+    for (var i = 1; i < taps; i = i + 1) {
         // A sunflower spiral: even coverage of the disc, and the angle turns a little each tap.
-        let t = f32(i) / f32(BLUR_TAPS);
+        let t = f32(i) / f32(taps);
         let angle = f32(i) * GOLDEN_ANGLE + turn;
         let distance = sqrt(t) * radius;
         let at = frag + vec2<f32>(cos(angle), sin(angle)) * distance;

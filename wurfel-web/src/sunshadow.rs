@@ -386,6 +386,7 @@ pub mod gpu {
             queue: &wgpu::Queue,
             uniform: &SunShadowUniform,
             atlas_group: &wgpu::BindGroup,
+            timer: Option<&crate::gputime::GpuTimer>,
             draw: impl FnOnce(&mut wgpu::RenderPass<'_>, &wgpu::BindGroup, &wgpu::BindGroup),
         ) {
             queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniform.for_world_pass()));
@@ -401,7 +402,7 @@ pub mod gpu {
                     depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: None,
+                timestamp_writes: crate::gputime::GpuTimer::writes(timer, "sun shadow map"),
                 occlusion_query_set: None,
                 multiview_mask: None,
             });

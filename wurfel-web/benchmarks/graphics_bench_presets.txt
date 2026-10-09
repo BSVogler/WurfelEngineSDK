@@ -1,0 +1,91 @@
+WURFEL ENGINE GRAPHICS BENCHMARK
+date      2026-10-09T13:33:39.873Z
+machine   Apple M4 Max, 36 GB, darwin 27.0.0
+browser   Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36
+backend   BrowserWebGpu, map "highlands", surface 3840x2160 (viewport 1920x1080, scale 2)
+sound     off (master, music and effects volume 0)
+method    the game's own GPU timestamps (src/gputime.rs): time the GPU spends on a frame, from the start of its
+          first render pass to the end of its last. 3 s per sample after 1.5 s settling, median of the
+          half-second averages, best of 1 rounds, frame cap off. Stationary player, live clouds and wind.
+          The timestamps may be rounded to 100 us by the browser; the half-second averages are finer.
+          GPU ms per frame at this surface size; scale by the pixel count for other screens (most passes are per pixel).
+
+Columns: gpu = GPU ms per frame, +gpu = over the minimal baseline of the same view, worst = the largest
+half-second average, fps = frames the page presented per second without a cap.
+
+=== far view (zoom 25%) ===
+setting                  level                          gpu    +gpu   worst    fps   patch
+baseline                 minimal (everything optional off)    2.81    0.00    3.00    329   {}
+preset                   Lowest                        2.58   -0.23    2.65    446   {"ambientOcclusion":false,"sunShadows":false,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"low","cloudShadows":false,"bloom":0,"depthOfField":0,"fxaa":false,"grass":false,"grassDensity":10,"atmosphere":false,"atmosphereDensity":1,"weatherDensity":0.5,"volumetrics":false,"spriteShadows":false,"waterReflection":false}
+preset                   Low                           6.26    3.45    6.42    167   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"low","cloudShadows":false,"bloom":0,"depthOfField":0,"fxaa":true,"grass":true,"grassDensity":4,"atmosphere":false,"atmosphereDensity":1,"weatherDensity":0.5,"volumetrics":false,"spriteShadows":true,"waterReflection":false}
+preset                   Medium                        7.65    4.84    7.83    124   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"medium","cloudShadows":true,"bloom":0.1,"depthOfField":0,"fxaa":true,"grass":true,"grassDensity":8,"atmosphere":true,"atmosphereDensity":0.5,"weatherDensity":1,"volumetrics":false,"spriteShadows":true,"waterReflection":true}
+preset                   High                         11.36    8.55   11.50     90   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"medium","cloudShadows":true,"bloom":0.1,"depthOfField":0.5,"fxaa":true,"grass":true,"grassDensity":10,"atmosphere":true,"atmosphereDensity":1,"weatherDensity":1,"volumetrics":true,"spriteShadows":true,"waterReflection":true}
+preset                   Ultra                        23.76   20.95   23.78     44   {"ambientOcclusion":true,"sunShadows":true,"shadowMethod":"voxel","shadowSoftness":0.4,"shadowQuality":"medium","cloudShadows":true,"bloom":0.15,"depthOfField":0.6,"fxaa":true,"grass":true,"grassDensity":20,"atmosphere":true,"atmosphereDensity":1.5,"weatherDensity":1.5,"volumetrics":true,"spriteShadows":true,"waterReflection":true}
+
+GPU ms by stage (where the time goes):
+setting                  level                      scene (depth p scene composit post (tonemap, sun shadow map water reflecti weather and am          bloom
+baseline                 minimal (everything optional off)           2.28           0.25           0.28           0.00           0.00           0.00           0.00
+preset                   Lowest                               2.10           0.24           0.25           0.00           0.00           0.00           0.00
+preset                   Low                                  5.35           0.23           0.43           0.25           0.00           0.00           0.00
+preset                   Medium                               5.20           0.22           0.43           0.36           1.04           0.02           0.37
+preset                   High                                 5.35           0.22           3.99           0.34           1.07           0.04           0.37
+preset                   Ultra                               13.26           0.22           4.94           0.21           4.67           0.05           0.33
+
+=== normal view (zoom 50%) ===
+setting                  level                          gpu    +gpu   worst    fps   patch
+baseline                 minimal (everything optional off)    2.79    0.00    2.84    342   {}
+preset                   Lowest                        2.73   -0.06    2.81    388   {"ambientOcclusion":false,"sunShadows":false,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"low","cloudShadows":false,"bloom":0,"depthOfField":0,"fxaa":false,"grass":false,"grassDensity":10,"atmosphere":false,"atmosphereDensity":1,"weatherDensity":0.5,"volumetrics":false,"spriteShadows":false,"waterReflection":false}
+preset                   Low                           7.40    4.60    7.52    142   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"low","cloudShadows":false,"bloom":0,"depthOfField":0,"fxaa":true,"grass":true,"grassDensity":4,"atmosphere":false,"atmosphereDensity":1,"weatherDensity":0.5,"volumetrics":false,"spriteShadows":true,"waterReflection":false}
+preset                   Medium                        9.58    6.79    9.67    100   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"medium","cloudShadows":true,"bloom":0.1,"depthOfField":0,"fxaa":true,"grass":true,"grassDensity":8,"atmosphere":true,"atmosphereDensity":0.5,"weatherDensity":1,"volumetrics":false,"spriteShadows":true,"waterReflection":true}
+preset                   High                         14.30   11.51   14.42     73   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"medium","cloudShadows":true,"bloom":0.1,"depthOfField":0.5,"fxaa":true,"grass":true,"grassDensity":10,"atmosphere":true,"atmosphereDensity":1,"weatherDensity":1,"volumetrics":true,"spriteShadows":true,"waterReflection":true}
+preset                   Ultra                        30.80   28.01   30.84     32   {"ambientOcclusion":true,"sunShadows":true,"shadowMethod":"voxel","shadowSoftness":0.4,"shadowQuality":"medium","cloudShadows":true,"bloom":0.15,"depthOfField":0.6,"fxaa":true,"grass":true,"grassDensity":20,"atmosphere":true,"atmosphereDensity":1.5,"weatherDensity":1.5,"volumetrics":true,"spriteShadows":true,"waterReflection":true}
+
+GPU ms by stage (where the time goes):
+setting                  level                      scene (depth p scene composit post (tonemap, sun shadow map water reflecti weather and am          bloom
+baseline                 minimal (everything optional off)           2.33           0.23           0.23           0.00           0.00           0.00           0.00
+preset                   Lowest                               2.26           0.23           0.24           0.00           0.00           0.00           0.00
+preset                   Low                                  6.39           0.23           0.42           0.29           0.00           0.00           0.00
+preset                   Medium                               6.70           0.23           0.41           0.33           1.56           0.01           0.36
+preset                   High                                 6.76           0.23           5.09           0.31           1.64           0.02           0.37
+preset                   Ultra                               16.77           0.22           6.49           0.21           6.46           0.03           0.34
+
+=== close view (zoom 100%) ===
+setting                  level                          gpu    +gpu   worst    fps   patch
+baseline                 minimal (everything optional off)    2.81    0.00    2.86    361   {}
+preset                   Lowest                        2.70   -0.11    2.70    357   {"ambientOcclusion":false,"sunShadows":false,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"low","cloudShadows":false,"bloom":0,"depthOfField":0,"fxaa":false,"grass":false,"grassDensity":10,"atmosphere":false,"atmosphereDensity":1,"weatherDensity":0.5,"volumetrics":false,"spriteShadows":false,"waterReflection":false}
+preset                   Low                           7.45    4.64    7.55    138   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"low","cloudShadows":false,"bloom":0,"depthOfField":0,"fxaa":true,"grass":true,"grassDensity":4,"atmosphere":false,"atmosphereDensity":1,"weatherDensity":0.5,"volumetrics":false,"spriteShadows":true,"waterReflection":false}
+preset                   Medium                        9.06    6.25    9.08    106   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"medium","cloudShadows":true,"bloom":0.1,"depthOfField":0,"fxaa":true,"grass":true,"grassDensity":8,"atmosphere":true,"atmosphereDensity":0.5,"weatherDensity":1,"volumetrics":false,"spriteShadows":true,"waterReflection":true}
+preset                   High                         14.17   11.36   14.18     74   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"medium","cloudShadows":true,"bloom":0.1,"depthOfField":0.5,"fxaa":true,"grass":true,"grassDensity":10,"atmosphere":true,"atmosphereDensity":1,"weatherDensity":1,"volumetrics":true,"spriteShadows":true,"waterReflection":true}
+preset                   Ultra                        32.35   29.54   32.59     32   {"ambientOcclusion":true,"sunShadows":true,"shadowMethod":"voxel","shadowSoftness":0.4,"shadowQuality":"medium","cloudShadows":true,"bloom":0.15,"depthOfField":0.6,"fxaa":true,"grass":true,"grassDensity":20,"atmosphere":true,"atmosphereDensity":1.5,"weatherDensity":1.5,"volumetrics":true,"spriteShadows":true,"waterReflection":true}
+
+GPU ms by stage (where the time goes):
+setting                  level                      scene (depth p scene composit post (tonemap, sun shadow map water reflecti weather and am          bloom
+baseline                 minimal (everything optional off)           2.37           0.21           0.23           0.00           0.00           0.00           0.00
+preset                   Lowest                               2.27           0.21           0.22           0.00           0.00           0.00           0.00
+preset                   Low                                  6.59           0.21           0.41           0.30           0.00           0.00           0.00
+preset                   Medium                               6.60           0.21           0.43           0.38           1.12           0.01           0.37
+preset                   High                                 6.71           0.21           5.41           0.35           1.10           0.01           0.36
+preset                   Ultra                               18.56           0.23           7.19           0.20           5.74           0.07           0.34
+
+=== how much the view changes a setting (+gpu over the same view's baseline) ===
+setting                  level                       far view (zo  normal view   close view (
+baseline                 minimal (everything optional off)          0.00          0.00          0.00
+preset                   Lowest                             -0.23         -0.06         -0.11
+preset                   Low                                 3.45          4.60          4.64
+preset                   Medium                              4.84          6.79          6.25
+preset                   High                                8.55         11.51         11.36
+preset                   Ultra                              20.95         28.01         29.54
+
+
+=== sun sweep: GPU ms per frame with the sun at each azimuth (normal view; 90 = noon, 270 = midnight) ===
+setting                  level                           0    45    90   135   180   225   270   315     min median    max  jump
+baseline                 minimal (everything optional off)    2.9   2.8   2.7   2.7   2.8   2.8   2.8   2.8     2.7    2.8    2.9  
+preset                   Lowest                        2.8   2.8   2.8   2.9   2.8   2.8   2.7   2.7     2.7    2.8    2.9  
+preset                   Low                           7.5   7.4   7.4   3.9   3.2   3.2   3.4   3.2     3.2    3.9    7.5  << SPIKE +3.6 ms
+preset                   Medium                        9.9   9.6   9.5   4.2   4.1   4.2   4.1   4.3     4.1    4.3    9.9  << SPIKE +5.7 ms
+preset                   High                         15.2  14.7  14.7   8.9   8.9   8.8   8.9   9.0     8.8    9.0   15.2  << SPIKE +6.2 ms
+preset                   Ultra                        34.1  26.0  34.4  10.7  10.5  10.5  10.7  10.8    10.5   10.8   34.4  << SPIKE +23.6 ms
+A SPIKE is a sun position where the frame costs much more than at most others: a setting that suddenly drops the frame rate.
+
+Stages: scene (depth peeling) | scene composite | post (tonemap, depth of field, FXAA) | sun shadow map | water reflection | weather and ambient life | bloom
+Costs of different settings add up only roughly (they share bandwidth and overdraw); the preset rows are measured together.

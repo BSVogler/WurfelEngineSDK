@@ -18,6 +18,10 @@
 .ed-tool:hover:not(:disabled), .ed-block:hover { background: rgba(255, 255, 255, 0.16); }
 .ed-tool:focus-visible, .ed-block:focus-visible, .ed-leave:focus-visible { outline: 2px solid #f2c14e; outline-offset: 1px; }
 .ed-on { border-color: #f2c14e; background: rgba(242, 193, 78, 0.18); }
+.ed-icon { image-rendering: pixelated; }
+.ed-picture { display: block; position: relative; flex: none; overflow: hidden; }
+.ed-picture-box { position: absolute; left: 0; top: 0; width: 200px; height: 223px; transform-origin: 0 0; }
+.ed-piece { position: absolute; display: block; }
 .ed-swatch { width: 14px; height: 14px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5); }
 .ed kbd { font: inherit; font-size: 11px; padding: 0 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.18); }
 .ed-row[hidden] { display: none; }

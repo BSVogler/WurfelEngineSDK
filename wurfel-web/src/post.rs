@@ -365,6 +365,7 @@ pub mod gpu {
             settings: &PostSettings,
             px_per_depth: f32,
             focus_depth: f32,
+            timer: Option<&crate::gputime::GpuTimer>,
         ) {
             queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&settings.uniform(px_per_depth, focus_depth)));
             let targets = &self.targets;
@@ -384,7 +385,7 @@ pub mod gpu {
                             ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
                         })],
                         depth_stencil_attachment: None,
-                        timestamp_writes: None,
+                        timestamp_writes: crate::gputime::GpuTimer::writes(timer, "bloom"),
                         occlusion_query_set: None,
                         multiview_mask: None,
                     });
@@ -412,7 +413,7 @@ pub mod gpu {
                         ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
                     })],
                     depth_stencil_attachment: None,
-                    timestamp_writes: None,
+                    timestamp_writes: crate::gputime::GpuTimer::writes(timer, "post (tonemap, depth of field, FXAA)"),
                     occlusion_query_set: None,
                     multiview_mask: None,
                 });

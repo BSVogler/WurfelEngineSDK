@@ -17,6 +17,30 @@ const SCREEN_X: f32 = 100.0;
 const SCREEN_Y: f32 = 50.0;
 const SCREEN_Z: f32 = 122.0;
 
+/// How strong the perspective of the free camera is: the eye is 1 / this many screen heights from the
+/// focus plane (at any zoom, so the field of view stays the same and zooming moves the camera). 0.3 is
+/// 3.3 screen heights: what is a screen height nearer than the player is about a third larger.
+pub const PERSPECTIVE: f32 = 0.3;
+
+/// Pixels (at zoom 1) of the projection per unit of view depth (`x + y + 0.82 z`): one step along the
+/// view ray (1, 1, 0.82) is 1.63 blocks long and changes the depth by 2.67, a block is about 112 px.
+/// `DEPTH_PX` in `shader.wgsl` is the same number.
+pub const DEPTH_PX: f32 = 68.0;
+
+/// By how much the perspective camera scales what lies at view depth `depth` (relative to the camera's
+/// `center_depth`) about the middle of the screen, when the player's depth `focus` keeps its size:
+/// 1 at the focus, more towards the viewer, 0 where it is beyond the eye. `zoom` and `height` (px of the
+/// canvas) give the distance of the eye. `perspective_scale` in `shader.wgsl` is the same.
+pub fn perspective_scale(depth: f32, focus: f32, zoom: f32, height: f32) -> f32 {
+    let distance = height / (zoom * PERSPECTIVE);
+    let away = distance - (depth - focus) * DEPTH_PX;
+    if away < 0.1 * distance {
+        0.0
+    } else {
+        distance / away
+    }
+}
+
 /// How the world is looked at. This is the one switch between the two cameras: everything that
 /// differs (meshing the sides that look away, turning the world with the mouse, the walking keys
 /// following the view) asks the mode, and the fixed camera is the unchanged 2.5D one.
@@ -69,10 +93,25 @@ impl View {
         (self.pivot.0 + cos * dx - sin * dy, self.pivot.1 + sin * dx + cos * dy)
     }
 
+    /// The ground point that [`Self::rotate`] turns into `point`: what the camera sees at `point` lies
+    /// here in the world.
+    pub fn unrotate(&self, (x, y): (f32, f32)) -> (f32, f32) {
+        let (sin, cos) = (self.yaw + self.wobble).sin_cos();
+        let (dx, dy) = (x - self.pivot.0, y - self.pivot.1);
+        (self.pivot.0 + cos * dx + sin * dy, self.pivot.1 - sin * dx + cos * dy)
+    }
+
     /// Screen position (px at zoom 1, y down) of a ground point at height `z`.
     pub fn screen_position(&self, point: (f32, f32), z: f32) -> [f32; 2] {
         let (gx, gy) = self.rotate(point);
         [(gx - gy) * SCREEN_X, (gx + gy) * SCREEN_Y - z * SCREEN_Z]
+    }
+
+    /// Screen position like [`Self::screen_position`] and the point's view depth (`x + y + 0.82 z` of the
+    /// turned point; the camera's `center_depth` is not taken off).
+    pub fn project(&self, point: (f32, f32), z: f32) -> ([f32; 2], f32) {
+        let (gx, gy) = self.rotate(point);
+        (self.screen_position(point, z), gx + gy + crate::sprites::DEPTH_Z * z)
     }
 
     /// `(cos, sin, pivot x, pivot y)`: the `view` member of the camera uniform.
@@ -140,6 +179,37 @@ mod tests {
 
     fn keys(up: bool, down: bool, left: bool, right: bool) -> PlayerInput {
         PlayerInput { up, down, left, right, ..Default::default() }
+    }
+
+    #[test]
+    fn unrotating_undoes_rotating() {
+        let view = View { yaw: 1.0, pivot: (3.0, 4.0), wobble: 0.1 };
+        let back = view.unrotate(view.rotate((7.5, -2.0)));
+        assert!((back.0 - 7.5).abs() < 1e-4 && (back.1 + 2.0).abs() < 1e-4, "{back:?}");
+    }
+
+    #[test]
+    fn the_perspective_keeps_the_focus_and_enlarges_what_is_nearer() {
+        let (zoom, height) = (0.5, 1080.0);
+        assert_eq!(perspective_scale(7.0, 7.0, zoom, height), 1.0);
+        let near = perspective_scale(17.0, 7.0, zoom, height);
+        let far = perspective_scale(-3.0, 7.0, zoom, height);
+        assert!(near > 1.0 && far < 1.0, "{near} {far}");
+        // The eye is `1 / PERSPECTIVE` screen heights away, at any zoom: one screen height nearer
+        // than the focus is a third closer to the eye.
+        for zoom in [0.25, 0.5, 2.0] {
+            let screen_height_in_depth = (height / zoom) / DEPTH_PX;
+            let scale = perspective_scale(screen_height_in_depth, 0.0, zoom, height);
+            assert!((scale - 1.0 / (1.0 - PERSPECTIVE)).abs() < 1e-4, "{scale}");
+        }
+        // Nothing beyond the eye is drawn.
+        assert_eq!(perspective_scale(1000.0, 0.0, zoom, height), 0.0);
+    }
+
+    #[test]
+    fn the_shader_uses_the_same_perspective_numbers() {
+        let source = include_str!("shader.wgsl");
+        assert!(source.contains(&format!("const DEPTH_PX = {:.1};", DEPTH_PX)));
     }
 
     #[test]

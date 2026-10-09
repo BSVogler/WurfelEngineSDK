@@ -5,13 +5,18 @@
 mod actors;
 mod animation;
 mod atlas;
+mod atmosphere;
 mod audio;
 mod bindings;
 mod caveland_client;
 mod clouds;
+mod cursor;
 mod damage;
+mod detail;
 mod editor;
 mod grass;
+#[cfg(target_arch = "wasm32")]
+mod gputime;
 mod interp;
 mod lightdebug;
 mod lighting;
@@ -22,8 +27,8 @@ mod mode;
 mod model;
 mod netstats;
 mod pick;
-mod shadow;
 mod sprites;
+mod spriteshadow;
 mod particles;
 mod peel;
 mod post;

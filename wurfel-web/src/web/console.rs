@@ -5,6 +5,7 @@
 
 use glam::Vec3;
 use serde_json::json;
+use wasm_bindgen::JsCast;
 use wurfel_sim::console::{command_name, normalize_line, CVarTarget, Console, ConsoleHost, ExecResult, OutputLine, Side};
 use wurfel_sim::cvar::CVarSystem;
 use wurfel_sim::grid::to_iso;
@@ -30,6 +31,33 @@ impl ClientConsole {
             cvars.load_str(&text);
         }
         ClientConsole { console: Console::new(Side::Client), cvars, camera_hold: None }
+    }
+
+    /// The `limitFPS` cvar, the one frame rate cap (the menu's "FPS limit" edits it): 0 is unlimited.
+    pub(super) fn fps_limit(&self) -> u32 {
+        self.cvars.get_i32("limitFPS").unwrap_or(60).clamp(0, 1000) as u32
+    }
+
+    /// Set `limitFPS` (from the menu), save the cvars and show it in the menu's field.
+    pub(super) fn set_fps_limit(&mut self, limit: u32) {
+        let _ = self.cvars.set_i32("limitFPS", limit.min(1000) as i32);
+        self.save();
+    }
+
+    fn save(&self) {
+        if let Some(storage) = storage() {
+            let _ = storage.set_item(CVARS_KEY, &self.cvars.save_string());
+        }
+    }
+}
+
+/// Show the cvar's value in the menu without firing `wurfel:settings` (this runs while the client
+/// state is borrowed, and the client's own listener would borrow it again).
+pub(super) fn show_fps_limit_in_menu(limit: u32) {
+    let Some(window) = web_sys::window() else { return };
+    let menu = super::js_get(&window, "wurfelMenu");
+    if let Ok(show) = js_sys::Reflect::get(&menu, &"showFpsLimit".into()).and_then(|f| f.dyn_into::<js_sys::Function>()) {
+        let _ = show.call1(&menu, &limit.into());
     }
 }
 
@@ -131,9 +159,8 @@ pub(super) fn execute(s: &mut State, line: &str) -> String {
         s.console.console = console;
         result
     };
-    if let Some(storage) = storage() {
-        let _ = storage.set_item(CVARS_KEY, &s.console.cvars.save_string());
-    }
+    s.console.save();
+    show_fps_limit_in_menu(s.console.fps_limit());
     match result {
         ExecResult::Done(mut output) => {
             if name == "help" {

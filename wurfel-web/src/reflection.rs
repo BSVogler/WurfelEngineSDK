@@ -89,7 +89,7 @@ pub mod gpu {
 
         /// Open the mirror pass: cleared to transparent (nothing there: the water shows the sky).
         /// `peel_group` is the scene pipeline's group 2 of the first layer (nothing peeled).
-        pub fn begin<'a>(&'a self, encoder: &'a mut wgpu::CommandEncoder, peel_group: &wgpu::BindGroup) -> wgpu::RenderPass<'a> {
+        pub fn begin<'a>(&'a self, encoder: &'a mut wgpu::CommandEncoder, peel_group: &wgpu::BindGroup, timer: Option<&'a crate::gputime::GpuTimer>) -> wgpu::RenderPass<'a> {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("reflection"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -103,7 +103,7 @@ pub mod gpu {
                     depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(crate::peel::CLEAR_DEPTH), store: wgpu::StoreOp::Store }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: None,
+                timestamp_writes: crate::gputime::GpuTimer::writes(timer, "water reflection"),
                 occlusion_query_set: None,
                 multiview_mask: None,
             });

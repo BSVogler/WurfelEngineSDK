@@ -12,6 +12,8 @@ pub const SIZE: usize = 256;
 pub const TILE_BLOCKS: f32 = 48.0;
 /// Height of the cloud layer above the ground (blocks); sets how far a shadow shifts with the sun.
 pub const HEIGHT: f32 = 24.0;
+/// How fast the clouds drift at speed 1, in blocks per second.
+pub const DRIFT_SPEED: f32 = 0.6;
 /// How much of the sun the heart of a cloud blocks (0 none, 1 all of it; the ambient light stays).
 pub const DEFAULT_STRENGTH: f32 = 0.4;
 

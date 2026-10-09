@@ -12,6 +12,8 @@
 
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
+use wurfel_sim::atmosphere::wind_direction_for;
+use wurfel_sim::grass::{wind_direction_from_degrees, WIND_DEGREES};
 use wurfel_sim::light::{LightEngine, LightState, PointLight, Shading, DEFAULT_AZIMUTH_SPEED, DEFAULT_WORLD_SPIN_ANGLE};
 
 use crate::clouds;
@@ -47,7 +49,8 @@ pub struct Lighting {
     pub misc: [f32; 4],
     /// rgb: fog colour. w: 1 when fog is on.
     pub fog: [f32; 4],
-    /// x: sun diffuse intensity on the -y face, y: on the -x face (the free camera's sides).
+    /// x: sun diffuse intensity on the -y face, y: on the -x face (the free camera's sides). z, w: how far
+    /// the clouds have drifted along the wind, in blocks of the ground frame (`cloud_light`).
     pub sun_back: [f32; 4],
     pub moon_back: [f32; 4],
     /// xyz: the Java `u_sunNormal` / `u_moonNormal` (the Java screen-aligned frame), for the normal maps.
@@ -58,6 +61,7 @@ pub struct Lighting {
     /// xyz: the Java `u_localLightPos` and `u_playerpos` (the focus entity, in blocks), w: 1 when there is one.
     pub local_light: [f32; 4],
     /// xyz: the unit vector towards the sun in the world's ground frame (where the cloud shadows come from).
+    /// w: the angle of the wind in the ground frame in radians (`cloud_light`).
     pub sun_dir: [f32; 4],
     /// x: seconds the clouds have drifted, y: shadow strength (0 = no clouds), z: blocks per texture
     /// repeat, w: height of the cloud layer in blocks.
@@ -92,12 +96,14 @@ impl Lighting {
             flat_shades: [FLAT_SHADES[0], FLAT_SHADES[1], FLAT_SHADES[2], 0.0],
             misc: [0.0, state.time_of_day, shading.min_light, 0.0],
             fog: rgb(shading.fog_color, if shading.fog && lit { 1.0 } else { 0.0 }),
+            // z, w: how far the clouds have drifted along the wind (set by the controller).
             sun_back: [state.sun_back[0], state.sun_back[1], 0.0, 0.0],
             moon_back: [state.moon_back[0], state.moon_back[1], 0.0, 0.0],
             sun_normal: rgb(state.sun_normal_game, 0.0),
             moon_normal: rgb(state.moon_normal_game, 0.0),
             pixel_ambient: rgb(state.ambient, 0.0),
             local_light: [0.0; 4],
+            // w: the angle of the wind in the ground frame, in radians (set by the controller).
             sun_dir: rgb(state.sun_direction, 0.0),
             clouds: [0.0, 0.0, clouds::TILE_BLOCKS, clouds::HEIGHT],
             lights: [[0.0; 4]; MAX_POINT_LIGHTS],
@@ -139,6 +145,12 @@ pub struct LightingController {
     /// Seconds of drift so far (real time times the speed, so a change of speed does not make the
     /// shadows jump); they move even while the day clock is stopped.
     cloud_time: f32,
+    /// Where the wind blows to, in degrees of the game space (the menu's `windDirection`). The grass, the
+    /// plants, the clouds and the particles all follow it.
+    pub wind_degrees: f32,
+    /// How far the clouds have been carried along the wind so far, in blocks of the ground frame. Summed
+    /// up every frame, so turning the wind does not make the shadows jump.
+    cloud_offset: (f32, f32),
     /// Time passes this many times faster than the Java day length (7.7 minutes). 0 stops the clock.
     pub time_scale: f32,
     dynamic: Vec<PointLight>,
@@ -168,6 +180,8 @@ impl LightingController {
             cloud_strength: clouds::DEFAULT_STRENGTH,
             cloud_speed: 1.0,
             cloud_time: 0.0,
+            wind_degrees: WIND_DEGREES,
+            cloud_offset: (0.0, 0.0),
             time_scale: 1.0,
             dynamic: Vec::new(),
         };
@@ -178,11 +192,25 @@ impl LightingController {
     /// Advance the day. `dt_ms` is real time in milliseconds.
     pub fn update(&mut self, dt_ms: f32) {
         if dt_ms.is_finite() && dt_ms > 0.0 {
-            self.cloud_time = (self.cloud_time + dt_ms / 1000.0 * self.cloud_speed.clamp(0.0, 10.0)) % 100_000.0;
+            let drift = dt_ms / 1000.0 * self.cloud_speed.clamp(0.0, 10.0);
+            self.cloud_time = (self.cloud_time + drift) % 100_000.0;
+            let (x, y) = self.wind_ground();
+            self.cloud_offset.0 = (self.cloud_offset.0 + x * drift * clouds::DRIFT_SPEED).rem_euclid(clouds::TILE_BLOCKS);
+            self.cloud_offset.1 = (self.cloud_offset.1 + y * drift * clouds::DRIFT_SPEED).rem_euclid(clouds::TILE_BLOCKS);
         }
         if self.time_scale > 0.0 && dt_ms.is_finite() && dt_ms > 0.0 {
             self.engine.update(dt_ms * self.time_scale);
         }
+    }
+
+    /// The direction of the wind in game space, a unit vector (the grass's frame).
+    pub fn wind_game(&self) -> (f32, f32) {
+        wind_direction_from_degrees(self.wind_degrees)
+    }
+
+    /// The direction of the wind in the ground frame, a unit vector.
+    pub fn wind_ground(&self) -> (f32, f32) {
+        wind_direction_for(self.wind_game())
     }
 
     /// Apply `ambient_occlusion` and `ao_strength` to the shading. Call after changing them.
@@ -212,6 +240,10 @@ impl LightingController {
         // Without the light engine there is nothing to light the pixels with.
         uniform.misc[3] = if self.normal_maps && self.enabled { 1.0 } else { 0.0 };
         uniform.flat_shades[3] = if self.linear_light { 1.0 } else { 0.0 };
+        let (wx, wy) = self.wind_ground();
+        uniform.sun_dir[3] = wy.atan2(wx);
+        uniform.sun_back[2] = self.cloud_offset.0;
+        uniform.sun_back[3] = self.cloud_offset.1;
         if self.clouds && self.enabled {
             uniform.clouds[0] = self.cloud_time;
             uniform.clouds[1] = self.cloud_strength.clamp(0.0, 1.0);
@@ -404,9 +436,9 @@ mod tests {
     }
 
     #[test]
-    fn the_camera_struct_is_48_bytes_like_camera_uniform_in_web_rs() {
+    fn the_camera_struct_is_64_bytes_like_camera_uniform_in_web_rs() {
         let (members, size) = wgsl_struct(&parse_shader(), "Camera");
-        assert_eq!(size, 48);
+        assert_eq!(size, 64);
         assert_eq!(members.iter().map(|(n, o)| (n.as_str(), *o)).take(3).collect::<Vec<_>>(), [("center", 0), ("scale", 8), ("center_depth", 16)]);
     }
 

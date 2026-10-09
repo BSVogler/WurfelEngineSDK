@@ -7,7 +7,7 @@ dist = "dist"
 # change (without these, edits to menu.js or menu.css would not reach the browser).
 watch = [
   "src", "../wurfel-sim/src", "../caveland-sim/src", "assets",
-  "index.html", "devoverlay.js", "scoreboard.js", "scoreboard.css", "hud.js", "hud.css", "menu.js", "menu.css", "console.js", "console-host.js", "console.css", "console-mock.js",
+  "index.html", "devoverlay.js", "scoreboard.js", "scoreboard.css", "hud.js", "hud.css", "menu.js", "presets.js", "menu.css", "console.js", "console-host.js", "console.css", "console-mock.js",
 ]
 
 [serve]

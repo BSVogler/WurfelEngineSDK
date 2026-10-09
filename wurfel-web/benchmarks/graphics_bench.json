@@ -1,0 +1,2306 @@
+{
+ "scenes": [
+  "far view (zoom 25%)",
+  "normal view (zoom 50%)",
+  "close view (zoom 100%)"
+ ],
+ "results": [
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "baseline",
+   "label": "minimal (everything optional off)",
+   "patch": {},
+   "busy": 2.250226,
+   "span": 2.250226,
+   "worst": 2.2712985,
+   "fps": 426.6666666666667,
+   "samples": 5,
+   "stages": {
+    "scene (depth peeling)": 1.79928475,
+    "scene composite": 0.22338533333333332,
+    "post (tonemap, depth of field, FXAA)": 0.22935766666666668
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Ambient occlusion",
+   "label": "on",
+   "patch": {
+    "ambientOcclusion": true
+   },
+   "busy": 2.197706,
+   "span": 2.197706,
+   "worst": 2.2048625,
+   "fps": 407,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 1.7464944999999998,
+    "scene composite": 0.2237775,
+    "post (tonemap, depth of field, FXAA)": 0.227434
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Linear blending",
+   "label": "on",
+   "patch": {
+    "linearBlend": true
+   },
+   "busy": 2.302652,
+   "span": 2.302652,
+   "worst": 2.302652,
+   "fps": 447.3333333333333,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 1.7868895,
+    "scene composite": 0.2374445,
+    "post (tonemap, depth of field, FXAA)": 0.27831799999999995
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Anti-aliasing (FXAA)",
+   "label": "on",
+   "patch": {
+    "fxaa": true
+   },
+   "busy": 2.5374195000000004,
+   "span": 2.5374195000000004,
+   "worst": 2.6409184999999997,
+   "fps": 429.6666666666667,
+   "samples": 5,
+   "stages": {
+    "scene (depth peeling)": 1.89528375,
+    "scene composite": 0.2229655,
+    "post (tonemap, depth of field, FXAA)": 0.4224
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Bloom",
+   "label": "10%",
+   "patch": {
+    "bloom": 0.1
+   },
+   "busy": 2.571501,
+   "span": 2.571501,
+   "worst": 2.625793,
+   "fps": 367,
+   "samples": 3,
+   "stages": {
+    "scene (depth peeling)": 1.744389,
+    "scene composite": 0.223746,
+    "bloom": 0.377245,
+    "post (tonemap, depth of field, FXAA)": 0.226121
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Depth of field",
+   "label": "50%",
+   "patch": {
+    "depthOfField": 0.5
+   },
+   "busy": 5.243743,
+   "span": 5.243743,
+   "worst": 5.243743,
+   "fps": 210.33333333333334,
+   "samples": 2,
+   "stages": {
+    "scene (depth peeling)": 1.7037037499999999,
+    "scene composite": 0.21905850000000002,
+    "post (tonemap, depth of field, FXAA)": 3.32098075
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Sprite shadows",
+   "label": "on",
+   "patch": {
+    "spriteShadows": true
+   },
+   "busy": 2.26599675,
+   "span": 2.26599675,
+   "worst": 2.2844439999999997,
+   "fps": 447.3333333333333,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 1.81533725,
+    "scene composite": 0.22507924999999998,
+    "post (tonemap, depth of field, FXAA)": 0.22738225
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Cloud shadows",
+   "label": "on, speed 100%",
+   "patch": {
+    "cloudShadows": true
+   },
+   "busy": 2.3002255,
+   "span": 2.3002255,
+   "worst": 2.647616,
+   "fps": 396.6666666666667,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 1.82301375,
+    "scene composite": 0.23785050000000002,
+    "post (tonemap, depth of field, FXAA)": 0.22781925
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Sun shadows, map",
+   "label": "medium",
+   "patch": {
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowQuality": "medium"
+   },
+   "busy": 5.030257,
+   "span": 5.030257,
+   "worst": 5.030257,
+   "fps": 188,
+   "samples": 2,
+   "stages": {
+    "sun shadow map": 0.178789,
+    "scene (depth peeling)": 4.41035,
+    "scene composite": 0.216037,
+    "post (tonemap, depth of field, FXAA)": 0.225081
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Sun shadows, voxel",
+   "label": "medium, softness 40%",
+   "patch": {
+    "sunShadows": true,
+    "shadowMethod": "voxel",
+    "shadowQuality": "medium",
+    "shadowSoftness": 0.4
+   },
+   "busy": 10.934791333333335,
+   "span": 10.934791333333335,
+   "worst": 10.934791333333335,
+   "fps": 126,
+   "samples": 1,
+   "stages": {
+    "sun shadow map": 0.08022133333333334,
+    "scene (depth peeling)": 10.443062333333332,
+    "scene composite": 0.20321933333333334,
+    "post (tonemap, depth of field, FXAA)": 0.20828833333333333
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Sun shadows, voxel",
+   "label": "high, softness 100%",
+   "patch": {
+    "sunShadows": true,
+    "shadowMethod": "voxel",
+    "shadowQuality": "high",
+    "shadowSoftness": 1
+   },
+   "busy": 17.773395,
+   "span": 17.773395,
+   "worst": 17.773395,
+   "fps": 50.333333333333336,
+   "samples": 1,
+   "stages": {
+    "sun shadow map": 0.127665,
+    "scene (depth peeling)": 17.234279,
+    "scene composite": 0.198372,
+    "post (tonemap, depth of field, FXAA)": 0.213079
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Grass blades",
+   "label": "density 10",
+   "patch": {
+    "grass": true,
+    "grassDensity": 10
+   },
+   "busy": 2.1385490416666664,
+   "span": 2.1385490416666664,
+   "worst": 2.1385490416666664,
+   "fps": 167,
+   "samples": 1,
+   "stages": {
+    "scene (depth peeling)": 1.6950539999999998,
+    "scene composite": 0.22427604166666662,
+    "post (tonemap, depth of field, FXAA)": 0.21921900000000002
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Grass blades",
+   "label": "density 20",
+   "patch": {
+    "grass": true,
+    "grassDensity": 20
+   },
+   "busy": 2.339075527777778,
+   "span": 2.339075527777778,
+   "worst": 2.4477272749999996,
+   "fps": 360,
+   "samples": 5,
+   "stages": {
+    "scene (depth peeling)": 1.8797121666666665,
+    "scene composite": 0.228928,
+    "post (tonemap, depth of field, FXAA)": 0.23051554285714293
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Ambient life",
+   "label": "density 100%",
+   "patch": {
+    "atmosphere": true,
+    "atmosphereDensity": 1
+   },
+   "busy": 2.2650905000000003,
+   "span": 2.2650905000000003,
+   "worst": 3.165244,
+   "fps": 364.6666666666667,
+   "samples": 5,
+   "stages": {
+    "scene (depth peeling)": 1.787545,
+    "scene composite": 0.22300725,
+    "weather and ambient life": 0.023655999999999996,
+    "post (tonemap, depth of field, FXAA)": 0.23088225
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Weather",
+   "label": "rain 100%",
+   "patch": {
+    "weather": "rain",
+    "weatherDensity": 1
+   },
+   "busy": 2.71611425,
+   "span": 2.71611425,
+   "worst": 2.71611425,
+   "fps": 365,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 2.1749355,
+    "scene composite": 0.23856925,
+    "weather and ambient life": 0.05335275,
+    "post (tonemap, depth of field, FXAA)": 0.24925675000000003
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Fog and god rays",
+   "label": "on",
+   "patch": {
+    "volumetrics": true
+   },
+   "busy": 2.291798,
+   "span": 2.291798,
+   "worst": 2.332308,
+   "fps": 430.6666666666667,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 1.7948995,
+    "scene composite": 0.22553850000000003,
+    "weather and ambient life": 0.041186749999999994,
+    "post (tonemap, depth of field, FXAA)": 0.23037125
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "Water reflection",
+   "label": "on",
+   "patch": {
+    "waterReflection": true
+   },
+   "busy": 2.61814775,
+   "span": 2.61814775,
+   "worst": 2.6255435,
+   "fps": 375,
+   "samples": 4,
+   "stages": {
+    "water reflection": 0.5407735,
+    "scene (depth peeling)": 1.6287147499999999,
+    "scene composite": 0.2212465,
+    "post (tonemap, depth of field, FXAA)": 0.22779875
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "preset",
+   "label": "Lowest",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": false,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "low",
+    "cloudShadows": false,
+    "bloom": 0,
+    "depthOfField": 0,
+    "fxaa": false,
+    "grass": false,
+    "grassDensity": 10,
+    "atmosphere": false,
+    "atmosphereDensity": 1,
+    "weatherDensity": 0.5,
+    "volumetrics": false,
+    "spriteShadows": false,
+    "waterReflection": false
+   },
+   "busy": 2.3375265,
+   "span": 2.3375265,
+   "worst": 2.4515147500000003,
+   "fps": 442.3333333333333,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 1.8543995,
+    "scene composite": 0.23135074999999997,
+    "post (tonemap, depth of field, FXAA)": 0.24440250000000002
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "preset",
+   "label": "Low",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "low",
+    "cloudShadows": false,
+    "bloom": 0,
+    "depthOfField": 0,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 4,
+    "atmosphere": false,
+    "atmosphereDensity": 1,
+    "weatherDensity": 0.5,
+    "volumetrics": false,
+    "spriteShadows": true,
+    "waterReflection": false
+   },
+   "busy": 5.791640500000001,
+   "span": 5.791640500000001,
+   "worst": 6.247649625,
+   "fps": 181,
+   "samples": 4,
+   "stages": {
+    "sun shadow map": 0.27903225,
+    "scene (depth peeling)": 4.91497675,
+    "scene composite": 0.21663725,
+    "post (tonemap, depth of field, FXAA)": 0.443909625
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "preset",
+   "label": "Medium",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "medium",
+    "cloudShadows": true,
+    "bloom": 0.1,
+    "depthOfField": 0,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 8,
+    "atmosphere": true,
+    "atmosphereDensity": 0.5,
+    "weatherDensity": 1,
+    "volumetrics": false,
+    "spriteShadows": true,
+    "waterReflection": true
+   },
+   "busy": 7.838588874999999,
+   "span": 7.838588874999999,
+   "worst": 7.924774875000001,
+   "fps": 126.66666666666667,
+   "samples": 4,
+   "stages": {
+    "sun shadow map": 0.300865125,
+    "water reflection": 1.349989625,
+    "scene (depth peeling)": 5.22901925,
+    "scene composite": 0.2193405,
+    "weather and ambient life": 0.015650749999999998,
+    "bloom": 0.36012974999999986,
+    "post (tonemap, depth of field, FXAA)": 0.41343624999999995
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "preset",
+   "label": "High",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "medium",
+    "cloudShadows": true,
+    "bloom": 0.1,
+    "depthOfField": 0.5,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 10,
+    "atmosphere": true,
+    "atmosphereDensity": 1,
+    "weatherDensity": 1,
+    "volumetrics": true,
+    "spriteShadows": true,
+    "waterReflection": true
+   },
+   "busy": 10.955040999999998,
+   "span": 10.955040999999998,
+   "worst": 11.098945375,
+   "fps": 91.33333333333333,
+   "samples": 4,
+   "stages": {
+    "sun shadow map": 0.33609,
+    "water reflection": 1.3516701428571432,
+    "scene (depth peeling)": 5.135736714285714,
+    "scene composite": 0.21813724999999998,
+    "weather and ambient life": 0.0477452,
+    "bloom": 0.3666357999999999,
+    "post (tonemap, depth of field, FXAA)": 3.486821714285714
+   }
+  },
+  {
+   "scene": "far view (zoom 25%)",
+   "group": "preset",
+   "label": "Ultra",
+   "patch": {
+    "ambientOcclusion": true,
+    "sunShadows": true,
+    "shadowMethod": "voxel",
+    "shadowSoftness": 0.5,
+    "shadowQuality": "high",
+    "cloudShadows": true,
+    "bloom": 0.15,
+    "depthOfField": 0.7,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 20,
+    "atmosphere": true,
+    "atmosphereDensity": 1.5,
+    "weatherDensity": 1.5,
+    "volumetrics": true,
+    "spriteShadows": true,
+    "waterReflection": true
+   },
+   "busy": 25.03132625,
+   "span": 25.03132625,
+   "worst": 26.0123112,
+   "fps": 38.666666666666664,
+   "samples": 4,
+   "stages": {
+    "sun shadow map": 0.21569816666666666,
+    "water reflection": 5.258711333333333,
+    "scene (depth peeling)": 14.19923125,
+    "scene composite": 0.20369500000000001,
+    "weather and ambient life": 0.05569383333333333,
+    "bloom": 0.32588366666666674,
+    "post (tonemap, depth of field, FXAA)": 5.068610166666667
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "baseline",
+   "label": "minimal (everything optional off)",
+   "patch": {},
+   "busy": 2.6794175,
+   "span": 2.6794175,
+   "worst": 2.7839990000000006,
+   "fps": 415.6666666666667,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 2.2107267499999996,
+    "scene composite": 0.2334655,
+    "post (tonemap, depth of field, FXAA)": 0.23522525
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Ambient occlusion",
+   "label": "on",
+   "patch": {
+    "ambientOcclusion": true
+   },
+   "busy": 2.6960173999999997,
+   "span": 2.6960173999999997,
+   "worst": 2.709646,
+   "fps": 412.3333333333333,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 2.2256494000000004,
+    "scene composite": 0.2324462,
+    "post (tonemap, depth of field, FXAA)": 0.23792180000000002
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Linear blending",
+   "label": "on",
+   "patch": {
+    "linearBlend": true
+   },
+   "busy": 2.76048875,
+   "span": 2.76048875,
+   "worst": 2.8182277499999997,
+   "fps": 311,
+   "samples": 3,
+   "stages": {
+    "scene (depth peeling)": 2.22210075,
+    "scene composite": 0.245444,
+    "post (tonemap, depth of field, FXAA)": 0.288683
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Anti-aliasing (FXAA)",
+   "label": "on",
+   "patch": {
+    "fxaa": true
+   },
+   "busy": 2.96005875,
+   "span": 2.96005875,
+   "worst": 3.072245,
+   "fps": 345.3333333333333,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 2.2806425,
+    "scene composite": 0.22969066666666668,
+    "post (tonemap, depth of field, FXAA)": 0.43721175
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Bloom",
+   "label": "10%",
+   "patch": {
+    "bloom": 0.1
+   },
+   "busy": 3.0160477500000002,
+   "span": 3.0160477500000002,
+   "worst": 3.0382244999999997,
+   "fps": 370.3333333333333,
+   "samples": 3,
+   "stages": {
+    "scene (depth peeling)": 2.16010225,
+    "scene composite": 0.23418425,
+    "bloom": 0.3867337500000001,
+    "post (tonemap, depth of field, FXAA)": 0.23502750000000003
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Depth of field",
+   "label": "50%",
+   "patch": {
+    "depthOfField": 0.5
+   },
+   "busy": 7.518292000000001,
+   "span": 7.518292000000001,
+   "worst": 7.518292000000001,
+   "fps": 125,
+   "samples": 1,
+   "stages": {
+    "scene (depth peeling)": 2.1456755000000003,
+    "scene composite": 0.23573625,
+    "post (tonemap, depth of field, FXAA)": 5.13688025
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Sprite shadows",
+   "label": "on",
+   "patch": {
+    "spriteShadows": true
+   },
+   "busy": 2.6423975,
+   "span": 2.6423975,
+   "worst": 2.759041,
+   "fps": 353.3333333333333,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 2.16839425,
+    "scene composite": 0.234892,
+    "post (tonemap, depth of field, FXAA)": 0.23911125
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Cloud shadows",
+   "label": "on, speed 100%",
+   "patch": {
+    "cloudShadows": true
+   },
+   "busy": 2.781832,
+   "span": 2.781832,
+   "worst": 2.8723310000000004,
+   "fps": 345.6666666666667,
+   "samples": 3,
+   "stages": {
+    "scene (depth peeling)": 2.297163,
+    "scene composite": 0.23639866666666665,
+    "post (tonemap, depth of field, FXAA)": 0.24016300000000002
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Sun shadows, map",
+   "label": "medium",
+   "patch": {
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowQuality": "medium"
+   },
+   "busy": 6.663878,
+   "span": 6.663878,
+   "worst": 6.678523500000001,
+   "fps": 159.33333333333334,
+   "samples": 3,
+   "stages": {
+    "scene (depth peeling)": 5.993169,
+    "scene composite": 0.22493425,
+    "post (tonemap, depth of field, FXAA)": 0.230903,
+    "sun shadow map": 0.18722699999999998
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Sun shadows, voxel",
+   "label": "medium, softness 40%",
+   "patch": {
+    "sunShadows": true,
+    "shadowMethod": "voxel",
+    "shadowQuality": "medium",
+    "shadowSoftness": 0.4
+   },
+   "busy": 15.519207666666667,
+   "span": 15.519207666666667,
+   "worst": 15.519207666666667,
+   "fps": 132,
+   "samples": 2,
+   "stages": {
+    "sun shadow map": 0.16097,
+    "scene (depth peeling)": 14.921508333333334,
+    "scene composite": 0.222247,
+    "post (tonemap, depth of field, FXAA)": 0.232329
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Sun shadows, voxel",
+   "label": "high, softness 100%",
+   "patch": {
+    "sunShadows": true,
+    "shadowMethod": "voxel",
+    "shadowQuality": "high",
+    "shadowSoftness": 1
+   },
+   "busy": 0,
+   "span": 0,
+   "worst": 0,
+   "fps": 18.333333333333332,
+   "samples": 0,
+   "stages": {}
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Grass blades",
+   "label": "density 10",
+   "patch": {
+    "grass": true,
+    "grassDensity": 10
+   },
+   "busy": 2.79657005,
+   "span": 2.79657005,
+   "worst": 2.8479253,
+   "fps": 231,
+   "samples": 3,
+   "stages": {
+    "scene (depth peeling)": 2.3215355499999997,
+    "scene composite": 0.23871730000000008,
+    "post (tonemap, depth of field, FXAA)": 0.2363172
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Grass blades",
+   "label": "density 20",
+   "patch": {
+    "grass": true,
+    "grassDensity": 20
+   },
+   "busy": 2.888374172413792,
+   "span": 2.888374172413792,
+   "worst": 2.8941819642857145,
+   "fps": 300.3333333333333,
+   "samples": 5,
+   "stages": {
+    "scene (depth peeling)": 2.4022838620689657,
+    "scene composite": 0.24049964,
+    "post (tonemap, depth of field, FXAA)": 0.24187855172413789
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Ambient life",
+   "label": "density 100%",
+   "patch": {
+    "atmosphere": true,
+    "atmosphereDensity": 1
+   },
+   "busy": 2.8964350000000003,
+   "span": 2.8964350000000003,
+   "worst": 2.93483,
+   "fps": 340,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 2.368673,
+    "scene composite": 0.239913,
+    "weather and ambient life": 0.019374500000000003,
+    "post (tonemap, depth of field, FXAA)": 0.253413
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Weather",
+   "label": "rain 100%",
+   "patch": {
+    "weather": "rain",
+    "weatherDensity": 1
+   },
+   "busy": 2.8872894999999996,
+   "span": 2.8872894999999996,
+   "worst": 3.021676333333333,
+   "fps": 369,
+   "samples": 3,
+   "stages": {
+    "scene (depth peeling)": 2.346673,
+    "scene composite": 0.2350175,
+    "weather and ambient life": 0.06595733333333333,
+    "post (tonemap, depth of field, FXAA)": 0.24559333333333333
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Fog and god rays",
+   "label": "on",
+   "patch": {
+    "volumetrics": true
+   },
+   "busy": 2.8667585,
+   "span": 2.8667585,
+   "worst": 3.050911,
+   "fps": 291.6666666666667,
+   "samples": 3,
+   "stages": {
+    "scene (depth peeling)": 2.3190795,
+    "scene composite": 0.24119425000000003,
+    "weather and ambient life": 0.06315525,
+    "post (tonemap, depth of field, FXAA)": 0.24332950000000003
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "Water reflection",
+   "label": "on",
+   "patch": {
+    "waterReflection": true
+   },
+   "busy": 3.1238792500000003,
+   "span": 3.1238792500000003,
+   "worst": 3.33575125,
+   "fps": 297.3333333333333,
+   "samples": 3,
+   "stages": {
+    "water reflection": 0.55271,
+    "scene (depth peeling)": 2.10059325,
+    "scene composite": 0.23236075,
+    "post (tonemap, depth of field, FXAA)": 0.23821525
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "preset",
+   "label": "Lowest",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": false,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "low",
+    "cloudShadows": false,
+    "bloom": 0,
+    "depthOfField": 0,
+    "fxaa": false,
+    "grass": false,
+    "grassDensity": 10,
+    "atmosphere": false,
+    "atmosphereDensity": 1,
+    "weatherDensity": 0.5,
+    "volumetrics": false,
+    "spriteShadows": false,
+    "waterReflection": false
+   },
+   "busy": 2.7904577500000003,
+   "span": 2.7904577500000003,
+   "worst": 2.8184155,
+   "fps": 300.3333333333333,
+   "samples": 3,
+   "stages": {
+    "scene (depth peeling)": 2.3063507499999996,
+    "scene composite": 0.23650675,
+    "post (tonemap, depth of field, FXAA)": 0.24500675
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "preset",
+   "label": "Low",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "low",
+    "cloudShadows": false,
+    "bloom": 0,
+    "depthOfField": 0,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 4,
+    "atmosphere": false,
+    "atmosphereDensity": 1,
+    "weatherDensity": 0.5,
+    "volumetrics": false,
+    "spriteShadows": true,
+    "waterReflection": false
+   },
+   "busy": 7.265764000000001,
+   "span": 7.265764000000001,
+   "worst": 7.374939625,
+   "fps": 133.33333333333334,
+   "samples": 4,
+   "stages": {
+    "sun shadow map": 0.26203774999999996,
+    "scene (depth peeling)": 6.37007975,
+    "scene composite": 0.22740275,
+    "post (tonemap, depth of field, FXAA)": 0.44077475
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "preset",
+   "label": "Medium",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "medium",
+    "cloudShadows": true,
+    "bloom": 0.1,
+    "depthOfField": 0,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 8,
+    "atmosphere": true,
+    "atmosphereDensity": 0.5,
+    "weatherDensity": 1,
+    "volumetrics": false,
+    "spriteShadows": true,
+    "waterReflection": true
+   },
+   "busy": 9.561173333333334,
+   "span": 9.561173333333334,
+   "worst": 9.580722,
+   "fps": 104,
+   "samples": 4,
+   "stages": {
+    "sun shadow map": 0.40647300000000003,
+    "water reflection": 1.4051728333333333,
+    "scene (depth peeling)": 6.6514750000000005,
+    "scene composite": 0.23696166666666665,
+    "weather and ambient life": 0.014638833333333332,
+    "bloom": 0.38629283333333336,
+    "post (tonemap, depth of field, FXAA)": 0.4541528333333334
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "preset",
+   "label": "High",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "medium",
+    "cloudShadows": true,
+    "bloom": 0.1,
+    "depthOfField": 0.5,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 10,
+    "atmosphere": true,
+    "atmosphereDensity": 1,
+    "weatherDensity": 1,
+    "volumetrics": true,
+    "spriteShadows": true,
+    "waterReflection": true
+   },
+   "busy": 14.905949750000001,
+   "span": 14.905949750000001,
+   "worst": 15.006472666666667,
+   "fps": 67,
+   "samples": 4,
+   "stages": {
+    "sun shadow map": 0.40026449999999997,
+    "water reflection": 1.4764286666666668,
+    "scene (depth peeling)": 7.083794666666667,
+    "scene composite": 0.23989249999999998,
+    "weather and ambient life": 0.058602999999999995,
+    "bloom": 0.4004732499999999,
+    "post (tonemap, depth of field, FXAA)": 5.259218
+   }
+  },
+  {
+   "scene": "normal view (zoom 50%)",
+   "group": "preset",
+   "label": "Ultra",
+   "patch": {
+    "ambientOcclusion": true,
+    "sunShadows": true,
+    "shadowMethod": "voxel",
+    "shadowSoftness": 0.5,
+    "shadowQuality": "high",
+    "cloudShadows": true,
+    "bloom": 0.15,
+    "depthOfField": 0.7,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 20,
+    "atmosphere": true,
+    "atmosphereDensity": 1.5,
+    "weatherDensity": 1.5,
+    "volumetrics": true,
+    "spriteShadows": true,
+    "waterReflection": true
+   },
+   "busy": 34.391621,
+   "span": 34.391621,
+   "worst": 35.7461,
+   "fps": 29.666666666666668,
+   "samples": 4,
+   "stages": {
+    "sun shadow map": 0.23329850000000002,
+    "water reflection": 6.245213000000001,
+    "scene (depth peeling)": 19.53688975,
+    "scene composite": 0.22159025000000002,
+    "weather and ambient life": 0.060863249999999994,
+    "bloom": 0.3532864999999999,
+    "post (tonemap, depth of field, FXAA)": 7.88181725
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "baseline",
+   "label": "minimal (everything optional off)",
+   "patch": {},
+   "busy": 2.962538,
+   "span": 2.962538,
+   "worst": 2.962538,
+   "fps": 380,
+   "samples": 3,
+   "stages": {
+    "scene (depth peeling)": 2.495066,
+    "scene composite": 0.2366425,
+    "post (tonemap, depth of field, FXAA)": 0.23082950000000002
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Ambient occlusion",
+   "label": "on",
+   "patch": {
+    "ambientOcclusion": true
+   },
+   "busy": 2.9313029999999998,
+   "span": 2.9313029999999998,
+   "worst": 3.0112460000000003,
+   "fps": 297,
+   "samples": 3,
+   "stages": {
+    "scene (depth peeling)": 2.4527963333333336,
+    "scene composite": 0.2253295,
+    "post (tonemap, depth of field, FXAA)": 0.24650675
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Linear blending",
+   "label": "on",
+   "patch": {
+    "linearBlend": true
+   },
+   "busy": 2.94807975,
+   "span": 2.94807975,
+   "worst": 2.94807975,
+   "fps": 369,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 2.424109,
+    "scene composite": 0.23339200000000002,
+    "post (tonemap, depth of field, FXAA)": 0.29057875
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Anti-aliasing (FXAA)",
+   "label": "on",
+   "patch": {
+    "fxaa": true
+   },
+   "busy": 3.5097383333333334,
+   "span": 3.5097383333333334,
+   "worst": 3.588695,
+   "fps": 297.6666666666667,
+   "samples": 5,
+   "stages": {
+    "scene (depth peeling)": 2.8297346666666665,
+    "scene composite": 0.22801033333333334,
+    "post (tonemap, depth of field, FXAA)": 0.4519933333333333
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Bloom",
+   "label": "10%",
+   "patch": {
+    "bloom": 0.1
+   },
+   "busy": 3.2400022500000003,
+   "span": 3.2400022500000003,
+   "worst": 3.4357495,
+   "fps": 308.6666666666667,
+   "samples": 3,
+   "stages": {
+    "scene (depth peeling)": 2.3901195,
+    "scene composite": 0.22095475,
+    "bloom": 0.39147324999999994,
+    "post (tonemap, depth of field, FXAA)": 0.23745475
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Depth of field",
+   "label": "50%",
+   "patch": {
+    "depthOfField": 0.5
+   },
+   "busy": 3.3181052500000003,
+   "span": 3.3181052500000003,
+   "worst": 3.3181052500000003,
+   "fps": 58.666666666666664,
+   "samples": 1,
+   "stages": {
+    "scene (depth peeling)": 2.4979725000000004,
+    "scene composite": 0.2166735,
+    "bloom": 0.37659825,
+    "post (tonemap, depth of field, FXAA)": 0.22686099999999998
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Sprite shadows",
+   "label": "on",
+   "patch": {
+    "spriteShadows": true
+   },
+   "busy": 2.92978875,
+   "span": 2.92978875,
+   "worst": 2.93089275,
+   "fps": 287.6666666666667,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 2.466921,
+    "scene composite": 0.217809,
+    "post (tonemap, depth of field, FXAA)": 0.22764250000000003
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Cloud shadows",
+   "label": "on, speed 100%",
+   "patch": {
+    "cloudShadows": true
+   },
+   "busy": 3.0346830000000002,
+   "span": 3.0346830000000002,
+   "worst": 3.1442655,
+   "fps": 385.3333333333333,
+   "samples": 3,
+   "stages": {
+    "scene (depth peeling)": 2.5938980000000003,
+    "scene composite": 0.2156225,
+    "post (tonemap, depth of field, FXAA)": 0.22820449999999998
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Sun shadows, map",
+   "label": "medium",
+   "patch": {
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowQuality": "medium"
+   },
+   "busy": 7.406501749999999,
+   "span": 7.406501749999999,
+   "worst": 7.406501749999999,
+   "fps": 138,
+   "samples": 1,
+   "stages": {
+    "sun shadow map": 0.2200385,
+    "scene (depth peeling)": 6.748323750000001,
+    "scene composite": 0.21194449999999998,
+    "post (tonemap, depth of field, FXAA)": 0.22619499999999998
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Sun shadows, voxel",
+   "label": "medium, softness 40%",
+   "patch": {
+    "sunShadows": true,
+    "shadowMethod": "voxel",
+    "shadowQuality": "medium",
+    "shadowSoftness": 0.4
+   },
+   "busy": 13.04790525,
+   "span": 13.04790525,
+   "worst": 13.04790525,
+   "fps": 125.66666666666667,
+   "samples": 1,
+   "stages": {
+    "sun shadow map": 0.23285075,
+    "scene (depth peeling)": 12.37780025,
+    "scene composite": 0.21336149999999998,
+    "post (tonemap, depth of field, FXAA)": 0.22389275
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Sun shadows, voxel",
+   "label": "high, softness 100%",
+   "patch": {
+    "sunShadows": true,
+    "shadowMethod": "voxel",
+    "shadowQuality": "high",
+    "shadowSoftness": 1
+   },
+   "busy": 0,
+   "span": 0,
+   "worst": 0,
+   "fps": 12.333333333333334,
+   "samples": 0,
+   "stages": {}
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Grass blades",
+   "label": "density 10",
+   "patch": {
+    "grass": true,
+    "grassDensity": 10
+   },
+   "busy": 3.1500710000000005,
+   "span": 3.1500710000000005,
+   "worst": 3.2467445,
+   "fps": 205.66666666666666,
+   "samples": 3,
+   "stages": {
+    "scene (depth peeling)": 2.678736952380952,
+    "scene composite": 0.2285403888888889,
+    "post (tonemap, depth of field, FXAA)": 0.23126283333333328
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Grass blades",
+   "label": "density 20",
+   "patch": {
+    "grass": true,
+    "grassDensity": 20
+   },
+   "busy": 3.207220192307692,
+   "span": 3.207220192307692,
+   "worst": 3.244820653846154,
+   "fps": 278,
+   "samples": 5,
+   "stages": {
+    "scene (depth peeling)": 2.7519493333333327,
+    "scene composite": 0.2305174166666667,
+    "post (tonemap, depth of field, FXAA)": 0.22575946153846152
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Ambient life",
+   "label": "density 100%",
+   "patch": {
+    "atmosphere": true,
+    "atmosphereDensity": 1
+   },
+   "busy": 2.8972895000000003,
+   "span": 2.8972895000000003,
+   "worst": 2.923768,
+   "fps": 330.6666666666667,
+   "samples": 3,
+   "stages": {
+    "scene (depth peeling)": 2.4253595,
+    "scene composite": 0.222496,
+    "weather and ambient life": 0.0169375,
+    "post (tonemap, depth of field, FXAA)": 0.22953825
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Weather",
+   "label": "rain 100%",
+   "patch": {
+    "weather": "rain",
+    "weatherDensity": 1
+   },
+   "busy": 2.976309,
+   "span": 2.976309,
+   "worst": 3.264159,
+   "fps": 286.3333333333333,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 2.47248375,
+    "scene composite": 0.21653825000000002,
+    "weather and ambient life": 0.0644675,
+    "post (tonemap, depth of field, FXAA)": 0.2228195
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Fog and god rays",
+   "label": "on",
+   "patch": {
+    "volumetrics": true
+   },
+   "busy": 2.947049,
+   "span": 2.947049,
+   "worst": 2.9727462499999997,
+   "fps": 329,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 2.47307675,
+    "scene composite": 0.22217425000000002,
+    "weather and ambient life": 0.032822500000000004,
+    "post (tonemap, depth of field, FXAA)": 0.233809
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "Water reflection",
+   "label": "on",
+   "patch": {
+    "waterReflection": true
+   },
+   "busy": 3.1978785,
+   "span": 3.1978785,
+   "worst": 3.288325,
+   "fps": 291,
+   "samples": 4,
+   "stages": {
+    "water reflection": 0.46429525000000005,
+    "scene (depth peeling)": 2.28820475,
+    "scene composite": 0.230288,
+    "post (tonemap, depth of field, FXAA)": 0.22978833333333334
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "preset",
+   "label": "Lowest",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": false,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "low",
+    "cloudShadows": false,
+    "bloom": 0,
+    "depthOfField": 0,
+    "fxaa": false,
+    "grass": false,
+    "grassDensity": 10,
+    "atmosphere": false,
+    "atmosphereDensity": 1,
+    "weatherDensity": 0.5,
+    "volumetrics": false,
+    "spriteShadows": false,
+    "waterReflection": false
+   },
+   "busy": 2.9659959999999996,
+   "span": 2.9659959999999996,
+   "worst": 2.9845172499999997,
+   "fps": 302.6666666666667,
+   "samples": 4,
+   "stages": {
+    "scene (depth peeling)": 2.5101074999999997,
+    "scene composite": 0.21865324999999997,
+    "post (tonemap, depth of field, FXAA)": 0.2328295
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "preset",
+   "label": "Low",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "low",
+    "cloudShadows": false,
+    "bloom": 0,
+    "depthOfField": 0,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 4,
+    "atmosphere": false,
+    "atmosphereDensity": 1,
+    "weatherDensity": 0.5,
+    "volumetrics": false,
+    "spriteShadows": true,
+    "waterReflection": false
+   },
+   "busy": 7.57264475,
+   "span": 7.57264475,
+   "worst": 7.852291625000001,
+   "fps": 136.33333333333334,
+   "samples": 3,
+   "stages": {
+    "sun shadow map": 0.23226724999999998,
+    "scene (depth peeling)": 6.7105645,
+    "scene composite": 0.216184,
+    "post (tonemap, depth of field, FXAA)": 0.41831675
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "preset",
+   "label": "Medium",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "medium",
+    "cloudShadows": true,
+    "bloom": 0.1,
+    "depthOfField": 0,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 8,
+    "atmosphere": true,
+    "atmosphereDensity": 0.5,
+    "weatherDensity": 1,
+    "volumetrics": false,
+    "spriteShadows": true,
+    "waterReflection": true
+   },
+   "busy": 9.777775199999999,
+   "span": 9.777775199999999,
+   "worst": 9.850953875,
+   "fps": 100,
+   "samples": 4,
+   "stages": {
+    "sun shadow map": 0.32078660000000003,
+    "water reflection": 1.15284175,
+    "scene (depth peeling)": 7.2748222,
+    "scene composite": 0.22079312499999998,
+    "weather and ambient life": 0.013692624999999998,
+    "bloom": 0.36796312499999995,
+    "post (tonemap, depth of field, FXAA)": 0.424582125
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "preset",
+   "label": "High",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "medium",
+    "cloudShadows": true,
+    "bloom": 0.1,
+    "depthOfField": 0.5,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 10,
+    "atmosphere": true,
+    "atmosphereDensity": 1,
+    "weatherDensity": 1,
+    "volumetrics": true,
+    "spriteShadows": true,
+    "waterReflection": true
+   },
+   "busy": 15.07377,
+   "span": 15.07377,
+   "worst": 15.0789365,
+   "fps": 65.33333333333333,
+   "samples": 4,
+   "stages": {
+    "sun shadow map": 0.280880625,
+    "water reflection": 1.1827112499999999,
+    "scene (depth peeling)": 7.451089250000001,
+    "scene composite": 0.24719400000000002,
+    "weather and ambient life": 0.035056875,
+    "bloom": 0.3750877500000001,
+    "post (tonemap, depth of field, FXAA)": 5.448703625000001
+   }
+  },
+  {
+   "scene": "close view (zoom 100%)",
+   "group": "preset",
+   "label": "Ultra",
+   "patch": {
+    "ambientOcclusion": true,
+    "sunShadows": true,
+    "shadowMethod": "voxel",
+    "shadowSoftness": 0.5,
+    "shadowQuality": "high",
+    "cloudShadows": true,
+    "bloom": 0.15,
+    "depthOfField": 0.7,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 20,
+    "atmosphere": true,
+    "atmosphereDensity": 1.5,
+    "weatherDensity": 1.5,
+    "volumetrics": true,
+    "spriteShadows": true,
+    "waterReflection": true
+   },
+   "busy": 41.646854,
+   "span": 41.646854,
+   "worst": 51.255353,
+   "fps": 22.666666666666668,
+   "samples": 3,
+   "stages": {
+    "sun shadow map": 0.15419575,
+    "water reflection": 4.2632372499999995,
+    "scene (depth peeling)": 26.82969475,
+    "scene composite": 0.22265275,
+    "weather and ambient life": 0.039446999999999996,
+    "bloom": 0.3780572499999999,
+    "post (tonemap, depth of field, FXAA)": 9.780048250000002
+   }
+  }
+ ],
+ "sunAzimuths": [
+  0,
+  45,
+  90,
+  135,
+  180,
+  225,
+  270,
+  315
+ ],
+ "sweep": [
+  {
+   "group": "baseline",
+   "label": "minimal (everything optional off)",
+   "patch": {},
+   "row": [
+    {
+     "az": 0,
+     "busy": 2.81316525,
+     "worst": 2.81385275
+    },
+    {
+     "az": 45,
+     "busy": 2.7120735000000002,
+     "worst": 2.79510325
+    },
+    {
+     "az": 90,
+     "busy": 2.712073,
+     "worst": 3.0773973333333338
+    },
+    {
+     "az": 135,
+     "busy": 2.76205175,
+     "worst": 2.79498875
+    },
+    {
+     "az": 180,
+     "busy": 2.6865215,
+     "worst": 2.75597875
+    },
+    {
+     "az": 225,
+     "busy": 2.7986965,
+     "worst": 2.900691666666667
+    },
+    {
+     "az": 270,
+     "busy": 3.0212355000000004,
+     "worst": 3.04762
+    },
+    {
+     "az": 315,
+     "busy": 2.762916,
+     "worst": 2.764208
+    }
+   ]
+  },
+  {
+   "group": "Sprite shadows",
+   "label": "on",
+   "patch": {
+    "spriteShadows": true
+   },
+   "row": [
+    {
+     "az": 0,
+     "busy": 2.805124,
+     "worst": 2.94469475
+    },
+    {
+     "az": 45,
+     "busy": 2.768395,
+     "worst": 2.84364425
+    },
+    {
+     "az": 90,
+     "busy": 2.8199654,
+     "worst": 2.854696
+    },
+    {
+     "az": 135,
+     "busy": 2.761530375,
+     "worst": 2.76382275
+    },
+    {
+     "az": 180,
+     "busy": 2.849249,
+     "worst": 3.028496
+    },
+    {
+     "az": 225,
+     "busy": 2.9233720000000005,
+     "worst": 2.940872
+    },
+    {
+     "az": 270,
+     "busy": 2.8663869999999996,
+     "worst": 2.8961086666666667
+    },
+    {
+     "az": 315,
+     "busy": 2.8602795000000003,
+     "worst": 2.9407882499999998
+    }
+   ]
+  },
+  {
+   "group": "Cloud shadows",
+   "label": "on, speed 100%",
+   "patch": {
+    "cloudShadows": true
+   },
+   "row": [
+    {
+     "az": 0,
+     "busy": 2.8493112499999995,
+     "worst": 2.98260025
+    },
+    {
+     "az": 45,
+     "busy": 2.872651,
+     "worst": 3.04287
+    },
+    {
+     "az": 90,
+     "busy": 2.7675273333333332,
+     "worst": 2.823415666666667
+    },
+    {
+     "az": 135,
+     "busy": 2.784777,
+     "worst": 2.846624
+    },
+    {
+     "az": 180,
+     "busy": 2.6690530000000003,
+     "worst": 3.096494
+    },
+    {
+     "az": 225,
+     "busy": 2.7405310000000003,
+     "worst": 2.7405310000000003
+    },
+    {
+     "az": 270,
+     "busy": 2.7830827499999997,
+     "worst": 3.21497175
+    },
+    {
+     "az": 315,
+     "busy": 2.80647775,
+     "worst": 2.8452066666666664
+    }
+   ]
+  },
+  {
+   "group": "Sun shadows, map",
+   "label": "medium",
+   "patch": {
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowQuality": "medium"
+   },
+   "row": [
+    {
+     "az": 0,
+     "busy": 6.723127,
+     "worst": 6.723127
+    },
+    {
+     "az": 45,
+     "busy": 6.5874932500000005,
+     "worst": 6.5874932500000005
+    },
+    {
+     "az": 90,
+     "busy": 6.593700999999999,
+     "worst": 6.593700999999999
+    },
+    {
+     "az": 135,
+     "busy": 2.8797895000000002,
+     "worst": 6.56133725
+    },
+    {
+     "az": 180,
+     "busy": 2.70120875,
+     "worst": 3.140421
+    },
+    {
+     "az": 225,
+     "busy": 2.676178,
+     "worst": 2.7036564999999997
+    },
+    {
+     "az": 270,
+     "busy": 2.78132225,
+     "worst": 2.99508925
+    },
+    {
+     "az": 315,
+     "busy": 2.7175944999999997,
+     "worst": 2.7742697499999998
+    }
+   ]
+  },
+  {
+   "group": "Sun shadows, voxel",
+   "label": "medium, softness 40%",
+   "patch": {
+    "sunShadows": true,
+    "shadowMethod": "voxel",
+    "shadowQuality": "medium",
+    "shadowSoftness": 0.4
+   },
+   "row": [
+    {
+     "az": 0,
+     "busy": 0,
+     "worst": 0
+    },
+    {
+     "az": 45,
+     "busy": 12.537923249999999,
+     "worst": 12.537923249999999
+    },
+    {
+     "az": 90,
+     "busy": 13.063009000000001,
+     "worst": 13.063009000000001
+    },
+    {
+     "az": 135,
+     "busy": 2.68046925,
+     "worst": 15.167352249999999
+    },
+    {
+     "az": 180,
+     "busy": 2.815426,
+     "worst": 2.8746652499999996
+    },
+    {
+     "az": 225,
+     "busy": 2.684553,
+     "worst": 2.79313475
+    },
+    {
+     "az": 270,
+     "busy": 2.611585333333333,
+     "worst": 2.7457499999999997
+    },
+    {
+     "az": 315,
+     "busy": 2.7103060000000005,
+     "worst": 2.795957
+    }
+   ]
+  },
+  {
+   "group": "Sun shadows, voxel",
+   "label": "high, softness 100%",
+   "patch": {
+    "sunShadows": true,
+    "shadowMethod": "voxel",
+    "shadowQuality": "high",
+    "shadowSoftness": 1
+   },
+   "row": [
+    {
+     "az": 0,
+     "busy": 2.719604,
+     "worst": 2.719604
+    },
+    {
+     "az": 45,
+     "busy": 0,
+     "worst": 0
+    },
+    {
+     "az": 90,
+     "busy": 19.05767775,
+     "worst": 19.05767775
+    },
+    {
+     "az": 135,
+     "busy": 22.320441,
+     "worst": 22.320441
+    },
+    {
+     "az": 180,
+     "busy": 2.70315675,
+     "worst": 2.72494775
+    },
+    {
+     "az": 225,
+     "busy": 2.720611,
+     "worst": 2.73588525
+    },
+    {
+     "az": 270,
+     "busy": 2.858915,
+     "worst": 2.940664
+    },
+    {
+     "az": 315,
+     "busy": 2.79593625,
+     "worst": 2.86515425
+    }
+   ]
+  },
+  {
+   "group": "Ambient life",
+   "label": "density 100%",
+   "patch": {
+    "atmosphere": true,
+    "atmosphereDensity": 1
+   },
+   "row": [
+    {
+     "az": 0,
+     "busy": 2.715139333333333,
+     "worst": 2.798166
+    },
+    {
+     "az": 45,
+     "busy": 2.72057325,
+     "worst": 2.80578025
+    },
+    {
+     "az": 90,
+     "busy": 2.64708425,
+     "worst": 2.72206275
+    },
+    {
+     "az": 135,
+     "busy": 2.6605220000000003,
+     "worst": 2.6605220000000003
+    },
+    {
+     "az": 180,
+     "busy": 2.7675305000000003,
+     "worst": 2.8415192499999997
+    },
+    {
+     "az": 225,
+     "busy": 2.77905175,
+     "worst": 2.7796765
+    },
+    {
+     "az": 270,
+     "busy": 2.779739,
+     "worst": 2.796822
+    },
+    {
+     "az": 315,
+     "busy": 2.74233325,
+     "worst": 2.775291
+    }
+   ]
+  },
+  {
+   "group": "Fog and god rays",
+   "label": "on",
+   "patch": {
+    "volumetrics": true
+   },
+   "row": [
+    {
+     "az": 0,
+     "busy": 2.7799264999999997,
+     "worst": 2.7799264999999997
+    },
+    {
+     "az": 45,
+     "busy": 2.77263425,
+     "worst": 2.8050094999999997
+    },
+    {
+     "az": 90,
+     "busy": 2.7375969999999996,
+     "worst": 3.06321325
+    },
+    {
+     "az": 135,
+     "busy": 2.82307125,
+     "worst": 2.8747476666666665
+    },
+    {
+     "az": 180,
+     "busy": 2.7967915,
+     "worst": 2.835051
+    },
+    {
+     "az": 225,
+     "busy": 2.8804765,
+     "worst": 2.8955497500000003
+    },
+    {
+     "az": 270,
+     "busy": 2.8358173333333334,
+     "worst": 2.9068509999999996
+    },
+    {
+     "az": 315,
+     "busy": 2.8883514999999997,
+     "worst": 2.916685
+    }
+   ]
+  },
+  {
+   "group": "Water reflection",
+   "label": "on",
+   "patch": {
+    "waterReflection": true
+   },
+   "row": [
+    {
+     "az": 0,
+     "busy": 3.1936075000000006,
+     "worst": 3.20591
+    },
+    {
+     "az": 45,
+     "busy": 3.07533825,
+     "worst": 3.07533825
+    },
+    {
+     "az": 90,
+     "busy": 3.076422,
+     "worst": 3.076422
+    },
+    {
+     "az": 135,
+     "busy": 3.1052583333333335,
+     "worst": 3.190369
+    },
+    {
+     "az": 180,
+     "busy": 3.0544529999999996,
+     "worst": 3.0831095
+    },
+    {
+     "az": 225,
+     "busy": 3.1135564999999996,
+     "worst": 3.1135564999999996
+    },
+    {
+     "az": 270,
+     "busy": 3.07939125,
+     "worst": 3.1942429999999997
+    },
+    {
+     "az": 315,
+     "busy": 3.087369,
+     "worst": 3.104359
+    }
+   ]
+  },
+  {
+   "group": "preset",
+   "label": "Lowest",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": false,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "low",
+    "cloudShadows": false,
+    "bloom": 0,
+    "depthOfField": 0,
+    "fxaa": false,
+    "grass": false,
+    "grassDensity": 10,
+    "atmosphere": false,
+    "atmosphereDensity": 1,
+    "weatherDensity": 0.5,
+    "volumetrics": false,
+    "spriteShadows": false,
+    "waterReflection": false
+   },
+   "row": [
+    {
+     "az": 0,
+     "busy": 2.652095,
+     "worst": 2.793082
+    },
+    {
+     "az": 45,
+     "busy": 2.68415725,
+     "worst": 2.8419352499999997
+    },
+    {
+     "az": 90,
+     "busy": 2.61004375,
+     "worst": 2.7265625
+    },
+    {
+     "az": 135,
+     "busy": 3.1793365,
+     "worst": 3.45860375
+    },
+    {
+     "az": 180,
+     "busy": 2.70743775,
+     "worst": 2.7939992499999997
+    },
+    {
+     "az": 225,
+     "busy": 2.6814799999999996,
+     "worst": 2.6814799999999996
+    },
+    {
+     "az": 270,
+     "busy": 2.6531540000000002,
+     "worst": 2.7273337499999997
+    },
+    {
+     "az": 315,
+     "busy": 2.7504262500000003,
+     "worst": 2.896663
+    }
+   ]
+  },
+  {
+   "group": "preset",
+   "label": "Low",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "low",
+    "cloudShadows": false,
+    "bloom": 0,
+    "depthOfField": 0,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 4,
+    "atmosphere": false,
+    "atmosphereDensity": 1,
+    "weatherDensity": 0.5,
+    "volumetrics": false,
+    "spriteShadows": true,
+    "waterReflection": false
+   },
+   "row": [
+    {
+     "az": 0,
+     "busy": 7.44345925,
+     "worst": 7.676494166666667
+    },
+    {
+     "az": 45,
+     "busy": 7.141020999999999,
+     "worst": 7.188515
+    },
+    {
+     "az": 90,
+     "busy": 7.131724375,
+     "worst": 7.17812975
+    },
+    {
+     "az": 135,
+     "busy": 3.1361444375,
+     "worst": 3.2453713
+    },
+    {
+     "az": 180,
+     "busy": 3.224805,
+     "worst": 3.2972980000000005
+    },
+    {
+     "az": 225,
+     "busy": 3.2140447500000007,
+     "worst": 3.2400059999999993
+    },
+    {
+     "az": 270,
+     "busy": 3.2929983333333337,
+     "worst": 3.3325358333333335
+    },
+    {
+     "az": 315,
+     "busy": 3.2219733846153846,
+     "worst": 3.2822187777777776
+    }
+   ]
+  },
+  {
+   "group": "preset",
+   "label": "Medium",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "medium",
+    "cloudShadows": true,
+    "bloom": 0.1,
+    "depthOfField": 0,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 8,
+    "atmosphere": true,
+    "atmosphereDensity": 0.5,
+    "weatherDensity": 1,
+    "volumetrics": false,
+    "spriteShadows": true,
+    "waterReflection": true
+   },
+   "row": [
+    {
+     "az": 0,
+     "busy": 9.529403333333333,
+     "worst": 9.6358365
+    },
+    {
+     "az": 45,
+     "busy": 9.444392375000001,
+     "worst": 9.5554962
+    },
+    {
+     "az": 90,
+     "busy": 9.390745555555556,
+     "worst": 9.5197716
+    },
+    {
+     "az": 135,
+     "busy": 3.966718125,
+     "worst": 4.007435928571428
+    },
+    {
+     "az": 180,
+     "busy": 4.0388184375,
+     "worst": 4.053461250000001
+    },
+    {
+     "az": 225,
+     "busy": 4.0178005,
+     "worst": 4.095106749999999
+    },
+    {
+     "az": 270,
+     "busy": 4.035363266666667,
+     "worst": 4.079588692307693
+    },
+    {
+     "az": 315,
+     "busy": 4.291580285714286,
+     "worst": 4.908001416666667
+    }
+   ]
+  },
+  {
+   "group": "preset",
+   "label": "High",
+   "patch": {
+    "ambientOcclusion": false,
+    "sunShadows": true,
+    "shadowMethod": "map",
+    "shadowSoftness": 0.4,
+    "shadowQuality": "medium",
+    "cloudShadows": true,
+    "bloom": 0.1,
+    "depthOfField": 0.5,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 10,
+    "atmosphere": true,
+    "atmosphereDensity": 1,
+    "weatherDensity": 1,
+    "volumetrics": true,
+    "spriteShadows": true,
+    "waterReflection": true
+   },
+   "row": [
+    {
+     "az": 0,
+     "busy": 14.768041400000001,
+     "worst": 15.144566285714289
+    },
+    {
+     "az": 45,
+     "busy": 14.098468,
+     "worst": 14.13387275
+    },
+    {
+     "az": 90,
+     "busy": 14.115308285714287,
+     "worst": 14.234832800000001
+    },
+    {
+     "az": 135,
+     "busy": 8.68408988888889,
+     "worst": 8.88520275
+    },
+    {
+     "az": 180,
+     "busy": 8.8263071,
+     "worst": 8.9054806
+    },
+    {
+     "az": 225,
+     "busy": 8.913678666666668,
+     "worst": 8.946222874999998
+    },
+    {
+     "az": 270,
+     "busy": 8.8545025,
+     "worst": 8.941222
+    },
+    {
+     "az": 315,
+     "busy": 9.033554625,
+     "worst": 9.057007375000001
+    }
+   ]
+  },
+  {
+   "group": "preset",
+   "label": "Ultra",
+   "patch": {
+    "ambientOcclusion": true,
+    "sunShadows": true,
+    "shadowMethod": "voxel",
+    "shadowSoftness": 0.5,
+    "shadowQuality": "high",
+    "cloudShadows": true,
+    "bloom": 0.15,
+    "depthOfField": 0.7,
+    "fxaa": true,
+    "grass": true,
+    "grassDensity": 20,
+    "atmosphere": true,
+    "atmosphereDensity": 1.5,
+    "weatherDensity": 1.5,
+    "volumetrics": true,
+    "spriteShadows": true,
+    "waterReflection": true
+   },
+   "row": [
+    {
+     "az": 0,
+     "busy": 39.732580999999996,
+     "worst": 40.2012095
+    },
+    {
+     "az": 45,
+     "busy": 38.939052000000004,
+     "worst": 39.27272375
+    },
+    {
+     "az": 90,
+     "busy": 40.05847225,
+     "worst": 40.30281225
+    },
+    {
+     "az": 135,
+     "busy": 12.258343090909092,
+     "worst": 12.558486363636364
+    },
+    {
+     "az": 180,
+     "busy": 12.142176,
+     "worst": 12.201762888888888
+    },
+    {
+     "az": 225,
+     "busy": 12.127152400000002,
+     "worst": 12.2457004
+    },
+    {
+     "az": 270,
+     "busy": 12.105387363636366,
+     "worst": 12.148423999999999
+    },
+    {
+     "az": 315,
+     "busy": 12.5185629,
+     "worst": 12.597164444444445
+    }
+   ]
+  }
+ ]
+}

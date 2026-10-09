@@ -122,7 +122,7 @@ pub struct MeshContext<'a> {
 }
 
 /// Colour of a block, for things that break off it.
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(test, target_arch = "wasm32"))]
 pub fn block_color(block: Block) -> [f32; 3] {
     base_color(block)
 }
@@ -369,10 +369,21 @@ pub fn set_alpha(vertices: &mut [Vertex], alpha: f32) {
     }
 }
 
-/// [`top_face_unlit`] that blends with what is behind it (a shadow).
-pub fn top_face_unlit_alpha(out: &mut Vec<Vertex>, color: [f32; 3], bounds: [f32; 4], z: f32, alpha: f32) {
+/// A see-through unlit box with all six faces (the editor's preview of a block that has no sprites, or
+/// that is seen from a turned camera).
+pub fn ghost_cuboid(out: &mut Vec<Vertex>, color: [f32; 3], [x0, x1, y0, y1]: [f32; 4], [z0, z1]: [f32; 2], alpha: f32) {
     let first = out.len();
-    top_face_unlit(out, color, bounds, z);
+    let faces = [
+        [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]],
+        [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]],
+        [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]],
+        [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]],
+        [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]],
+        [[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]],
+    ];
+    for corners in faces {
+        quad(out, FACE_UNLIT, color, corners, [0.0; 4], [[0.0; 3]; 4]);
+    }
     set_alpha(&mut out[first..], alpha);
 }
 

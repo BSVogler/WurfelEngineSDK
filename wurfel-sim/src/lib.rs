@@ -4,10 +4,12 @@
 //! in a headless server and in a wasm client.
 
 pub mod animation;
+pub mod atmosphere;
 pub mod block;
 pub mod chunk;
 pub mod console;
 pub mod cvar;
+pub mod detail;
 pub mod entity;
 pub mod generator;
 pub mod grass;

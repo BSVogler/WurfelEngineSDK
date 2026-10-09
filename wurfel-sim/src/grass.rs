@@ -30,6 +30,14 @@ pub const NOISE: f32 = 0.1;
 /// Where the wind blows to, in game space (a unit vector). The sway reaches a blade later the
 /// further downwind it stands, so the wind moves over the grass in waves instead of everywhere at once.
 pub const WIND_DIRECTION: (f32, f32) = (0.8, 0.6);
+/// [`WIND_DIRECTION`] as an angle in degrees (the menu's default wind direction).
+pub const WIND_DEGREES: f32 = 36.869_9;
+
+/// The unit direction of the wind from the menu's angle in degrees (game space, 0 = along +x).
+pub fn wind_direction_from_degrees(degrees: f32) -> (f32, f32) {
+    let radians = if degrees.is_finite() { degrees.to_radians() } else { WIND_DEGREES.to_radians() };
+    (radians.cos(), radians.sin())
+}
 /// How fast the waves travel, game units per second (a wavelength of `2 s * speed`, about 11 blocks).
 pub const WIND_SPEED: f32 = 800.0;
 /// Gusts: a slower, broader wave that makes the sway stronger and weaker, so it does not look like
@@ -63,13 +71,21 @@ pub const MAX_BLADES_PER_CELL: i32 = 10;
 const STONE_PERIOD: f32 = 7.0;
 
 /// The wind: one value for the whole world, advanced by [`Wind::update`] each frame.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Wind {
     circle: f32,
     /// Degrees added to every blade: a triangle wave between `-WIND_AMPLITUDE / 2` and 0.
     pub value: f32,
     /// Seconds since the start, drives the [`jitter`].
     pub time: f32,
+    /// Where the wind blows to in game space (a unit vector), [`WIND_DIRECTION`] unless the menu turns it.
+    pub direction: (f32, f32),
+}
+
+impl Default for Wind {
+    fn default() -> Self {
+        Wind { circle: 0.0, value: 0.0, time: 0.0, direction: WIND_DIRECTION }
+    }
 }
 
 impl Wind {
@@ -92,7 +108,7 @@ impl Wind {
 
     /// [`Wind::at`] for a blade that catches the wave `lag` seconds late (negative: early).
     pub fn at_lagged(&self, at: (f32, f32), lag: f32) -> f32 {
-        let delay = (at.0 * WIND_DIRECTION.0 + at.1 * WIND_DIRECTION.1) / WIND_SPEED + lag;
+        let delay = (at.0 * self.direction.0 + at.1 * self.direction.1) / WIND_SPEED + lag;
         // The circle advances 10 units per second (Java: `dt` in milliseconds times 0.01).
         let circle = ((self.time - delay) * 10.0).rem_euclid(WIND_AMPLITUDE);
         let wave = (circle - WIND_AMPLITUDE / 2.0).abs() - WIND_AMPLITUDE / 2.0;
@@ -116,7 +132,7 @@ pub fn game_xy(x: i32, y: i32) -> (f32, f32) {
 }
 
 /// 32-bit integer hash (lowbias32), the basis of all randomness here.
-fn hash(mut h: u32) -> u32 {
+pub(crate) fn hash(mut h: u32) -> u32 {
     h ^= h >> 16;
     h = h.wrapping_mul(0x7feb_352d);
     h ^= h >> 15;
@@ -124,11 +140,11 @@ fn hash(mut h: u32) -> u32 {
     h ^ (h >> 16)
 }
 
-fn to_unit(h: u32) -> f32 {
+pub(crate) fn to_unit(h: u32) -> f32 {
     (h >> 8) as f32 / (1u32 << 24) as f32
 }
 
-fn mix(values: &[i32]) -> u32 {
+pub(crate) fn mix(values: &[i32]) -> u32 {
     values.iter().fold(0x9e37_79b9u32, |acc, &v| hash(acc ^ (v as u32).wrapping_mul(0x85eb_ca6b)))
 }
 

@@ -21,7 +21,8 @@ use wurfel_sim::grid::to_iso;
 use wurfel_sim::protocol::{editor_block_values, ThingState, EDITOR_THING_KINDS, MAX_FILL_CELLS};
 use wurfel_sim::{Block, CHUNK_SIZE_Z};
 
-use crate::pick::{ground_at, Pick};
+use crate::pick::{ground_at_view, Pick};
+use crate::view::View;
 
 /// Panning the editor camera, in ground units per second (the player walks at about this speed),
 /// and how many times faster with Shift (Java: `setCameraSpeed`, Shift for fast).
@@ -240,9 +241,24 @@ impl Editor {
         }
     }
 
-    /// Number key `1`..`4` as the palette index it chooses.
-    pub fn index_for_key(key: &str) -> Option<usize> {
-        key.parse::<usize>().ok().filter(|n| (1..=PALETTE.len()).contains(n)).map(|n| n - 1)
+    /// The block the draw and replace tools put down.
+    pub fn brush(&self) -> Block {
+        Block::new(self.selected_block(), self.value)
+    }
+
+    /// What the left tool would put down with the pointer over `target`, and where: the preview of
+    /// the build. Only the draw and replace tools build at a single cell.
+    pub fn ghost(&self, target: Option<Pick>) -> Option<(Block, (i32, i32, i32))> {
+        if !self.active {
+            return None;
+        }
+        let target = target?;
+        let cell = match self.left {
+            Tool::Draw => target.place,
+            Tool::Replace => target.hit,
+            _ => return None,
+        };
+        Some((self.brush(), cell))
     }
 
     #[cfg(test)]
@@ -306,11 +322,12 @@ impl Editor {
     /// Move the camera with the keys: `dir` is the direction on the screen (x right, y down, each
     /// -1, 0 or 1), `dt` the seconds passed. Only in the editor; the camera stays within
     /// [`PAN_LIMIT`] of the player.
-    pub fn pan_by(&mut self, dir: (f32, f32), fast: bool, dt: f32) {
+    pub fn pan_by(&mut self, dir: (f32, f32), yaw: f32, fast: bool, dt: f32) {
         if !self.active || dir == (0.0, 0.0) {
             return;
         }
-        let ground = screen_to_iso(Vec2::new(dir.0, dir.1).normalize()) * PAN_SPEED * if fast { PAN_FAST } else { 1.0 } * dt;
+        // The keys are directions on the screen: with a turned camera the ground direction is turned back.
+        let ground = Vec2::from_angle(-yaw).rotate(screen_to_iso(Vec2::new(dir.0, dir.1).normalize())) * PAN_SPEED * if fast { PAN_FAST } else { 1.0 } * dt;
         let moved = Vec2::new(self.pan.0 + ground.x, self.pan.1 + ground.y).clamp_length_max(PAN_LIMIT);
         self.pan = (moved.x, moved.y);
     }
@@ -429,7 +446,7 @@ impl Editor {
 
     /// The pointer moved at screen position `screen` while the left button is held on a thing:
     /// the thing follows along its layer. Not more than one message per [`DRAG_STEP`] of movement.
-    pub fn drag_thing(&mut self, screen: (f32, f32), things: &[ThingState]) -> Option<ThingAction> {
+    pub fn drag_thing(&mut self, screen: (f32, f32), view: &View, things: &[ThingState]) -> Option<ThingAction> {
         if !self.moving || self.left != Tool::Select {
             return None;
         }
@@ -437,7 +454,7 @@ impl Editor {
         let thing = things.iter().find(|t| t.id == id)?;
         let z = thing.pos[2];
         // The middle of the picture follows the pointer, as it is what `pick_thing` measures to.
-        let (gx, gy) = ground_at(screen.0, screen.1, z + 0.5);
+        let (gx, gy) = ground_at_view(view, screen.0, screen.1, z + 0.5);
         let snap = |v: f32| (v / DRAG_STEP).round() * DRAG_STEP;
         let pos = [snap(gx), snap(gy), z];
         let from = self.moved_to.unwrap_or(thing.pos);
@@ -522,7 +539,7 @@ impl Editor {
     }
 
     /// The state for the page's toolbar (`wurfelEditor.update`), with the cursor line.
-    pub fn ui_json(&self, cursor: &str) -> String {
+    pub fn ui_json(&self, cursor: &str, previews: &serde_json::Value) -> String {
         serde_json::json!({
             "active": self.active,
             "tool": self.left.name(),
@@ -537,6 +554,7 @@ impl Editor {
             "thing": self.thing_kind,
             "layer": self.layer,
             "cursor": cursor,
+            "previews": previews,
         })
         .to_string()
     }
@@ -712,12 +730,7 @@ mod tests {
     }
 
     #[test]
-    fn block_keys_and_tool_names_parse_strictly() {
-        assert_eq!(Editor::index_for_key("1"), Some(0));
-        assert_eq!(Editor::index_for_key("4"), Some(3));
-        for bad in ["0", "5", "a", "", "-1"] {
-            assert_eq!(Editor::index_for_key(bad), None, "{bad:?}");
-        }
+    fn tool_names_parse_strictly() {
         for tool in Tool::ALL {
             assert_eq!(Tool::parse(tool.name()), Some(tool));
         }
@@ -732,7 +745,7 @@ mod tests {
         assert_eq!(cursor_text(Some(TARGET), Block::new(id::DIRT, 0)), "4, 5, 6 · dirt (id 2, value 0)");
         assert_eq!(cursor_text(Some(TARGET), Block::new(id::STONE, 1)), "4, 5, 6 · stone (id 3, value 1)");
         let mut e = active();
-        let json: serde_json::Value = serde_json::from_str(&e.ui_json("x")).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&e.ui_json("x", &serde_json::Value::Null)).unwrap();
         assert_eq!(json["active"], true);
         assert_eq!(json["tool"], "draw");
         assert_eq!(json["blocks"].as_array().unwrap().len(), PALETTE.len());
@@ -740,7 +753,7 @@ mod tests {
         assert_eq!((&json["value"], &json["values"], &json["layer"]), (&0.into(), &2.into(), &serde_json::Value::Null));
         assert_eq!((&json["undo"], &json["redo"]), (&false.into(), &false.into()));
         e.click(Button::Left, Some(TARGET), world);
-        assert_eq!(serde_json::from_str::<serde_json::Value>(&e.ui_json("")).unwrap()["undo"], true);
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&e.ui_json("", &serde_json::Value::Null)).unwrap()["undo"], true);
     }
 
     #[test]
@@ -805,20 +818,20 @@ mod tests {
         e.select_tool(Tool::Select);
         let things = [thing(7, [5.0, 5.0, 2.0])];
         assert_eq!(e.click(Button::Left, Some(TARGET), world), None, "no block changes");
-        assert_eq!(e.drag_thing((0.0, 0.0), &things), None, "nothing grabbed");
+        assert_eq!(e.drag_thing((0.0, 0.0), &View::default(), &things), None, "nothing grabbed");
         assert_eq!(e.click_thing(Button::Left, Some(TARGET), Some(7)), None);
         assert_eq!(e.selected_thing(), Some(7));
 
         // The pointer is over the ground point (5.5, 5.0) at the thing's mid height.
         let (sx, sy) = crate::pick::screen_of(5.5, 5.0, 2.5);
-        let Some(ThingAction::Move { id, pos }) = e.drag_thing((sx, sy), &things) else { panic!("no move") };
+        let Some(ThingAction::Move { id, pos }) = e.drag_thing((sx, sy), &View::default(), &things) else { panic!("no move") };
         assert_eq!(id, 7);
         assert!((pos[0] - 5.5).abs() < 0.06 && (pos[1] - 5.0).abs() < 0.06 && pos[2] == 2.0, "{pos:?}");
-        assert_eq!(e.drag_thing((sx, sy), &things), None, "not again for the same place");
-        assert_eq!(e.drag_thing((sx + 0.5, sy), &things), None, "nor for less than a step");
+        assert_eq!(e.drag_thing((sx, sy), &View::default(), &things), None, "not again for the same place");
+        assert_eq!(e.drag_thing((sx + 0.5, sy), &View::default(), &things), None, "nor for less than a step");
         // Letting go ends the drag; the thing stays selected.
         e.release(None, world);
-        assert_eq!(e.drag_thing((sx + 100.0, sy), &things), None);
+        assert_eq!(e.drag_thing((sx + 100.0, sy), &View::default(), &things), None);
         assert_eq!(e.selected_thing(), Some(7));
 
         assert_eq!(e.delete_selected(), Some(ThingAction::Delete { id: 7 }));
@@ -875,33 +888,59 @@ mod tests {
     #[test]
     fn the_keys_pan_the_camera_within_a_limit_and_only_in_the_editor() {
         let mut idle = Editor::default();
-        idle.pan_by((1.0, 0.0), false, 1.0);
+        idle.pan_by((1.0, 0.0), 0.0, false, 1.0);
         assert_eq!(idle.pan(), (0.0, 0.0));
 
         let mut e = active();
         // W moves up the screen: on the ground that is towards -x and -y.
-        e.pan_by((0.0, -1.0), false, 0.5);
+        e.pan_by((0.0, -1.0), 0.0, false, 0.5);
         let (x, y) = e.pan();
         assert!(x < 0.0 && y < 0.0 && (x - y).abs() < 1e-5, "{x} {y}");
         let slow = Vec2::new(x, y).length();
         assert!((slow - PAN_SPEED * 0.5).abs() < 1e-4, "{slow}");
         // Shift is faster.
         let mut fast = active();
-        fast.pan_by((0.0, -1.0), true, 0.5);
+        fast.pan_by((0.0, -1.0), 0.0, true, 0.5);
         assert!((Vec2::new(fast.pan().0, fast.pan().1).length() - slow * PAN_FAST).abs() < 1e-4);
         // Diagonals are not faster, no keys is no movement, and the camera cannot leave the player.
         let mut diagonal = active();
-        diagonal.pan_by((1.0, 1.0), false, 0.5);
+        diagonal.pan_by((1.0, 1.0), 0.0, false, 0.5);
         assert!((Vec2::new(diagonal.pan().0, diagonal.pan().1).length() - slow).abs() < 1e-4);
-        e.pan_by((0.0, 0.0), false, 10.0);
+        e.pan_by((0.0, 0.0), 0.0, false, 10.0);
         assert_eq!(e.pan(), (x, y));
         for _ in 0..100 {
-            e.pan_by((1.0, -1.0), true, 1.0);
+            e.pan_by((1.0, -1.0), 0.0, true, 1.0);
         }
         assert!((Vec2::new(e.pan().0, e.pan().1).length() - PAN_LIMIT).abs() < 1e-3);
         // Leaving puts the camera back on the player.
         e.set_active(false);
         assert_eq!(e.pan(), (0.0, 0.0));
+    }
+
+    #[test]
+    fn the_ghost_shows_what_draw_and_replace_would_build() {
+        let mut e = active();
+        let brush = Block::new(id::STONE, 0);
+        assert_eq!(e.ghost(Some(TARGET)), Some((brush, TARGET.place)), "draw builds in front of the hit block");
+        assert_eq!(e.ghost(None), None);
+        e.select_tool(Tool::Replace);
+        assert_eq!(e.ghost(Some(TARGET)), Some((brush, TARGET.hit)));
+        for tool in [Tool::Bucket, Tool::Select, Tool::Spawn, Tool::Erase, Tool::Pick] {
+            e.select_tool(tool);
+            assert_eq!(e.ghost(Some(TARGET)), None, "{tool:?}");
+        }
+        assert_eq!(Editor::default().ghost(Some(TARGET)), None, "not outside the editor");
+    }
+
+    #[test]
+    fn panning_follows_the_turned_camera() {
+        // Up the screen is towards -x and -y; a quarter turn of the world makes that another way.
+        let mut straight = active();
+        straight.pan_by((0.0, -1.0), 0.0, false, 1.0);
+        let mut turned = active();
+        turned.pan_by((0.0, -1.0), std::f32::consts::FRAC_PI_2, false, 1.0);
+        let (a, b) = (Vec2::from(straight.pan()), Vec2::from(turned.pan()));
+        assert!((a.length() - b.length()).abs() < 1e-4 && a.dot(b).abs() < 1e-3, "{a} {b}");
     }
 
     #[test]

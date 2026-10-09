@@ -24,6 +24,10 @@ struct Camera {
     _pad2: f32,
     // The free camera: x cos and y sin of the yaw, zw the ground point the world turns about.
     view: vec4<f32>,
+    // The perspective of the free camera (0 in the fixed one, which is orthographic): x 1 / the distance
+    // of the eye in screen heights (see PERSPECTIVE in view.rs), y the view depth of the focus plane,
+    // which keeps its size (the player's), zw unused.
+    persp: vec4<f32>,
 };
 
 struct Lighting {
@@ -36,13 +40,13 @@ struct Lighting {
     flat_shades: vec4<f32>,  // x left, y top, z right: brightness of the flat look; w: 1 = draw linear light (see post.rs)
     misc: vec4<f32>,         // x: number of dynamic point lights, y: time of day, z: minimum light, w: 1 = normal maps
     fog: vec4<f32>,          // rgb: fog colour; w: 1 = fog on
-    sun_back: vec4<f32>,     // x: sun diffuse intensity on the -y face, y: on the -x face (free camera)
+    sun_back: vec4<f32>,     // x: sun diffuse intensity on the -y face, y: on the -x face (free camera), zw: how far the clouds drifted
     moon_back: vec4<f32>,    // the same for the moon
     sun_normal: vec4<f32>,   // xyz: the Java u_sunNormal (Java screen-aligned frame), for the normal maps
     moon_normal: vec4<f32>,  // xyz: the Java u_moonNormal
     pixel_ambient: vec4<f32>,  // rgb: the Java u_ambientColor, unweighted
     local_light: vec4<f32>,  // xyz: the Java u_localLightPos / u_playerpos (blocks); w: 1 when there is one
-    sun_dir: vec4<f32>,      // xyz: unit vector towards the sun in the world's ground frame
+    sun_dir: vec4<f32>,      // xyz: unit vector towards the sun in the world's ground frame, w: the wind's angle there (radians)
     clouds: vec4<f32>,       // x: seconds drifted, y: shadow strength (0 = off), z: blocks per repeat, w: cloud height
     lights: array<vec4<f32>, 8>,        // xyz: position (blocks), w: radius
     light_colors: array<vec4<f32>, 8>,  // rgb: colour, w: brightness
@@ -135,6 +139,56 @@ fn faces_camera(face: i32) -> bool {
     }
     if (face == 6) {
         return -c - s > 0.0;  // -x
+    }
+    return true;
+}
+
+// Pixels (at zoom 1) of the projection per unit of view depth: one step along the view ray (1, 1, 0.82)
+// is 1.63 blocks long and changes the depth by 2.67, a block is about 112 px wide.
+// wurfel_web::view::DEPTH_PX is the same number.
+const DEPTH_PX = 68.0;
+
+// The distance of the eye from the focus plane, in px at zoom 1: a fixed number of screen heights, so
+// zooming moves the camera and the field of view stays the same.
+fn eye_distance() -> f32 {
+    return 2.0 / (camera.scale.y * camera.persp.x);
+}
+
+// The size of what lies at this view depth relative to the focus plane under the perspective camera:
+// 1 on the focus plane, larger towards the viewer. wurfel_web::view::perspective_scale is the same.
+// Beyond the eye (the result is 0) nothing can be seen.
+fn perspective_scale(depth: f32) -> f32 {
+    let distance = eye_distance();
+    let away = distance - (depth - camera.persp.y) * DEPTH_PX;
+    if (away < 0.1 * distance) {
+        return 0.0;
+    }
+    return distance / away;
+}
+
+// Does the side with this face id look towards the eye of the perspective camera? The ray to the eye
+// differs from one point to the next, so the test is made with the vertex's own position (in view space)
+// and not with the yaw alone like `faces_camera`. The eye lies on the view ray through the middle of the
+// screen: that ray's point on the ground (the middle's row and column), moved along (1, 1, 0.82).
+fn faces_eye(face: i32, p: vec3<f32>) -> bool {
+    let row = camera.center.y / 50.0;
+    let column = camera.center.x / 100.0;
+    let ground = vec2<f32>(row + column, row - column) * 0.5;
+    let along = (camera.persp.y + eye_distance() / DEPTH_PX) / 2.6724;
+    let to_eye = ground + vec2<f32>(along) - p.xy;
+    let c = camera.view.x;
+    let s = camera.view.y;
+    if (face == 0) {
+        return dot(vec2<f32>(-s, c), to_eye) > 0.0;   // left: +y
+    }
+    if (face == 2) {
+        return dot(vec2<f32>(c, s), to_eye) > 0.0;    // right: +x
+    }
+    if (face == 5) {
+        return dot(vec2<f32>(s, -c), to_eye) > 0.0;   // -y
+    }
+    if (face == 6) {
+        return dot(vec2<f32>(-c, -s), to_eye) > 0.0;  // -x
     }
     return true;
 }
@@ -321,16 +375,28 @@ fn vs_main(v: VertexIn) -> VertexOut {
     // exact for an orthographic camera, so the depth buffer sorts all faces correctly.
     let depth = (p.x + p.y + 0.82 * p.z) - camera.center_depth;
 
+    // The perspective camera scales the picture about its middle by what lies nearer or further than the
+    // focus plane. The depth stays the linear one, which orders the surfaces along every ray the same.
+    var zoom_in = 1.0;
+    let perspective = camera.persp.x > 0.0;
+    if (perspective) {
+        zoom_in = perspective_scale(depth);
+    }
+
     var out: VertexOut;
     out.clip = vec4<f32>(
-        (sx - camera.center.x) * camera.scale.x,
-        -(sy - camera.center.y) * camera.scale.y,
+        (sx - camera.center.x) * zoom_in * camera.scale.x,
+        -(sy - camera.center.y) * zoom_in * camera.scale.y,
         0.5 - depth * 0.002,
         1.0,
     );
     // Flipped, the tops face down and the flat markers lie on the wrong side: both are not seen.
     let hidden_when_mirrored = mirroring && (face == 1 || face == 3);
-    if (!faces_camera(face) || hidden_when_mirrored) {
+    var faces_viewer = faces_camera(face);
+    if (perspective) {
+        faces_viewer = faces_eye(face, view_pos(v.position)) && zoom_in > 0.0;
+    }
+    if (!faces_viewer || hidden_when_mirrored) {
         out.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);  // outside the view: the side that looks away
     }
     let seen = view_pos(v.position);
@@ -841,7 +907,6 @@ fn normal_map_color(in: VertexOut, texel: vec4<f32>, sun_seen: f32, occlusion: f
 // moves and a tall wall's shadow falls away from the sun. Like the sun's shadow map this takes away
 // the sun's share of the light only (it multiplies `sun_visibility`), so a cloud adds nothing to a
 // place the sun does not reach anyway, and a shaded place darkens to the ambient light, not black.
-const WIND = vec2<f32>(0.8, 0.6);
 
 // How much of the sun gets through the clouds to `ground`: 1 under a clear sky.
 fn cloud_light(ground: vec3<f32>, face: i32) -> f32 {
@@ -851,8 +916,10 @@ fn cloud_light(ground: vec3<f32>, face: i32) -> f32 {
         return 1.0;
     }
     let rise = max(lighting.clouds.w - ground.z, 0.0) / sun.z;
-    let at_cloud = ground.xy + sun.xy * rise - WIND * lighting.clouds.x * 0.6;
-    let coverage = textureSampleLevel(cloud_map, cloud_sampler, at_cloud / lighting.clouds.z, 0.0).r;
+    let at_cloud = ground.xy + sun.xy * rise - lighting.sun_back.zw;
+    var coverage = textureSampleLevel(cloud_map, cloud_sampler, at_cloud / lighting.clouds.z, 0.0).r;
+    // Thin wisps of coverage do not count: where there is no real cloud the sky is clear, and the light stays as bright as without clouds.
+    coverage = smoothstep(0.15, 1.0, coverage);
     // Low sun: the shadows are long and faint. (At night the sun's share is zero anyway.)
     let sun_power = smoothstep(0.05, 0.4, sun.z);
     return 1.0 - coverage * strength * sun_power;
@@ -938,13 +1005,10 @@ fn water_reflection(color: vec3<f32>, in: VertexOut, sun_seen: f32) -> vec3<f32>
     return mix(color, reflected, amount);
 }
 
-@fragment
-fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-    // Sampled for every fragment (a level sample may sit in non-uniform control flow) and only used
-    // when the vertex has a sprite. The sprites are cut out: pixels that are (nearly) transparent are
-    // discarded, the rest keep their alpha, which the compositing of the layers blends.
-    let texel = textureSampleLevel(atlas, atlas_sampler, in.uv, i32(max(in.layer, 0.0) + 0.5), 0.0);
-    let face = i32(in.face + 0.5);
+// What a layer throws away: cut-out and faded pixels, what the mirror pass does not show, and what the
+// nearer layers already show. Shared by `fs_main` and the depth pre-pass `fs_depth`, which must keep exactly
+// the same fragments.
+fn discard_unwanted(in: VertexOut, texel: vec4<f32>, face: i32) {
     // What gets thrown away is decided first: the shadows below are the most expensive thing this shader does,
     // and the peeling draws the scene once per layer, so most of what a layer discards (everything the nearer
     // layer shows) used to be traced for nothing. The alpha is what the colour's alpha is below.
@@ -977,6 +1041,25 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
             discard;
         }
     }
+}
+
+// The depth pre-pass: only the depth of what a layer keeps. The overlapping faces of the scene come in any
+// order, so `fs_main` ran its shadows for every face that was nearest at the time it was drawn, several times
+// a pixel; with the depth in place first (`fs_main` then draws only the faces at that depth) once.
+@fragment
+fn fs_depth(in: VertexOut) {
+    let texel = textureSampleLevel(atlas, atlas_sampler, in.uv, i32(max(in.layer, 0.0) + 0.5), 0.0);
+    discard_unwanted(in, texel, i32(in.face + 0.5));
+}
+
+@fragment
+fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
+    // Sampled for every fragment (a level sample may sit in non-uniform control flow) and only used
+    // when the vertex has a sprite. The sprites are cut out: pixels that are (nearly) transparent are
+    // discarded, the rest keep their alpha, which the compositing of the layers blends.
+    let texel = textureSampleLevel(atlas, atlas_sampler, in.uv, i32(max(in.layer, 0.0) + 0.5), 0.0);
+    let face = i32(in.face + 0.5);
+    discard_unwanted(in, texel, face);
     // 1: the sun reaches this point, 0: something is in the way. Unlit things (markers, particles) have no sun.
     let sun_seen = sun_visibility(in.ground, face) * cloud_light(in.ground, face);
     // The vertex colour holds the sun's light already; a shadow takes the sun's share of it away.

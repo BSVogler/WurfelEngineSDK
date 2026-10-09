@@ -1,0 +1,211 @@
+WURFEL ENGINE GRAPHICS BENCHMARK
+date      2026-10-09T13:28:09.305Z
+machine   Apple M4 Max, 36 GB, darwin 27.0.0
+browser   Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36
+backend   BrowserWebGpu, map "highlands", surface 3840x2160 (viewport 1920x1080, scale 2)
+sound     off (master, music and effects volume 0)
+method    the game's own GPU timestamps (src/gputime.rs): time the GPU spends on a frame, from the start of its
+          first render pass to the end of its last. 3 s per sample after 1.5 s settling, median of the
+          half-second averages, best of 1 rounds, frame cap off. Stationary player, live clouds and wind.
+          The timestamps may be rounded to 100 us by the browser; the half-second averages are finer.
+          GPU ms per frame at this surface size; scale by the pixel count for other screens (most passes are per pixel).
+
+Columns: gpu = GPU ms per frame, +gpu = over the minimal baseline of the same view, worst = the largest
+half-second average, fps = frames the page presented per second without a cap.
+
+=== far view (zoom 25%) ===
+setting                  level                          gpu    +gpu   worst    fps   patch
+baseline                 minimal (everything optional off)    2.25    0.00    2.27    427   {}
+Ambient occlusion        on                            2.20   -0.05    2.20    407   {"ambientOcclusion":true}
+Linear blending          on                            2.30    0.05    2.30    447   {"linearBlend":true}
+Anti-aliasing (FXAA)     on                            2.54    0.29    2.64    430   {"fxaa":true}
+Bloom                    10%                           2.57    0.32    2.63    367   {"bloom":0.1}
+Depth of field           50%                           5.24    2.99    5.24    210   {"depthOfField":0.5}
+Sprite shadows           on                            2.27    0.02    2.28    447   {"spriteShadows":true}
+Cloud shadows            on, speed 100%                2.30    0.05    2.65    397   {"cloudShadows":true}
+Sun shadows, map         medium                        5.03    2.78    5.03    188   {"sunShadows":true,"shadowMethod":"map","shadowQuality":"medium"}
+Sun shadows, voxel       medium, softness 40%         10.93    8.68   10.93    126   {"sunShadows":true,"shadowMethod":"voxel","shadowQuality":"medium","shadowSoftness":0.4}
+Sun shadows, voxel       high, softness 100%          17.77   15.52   17.77     50   {"sunShadows":true,"shadowMethod":"voxel","shadowQuality":"high","shadowSoftness":1}
+Grass blades             density 10                    2.14   -0.11    2.14    167   {"grass":true,"grassDensity":10}
+Grass blades             density 20                    2.34    0.09    2.45    360   {"grass":true,"grassDensity":20}
+Ambient life             density 100%                  2.27    0.01    3.17    365   {"atmosphere":true,"atmosphereDensity":1}
+Weather                  rain 100%                     2.72    0.47    2.72    365   {"weather":"rain","weatherDensity":1}
+Fog and god rays         on                            2.29    0.04    2.33    431   {"volumetrics":true}
+Water reflection         on                            2.62    0.37    2.63    375   {"waterReflection":true}
+preset                   Lowest                        2.34    0.09    2.45    442   {"ambientOcclusion":false,"sunShadows":false,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"low","cloudShadows":false,"bloom":0,"depthOfField":0,"fxaa":false,"grass":false,"grassDensity":10,"atmosphere":false,"atmosphereDensity":1,"weatherDensity":0.5,"volumetrics":false,"spriteShadows":false,"waterReflection":false}
+preset                   Low                           5.79    3.54    6.25    181   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"low","cloudShadows":false,"bloom":0,"depthOfField":0,"fxaa":true,"grass":true,"grassDensity":4,"atmosphere":false,"atmosphereDensity":1,"weatherDensity":0.5,"volumetrics":false,"spriteShadows":true,"waterReflection":false}
+preset                   Medium                        7.84    5.59    7.92    127   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"medium","cloudShadows":true,"bloom":0.1,"depthOfField":0,"fxaa":true,"grass":true,"grassDensity":8,"atmosphere":true,"atmosphereDensity":0.5,"weatherDensity":1,"volumetrics":false,"spriteShadows":true,"waterReflection":true}
+preset                   High                         10.96    8.70   11.10     91   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"medium","cloudShadows":true,"bloom":0.1,"depthOfField":0.5,"fxaa":true,"grass":true,"grassDensity":10,"atmosphere":true,"atmosphereDensity":1,"weatherDensity":1,"volumetrics":true,"spriteShadows":true,"waterReflection":true}
+preset                   Ultra                        25.03   22.78   26.01     39   {"ambientOcclusion":true,"sunShadows":true,"shadowMethod":"voxel","shadowSoftness":0.5,"shadowQuality":"high","cloudShadows":true,"bloom":0.15,"depthOfField":0.7,"fxaa":true,"grass":true,"grassDensity":20,"atmosphere":true,"atmosphereDensity":1.5,"weatherDensity":1.5,"volumetrics":true,"spriteShadows":true,"waterReflection":true}
+
+GPU ms by stage (where the time goes):
+setting                  level                      scene (depth p scene composit post (tonemap,          bloom sun shadow map weather and am water reflecti
+baseline                 minimal (everything optional off)           1.80           0.22           0.23           0.00           0.00           0.00           0.00
+Ambient occlusion        on                                   1.75           0.22           0.23           0.00           0.00           0.00           0.00
+Linear blending          on                                   1.79           0.24           0.28           0.00           0.00           0.00           0.00
+Anti-aliasing (FXAA)     on                                   1.90           0.22           0.42           0.00           0.00           0.00           0.00
+Bloom                    10%                                  1.74           0.22           0.23           0.38           0.00           0.00           0.00
+Depth of field           50%                                  1.70           0.22           3.32           0.00           0.00           0.00           0.00
+Sprite shadows           on                                   1.82           0.23           0.23           0.00           0.00           0.00           0.00
+Cloud shadows            on, speed 100%                       1.82           0.24           0.23           0.00           0.00           0.00           0.00
+Sun shadows, map         medium                               4.41           0.22           0.23           0.00           0.18           0.00           0.00
+Sun shadows, voxel       medium, softness 40%                10.44           0.20           0.21           0.00           0.08           0.00           0.00
+Sun shadows, voxel       high, softness 100%                 17.23           0.20           0.21           0.00           0.13           0.00           0.00
+Grass blades             density 10                           1.70           0.22           0.22           0.00           0.00           0.00           0.00
+Grass blades             density 20                           1.88           0.23           0.23           0.00           0.00           0.00           0.00
+Ambient life             density 100%                         1.79           0.22           0.23           0.00           0.00           0.02           0.00
+Weather                  rain 100%                            2.17           0.24           0.25           0.00           0.00           0.05           0.00
+Fog and god rays         on                                   1.79           0.23           0.23           0.00           0.00           0.04           0.00
+Water reflection         on                                   1.63           0.22           0.23           0.00           0.00           0.00           0.54
+preset                   Lowest                               1.85           0.23           0.24           0.00           0.00           0.00           0.00
+preset                   Low                                  4.91           0.22           0.44           0.00           0.28           0.00           0.00
+preset                   Medium                               5.23           0.22           0.41           0.36           0.30           0.02           1.35
+preset                   High                                 5.14           0.22           3.49           0.37           0.34           0.05           1.35
+preset                   Ultra                               14.20           0.20           5.07           0.33           0.22           0.06           5.26
+
+=== normal view (zoom 50%) ===
+setting                  level                          gpu    +gpu   worst    fps   patch
+baseline                 minimal (everything optional off)    2.68    0.00    2.78    416   {}
+Ambient occlusion        on                            2.70    0.02    2.71    412   {"ambientOcclusion":true}
+Linear blending          on                            2.76    0.08    2.82    311   {"linearBlend":true}
+Anti-aliasing (FXAA)     on                            2.96    0.28    3.07    345   {"fxaa":true}
+Bloom                    10%                           3.02    0.34    3.04    370   {"bloom":0.1}
+Depth of field           50%                           7.52    4.84    7.52    125   {"depthOfField":0.5}
+Sprite shadows           on                            2.64   -0.04    2.76    353   {"spriteShadows":true}
+Cloud shadows            on, speed 100%                2.78    0.10    2.87    346   {"cloudShadows":true}
+Sun shadows, map         medium                        6.66    3.98    6.68    159   {"sunShadows":true,"shadowMethod":"map","shadowQuality":"medium"}
+Sun shadows, voxel       medium, softness 40%         15.52   12.84   15.52    132   {"sunShadows":true,"shadowMethod":"voxel","shadowQuality":"medium","shadowSoftness":0.4}
+Sun shadows, voxel       high, softness 100%           0.00   -2.68    0.00     18   {"sunShadows":true,"shadowMethod":"voxel","shadowQuality":"high","shadowSoftness":1}
+Grass blades             density 10                    2.80    0.12    2.85    231   {"grass":true,"grassDensity":10}
+Grass blades             density 20                    2.89    0.21    2.89    300   {"grass":true,"grassDensity":20}
+Ambient life             density 100%                  2.90    0.22    2.93    340   {"atmosphere":true,"atmosphereDensity":1}
+Weather                  rain 100%                     2.89    0.21    3.02    369   {"weather":"rain","weatherDensity":1}
+Fog and god rays         on                            2.87    0.19    3.05    292   {"volumetrics":true}
+Water reflection         on                            3.12    0.44    3.34    297   {"waterReflection":true}
+preset                   Lowest                        2.79    0.11    2.82    300   {"ambientOcclusion":false,"sunShadows":false,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"low","cloudShadows":false,"bloom":0,"depthOfField":0,"fxaa":false,"grass":false,"grassDensity":10,"atmosphere":false,"atmosphereDensity":1,"weatherDensity":0.5,"volumetrics":false,"spriteShadows":false,"waterReflection":false}
+preset                   Low                           7.27    4.59    7.37    133   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"low","cloudShadows":false,"bloom":0,"depthOfField":0,"fxaa":true,"grass":true,"grassDensity":4,"atmosphere":false,"atmosphereDensity":1,"weatherDensity":0.5,"volumetrics":false,"spriteShadows":true,"waterReflection":false}
+preset                   Medium                        9.56    6.88    9.58    104   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"medium","cloudShadows":true,"bloom":0.1,"depthOfField":0,"fxaa":true,"grass":true,"grassDensity":8,"atmosphere":true,"atmosphereDensity":0.5,"weatherDensity":1,"volumetrics":false,"spriteShadows":true,"waterReflection":true}
+preset                   High                         14.91   12.23   15.01     67   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"medium","cloudShadows":true,"bloom":0.1,"depthOfField":0.5,"fxaa":true,"grass":true,"grassDensity":10,"atmosphere":true,"atmosphereDensity":1,"weatherDensity":1,"volumetrics":true,"spriteShadows":true,"waterReflection":true}
+preset                   Ultra                        34.39   31.71   35.75     30   {"ambientOcclusion":true,"sunShadows":true,"shadowMethod":"voxel","shadowSoftness":0.5,"shadowQuality":"high","cloudShadows":true,"bloom":0.15,"depthOfField":0.7,"fxaa":true,"grass":true,"grassDensity":20,"atmosphere":true,"atmosphereDensity":1.5,"weatherDensity":1.5,"volumetrics":true,"spriteShadows":true,"waterReflection":true}
+
+GPU ms by stage (where the time goes):
+setting                  level                      scene (depth p scene composit post (tonemap,          bloom sun shadow map weather and am water reflecti
+baseline                 minimal (everything optional off)           2.21           0.23           0.24           0.00           0.00           0.00           0.00
+Ambient occlusion        on                                   2.23           0.23           0.24           0.00           0.00           0.00           0.00
+Linear blending          on                                   2.22           0.25           0.29           0.00           0.00           0.00           0.00
+Anti-aliasing (FXAA)     on                                   2.28           0.23           0.44           0.00           0.00           0.00           0.00
+Bloom                    10%                                  2.16           0.23           0.24           0.39           0.00           0.00           0.00
+Depth of field           50%                                  2.15           0.24           5.14           0.00           0.00           0.00           0.00
+Sprite shadows           on                                   2.17           0.23           0.24           0.00           0.00           0.00           0.00
+Cloud shadows            on, speed 100%                       2.30           0.24           0.24           0.00           0.00           0.00           0.00
+Sun shadows, map         medium                               5.99           0.22           0.23           0.00           0.19           0.00           0.00
+Sun shadows, voxel       medium, softness 40%                14.92           0.22           0.23           0.00           0.16           0.00           0.00
+Sun shadows, voxel       high, softness 100%                  0.00           0.00           0.00           0.00           0.00           0.00           0.00
+Grass blades             density 10                           2.32           0.24           0.24           0.00           0.00           0.00           0.00
+Grass blades             density 20                           2.40           0.24           0.24           0.00           0.00           0.00           0.00
+Ambient life             density 100%                         2.37           0.24           0.25           0.00           0.00           0.02           0.00
+Weather                  rain 100%                            2.35           0.24           0.25           0.00           0.00           0.07           0.00
+Fog and god rays         on                                   2.32           0.24           0.24           0.00           0.00           0.06           0.00
+Water reflection         on                                   2.10           0.23           0.24           0.00           0.00           0.00           0.55
+preset                   Lowest                               2.31           0.24           0.25           0.00           0.00           0.00           0.00
+preset                   Low                                  6.37           0.23           0.44           0.00           0.26           0.00           0.00
+preset                   Medium                               6.65           0.24           0.45           0.39           0.41           0.01           1.41
+preset                   High                                 7.08           0.24           5.26           0.40           0.40           0.06           1.48
+preset                   Ultra                               19.54           0.22           7.88           0.35           0.23           0.06           6.25
+
+=== close view (zoom 100%) ===
+setting                  level                          gpu    +gpu   worst    fps   patch
+baseline                 minimal (everything optional off)    2.96    0.00    2.96    380   {}
+Ambient occlusion        on                            2.93   -0.03    3.01    297   {"ambientOcclusion":true}
+Linear blending          on                            2.95   -0.01    2.95    369   {"linearBlend":true}
+Anti-aliasing (FXAA)     on                            3.51    0.55    3.59    298   {"fxaa":true}
+Bloom                    10%                           3.24    0.28    3.44    309   {"bloom":0.1}
+Depth of field           50%                           3.32    0.36    3.32     59   {"depthOfField":0.5}
+Sprite shadows           on                            2.93   -0.03    2.93    288   {"spriteShadows":true}
+Cloud shadows            on, speed 100%                3.03    0.07    3.14    385   {"cloudShadows":true}
+Sun shadows, map         medium                        7.41    4.44    7.41    138   {"sunShadows":true,"shadowMethod":"map","shadowQuality":"medium"}
+Sun shadows, voxel       medium, softness 40%         13.05   10.09   13.05    126   {"sunShadows":true,"shadowMethod":"voxel","shadowQuality":"medium","shadowSoftness":0.4}
+Sun shadows, voxel       high, softness 100%           0.00   -2.96    0.00     12   {"sunShadows":true,"shadowMethod":"voxel","shadowQuality":"high","shadowSoftness":1}
+Grass blades             density 10                    3.15    0.19    3.25    206   {"grass":true,"grassDensity":10}
+Grass blades             density 20                    3.21    0.24    3.24    278   {"grass":true,"grassDensity":20}
+Ambient life             density 100%                  2.90   -0.07    2.92    331   {"atmosphere":true,"atmosphereDensity":1}
+Weather                  rain 100%                     2.98    0.01    3.26    286   {"weather":"rain","weatherDensity":1}
+Fog and god rays         on                            2.95   -0.02    2.97    329   {"volumetrics":true}
+Water reflection         on                            3.20    0.24    3.29    291   {"waterReflection":true}
+preset                   Lowest                        2.97    0.00    2.98    303   {"ambientOcclusion":false,"sunShadows":false,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"low","cloudShadows":false,"bloom":0,"depthOfField":0,"fxaa":false,"grass":false,"grassDensity":10,"atmosphere":false,"atmosphereDensity":1,"weatherDensity":0.5,"volumetrics":false,"spriteShadows":false,"waterReflection":false}
+preset                   Low                           7.57    4.61    7.85    136   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"low","cloudShadows":false,"bloom":0,"depthOfField":0,"fxaa":true,"grass":true,"grassDensity":4,"atmosphere":false,"atmosphereDensity":1,"weatherDensity":0.5,"volumetrics":false,"spriteShadows":true,"waterReflection":false}
+preset                   Medium                        9.78    6.82    9.85    100   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"medium","cloudShadows":true,"bloom":0.1,"depthOfField":0,"fxaa":true,"grass":true,"grassDensity":8,"atmosphere":true,"atmosphereDensity":0.5,"weatherDensity":1,"volumetrics":false,"spriteShadows":true,"waterReflection":true}
+preset                   High                         15.07   12.11   15.08     65   {"ambientOcclusion":false,"sunShadows":true,"shadowMethod":"map","shadowSoftness":0.4,"shadowQuality":"medium","cloudShadows":true,"bloom":0.1,"depthOfField":0.5,"fxaa":true,"grass":true,"grassDensity":10,"atmosphere":true,"atmosphereDensity":1,"weatherDensity":1,"volumetrics":true,"spriteShadows":true,"waterReflection":true}
+preset                   Ultra                        41.65   38.68   51.26     23   {"ambientOcclusion":true,"sunShadows":true,"shadowMethod":"voxel","shadowSoftness":0.5,"shadowQuality":"high","cloudShadows":true,"bloom":0.15,"depthOfField":0.7,"fxaa":true,"grass":true,"grassDensity":20,"atmosphere":true,"atmosphereDensity":1.5,"weatherDensity":1.5,"volumetrics":true,"spriteShadows":true,"waterReflection":true}
+
+GPU ms by stage (where the time goes):
+setting                  level                      scene (depth p scene composit post (tonemap,          bloom sun shadow map weather and am water reflecti
+baseline                 minimal (everything optional off)           2.50           0.24           0.23           0.00           0.00           0.00           0.00
+Ambient occlusion        on                                   2.45           0.23           0.25           0.00           0.00           0.00           0.00
+Linear blending          on                                   2.42           0.23           0.29           0.00           0.00           0.00           0.00
+Anti-aliasing (FXAA)     on                                   2.83           0.23           0.45           0.00           0.00           0.00           0.00
+Bloom                    10%                                  2.39           0.22           0.24           0.39           0.00           0.00           0.00
+Depth of field           50%                                  2.50           0.22           0.23           0.38           0.00           0.00           0.00
+Sprite shadows           on                                   2.47           0.22           0.23           0.00           0.00           0.00           0.00
+Cloud shadows            on, speed 100%                       2.59           0.22           0.23           0.00           0.00           0.00           0.00
+Sun shadows, map         medium                               6.75           0.21           0.23           0.00           0.22           0.00           0.00
+Sun shadows, voxel       medium, softness 40%                12.38           0.21           0.22           0.00           0.23           0.00           0.00
+Sun shadows, voxel       high, softness 100%                  0.00           0.00           0.00           0.00           0.00           0.00           0.00
+Grass blades             density 10                           2.68           0.23           0.23           0.00           0.00           0.00           0.00
+Grass blades             density 20                           2.75           0.23           0.23           0.00           0.00           0.00           0.00
+Ambient life             density 100%                         2.43           0.22           0.23           0.00           0.00           0.02           0.00
+Weather                  rain 100%                            2.47           0.22           0.22           0.00           0.00           0.06           0.00
+Fog and god rays         on                                   2.47           0.22           0.23           0.00           0.00           0.03           0.00
+Water reflection         on                                   2.29           0.23           0.23           0.00           0.00           0.00           0.46
+preset                   Lowest                               2.51           0.22           0.23           0.00           0.00           0.00           0.00
+preset                   Low                                  6.71           0.22           0.42           0.00           0.23           0.00           0.00
+preset                   Medium                               7.27           0.22           0.42           0.37           0.32           0.01           1.15
+preset                   High                                 7.45           0.25           5.45           0.38           0.28           0.04           1.18
+preset                   Ultra                               26.83           0.22           9.78           0.38           0.15           0.04           4.26
+
+=== how much the view changes a setting (+gpu over the same view's baseline) ===
+setting                  level                       far view (zo  normal view   close view (
+baseline                 minimal (everything optional off)          0.00          0.00          0.00
+Ambient occlusion        on                                 -0.05          0.02         -0.03
+Linear blending          on                                  0.05          0.08         -0.01
+Anti-aliasing (FXAA)     on                                  0.29          0.28          0.55
+Bloom                    10%                                 0.32          0.34          0.28
+Depth of field           50%                                 2.99          4.84          0.36
+Sprite shadows           on                                  0.02         -0.04         -0.03
+Cloud shadows            on, speed 100%                      0.05          0.10          0.07
+Sun shadows, map         medium                              2.78          3.98          4.44
+Sun shadows, voxel       medium, softness 40%                8.68         12.84         10.09
+Sun shadows, voxel       high, softness 100%                15.52         -2.68         -2.96
+Grass blades             density 10                         -0.11          0.12          0.19
+Grass blades             density 20                          0.09          0.21          0.24
+Ambient life             density 100%                        0.01          0.22         -0.07
+Weather                  rain 100%                           0.47          0.21          0.01
+Fog and god rays         on                                  0.04          0.19         -0.02
+Water reflection         on                                  0.37          0.44          0.24
+preset                   Lowest                              0.09          0.11          0.00
+preset                   Low                                 3.54          4.59          4.61
+preset                   Medium                              5.59          6.88          6.82
+preset                   High                                8.70         12.23         12.11
+preset                   Ultra                              22.78         31.71         38.68
+
+
+=== sun sweep: GPU ms per frame with the sun at each azimuth (normal view; 90 = noon, 270 = midnight) ===
+setting                  level                           0    45    90   135   180   225   270   315     min median    max  jump
+baseline                 minimal (everything optional off)    2.8   2.7   2.7   2.8   2.7   2.8   3.0   2.8     2.7    2.8    3.0  
+Sprite shadows           on                            2.8   2.8   2.8   2.8   2.8   2.9   2.9   2.9     2.8    2.8    2.9  
+Cloud shadows            on, speed 100%                2.8   2.9   2.8   2.8   2.7   2.7   2.8   2.8     2.7    2.8    2.9  
+Sun shadows, map         medium                        6.7   6.6   6.6   2.9   2.7   2.7   2.8   2.7     2.7    2.9    6.7  << SPIKE +3.8 ms
+Sun shadows, voxel       medium, softness 40%          0.0  12.5  13.1   2.7   2.8   2.7   2.6   2.7     0.0    2.7   13.1  << SPIKE +10.4 ms
+Sun shadows, voxel       high, softness 100%           2.7   0.0  19.1  22.3   2.7   2.7   2.9   2.8     0.0    2.8   22.3  << SPIKE +19.5 ms
+Ambient life             density 100%                  2.7   2.7   2.6   2.7   2.8   2.8   2.8   2.7     2.6    2.7    2.8  
+Fog and god rays         on                            2.8   2.8   2.7   2.8   2.8   2.9   2.8   2.9     2.7    2.8    2.9  
+Water reflection         on                            3.2   3.1   3.1   3.1   3.1   3.1   3.1   3.1     3.1    3.1    3.2  
+preset                   Lowest                        2.7   2.7   2.6   3.2   2.7   2.7   2.7   2.8     2.6    2.7    3.2  
+preset                   Low                           7.4   7.1   7.1   3.1   3.2   3.2   3.3   3.2     3.1    3.3    7.4  << SPIKE +4.2 ms
+preset                   Medium                        9.5   9.4   9.4   4.0   4.0   4.0   4.0   4.3     4.0    4.3    9.5  << SPIKE +5.2 ms
+preset                   High                         14.8  14.1  14.1   8.7   8.8   8.9   8.9   9.0     8.7    9.0   14.8  << SPIKE +5.7 ms
+preset                   Ultra                        39.7  38.9  40.1  12.3  12.1  12.1  12.1  12.5    12.1   12.5   40.1  << SPIKE +27.5 ms
+A SPIKE is a sun position where the frame costs much more than at most others: a setting that suddenly drops the frame rate.
+
+Stages: scene (depth peeling) | scene composite | post (tonemap, depth of field, FXAA) | bloom | sun shadow map | weather and ambient life | water reflection
+Costs of different settings add up only roughly (they share bandwidth and overdraw); the preset rows are measured together.

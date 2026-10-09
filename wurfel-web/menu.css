@@ -177,6 +177,8 @@ input[type="text"] {
 .row { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(90px, 1.4fr) 3.2em; align-items: center; gap: 10px; }
 .row output { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 0.85rem; }
 .row.check { grid-template-columns: auto 1fr; }
+.row.sub { margin-left: 1.4rem; padding-left: 0.8rem; border-left: 2px solid var(--muted); }
+.row[hidden] { display: none; }
 .row.check > .item { grid-column: 1 / -1; width: fit-content; }
 .row small { color: var(--muted); }
 input[type="range"] { width: 100%; min-height: 28px; accent-color: var(--accent); }
@@ -344,3 +346,7 @@ kbd {
 .frametime { display: grid; gap: 4px; margin-bottom: 8px; }
 .frametime canvas { width: 100%; height: 120px; display: block; background: var(--field); border: 1px solid var(--panel-border); border-radius: 8px; }
 .frametime-stats { color: var(--muted); font: 0.75rem var(--mono); }
+
+#quality-preset.manual { accent-color: var(--muted); }
+#quality-name { min-width: 5.5em; }
+.row.quality { grid-template-columns: minmax(110px, 1fr) minmax(90px, 1.4fr) 5.5em; }

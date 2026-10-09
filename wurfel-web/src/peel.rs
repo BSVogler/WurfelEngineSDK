@@ -372,6 +372,7 @@ pub mod gpu {
             &self,
             encoder: &mut wgpu::CommandEncoder,
             background: wgpu::Color,
+            timer: Option<&crate::gputime::GpuTimer>,
             mut draw: impl FnMut(&mut wgpu::RenderPass<'_>),
         ) {
             for pass in passes() {
@@ -388,7 +389,7 @@ pub mod gpu {
                         depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(CLEAR_DEPTH), store: wgpu::StoreOp::Store }),
                         stencil_ops: None,
                     }),
-                    timestamp_writes: None,
+                    timestamp_writes: crate::gputime::GpuTimer::writes(timer, "scene (depth peeling)"),
                     occlusion_query_set: None,
                     multiview_mask: None,
                 });
@@ -404,7 +405,7 @@ pub mod gpu {
                     ops: wgpu::Operations { load: wgpu::LoadOp::Clear(background), store: wgpu::StoreOp::Store },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
+                timestamp_writes: crate::gputime::GpuTimer::writes(timer, "scene composite"),
                 occlusion_query_set: None,
                 multiview_mask: None,
             });

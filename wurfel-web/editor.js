@@ -2,19 +2,20 @@
 // click does) lives in the wasm client (src/editor.rs); this file only shows its state and forwards
 // toolbar clicks:
 //
-//   wurfelEditor.update(json)  {"active", "tool", "selected", "tools": [...], "blocks": [...], "value", "values",
-//                              "things": [...], "thing", "layer", "cursor", "undo", "redo"}
+//   wurfelEditor.update(json)  {"active", "tool", "selected", "tools": [...], "blocks": [...], "previews": [...],
+//                              "value", "values", "things": [...], "thing", "layer", "cursor", "undo", "redo"}
+//                              ("previews": per block the pieces of its sprites, see cursor.rs)
 //                              pushed by the client whenever one of them changes
 //   wurfelEditor.active        true while the editor is on
 //   wurfelEditor.toggle(mode)  "on" | "off" | anything else toggles; returns a message when it is
-//                              refused (offline, Caveland), else "". Used by the console `editor` command.
+//                              refused (offline), else "". Used by the console `editor` command.
 //
 // Calls into the client: wurfelNet.editor(mode), wurfelNet.editorTool(name), wurfelNet.editorBlock(index),
 // wurfelNet.editorValue(step), wurfelNet.editorThing(index), wurfelNet.editorLayer(steps),
 // wurfelNet.editorHistory(undo), wurfelNet.editorSave(). F2 toggles the editor (handled by the client).
 // Mouse use: left button = the selected tool (hold to paint or to drag a thing), right button = erase,
 // middle button or Alt + left = pick, wheel = layers (Ctrl/Cmd + wheel zooms). Keys: WASD/arrows pan the
-// camera (Shift = fast), 1-4 = block, +/- = block value, Delete = remove the selected thing,
+// camera (Shift = fast), 1/2 = turn the camera, click a block to choose it, +/- = block value, Delete = remove the selected thing,
 // Ctrl/Cmd+Z = undo, plus Shift = redo.
 (function () {
   "use strict";
@@ -29,12 +30,32 @@
     erase: "Remove the block you click",
     pick: "Take the kind of the block you click",
   };
+  // The icons of the Java toolbar (sprites/skin); the eyedropper has none.
+  const TOOL_ICONS = { draw: "draw", bucket: "bucket", replace: "replace", select: "pointer", spawn: "entity", erase: "eraser" };
   const BLOCK_COLORS = { stone: "#8a8f98", dirt: "#8b5a2b", grass: "#5aa83c", sand: "#e0cf8a" };
 
   let root = null, toolRow = null, blockRow = null, valueRow = null, valueLabel = null, thingRow = null, layerLabel = null;
   let cursorLine = null, hintLine = null, undoButton = null, redoButton = null;
   let state = { active: false, tool: "draw", selected: 0, tools: [], blocks: [], value: 0, values: 1, things: [], thing: 0, layer: null, cursor: "", undo: false, redo: false };
   let built = { tools: "", blocks: "", things: "" };
+
+  // A block drawn from its sprites: the pieces sit in a 200 x 223 box that is scaled down to `size` wide.
+  function blockPicture(preview, size) {
+    if (!preview || !preview.parts || !preview.parts.length) return null;
+    const scale = size / preview.w;
+    const box = el("span", "ed-picture");
+    box.style.width = size + "px";
+    box.style.height = Math.round(preview.h * scale) + "px";
+    const inner = el("span", "ed-picture-box");
+    inner.style.transform = `scale(${scale})`;
+    for (const p of preview.parts) {
+      const piece = el("span", "ed-piece");
+      piece.style.cssText = `left:${p.dx}px;top:${p.dy}px;width:${p.w}px;height:${p.h}px;background:url("${p.page}") -${p.x}px -${p.y}px`;
+      inner.append(piece);
+    }
+    box.append(inner);
+    return box;
+  }
 
   function el(tag, className, text) {
     const e = document.createElement(tag);
@@ -121,14 +142,24 @@
     if (built.tools !== toolKey) {
       built.tools = toolKey;
       toolRow.replaceChildren(...state.tools.map((name) => {
-        const b = el("button", "ed-tool", TOOLS[name] || name);
+        const b = el("button", "ed-tool");
+        if (TOOL_ICONS[name]) {
+          const icon = el("img", "ed-icon");
+          icon.src = `assets/editor/${TOOL_ICONS[name]}.png`;
+          icon.alt = "";
+          icon.width = 20;
+          icon.height = 20;
+          b.append(icon);
+        }
+        b.append(el("span", "", TOOLS[name] || name));
+        b.title = TOOL_HINTS[name] || "";
         b.type = "button";
         b.dataset.tool = name;
         b.addEventListener("click", () => net("editorTool", name));
         return b;
       }));
     }
-    const blockKey = state.blocks.join();
+    const blockKey = state.blocks.join() + JSON.stringify(state.previews || []);
     if (built.blocks !== blockKey) {
       built.blocks = blockKey;
       blockRow.replaceChildren(...state.blocks.map((name, i) => {
@@ -136,9 +167,12 @@
         b.type = "button";
         b.title = name;
         b.dataset.index = String(i);
-        const swatch = el("span", "ed-swatch");
-        swatch.style.background = BLOCK_COLORS[name] || "#888";
-        b.append(el("kbd", "", String(i + 1)), swatch, el("span", "", name));
+        let picture = blockPicture((state.previews || [])[i], 44);
+        if (!picture) {
+          picture = el("span", "ed-swatch");
+          picture.style.background = BLOCK_COLORS[name] || "#888";
+        }
+        b.append(picture, el("span", "", name));
         b.addEventListener("click", () => net("editorBlock", i));
         return b;
       }));

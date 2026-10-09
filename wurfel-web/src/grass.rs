@@ -19,6 +19,7 @@ use wurfel_sim::World;
 
 use crate::atlas::Region;
 use crate::mesh::{Vertex, FACE_SPRITE};
+use crate::detail::Stones;
 use crate::sprites::Sprites;
 
 /// Blocks around the viewer that get blades at all (see `grass::blades_at_distance`).
@@ -71,6 +72,8 @@ pub struct Grass {
     pub settings: Settings,
     sprites: Option<Rc<Sprites>>,
     wind: Wind,
+    /// The pebbles and rocks of the same ground cover (`detail.rs`).
+    stones: Stones,
     cells: Vec<Cell>,
     key: Option<Key>,
     /// The vertices of this frame.
@@ -81,6 +84,12 @@ impl Grass {
     pub fn set_sprites(&mut self, sprites: Option<Rc<Sprites>>) {
         self.sprites = sprites;
         self.key = None;
+        self.stones.reset();
+    }
+
+    /// Where the wind blows to in game space (a unit vector, `LightingController::wind_game`).
+    pub fn set_wind_direction(&mut self, direction: (f32, f32)) {
+        self.wind.direction = direction;
     }
 
     /// Everything the next frame needs: advance the wind by `dt` seconds and build the blades around
@@ -98,6 +107,8 @@ impl Grass {
             self.key = Some(key);
             self.cells = find_cells(world, viewer, key.z, max_z);
         }
+        // Pebbles and rocks first: they are few and keep their own cap, the blades fill up to theirs.
+        self.stones.update(&sprites, world, terrain_version, viewer, max_z, self.settings.density, &mut self.vertices);
         let (Some(blade_art), Some(stone_art)) = (sprites.entity(7, 0), sprites.entity(7, 1)) else { return };
         let forces: Vec<(f32, f32, f32)> = forces.iter().map(|f| (game(f.x, f.y).0, game(f.x, f.y).1, f.z)).collect();
         let mut drawn = 0;

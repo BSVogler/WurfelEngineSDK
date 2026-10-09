@@ -16,6 +16,7 @@ struct Camera {
     _pad1: f32,
     _pad2: f32,
     view: vec4<f32>,
+    persp: vec4<f32>,
 };
 
 struct SunShadow {

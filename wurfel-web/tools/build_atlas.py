@@ -26,6 +26,8 @@ DEFAULT_SRC = os.path.join(
     os.path.dirname(__file__), "..", "..", "..", "Caveland", "src", "main", "resources", "com", "bombinggames", "caveland"
 )
 OUT = os.path.join(os.path.dirname(__file__), "..", "assets", "sprites")
+# Sprites of tools/assetgen/pipeline.py: <name>_<view>.png with its normal map <name>_<view>_n.png, packed as `<name>-<view>`.
+GENERATED = os.path.join(os.path.dirname(__file__), "..", "assets", "generated")
 
 PLAYER_ACTIONS = ("w", "h", "l", "i", "o", "s", "t", "j")
 
@@ -110,6 +112,18 @@ def main():
                 w, h = r["size"]
                 sprites.append((name, image.crop((x, y, x + w, y + h)), r))
                 normals.append(normal_image.crop((x, y, x + w, y + h)))
+    if os.path.isdir(GENERATED):
+        for file in sorted(os.listdir(GENERATED)):
+            if file.endswith(".png") and not file.endswith("_n.png"):
+                normal_file = os.path.join(GENERATED, file[:-4] + "_n.png")
+                if not os.path.exists(normal_file):
+                    raise SystemExit(f"{file} has no normal map {os.path.basename(normal_file)}")
+                image = Image.open(os.path.join(GENERATED, file)).convert("RGBA")
+                normal_image = Image.open(normal_file).convert("RGBA")
+                size = image.size
+                meta = {"xy": (0, 0), "size": size, "orig": size, "offset": (0, 0)}
+                sprites.append((file[:-4].replace("_", "-"), image, meta))
+                normals.append(normal_image)
     placements, pages = pack(sprites)
 
     os.makedirs(OUT, exist_ok=True)

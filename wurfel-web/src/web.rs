@@ -110,6 +110,9 @@ struct CameraUniform {
     mirror: [f32; 3],
     /// The free camera, see `View::uniform`.
     view: [f32; 4],
+    /// The perspective: `[view::PERSPECTIVE or 0 for the orthographic fixed camera, the view depth of the
+    /// focus, 0, 0]`.
+    persp: [f32; 4],
 }
 
 struct Camera {
@@ -133,6 +136,8 @@ struct State {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipeline: wgpu::RenderPipeline,
+    /// The depth pre-pass of the same scene (`fs_depth`): the depth of what each layer keeps, no colour.
+    depth_pipeline: wgpu::RenderPipeline,
     camera_buffer: wgpu::Buffer,
     lighting_buffer: wgpu::Buffer,
     lighting: crate::lighting::LightingController,
@@ -177,10 +182,22 @@ struct State {
     world_vertices: u32,
     dynamic_buffer: wgpu::Buffer,
     dynamic_vertices: u32,
-    /// The grass blades (`grass.rs`): their own buffer, as there can be thousands.
+    /// The ground cover (`grass.rs`: blades, pebbles, rocks): its own buffer, as there can be thousands.
     grass: crate::grass::Grass,
     grass_buffer: wgpu::Buffer,
     grass_vertices: u32,
+    /// Ambient particles, weather, and fog sprites (`atmosphere.rs`).
+    atmosphere: crate::atmosphere::gpu::Atmosphere,
+    atmo_settings: crate::atmosphere::Settings,
+    atmo_columns: crate::atmosphere::Columns,
+    atmo_draws: Vec<crate::atmosphere::Draw>,
+    atmo_uniform: crate::atmosphere::AtmosUniform,
+    /// The wind clock in seconds.
+    atmo_time: f32,
+    /// The sprite shadows' switch.
+    sprite_shadows: crate::spriteshadow::Settings,
+    /// The menu's water reflection switch (`reflection.rs`).
+    water_reflection: bool,
     /// A glTF model asked for with `?model=` (see [`load_model`]): loaded, then placed next to the
     /// local player once there is one.
     model_loaded: Option<LoadedModel>,
@@ -205,6 +222,10 @@ struct State {
     /// The device can blend into a float texture; without it there is no linear light and no bloom.
     hdr: bool,
     backend: wgpu::Backend,
+    /// The GPU's own timing of the frame's passes (WebGPU with timestamp queries only).
+    gpu_timer: Option<crate::gputime::GpuTimer>,
+    /// The latest averages of it, for the status and the frame time diagram.
+    gpu_times: Option<crate::gputime::GpuTimes>,
     camera: Camera,
     dpr: f32,
     /// The menu's default zoom last applied to the camera, so only a change of the setting resets
@@ -328,6 +349,7 @@ async fn run() -> Result<(), String> {
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor {
             required_limits: wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits()),
+            required_features: crate::gputime::GpuTimer::feature(&adapter),
             ..Default::default()
         })
         .await
@@ -362,7 +384,7 @@ async fn run() -> Result<(), String> {
 
     let grass_buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("grass"),
-        size: (crate::grass::MAX_BLADES * 6 * std::mem::size_of::<Vertex>()) as u64,
+        size: ((crate::grass::MAX_BLADES + crate::detail::MAX_INSTANCES) * 6 * std::mem::size_of::<Vertex>()) as u64,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
@@ -511,13 +533,15 @@ async fn run() -> Result<(), String> {
     let post_settings = post_settings_from_menu().limited_by(hdr_ok);
     web_sys::console::log_1(&format!("render: {post_settings:?}").into());
     let post = Post::new(&device, scene_format, config.format, peeling.blended(), peeling.nearest_depth(), config.width, config.height);
+    let atmosphere = crate::atmosphere::gpu::Atmosphere::new(&device, &queue, scene_format, &camera_buffer, &lighting_buffer, peeling.nearest_depth());
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("blocks"),
         bind_group_layouts: &[Some(&bind_group_layout), Some(&atlas_layout), Some(peeling.peel_layout())],
         immediate_size: 0,
     });
-    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("blocks"),
+    // `depth_only`: the pre-pass writes the depth alone; the colour pass then draws the faces at that depth.
+    let make_pipeline = |depth_only: bool| device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(if depth_only { "blocks depth" } else { "blocks" }),
         layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState {
             module: &shader,
@@ -527,15 +551,19 @@ async fn run() -> Result<(), String> {
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader,
-            entry_point: Some("fs_main"),
+            entry_point: Some(if depth_only { "fs_depth" } else { "fs_main" }),
             compilation_options: Default::default(),
-            targets: &[Some(peeling.color_format().into())],
+            targets: &[Some(wgpu::ColorTargetState {
+                format: peeling.color_format(),
+                blend: None,
+                write_mask: if depth_only { wgpu::ColorWrites::empty() } else { wgpu::ColorWrites::ALL },
+            })],
         }),
         primitive: wgpu::PrimitiveState::default(),
         depth_stencil: Some(wgpu::DepthStencilState {
             format: DEPTH_FORMAT,
-            depth_write_enabled: Some(true),
-            depth_compare: Some(wgpu::CompareFunction::Less),
+            depth_write_enabled: Some(depth_only),
+            depth_compare: Some(if depth_only { wgpu::CompareFunction::Less } else { wgpu::CompareFunction::LessEqual }),
             stencil: Default::default(),
             bias: Default::default(),
         }),
@@ -543,6 +571,8 @@ async fn run() -> Result<(), String> {
         multiview_mask: None,
         cache: None,
     });
+    let pipeline = make_pipeline(false);
+    let depth_pipeline = make_pipeline(true);
 
     let dpr = window.device_pixel_ratio() as f32;
     let (peak_x, peak_y) = IslandGenerator::new(DEFAULT_SEED).peak();
@@ -553,6 +583,7 @@ async fn run() -> Result<(), String> {
     let minimap = Minimap::new(&document, MINIMAP_SIZE.0, MINIMAP_SIZE.1, dpr.round().max(1.0) as u32).ok();
     let mut lighting = crate::lighting::LightingController::new();
     lighting.linear_light = post_settings.linear;
+    let gpu_timer = crate::gputime::GpuTimer::new(&device, &queue);
     let state = Rc::new(RefCell::new(State {
         peeling,
         post,
@@ -578,6 +609,7 @@ async fn run() -> Result<(), String> {
         device,
         queue,
         pipeline,
+        depth_pipeline,
         camera_buffer,
         lighting_buffer,
         lighting,
@@ -610,9 +642,19 @@ async fn run() -> Result<(), String> {
         grass: crate::grass::Grass::default(),
         grass_buffer,
         grass_vertices: 0,
+        atmosphere,
+        atmo_settings: crate::atmosphere::Settings::default(),
+        atmo_columns: crate::atmosphere::Columns::default(),
+        atmo_draws: Vec::new(),
+        atmo_uniform: bytemuck::Zeroable::zeroed(),
+        atmo_time: 0.0,
+        sprite_shadows: crate::spriteshadow::Settings::default(),
+        water_reflection: true,
         model_loaded: None,
         model_placed: None,
         backend,
+        gpu_timer,
+        gpu_times: None,
         world,
         view_chunk: (0, 0),
         render,
@@ -723,6 +765,7 @@ async fn load_sprites(state: Rc<RefCell<State>>, device: wgpu::Device, queue: wg
             s.actors.set_sprites(Some(sprites.clone()));
             s.grass.set_sprites(Some(sprites.clone()));
             apply_grass_settings(&mut s);
+            apply_atmosphere_settings(&mut s);
             s.render.set_sprites(Some(sprites));
             s.remesh = true;
         }
@@ -1030,6 +1073,24 @@ fn export_status(s: &mut State) {
     set("fps", s.net.report(0.0).fps.round().into());
     set("backend", format!("{:?}", s.backend).into());
     set("map", s.map_name.as_str().into());
+    if let Some(times) = s.gpu_timer.as_ref().and_then(|t| t.take()) {
+        s.gpu_times = Some(times);
+    }
+    if let Some(times) = &s.gpu_times {
+        let gpu = js_sys::Object::new();
+        let put = |key: &str, ms: f64| {
+            let _ = js_sys::Reflect::set(&gpu, &JsValue::from_str(key), &ms.into());
+        };
+        put("busy", times.busy);
+        put("span", times.span);
+        put("frames", f64::from(times.frames));
+        let stages = js_sys::Object::new();
+        for (name, ms) in &times.stages {
+            let _ = js_sys::Reflect::set(&stages, &JsValue::from_str(name), &(*ms).into());
+        }
+        let _ = js_sys::Reflect::set(&gpu, &JsValue::from_str("stages"), &stages);
+        set("gpu", gpu.into());
+    }
     let _ = js_sys::Reflect::set(&window, &JsValue::from_str("wurfelStatus"), &status);
     export_players(s, &window);
 }
@@ -1823,11 +1884,20 @@ fn install_menu_events(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         if let Some(speed) = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "cloudSpeed").as_f64()) {
             s.lighting.cloud_speed = speed as f32;
         }
+        if let Some(degrees) = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "windDirection").as_f64()) {
+            s.lighting.wind_degrees = degrees as f32;
+        }
+        if let Some(degrees) = query_value("winddirection").and_then(|v| v.parse::<f32>().ok()) {
+            s.lighting.wind_degrees = degrees;
+        }
+        let wind = s.lighting.wind_game();
+        s.grass.set_wind_direction(wind);
         s.lighting.apply_settings();
         apply_post_settings(&mut s);
         s.sun_shadows = sun_shadows_from_menu();
         apply_sun_shadow_quality(&mut s);
         apply_grass_settings(&mut s);
+        apply_atmosphere_settings(&mut s);
         apply_menu_zoom(&mut s);
     });
 
@@ -1865,6 +1935,19 @@ fn install_net_bridge(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
     fn js<T: ?Sized + wasm_bindgen::closure::WasmClosure>(closure: Closure<T>) -> JsValue {
         closure.into_js_value()
     }
+    // Benchmarks and debugging: `wurfelNet.sun(azimuth)` stops the clock and puts the sun at that azimuth in
+    // degrees (0..360, 90 is noon, 270 midnight); a negative or NaN value lets the day run again.
+    expose("sun", &|s| {
+        js(Closure::<dyn FnMut(f64)>::new(move |azimuth: f64| {
+            let lighting = &mut s.borrow_mut().lighting;
+            if azimuth.is_finite() && azimuth >= 0.0 {
+                lighting.time_scale = 0.0;
+                lighting.engine.set_azimuth(azimuth as f32);
+            } else {
+                lighting.time_scale = 1.0;
+            }
+        }))
+    });
     expose("action", &|s| {
         js(Closure::<dyn FnMut(String, i32)>::new(move |name: String, arg: i32| {
             send(&mut s.borrow_mut(), &ClientMsg::Action { name, arg });
@@ -1964,7 +2047,7 @@ fn editor_click(s: &mut State, button: i16, alt: bool) {
     let edit = s.editor.click(button, target, |(x, y, z)| world.get(x, y, z));
     send_edits(s, edit);
     // The select and spawn tools work on things instead of blocks.
-    let under = pointer_screen(s).and_then(|(sx, sy)| pick_thing(&s.things, sx, sy));
+    let under = pointer_screen(s).and_then(|(sx, sy)| pick_thing(&s.things, &s.view, sx, sy));
     let action = s.editor.click_thing(button, target, under);
     send_thing_action(s, action);
 }
@@ -1978,7 +2061,7 @@ fn editor_drag(s: &mut State) {
     let world = &s.world;
     let edit = s.editor.drag(target, |(x, y, z)| world.get(x, y, z));
     send_edits(s, edit);
-    let action = pointer_screen(s).and_then(|screen| s.editor.drag_thing(screen, &s.things));
+    let action = pointer_screen(s).and_then(|screen| s.editor.drag_thing(screen, &s.view, &s.things));
     send_thing_action(s, action);
 }
 
@@ -1996,6 +2079,10 @@ fn editor_release(s: &mut State, button: i16) {
 }
 
 fn send_thing_action(s: &mut State, action: Option<ThingAction>) {
+    // A game mode owns the things; the server would ignore these.
+    if s.mode.is_some() {
+        return;
+    }
     match action {
         Some(ThingAction::Spawn { kind, pos }) => send(s, &ClientMsg::SpawnThing { kind: kind.to_string(), pos }),
         Some(ThingAction::Move { id, pos }) => send(s, &ClientMsg::MoveThing { id, pos }),
@@ -2017,13 +2104,10 @@ fn editor_history(s: &mut State, undo: bool) {
 }
 
 /// Enter or leave the editor (F2, the `editor` console command, the toolbar). Not available
-/// offline (the preview is read-only) or in a game mode (it has its own rules for blocks).
+/// offline (the preview is read-only). In a game mode it edits blocks only: the mode owns the things.
 fn set_editor(s: &mut State, on: bool) -> Result<(), &'static str> {
     if on && !s.connected {
         return Err("The editor needs a world: join one from the menu first.");
-    }
-    if on && s.mode.is_some() {
-        return Err("The editor is not available in game modes, which have their own rules for blocks.");
     }
     if on && s.camera_mode.is_free() {
         set_camera_mode(s, CameraMode::Fixed);
@@ -2048,7 +2132,8 @@ fn update_editor_ui(s: &mut State, target: Option<Pick>) {
         Some(pick) => editor::cursor_text(Some(pick), s.world.get(pick.hit.0, pick.hit.1, pick.hit.2)),
         None => String::new(),
     };
-    let json = s.editor.ui_json(&cursor);
+    let previews = crate::cursor::palette_previews(s.render.sprites().map(|r| &**r), s.editor.brush());
+    let json = s.editor.ui_json(&cursor, &previews);
     if json != s.editor_ui {
         call_js("wurfelEditor", "update", &JsValue::from_str(&json));
         s.editor_ui = json;
@@ -2068,6 +2153,7 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         s.reflection = Reflection::new(&s.device, s.scene_format, s.config.width, s.config.height);
         remake_scene_groups(s);
         s.post.resize(&s.device, s.peeling.blended(), s.peeling.nearest_depth(), s.config.width, s.config.height);
+        s.atmosphere.resize(&s.device, s.peeling.nearest_depth());
     });
 
     let s = state.clone();
@@ -2100,8 +2186,11 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
                 return;
             }
         }
-        if let Some((name, arg)) = s.mode.as_ref().and_then(|m| m.mouse_action(e.button(), true)) {
-            send_action(&mut s, name, arg);
+        // In the editor the mouse builds instead of acting in the game.
+        if !s.editor.active() {
+            if let Some((name, arg)) = s.mode.as_ref().and_then(|m| m.mouse_action(e.button(), true)) {
+                send_action(&mut s, name, arg);
+            }
         }
         editor_click(&mut s, e.button(), e.alt_key());
     });
@@ -2189,7 +2278,7 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         if input_blocked() {
             return;
         }
-        if s.mode.is_some() {
+        if s.mode.is_some() && !s.editor.active() {
             // The game mode's keys (Caveland: swing, throw, use, drop, craft...).
             if !e.repeat() {
                 if let Some((name, arg)) = s.mode.as_ref().and_then(|m| m.key_action(&key, true)) {
@@ -2209,9 +2298,6 @@ fn install_input(window: &web_sys::Window, state: &Rc<RefCell<State>>) {
         } else if s.editor.active() && matches!(key.as_str(), "+" | "=" | "-") && !e.ctrl_key() && !e.meta_key() {
             s.editor.step_value(if key == "-" { -1 } else { 1 });
             return;
-        } else if let Some(index) = Editor::index_for_key(&key) {
-            // Number keys choose the block to build with, but only inside the editor.
-            s.editor.select_block(index);
         }
         s.keys.insert(key);
     });
@@ -2267,10 +2353,10 @@ fn set_camera_mode(s: &mut State, mode: CameraMode) {
 }
 
 /// Turn the map of the fixed camera a quarter (keys 1 and 2): `quarters` 1 to the left, -1 to the
-/// right. The picture eases round (`step_map_turn`). Not in the editor, whose picking assumes the
-/// unturned projection, and not with the free camera, which turns by the mouse.
+/// right. The picture eases round (`step_map_turn`). The editor turns with it (its picking and panning
+/// follow the view). Not with the free camera, which turns by the mouse.
 fn turn_map(s: &mut State, quarters: i32) {
-    if s.camera_mode.is_free() || s.editor.active() {
+    if s.camera_mode.is_free() {
         return;
     }
     s.turn_target += quarters as f32 * std::f32::consts::FRAC_PI_2;
@@ -2281,11 +2367,6 @@ fn turn_map(s: &mut State, quarters: i32) {
 fn step_map_turn(s: &mut State, dt: f32) {
     if s.camera_mode.is_free() {
         return;
-    }
-    if s.editor.active() {
-        // The editor works in the unturned view.
-        s.turn_target = 0.0;
-        s.view.yaw = 0.0;
     }
     let diff = s.turn_target - s.view.yaw;
     if diff.abs() < 0.002 {
@@ -2328,7 +2409,7 @@ fn camera_focus(s: &State) -> Option<Vec3> {
 /// The block under the pointer, if any (not counting the layers the editor has hidden).
 fn hovered(s: &State) -> Option<Pick> {
     let (sx, sy) = pointer_screen(s)?;
-    pick(&s.world, sx, sy, s.editor.layer())
+    pick(&s.world, &s.view, sx, sy, s.editor.layer())
 }
 
 /// A block changed on the server: update the world, break particles, mesh again.
@@ -2413,7 +2494,7 @@ fn frame(s: &mut State, now_ms: f64) {
         let held = |action: &str| s.bindings.held(action, &s.keys) as i32 as f32;
         let direction = (held("right") - held("left"), held("down") - held("up"));
         let fast = s.keys.contains("shift");
-        s.editor.pan_by(direction, fast, dt);
+        s.editor.pan_by(direction, s.view.yaw, fast, dt);
     }
 
     // Our own player: the same fixed physics steps as the server, so movement is instant.
@@ -2592,6 +2673,7 @@ fn frame(s: &mut State, now_ms: f64) {
     }
     upload_dynamic_mesh(s, target);
     upload_grass(s, dt);
+    update_atmosphere(s, dt);
     update_editor_ui(s, target);
     update_overlays(s, now_ms);
     update_info(s);
@@ -2652,7 +2734,7 @@ fn update_name_tags(s: &mut State) {
     for (&id, remote) in s.remotes.iter().filter(|(id, _)| !hidden(s, id)) {
         let Some(info) = s.roster.get(&id) else { continue };
         let head = (remote.pos.x, remote.pos.y, remote.pos.z + PLAYER_HEIGHT + 0.1);
-        let screen = s.view.screen_position((head.0, head.1), head.2);
+        let screen = screen_of(s, Vec3::new(head.0, head.1, head.2));
         let x = ((screen[0] - s.camera.center[0]) * s.camera.zoom + width / 2.0) / s.dpr;
         let y = ((screen[1] - s.camera.center[1]) * s.camera.zoom + height / 2.0) / s.dpr;
         if x > -100.0 && y > -50.0 && x < width / s.dpr + 100.0 && y < height / s.dpr + 50.0 {
@@ -2728,7 +2810,7 @@ fn update_friend_markers(s: &mut State) {
             let Some(remote) = s.remotes.get(&id).filter(|_| !hidden(s, &id)) else { continue };
             let Some(info) = s.roster.get(&id) else { continue };
             let middle = remote.pos + Vec3::Z * (PLAYER_HEIGHT / 2.0);
-            let screen = s.view.screen_position((middle.x, middle.y), middle.z);
+            let screen = screen_of(s, middle);
             let x = ((screen[0] - s.camera.center[0]) * s.camera.zoom + width / 2.0) / s.dpr;
             let y = ((screen[1] - s.camera.center[1]) * s.camera.zoom + height / 2.0) / s.dpr;
             let Some(marker) = locator::edge_marker((x, y), (css_width, css_height), (70.0, 44.0)) else { continue };
@@ -2801,9 +2883,38 @@ fn apply_grass_settings(s: &mut State) {
     }
     settings.density = settings.density.clamp(0, 2 * wurfel_sim::grass::MAX_BLADES_PER_CELL);
     s.grass.settings = settings;
+    apply_sprite_shadow_settings(s);
+    apply_water_reflection_setting(s);
 }
 
-/// Advance the wind and build this frame's blades around the local player, who and whom the blades
+/// The water reflection setting: the menu's `waterReflection`, which the page address overrides
+/// (`?waterreflection=0|1`). Default: on. Off, the water mirrors only the sky and the scene is not drawn a second time.
+fn apply_water_reflection_setting(s: &mut State) {
+    let mut on = web_sys::window().and_then(|w| js_get(&js_get(&w, "wurfelSettings"), "waterReflection").as_bool()).unwrap_or(true);
+    if let Some(value) = query_value("waterreflection") {
+        on = !matches!(value.as_str(), "0" | "off" | "false");
+    }
+    if on != s.water_reflection {
+        s.water_reflection = on;
+        s.water_level_for = None; // find the level again (or none)
+    }
+}
+/// The sprite shadow setting: the menu's `spriteShadows`, which the page address overrides
+/// (`?spriteshadows=0|1`). Default: on.
+fn apply_sprite_shadow_settings(s: &mut State) {
+    let mut shadows = crate::spriteshadow::Settings::default();
+    if let Some(window) = web_sys::window() {
+        if let Some(on) = js_get(&js_get(&window, "wurfelSettings"), "spriteShadows").as_bool() {
+            shadows.enabled = on;
+        }
+    }
+    if let Some(value) = query_value("spriteshadows") {
+        shadows.enabled = !matches!(value.as_str(), "0" | "off" | "false");
+    }
+    s.sprite_shadows = shadows;
+}
+
+/// Advance the wind and build this frame's blades and stones around the local player, who and whom the blades
 /// bend away from are all players drawn. Blades above the editor's layer limit are left out.
 fn upload_grass(s: &mut State, dt: f32) {
     let viewer = local_position(s).unwrap_or_else(|| {
@@ -2824,26 +2935,109 @@ fn upload_grass(s: &mut State, dt: f32) {
     }
 }
 
+/// The atmosphere settings: the menu's `atmosphere`, `atmosphereDensity`, `weather` (`clear`, `rain`,
+/// `snow`), `weatherDensity` and `volumetrics` (`window.wurfelSettings`), which the page
+/// address overrides (`?atmosphere=0`, `?atmospheredensity=N`, `?weather=rain`, `?weatherdensity=N`,
+/// `?volumetrics=0`). Default: everything on, density 1, clear weather.
+fn apply_atmosphere_settings(s: &mut State) {
+    use crate::atmosphere::{clamp_density, parse_density, parse_flag};
+    let mut settings = crate::atmosphere::Settings::default();
+    if let Some(window) = web_sys::window() {
+        let menu = js_get(&window, "wurfelSettings");
+        if let Some(on) = js_get(&menu, "atmosphere").as_bool() {
+            settings.ambient = on;
+        }
+        if let Some(n) = js_get(&menu, "atmosphereDensity").as_f64() {
+            settings.ambient_density = clamp_density(n as f32);
+        }
+        if let Some(w) = js_get(&menu, "weather").as_string().and_then(|t| wurfel_sim::atmosphere::Weather::parse(&t)) {
+            settings.weather = w;
+        }
+        if let Some(n) = js_get(&menu, "weatherDensity").as_f64() {
+            settings.weather_density = clamp_density(n as f32);
+        }
+        if let Some(on) = js_get(&menu, "volumetrics").as_bool() {
+            settings.volumetrics = on;
+        }
+    }
+    if let Some(v) = query_value("atmosphere") {
+        settings.ambient = parse_flag(&v);
+    }
+    if let Some(n) = query_value("atmospheredensity").and_then(|v| parse_density(&v)) {
+        settings.ambient_density = n;
+    }
+    if let Some(w) = query_value("weather").and_then(|v| wurfel_sim::atmosphere::Weather::parse(&v)) {
+        settings.weather = w;
+    }
+    if let Some(n) = query_value("weatherdensity").and_then(|v| parse_density(&v)) {
+        settings.weather_density = n;
+    }
+    if let Some(v) = query_value("volumetrics") {
+        settings.volumetrics = parse_flag(&v);
+    }
+    s.atmo_settings = settings;
+}
+
+/// Advance the wind clock, keep the column map of the ground around the viewer current and work out what
+/// the atmosphere pass draws this frame (see `atmosphere.rs`).
+fn update_atmosphere(s: &mut State, dt: f32) {
+    s.atmo_time += dt;
+    let viewer = local_position(s).unwrap_or_else(|| {
+        let (x, y) = (s.view_chunk.0 * wurfel_sim::CHUNK_SIZE_X + wurfel_sim::CHUNK_SIZE_X / 2, s.view_chunk.1 * wurfel_sim::CHUNK_SIZE_Y + wurfel_sim::CHUNK_SIZE_Y / 2);
+        let (gx, gy) = to_iso(x, y);
+        Vec3::new(gx, gy, wurfel_sim::CHUNK_SIZE_Z as f32 / 2.0)
+    });
+    let sun_z = s.lighting.uniform().sun_dir[2];
+    s.atmo_draws = crate::atmosphere::plan(&s.atmo_settings, sun_z);
+    if s.atmo_draws.is_empty() {
+        return;
+    }
+    if let Some((_, data)) = s.atmo_columns.update(&s.world, s.terrain_version, (viewer.x, viewer.y)) {
+        s.atmosphere.set_columns(&s.queue, &data);
+    }
+    s.atmo_uniform = crate::atmosphere::AtmosUniform::new(
+        s.atmo_time,
+        s.post_settings.linear,
+        viewer.to_array(),
+        s.atmo_columns.origin,
+        s.post_settings.depth_of_field,
+        focus_depth(s),
+        s.lighting.wind_ground(),
+    );
+}
+
 /// Players and the hover marker change every frame, so they live in a small separate buffer.
 fn upload_dynamic_mesh(s: &mut State, target: Option<Pick>) {
     let mut vertices: Vec<Vertex> = Vec::new();
+    // Soft sun-oriented blobs under the sprites (spriteshadow.rs); none when the setting is off.
+    let mut blobs = s.sprite_shadows.enabled.then(|| {
+        let state = s.lighting.engine.state();
+        let strength = if s.lighting.enabled { crate::sunshadow::strength(state.sun_direction.z, state.night_mix) } else { 0.0 };
+        crate::spriteshadow::Blobs::new(crate::spriteshadow::Sun { direction: state.sun_direction, strength })
+    });
     if let Some((id, pos)) = s.my_id.zip(local_position(s)).filter(|(id, _)| !hidden(s, id)) {
         let color = player_color(&s.roster, id);
-        crate::shadow::push_under(&mut vertices, &s.world, pos);
+        if let Some(blobs) = blobs.as_mut() {
+            blobs.add(&mut vertices, &s.world, &crate::spriteshadow::Caster::player(pos));
+        }
         if !s.actors.push_player(&mut vertices, id, pos, color) {
             push_player(&mut vertices, color, pos);
         }
     }
     for (&id, remote) in s.remotes.iter().filter(|(id, _)| !hidden(s, id)) {
         let color = player_color(&s.roster, id);
-        crate::shadow::push_under(&mut vertices, &s.world, remote.pos);
+        if let Some(blobs) = blobs.as_mut() {
+            blobs.add(&mut vertices, &s.world, &crate::spriteshadow::Caster::player(remote.pos));
+        }
         if !s.actors.push_player(&mut vertices, id, remote.pos, color) {
             push_player(&mut vertices, color, remote.pos);
         }
     }
     for thing in s.things.iter().filter(|t| !crate::sprites::is_invisible(&t.kind)) {
-        if crate::shadow::casts_shadow(&thing.kind) {
-            crate::shadow::push_under(&mut vertices, &s.world, Vec3::from(thing.pos));
+        if let Some((blobs, sprites)) = blobs.as_mut().zip(s.render.sprites()) {
+            if let Some(caster) = crate::spriteshadow::Caster::thing(sprites, &thing.kind, Vec3::from(thing.pos)) {
+                blobs.add(&mut vertices, &s.world, &caster);
+            }
         }
         if !s.actors.push_thing(&mut vertices, thing) {
             if let Some(mode) = &s.mode {
@@ -2860,6 +3054,12 @@ fn upload_dynamic_mesh(s: &mut State, target: Option<Pick>) {
     if let Some(thing) = s.editor.selected_thing().and_then(|id| s.things.iter().find(|t| t.id == id)) {
         let [x, y, z] = thing.pos;
         mesh::top_face_unlit(&mut vertices, THING_MARKER_COLOR, [x - 0.4, x + 0.4, y - 0.4, y + 0.4], z + 0.02);
+    }
+    if let Some(Pick { hit, .. }) = target {
+        crate::cursor::push_cursor(&mut vertices, s.render.sprites().map(|r| &**r), hit);
+    }
+    if let Some((block, cell)) = s.editor.ghost(target) {
+        crate::cursor::push_ghost(&mut vertices, s.render.sprites().map(|r| &**r), block, cell, s.render.is_free_view());
     }
     if let Some(Pick { hit: (x, y, z), .. }) = target {
         let (gx, gy) = to_iso(x, y);
@@ -2947,7 +3147,14 @@ fn update_info(s: &mut State) {
 
 /// Draw everything the scene shows, with the pipeline and the groups 0 and 1 set up the way a pass needs.
 fn draw_scene(s: &State, pass: &mut wgpu::RenderPass<'_>, group: &wgpu::BindGroup) {
+    // The depth first, then the colours of what is nearest: the shadows are traced once per pixel and layer.
+    pass.set_pipeline(&s.depth_pipeline);
+    draw_geometry(s, pass, group);
     pass.set_pipeline(&s.pipeline);
+    draw_geometry(s, pass, group);
+}
+
+fn draw_geometry(s: &State, pass: &mut wgpu::RenderPass<'_>, group: &wgpu::BindGroup) {
     pass.set_bind_group(0, group, &[]);
     pass.set_bind_group(1, &s.atlas_bind_group, &[]);
     if s.world_vertices > 0 {
@@ -2972,12 +3179,33 @@ fn draw_scene(s: &State, pass: &mut wgpu::RenderPass<'_>, group: &wgpu::BindGrou
     }
 }
 
+/// Where a point of the world is on the screen (px at zoom 1, y down): the projection of `View`, and with
+/// the free camera the perspective on top, so labels sit on what they belong to.
+fn screen_of(s: &State, point: Vec3) -> [f32; 2] {
+    let (screen, depth) = s.view.project((point.x, point.y), point.z);
+    if !s.camera_mode.is_free() {
+        return screen;
+    }
+    let scale = crate::view::perspective_scale(depth - s.camera.center[1] / 50.0, focus_depth(s), s.camera.zoom, s.config.height as f32);
+    [s.camera.center[0] + (screen[0] - s.camera.center[0]) * scale, s.camera.center[1] + (screen[1] - s.camera.center[1]) * scale]
+}
+
+/// The view depth of the player, relative to the camera's `center_depth` (like the vertex shader's
+/// `depth`): the depth that stays sharp (`post.rs`) and keeps its size under the perspective camera. The
+/// camera aims at the player's chest, 0.7 up, but may trail it inside the leap radius and shakes, so this
+/// is not zero. Without a player it is 0.
+fn focus_depth(s: &State) -> f32 {
+    local_position(s).map_or(0.0, |p| p.x + p.y + crate::sprites::DEPTH_Z * (p.z + 0.7) - s.camera.center[1] / 50.0)
+}
+
 fn render(s: &mut State) {
     let key = (s.terrain_version, s.view_chunk);
     if s.water_level_for != Some(key) {
         s.water_level_for = Some(key);
-        s.water_level = crate::reflection::level(&s.world, s.view_chunk);
+        s.water_level = if s.water_reflection { crate::reflection::level(&s.world, s.view_chunk) } else { None };
     }
+    let focus_depth = focus_depth(s);
+    let persp = if s.camera_mode.is_free() { [crate::view::PERSPECTIVE, focus_depth, 0.0, 0.0] } else { [0.0; 4] };
     let uniform = CameraUniform {
         center: s.camera.center,
         scale: [2.0 * s.camera.zoom / s.config.width as f32, 2.0 * s.camera.zoom / s.config.height as f32],
@@ -2985,11 +3213,13 @@ fn render(s: &mut State) {
         center_depth: s.camera.center[1] / 50.0,
         mirror: [s.water_level.unwrap_or(0.0), 0.0, 0.0],
         view: s.view.uniform(),
+        persp,
     };
     s.queue.write_buffer(&s.camera_buffer, 0, bytemuck::bytes_of(&uniform));
     let mirrored = CameraUniform { mirror: [uniform.mirror[0], 1.0, 0.0], ..uniform };
     s.queue.write_buffer(&s.mirror_camera_buffer, 0, bytemuck::bytes_of(&mirrored));
-    s.queue.write_buffer(&s.lighting_buffer, 0, bytemuck::bytes_of(&s.lighting.uniform()));
+    let lit = s.lighting.uniform();
+    s.queue.write_buffer(&s.lighting_buffer, 0, bytemuck::bytes_of(&lit));
 
     use wgpu::CurrentSurfaceTexture as Frame;
     let output = match s.surface.get_current_texture() {
@@ -3011,7 +3241,7 @@ fn render(s: &mut State) {
         background = wgpu::Color { r: background.r.powf(2.2), g: background.g.powf(2.2), b: background.b.powf(2.2), a: 1.0 };
     }
     let sun_uniform = sun_shadow_uniform(s);
-    s.sun_shadow.render(&mut encoder, &s.queue, &sun_uniform, &s.atlas_bind_group, |pass, world_group, dynamic_group| {
+    s.sun_shadow.render(&mut encoder, &s.queue, &sun_uniform, &s.atlas_bind_group, s.gpu_timer.as_ref(), |pass, world_group, dynamic_group| {
         if s.world_vertices > 0 {
             pass.set_bind_group(0, world_group, &[]);
             pass.set_vertex_buffer(0, s.world_buffer.slice(..));
@@ -3024,17 +3254,21 @@ fn render(s: &mut State) {
         }
     });
     if s.water_level.is_some() {
-        let mut pass = s.reflection.begin(&mut encoder, s.peeling.first_peel_group());
+        let mut pass = s.reflection.begin(&mut encoder, s.peeling.first_peel_group(), s.gpu_timer.as_ref());
         draw_scene(s, &mut pass, &s.mirror_bind_group);
     }
-    s.peeling.render(&mut encoder, background, |pass| draw_scene(s, pass, &s.bind_group));
-    // The player is in focus. Its depth is `x + y + 0.82 z` like in the vertex shader, minus the camera's
-    // (the camera aims at the player's chest, 0.7 up, but may trail it inside the leap radius and
-    // shakes, so this is not zero). Without a player nothing is blurred more than the rest of the view.
-    let focus_depth = local_position(s).map_or(0.0, |p| p.x + p.y + crate::sprites::DEPTH_Z * (p.z + 0.7) - uniform.center_depth);
+    s.peeling.render(&mut encoder, background, s.gpu_timer.as_ref(), |pass| draw_scene(s, pass, &s.bind_group));
+    // The weather and the ambient life go over the blended picture, before the post-process passes.
+    s.atmosphere.render(&mut encoder, &s.queue, s.peeling.blended(), &s.atmo_uniform, &s.atmo_draws, s.gpu_timer.as_ref());
     // One step of x + y moves the ground 50 px down at zoom 1 (see `center_depth` above).
-    s.post.render(&mut encoder, &s.queue, &view, &s.post_settings, 50.0 * s.camera.zoom, focus_depth);
+    s.post.render(&mut encoder, &s.queue, &view, &s.post_settings, 50.0 * s.camera.zoom, focus_depth, s.gpu_timer.as_ref());
+    if let Some(timer) = &s.gpu_timer {
+        timer.resolve(&mut encoder);
+    }
     s.queue.submit(Some(encoder.finish()));
+    if let Some(timer) = &s.gpu_timer {
+        timer.collect();
+    }
     s.queue.present(output);
 }
 
