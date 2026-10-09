@@ -152,6 +152,10 @@ impl Backend {
         oneshot.connect_with_audio_node(&effects)?;
         // The analyser is optional: if it cannot be made the level just reads as 0.
         self.analyser = ctx.create_analyser().ok().and_then(|a| master.connect_with_audio_node(&a).ok().map(|_| a));
+        // Start at the page's volumes: a bus defaults to 1.0 and the settings only arrive with the first frame.
+        let initial = self.shared.pending_settings.borrow().unwrap_or_default();
+        effects.gain().set_value(initial.effects_gain());
+        music.gain().set_value(initial.music_gain());
         self.effects_bus = Some(effects);
         self.music_bus = Some(music);
         self.oneshot_bus = Some(oneshot);
@@ -388,13 +392,22 @@ fn stop_loop_node(node: LoopNode) {
 fn set_gain_node(ctx: Option<&AudioContext>, node: Option<&GainNode>, value: f32) {
     let Some(node) = node else { return };
     let value = value.max(0.0);
+    let param = node.gain();
+    // Smoothing never reaches exactly 0 and does not advance while the context is suspended (before
+    // the first gesture), so a muted bus would leak at full volume. Silence and a stopped clock
+    // are set at once.
+    let smooth = value > 0.0 && ctx.is_some_and(|c| c.state() == AudioContextState::Running);
     match ctx {
-        Some(ctx) => {
-            if node.gain().set_target_at_time(value, ctx.current_time(), GAIN_SMOOTHING).is_err() {
-                node.gain().set_value(value);
+        Some(ctx) if smooth => {
+            let _ = param.cancel_scheduled_values(ctx.current_time());
+            if param.set_target_at_time(value, ctx.current_time(), GAIN_SMOOTHING).is_err() {
+                param.set_value(value);
             }
         }
-        None => node.gain().set_value(value),
+        Some(_) | None => {
+            let _ = param.cancel_scheduled_values(0.0);
+            param.set_value(value);
+        }
     }
 }
 
