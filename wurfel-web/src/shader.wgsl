@@ -411,6 +411,10 @@ fn vs_main(v: VertexIn) -> VertexOut {
     if (face == 4) {
         baked = vec3<f32>(0.0);
     }
+    // The moving point lights (jetpack, dynamite, explosions...) belong here too: the per-pixel path
+    // lights a surface from `baked` alone, so without them they only reached the vertex colour, which
+    // that path does not use.
+    baked = baked + dynamic_light(v.position, face);
     out.baked = vec4<f32>(baked, 1.0 - lighting.grading.y * clamp(v.shade.y, 0.0, 1.0));
     out.ao_corners = -1.0;
     out.ao_uv = vec2<f32>(0.0);
@@ -889,8 +893,10 @@ fn normal_map_color(in: VertexOut, texel: vec4<f32>, sun_seen: f32, occlusion: f
         let view_dir = normalize(vec3<f32>(0.0, 0.5, 1.0));
         let h = normalize(l + view_dir);
         let specular = pow(max(dot(h, n), 0.0), 16.0);
-        let color = vec3<f32>(0.3, 0.3, 0.2);
-        local = (color * max(dot(n, l), 0.0) + color * specular) * (200000.0 / (dist * dist));
+        // Java used a warm white (0.3, 0.3, 0.2) at 200000 / d², which is far too bright here (about 6 at one
+        // block). Ejira's light is blue, and weaker.
+        let color = vec3<f32>(0.05, 0.12, 0.4);
+        local = (color * max(dot(n, l), 0.0) + color * specular) * (30000.0 / (dist * dist));
     }
 
     // The light baked from the static point lights and the occlusion are vertex data, like the Java

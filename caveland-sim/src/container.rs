@@ -254,7 +254,7 @@ mod tests {
         flint.ignite();
         c.add(flint);
         c.add(item(Explosives));
-        assert_eq!(c.tick(1.0), 0);
+        assert_eq!(c.tick(crate::collectible::FUSE_TIME - 1.0), 0);
         assert_eq!(c.tick(1.1), 1);
         assert_eq!(c.len(), 1, "the unlit one is still there");
     }

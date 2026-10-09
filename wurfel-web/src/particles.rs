@@ -106,7 +106,7 @@ const PARTICLE_SPRITE: u8 = 22;
 /// is smaller than its box); without it the square is flat colour.
 pub fn quad(p: &Particle, sprites: Option<&Sprites>) -> [Vertex; 6] {
     let alpha = p.color()[3].clamp(0.0, 1.0);
-    let art = sprites.and_then(|s| s.entity(PARTICLE_SPRITE, 0).map(|region| (s, region)));
+    let art = sprites.and_then(|s| s.entity(p.sprite(), 0).or_else(|| s.entity(PARTICLE_SPRITE, 0)).map(|region| (s, region)));
     // The picture fills only part of the 200 pixel box of the Java sprite.
     let fill = art.map_or(1.0, |(_, r)| r.w.max(r.h) as f32 / r.orig_w as f32);
     let half = 0.5 * p.size() * fill;

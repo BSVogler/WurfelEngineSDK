@@ -36,6 +36,14 @@ pub enum Effect {
     Fire { pos: Vec3 },
     /// A puff of particles of a colour.
     Burst { pos: Vec3, color: [f32; 3] },
+    /// A picture that shows for a moment (the sprite of `kind`, see `sprites::entity_art`).
+    Flash { kind: &'static str, pos: Vec3, seconds: f32 },
+    /// Dirt knocked off a block that did not give way.
+    DirtKick { pos: Vec3 },
+    /// A turret shot: the muzzle flash and the trail.
+    Shot { from: Vec3, to: Vec3 },
+    /// A robot fell apart.
+    RobotBroke { pos: Vec3 },
     /// A block was hit and still stands, with the health it has left.
     BlockDamaged { cell: (i32, i32, i32), health: u8 },
     /// An explosion: particles, and a shake that is stronger the nearer we are.
@@ -77,6 +85,21 @@ pub trait ClientMode {
 
     /// The action a mouse button sends.
     fn mouse_action(&self, button: i16, pressed: bool) -> Option<(&'static str, i32)>;
+
+    /// The players whose exhaust burns, as far as the server said (for the ones we do not predict).
+    fn exhausting(&self) -> Vec<u32> {
+        Vec::new()
+    }
+
+    /// The players with a lit explosive in their pack: they throw sparks.
+    fn carriers_burning(&self) -> Vec<u32> {
+        Vec::new()
+    }
+
+    /// The cells of machines that burn (ovens): they smoke.
+    fn burning_cells(&self) -> Vec<(i32, i32, i32)> {
+        Vec::new()
+    }
 
     /// Our player's exhaust (a jetpack) burns.
     fn exhaust(&self, _id: EntityId) -> bool {

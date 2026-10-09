@@ -32,7 +32,7 @@ use crate::entity::{Entities, Event};
 use crate::World;
 
 /// Default pool capacity.
-pub const DEFAULT_CAPACITY: usize = 2048;
+pub const DEFAULT_CAPACITY: usize = 4096;
 
 /// Small deterministic random number generator (xorshift64*), injectable for tests.
 #[derive(Debug, Clone)]
@@ -112,6 +112,11 @@ impl Particle {
             variant: 0,
             moved: 0.0,
         }
+    }
+
+    /// The entity sprite this particle is drawn with.
+    pub fn sprite(&self) -> u8 {
+        self.spec.sprite
     }
 
     pub fn kind(&self) -> ParticleType {
@@ -345,6 +350,73 @@ impl Particles {
         let spec = ParticleSpec::debris(color);
         // Java: movement (rand - 0.5, rand - 0.5, rand * 5): up and a little sideways.
         self.burst(&spec, block_center, 8, Vec3::new(0.0, 0.0, 2.5), Vec3::new(1.0, 1.0, 2.5));
+    }
+
+    /// What a destroyed block leaves: a shower of pebbles of its colour thrown up and out, and a puff of
+    /// dust. Fewer when the pool is getting full, so a big explosion (hundreds of blocks at once) stays
+    /// affordable.
+    pub fn rubble(&mut self, block_center: Vec3, color: [f32; 3]) {
+        // Rubble only ever takes the lower half of the pool: the rest stays free for the effects that must
+        // show (sparks, smoke, flames), which are dropped when the pool is full.
+        let used = self.list.len();
+        let (pebbles, dust) = if used >= self.capacity / 2 {
+            return;
+        } else if used >= self.capacity / 4 {
+            (4, 0)
+        } else {
+            (14, 2)
+        };
+        self.burst(&ParticleSpec::pebble(color), block_center, pebbles, Vec3::new(0.0, 0.0, 3.0), Vec3::new(2.5, 2.5, 2.0));
+        self.burst(&ParticleSpec::dust(), block_center, dust, Vec3::new(0.0, 0.0, 0.4), Vec3::new(0.6, 0.6, 0.2));
+    }
+
+    /// An explosion of the given radius in blocks (`Explosion.spawn`): Java put one fire-dust particle in
+    /// every cell of the 2r x 4r x 2r volume, flying outwards from the centre at 4 blocks per second.
+    /// The count is capped so a big blast does not empty the pool.
+    pub fn explosion(&mut self, center: Vec3, radius: i32) {
+        let r = radius.max(1) as f32;
+        let count = ((2.0 * r * 4.0 * r * 2.0 * r) as usize).min(160);
+        let spec = ParticleSpec::blast();
+        for _ in 0..count {
+            let offset = Vec3::new(self.rng.next_f32() - 0.5, self.rng.next_f32() - 0.5, self.rng.next_f32() - 0.5) * Vec3::new(2.0 * r, 2.0 * r, 2.0 * r);
+            let direction = (offset + Vec3::Z * 0.01).normalize();
+            self.spawn(&spec, center + offset * 0.2, direction * 4.0, Vec3::ZERO);
+        }
+    }
+
+    /// A speck of dirt where a hit block did not give way (`Ejira`).
+    pub fn dirt_kick(&mut self, at: Vec3) {
+        self.burst(&ParticleSpec::dirt(), at, 3, Vec3::new(0.0, 0.0, 1.5), Vec3::new(2.5, 2.5, 1.0));
+    }
+
+    /// A puff of dust at a walking player's feet, drifting back against `movement` (`Ejira.step`).
+    pub fn footstep(&mut self, feet: Vec3, movement: glam::Vec2) {
+        let back = -movement * 0.1;
+        let at = feet + Vec3::new(self.rng.next_f32() - 0.5, self.rng.next_f32() - 0.5, 0.0) * 0.4;
+        self.spawn(&ParticleSpec::footstep(), at, Vec3::new(back.x, back.y, 0.2), Vec3::ZERO);
+    }
+
+    /// A flash at the muzzle and a trail of sparks along the shot from `from` to `to`.
+    pub fn shot(&mut self, from: Vec3, to: Vec3) {
+        self.burst(&ParticleSpec::muzzle(), from, 3, Vec3::ZERO, Vec3::splat(0.3));
+        let length = from.distance(to);
+        let steps = (length * 3.0).clamp(1.0, 60.0) as usize;
+        for i in 1..=steps {
+            self.spawn(&ParticleSpec::tracer(), from.lerp(to, i as f32 / steps as f32), Vec3::ZERO, Vec3::splat(0.05));
+        }
+        self.burst(&ParticleSpec::dirt(), to, 3, Vec3::new(0.0, 0.0, 1.0), Vec3::new(1.5, 1.5, 1.0));
+    }
+
+    /// The pieces of a destroyed robot (`Robot`: three `DestructionParticle`s).
+    pub fn robot_break(&mut self, center: Vec3) {
+        for sprite in [34, 35, 36] {
+            self.burst(&ParticleSpec::robot_piece(sprite), center, 4, Vec3::new(0.0, 0.0, 2.5), Vec3::new(1.0, 1.0, 2.5));
+        }
+    }
+
+    /// Smoke rising from a burning oven (`OvenLogic`).
+    pub fn oven_smoke(&mut self, chimney: Vec3) {
+        self.spawn(&ParticleSpec::oven_smoke(), chimney, Vec3::new(0.0, 0.0, 0.5), Vec3::new(0.1, 0.1, 0.1));
     }
 
     /// Spawn from an emitter: see [`ParticleEmitter::update`].

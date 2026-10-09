@@ -196,7 +196,7 @@ if (introOn) {
   await sleep(1000);
   check(stateOf(g)?.hidden === false && stateOf(g)?.riding === false, 'after the crash the player climbs out and is theirs again');
 } else {
-  console.log('(intro skipped on this server: --skip-intro)');
+  console.log('(no intro on this server: start it with --intro to test the crash)');
 }
 await sleep(500);
 const camp = g.last('Things')?.things ?? [];

@@ -237,13 +237,13 @@ fn a_torch_is_not_placed_inside_a_wall() {
 }
 
 #[test]
-fn a_lit_explosive_goes_off_after_two_seconds_and_hurts() {
+fn a_lit_explosive_goes_off_when_the_fuse_has_burnt_down_and_hurts() {
     let mut g = Game::floor();
     let id = g.player_at(10, 40);
     g.give(id, C::Explosives);
     g.act(id, Action::UseItem);
     assert!(g.caveland.player(id).unwrap().inventory.front().unwrap().is_lit());
-    g.seconds(1.5);
+    g.seconds(caveland_sim::collectible::FUSE_TIME - 0.5);
     assert!(!g.saw(|e| matches!(e, GameEvent::Explosion { .. })));
     g.seconds(0.7);
     assert!(g.saw(|e| matches!(e, GameEvent::Explosion { radius: 3, damage: 150, .. })));

@@ -406,3 +406,106 @@ fn the_jetpack_emitter_is_off_until_lit_and_then_sprays_flame_downwards() {
         assert!(p.size() > 0.0 && p.color()[3] > 0.0, "visible after a frame: size {} alpha {}", p.size(), p.color()[3]);
     }
 }
+
+#[test]
+fn an_explosion_throws_fire_dust_outwards_and_stays_in_the_pool() {
+    let mut particles = Particles::default();
+    let center = Vec3::new(5.0, 5.0, 5.0);
+    particles.explosion(center, 3);
+    assert!(particles.len() > 50 && particles.len() <= 160, "{}", particles.len());
+    assert!(particles.iter().all(|p| p.velocity.length() > 3.0), "everything flies away from the middle");
+}
+
+#[test]
+fn a_shot_leaves_a_muzzle_flash_and_a_trail() {
+    let mut particles = Particles::default();
+    particles.shot(Vec3::ZERO, Vec3::new(10.0, 0.0, 0.0));
+    assert!(particles.len() > 20, "{}", particles.len());
+}
+
+#[test]
+fn small_effects_spawn_something() {
+    let mut particles = Particles::default();
+    particles.dirt_kick(Vec3::ZERO);
+    particles.footstep(Vec3::ZERO, glam::Vec2::new(1.0, 0.0));
+    particles.oven_smoke(Vec3::ZERO);
+    particles.robot_break(Vec3::ZERO);
+    assert!(particles.len() >= 3 + 1 + 1 + 12);
+}
+
+#[test]
+fn robot_pieces_wear_their_own_sprites_and_the_wreck_burns_four_seconds() {
+    let mut particles = Particles::default();
+    particles.robot_break(Vec3::ZERO);
+    let mut sprites: Vec<u8> = particles.iter().map(|p| p.sprite()).collect();
+    sprites.dedup();
+    assert_eq!(sprites, vec![34, 35, 36]);
+    assert_eq!(ParticleSpec::wreck().ttl, 4.0);
+    assert_eq!(ParticleSpec::regular().sprite, 22);
+}
+
+#[test]
+fn fuse_sparks_are_big_and_bright_enough_to_see_and_the_fuse_smokes() {
+    let world = World::new(crate::generator::AirGenerator);
+    let mut sparks = ParticleEmitter::sparks();
+    sparks.active = true;
+    let mut smoke = ParticleEmitter::fuse_smoke();
+    smoke.active = true;
+    let mut particles = Particles::default();
+    for _ in 0..15 {
+        sparks.update(0.02, &mut particles);
+        smoke.update(0.02, &mut particles);
+        particles.update(&world, 0.02);
+    }
+    let seen: Vec<_> = particles.iter().filter(|p| p.kind() == ParticleType::Regular).collect();
+    assert!(!seen.is_empty());
+    assert!(seen.iter().all(|p| p.size() >= 0.1 && p.color()[3] >= 0.99 && p.color()[0] > 4.0), "sparks are small but very bright and not faded");
+    assert!(particles.iter().any(|p| p.kind() == ParticleType::Smoke), "and the fuse smokes");
+}
+
+#[test]
+fn a_broken_block_throws_pebbles_and_a_full_pool_gets_fewer() {
+    let mut particles = Particles::default();
+    particles.rubble(Vec3::new(2.0, 2.0, 2.0), [0.5, 0.4, 0.3]);
+    let pebbles = particles.iter().filter(|p| p.kind() == ParticleType::Regular).count();
+    assert!(pebbles >= 14, "{pebbles}");
+    let mut crowded = Particles::new(20, 1);
+    crowded.burst(&ParticleSpec::regular(), Vec3::ZERO, 15, Vec3::ZERO, Vec3::ZERO);
+    let before = crowded.len();
+    crowded.rubble(Vec3::ZERO, [0.5; 3]);
+    assert!(crowded.len() - before <= 5, "a crowded pool only takes a few");
+}
+
+#[test]
+fn rubble_never_starves_the_sparks() {
+    let world = World::new(crate::generator::AirGenerator);
+    let mut particles = Particles::new(200, 1);
+    for _ in 0..500 {
+        particles.rubble(Vec3::new(1.0, 1.0, 5.0), [0.5; 3]);
+    }
+    assert!(particles.len() <= 100, "rubble stops at half the pool: {}", particles.len());
+    let mut sparks = ParticleEmitter::sparks();
+    sparks.active = true;
+    sparks.update(0.2, &mut particles);
+    particles.update(&world, 0.0);
+    assert!(particles.iter().any(|p| p.sprite() == 22 && p.size() > 0.1), "the sparks still get in");
+}
+
+#[test]
+fn fuse_sparks_fall_and_the_smoke_rises() {
+    let world = World::new(crate::generator::AirGenerator);
+    let mut sparks = ParticleEmitter::sparks();
+    sparks.active = true;
+    let mut smoke = ParticleEmitter::fuse_smoke();
+    smoke.active = true;
+    let mut particles = Particles::default();
+    sparks.update(0.2, &mut particles);
+    smoke.update(0.2, &mut particles);
+    for _ in 0..25 {
+        particles.update(&world, 0.02);
+    }
+    let sparks_vz: Vec<f32> = particles.iter().filter(|p| p.kind() == ParticleType::Regular).map(|p| p.velocity.z).collect();
+    let smoke_vz: Vec<f32> = particles.iter().filter(|p| p.kind() == ParticleType::Smoke).map(|p| p.velocity.z).collect();
+    assert!(sparks_vz.iter().all(|&v| v < 0.0), "gravity has turned the sparks downwards: {sparks_vz:?}");
+    assert!(smoke_vz.iter().all(|&v| v > 0.5), "the smoke keeps rising: {smoke_vz:?}");
+}

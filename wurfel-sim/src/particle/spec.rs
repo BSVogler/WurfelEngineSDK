@@ -51,6 +51,8 @@ pub struct ParticleSpec {
     /// Blocks of travel after which the shade variant is re-rolled; 0 never (Java
     /// `rotateEachNMeters`, 0.06 for debris).
     pub cycle_distance: f32,
+    /// The entity sprite the particle wears (Java `new Particle((byte) 22)`: a soft blob).
+    pub sprite: u8,
 }
 
 impl ParticleSpec {
@@ -68,6 +70,7 @@ impl ParticleSpec {
             ground_friction: 0.0,
             scale_jitter: 0.0,
             cycle_distance: 0.0,
+            sprite: 22,
         }
     }
 
@@ -83,6 +86,47 @@ impl ParticleSpec {
     /// that lives 1.8 s.
     pub fn jetpack() -> Self {
         ParticleSpec { color: [1.0, 0.8, 0.2, 0.7], ttl: 1.8, collides: false, ..Self::fire() }
+    }
+
+    /// The sparks of a burning fuse (`TFlint`): bright pale yellow specks that live half a second. Not a
+    /// fire particle: those start at size zero and fade to black, which made them too small and dim to see.
+    pub fn sparkle() -> Self {
+        ParticleSpec { kind: ParticleType::Regular, color: [8.0, 6.0, 2.5, 1.0], ttl: 0.5, size: 0.4, gravity: 1.0, collides: false, ..Self::regular() }
+    }
+
+    /// The smoke curling up from a burning fuse: grey, grows and fades over 2.5 s.
+    pub fn fuse_smoke() -> Self {
+        ParticleSpec { kind: ParticleType::Smoke, color: [0.6, 0.6, 0.6, 0.8], ttl: 2.5, size: 0.8, collides: false, ..Self::regular() }
+    }
+
+    /// What an explosion throws out (`Explosion`): a fire particle the colour of dust that lives 1.7 s.
+    pub fn blast() -> Self {
+        ParticleSpec { color: [0.6, 0.55, 0.4, 1.0], ttl: 1.7, size: 0.8, drag: 0.8, collides: false, ..Self::fire() }
+    }
+
+    /// A speck of dirt knocked off a block that cannot be broken by hand (`Ejira`): lives 0.4 s.
+    pub fn dirt() -> Self {
+        ParticleSpec { color: [0.45, 0.35, 0.25, 1.0], ttl: 0.4, size: 0.4, gravity: 1.0, ..Self::regular() }
+    }
+
+    /// The dust a walking player stirs up (`Ejira.step`): dull yellow-brown smoke, 0.7 s.
+    pub fn footstep() -> Self {
+        ParticleSpec { kind: ParticleType::Smoke, color: [0.4, 0.4, 0.05, 0.5], ttl: 0.7, size: 0.5, collides: false, ..Self::regular() }
+    }
+
+    /// The smoke over a burning oven (`OvenLogic`): grey-brown, 1 s.
+    pub fn oven_smoke() -> Self {
+        ParticleSpec { kind: ParticleType::Smoke, color: [0.5, 0.4, 0.3, 0.5], ttl: 1.0, size: 0.6, collides: false, ..Self::regular() }
+    }
+
+    /// The flash at a gun's muzzle: bright yellow, very short.
+    pub fn muzzle() -> Self {
+        ParticleSpec { color: [1.0, 0.9, 0.5, 1.0], ttl: 0.12, size: 0.5, collides: false, ..Self::fire() }
+    }
+
+    /// One dot of a bullet's trail: a pale yellow spark that fades fast.
+    pub fn tracer() -> Self {
+        ParticleSpec { color: [1.0, 0.95, 0.6, 1.0], ttl: 0.18, size: 0.25, collides: false, drag: 0.0, ..Self::fire() }
     }
 
     /// Dust kicked up when landing.
@@ -124,6 +168,23 @@ impl ParticleSpec {
             cycle_distance: 0.06,
             ..Self::regular()
         }
+    }
+
+    /// A pebble of a broken block: bigger than the chips of a hit, bounces and rolls, stays 5 s.
+    pub fn pebble(color: [f32; 3]) -> Self {
+        ParticleSpec { ttl: 5.0, size: 0.32, bounce: 0.5, ground_friction: 0.4, ..Self::debris(color) }
+    }
+
+    /// A piece of a robot (`Robot` spawns `DestructionParticle`s of the sprites 34, 35 and 36): debris that
+    /// shows its own picture instead of the soft blob.
+    pub fn robot_piece(sprite: u8) -> Self {
+        ParticleSpec { sprite, color: [1.0, 1.0, 1.0, 1.0], cycle_distance: 0.0, size: 0.35, ..Self::debris([1.0; 3]) }
+    }
+
+    /// The fire that lives on at the wreck of the intro ship (`Spaceship`): a fire emitter whose
+    /// particles live 4 s.
+    pub fn wreck() -> Self {
+        ParticleSpec { ttl: 4.0, collides: false, ..Self::fire() }
     }
 
     /// Scale at birth: growing particles start at 0, the others at the Java 0.3.

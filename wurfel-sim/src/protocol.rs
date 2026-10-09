@@ -171,6 +171,13 @@ pub struct ThingState {
     pub id: u32,
     pub kind: String,
     pub pos: [f32; 3],
+    /// Burning, like dynamite with a lit fuse: the client lets it throw sparks.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub lit: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -776,7 +783,7 @@ mod game_mode_tests {
 
     #[test]
     fn game_mode_messages_round_trip() {
-        let things = ServerMsg::Things { tick: 8, things: vec![ThingState { id: 3, kind: "torch".into(), pos: [1.0, 2.0, 3.0] }] };
+        let things = ServerMsg::Things { tick: 8, things: vec![ThingState { id: 3, kind: "torch".into(), pos: [1.0, 2.0, 3.0], lit: false }] };
         let rules = ServerMsg::Rules { kind: "state".into(), data: serde_json::json!({ "4": { "health": 80.0, "items": ["torch"] } }) };
         let action = ClientMsg::Action { name: "craft".into(), arg: 2 };
         for msg in [things, rules] {

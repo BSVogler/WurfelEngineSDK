@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Seconds an explosive burns before it goes off (`TFlint.TIMETILLEXPLOSION`).
-pub const FUSE_TIME: f32 = 2.0;
+pub const FUSE_TIME: f32 = 3.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CollectibleType {
@@ -181,11 +181,11 @@ mod tests {
     }
 
     #[test]
-    fn a_lit_explosive_goes_off_after_two_seconds() {
+    fn a_lit_explosive_goes_off_when_the_fuse_has_burnt_down() {
         let mut flint = Item::new(CollectibleType::Explosives);
         assert!(!flint.tick(10.0), "unlit explosives are harmless");
         flint.ignite();
-        assert!(!flint.tick(1.9));
+        assert!(!flint.tick(FUSE_TIME - 0.1));
         assert!(flint.tick(0.2));
     }
 

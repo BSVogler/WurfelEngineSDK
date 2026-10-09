@@ -116,6 +116,8 @@ pub struct PlayerView {
     pub jetpack: f32,
     /// What the player carries, the item in hand first.
     pub items: Vec<&'static str>,
+    /// An explosive in the pack has its fuse lit.
+    pub burning: bool,
     /// The recipes in the fixed order of [`crate::crafting::recipes`], which is what
     /// [`Action::Craft`] indexes. Clients order them for display themselves.
     pub recipes: Vec<RecipeView>,
@@ -307,6 +309,13 @@ impl Caveland {
         self.ovens.get(&cell)
     }
 
+    /// The cells of the ovens that burn right now, in order.
+    pub fn burning_ovens(&self) -> Vec<Cell> {
+        let mut cells: Vec<Cell> = self.ovens.iter().filter(|(_, o)| o.is_burning()).map(|(&cell, _)| cell).collect();
+        cells.sort_unstable();
+        cells
+    }
+
     /// What the engine's entity update reported in the last [`Caveland::tick`] (landed, splashed...),
     /// for the sounds and particles a client makes of them.
     pub fn engine_events(&self) -> &[Event] {
@@ -355,6 +364,11 @@ impl Caveland {
         entity
     }
 
+    /// Whether the thing is burning: an explosive with a lit fuse.
+    pub fn is_lit(&self, id: EntityId) -> bool {
+        matches!(self.kinds.get(&id), Some(Kind::Collectible(c)) if c.item.is_lit())
+    }
+
     /// Everything Caveland made that is not a player, for the clients to draw.
     pub fn things(&self) -> Vec<(EntityId, EntityKind)> {
         let mut things: Vec<_> = self
@@ -378,6 +392,7 @@ impl Caveland {
             health: entity.health(),
             jetpack: (state.jetpack_time / self.tuning.jetpack_max_time.max(f32::EPSILON)).clamp(0.0, 1.0),
             items: state.inventory.items().iter().map(|item| item.kind.name()).collect(),
+            burning: state.inventory.items().iter().any(|item| item.is_lit()),
             recipes: crafting::recipes()
                 .iter()
                 .map(|r| RecipeView {

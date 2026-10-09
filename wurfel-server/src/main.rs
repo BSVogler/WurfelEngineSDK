@@ -1,7 +1,7 @@
 //! Authoritative multiplayer server. Also serves the built browser client, so one URL is enough.
 //!
 //!     wurfel-server [--port 3000] [--static ../wurfel-web/dist] [--seed 1] [--generator island]
-//!                   [--lag-ms 0] [--maps-dir ./maps] [--skip-intro]
+//!                   [--lag-ms 0] [--maps-dir ./maps] [--intro]
 //!
 //! The server holds exactly one world in memory (a map and one of its save slots, like the Java
 //! engine's single `Map`). It streams the chunks around each player to their browser; the browser
@@ -113,8 +113,8 @@ async fn main() {
     let lag = Duration::from_millis(arg("--lag-ms").and_then(|s| s.parse().ok()).unwrap_or(0));
     // The game modes' generators must be known before any map is read.
     mode::install();
-    if std::env::args().any(|a| a == "--skip-intro") {
-        caveland_mode::SKIP_INTRO.store(true, Ordering::Relaxed);
+    if std::env::args().any(|a| a == "--intro") {
+        caveland_mode::INTRO.store(true, Ordering::Relaxed);
     }
     // `auth <token>` in the console makes a player an admin (world-changing commands, cheats).
     let (token, generated) = game::init_admin_token();

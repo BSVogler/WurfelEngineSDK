@@ -56,6 +56,36 @@ impl ParticleEmitter {
         }
     }
 
+    /// The sparks of lit dynamite (`TFlint.sparksGenerator`): a few pale sparks spread wide sideways,
+    /// hardly moving up. Starts switched off.
+    pub fn sparks() -> Self {
+        ParticleEmitter {
+            active: false,
+            spec: ParticleSpec::sparkle(),
+            interval: 0.04,
+            velocity: Vec3::new(0.0, 0.0, 0.6),
+            spread: Vec3::new(0.9, 0.9, 0.4),
+            ..Self::new(Vec3::ZERO)
+        }
+    }
+
+    /// The smoke over a burning fuse; starts switched off.
+    pub fn fuse_smoke() -> Self {
+        ParticleEmitter {
+            active: false,
+            spec: ParticleSpec::fuse_smoke(),
+            interval: 0.12,
+            velocity: Vec3::new(0.0, 0.0, 1.0),
+            spread: Vec3::new(0.15, 0.15, 0.1),
+            ..Self::new(Vec3::ZERO)
+        }
+    }
+
+    /// The fire at the wreck of the intro ship (`Spaceship`): long-lived fire going up at 3 blocks per second.
+    pub fn wreck(position: Vec3) -> Self {
+        ParticleEmitter { spec: ParticleSpec::wreck(), velocity: Vec3::new(0.0, 0.0, 3.0), ..Self::new(position) }
+    }
+
     /// Give the emitter a yellow point light of the given brightness, or remove it with a negative
     /// value (`ParticleEmitter.setBrightness`).
     pub fn set_brightness(&mut self, brightness: f32) {

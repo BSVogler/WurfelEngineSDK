@@ -130,14 +130,14 @@ mod tests {
         let [sx, sy] = view.screen_position((gx, gy), 1.0);
         let pick = pick(&world, &view, sx, sy, None).expect("block under pointer");
         assert_eq!((pick.hit, pick.place), ((5, 5, 0), (5, 5, 1)));
-        let thing = ThingState { id: 1, kind: "Wood".into(), pos: [gx, gy, 0.0] };
+        let thing = ThingState { id: 1, kind: "Wood".into(), pos: [gx, gy, 0.0], lit: false };
         let [tx, ty] = view.screen_position((gx, gy), 0.5);
         assert_eq!(pick_thing(&[thing], &view, tx, ty), Some(1));
     }
 
     #[test]
     fn the_nearest_thing_within_reach_of_the_pointer_is_picked() {
-        let thing = |id, x, y, z| ThingState { id, kind: "Wood".into(), pos: [x, y, z] };
+        let thing = |id, x, y, z| ThingState { id, kind: "Wood".into(), pos: [x, y, z], lit: false };
         let things = [thing(1, 5.0, 5.0, 0.0), thing(2, 6.0, 5.0, 0.0)];
         let (sx, sy) = screen_of(5.0, 5.0, 0.5);
         assert_eq!(pick_thing(&things, &View::default(), sx + 5.0, sy), Some(1));

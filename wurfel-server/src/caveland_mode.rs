@@ -40,8 +40,9 @@ pub const MODE: ModeInfo = ModeInfo {
     },
 };
 
-/// Set by `--skip-intro`: a new game starts on the ground instead of in the crashing spaceship.
-pub static SKIP_INTRO: AtomicBool = AtomicBool::new(false);
+/// Set by `--intro`: a new game starts in the crashing spaceship. Off by default: the design no longer
+/// opens with the crash, a new game starts on the ground.
+pub static INTRO: AtomicBool = AtomicBool::new(false);
 
 /// The file next to a save slot's chunks that keeps what the blocks do not: money, machines,
 /// the respawn point and whether the intro has been seen.
@@ -77,6 +78,8 @@ pub struct CavelandMode {
     last_state: String,
     /// What the last `launchers` message said.
     last_launchers: String,
+    /// What the last `ovens` message said.
+    last_ovens: String,
     /// Where each player was last told their interaction sign floats (quantized, `None` = hidden).
     last_focus: HashMap<EntityId, Option<[f32; 3]>>,
     /// Where players (re)start.
@@ -93,6 +96,8 @@ pub struct CavelandMode {
     scanned: HashSet<(i32, i32)>,
     /// The intro (the spaceship crash) has been seen on this save.
     intro_done: bool,
+    /// A new game opens with the spaceship crash (`--intro`).
+    intro: bool,
     ship: Option<EntityId>,
     /// Players in a vehicle: the server moves them, so the client must not predict.
     riding: HashSet<EntityId>,
@@ -115,6 +120,7 @@ impl CavelandMode {
             action_happenings: Vec::new(),
             last_state: String::new(),
             last_launchers: String::new(),
+            last_ovens: String::new(),
             last_focus: HashMap::new(),
             spawn: None,
             seeded: false,
@@ -123,6 +129,7 @@ impl CavelandMode {
             spawner: None,
             scanned: HashSet::new(),
             intro_done: false,
+            intro: false,
             ship: None,
             riding: HashSet::new(),
             pending_lift: HashMap::new(),
@@ -136,6 +143,7 @@ impl CavelandMode {
     /// that the generator fills with portals.
     pub fn configure(&mut self, generator: &str, seed: u64) {
         self.scenario = generator == "caveland";
+        self.intro = INTRO.load(Ordering::Relaxed);
         self.caveland.set_scenario(self.scenario);
         self.spawner = create_generator(generator, seed);
     }
@@ -145,10 +153,10 @@ impl CavelandMode {
         &self.caveland
     }
 
-    /// A new game starts with the crash of the spaceship, until it has happened once on this save.
+    /// With `--intro` a new game starts with the crash of the spaceship, until it has happened once on this save.
     fn intro_wanted(&self) -> bool {
         let crashed = self.ship.is_some_and(|s| self.caveland.transport().ship(s).is_some_and(|ship| ship.crashed));
-        self.scenario && !self.intro_done && !SKIP_INTRO.load(Ordering::Relaxed) && !crashed
+        self.scenario && self.intro && !self.intro_done && !crashed
     }
 
     /// The ship comes in from the side and crashes where the first player was going to stand;
@@ -310,7 +318,7 @@ impl CavelandMode {
             .into_iter()
             .filter_map(|(id, kind): (EntityId, EntityKind)| {
                 let e = entities.get(id)?;
-                players.iter().any(|p| p.distance(e.position) <= THING_RANGE).then(|| ThingState { id, kind: kind.name(), pos: e.position.to_array() })
+                players.iter().any(|p| p.distance(e.position) <= THING_RANGE).then(|| ThingState { id, kind: kind.name(), pos: e.position.to_array(), lit: self.caveland.is_lit(id) })
             })
             .take(MAX_THINGS)
             .collect();
@@ -334,6 +342,8 @@ impl CavelandMode {
                     "recipes": view.recipes.iter().map(|r| json!([r.name, r.can_craft, r.ingredients])).collect::<Vec<_>>(),
                     // Hidden players (inside the spaceship) are not drawn; riders are moved by the
                     // server, so the client does not predict them.
+                    "burning": view.burning,
+                    "jetpack_on": self.caveland.player(id).is_some_and(|p| p.jetpack_on),
                     "hidden": self.caveland.is_hidden(id),
                     "riding": self.riding.contains(&id) || self.caveland.is_hidden(id),
                     "money": self.caveland.money(),
@@ -552,6 +562,13 @@ impl GameMode for CavelandMode {
                 self.outbox.push(ServerMsg::Rules { kind: "launchers".into(), data: serde_json::from_str(&launchers).expect("just made") });
                 self.last_launchers = launchers;
             }
+            let mut burning = self.caveland.burning_ovens();
+            burning.truncate(64);
+            let ovens = json!({ "cells": burning }).to_string();
+            if ovens != self.last_ovens {
+                self.outbox.push(ServerMsg::Rules { kind: "ovens".into(), data: serde_json::from_str(&ovens).expect("just made") });
+                self.last_ovens = ovens;
+            }
             let state = self.state(entities).to_string();
             if state != self.last_state {
                 self.outbox.push(ServerMsg::Rules { kind: "state".into(), data: serde_json::from_str(&state).expect("just made") });
@@ -758,9 +775,10 @@ mod tests {
         let mut entities = Entities::new();
         mode.spawn_player(&mut entities, &world, Vec3::new(0.0, 0.0, 1.0));
         let kinds: Vec<String> = mode.caveland().things().iter().map(|(_, k)| k.name()).collect();
-        for expected in ["shopkeeper", "flag", "bird", "robot", "spaceship"] {
+        for expected in ["shopkeeper", "flag", "bird", "robot"] {
             assert!(kinds.iter().any(|k| k == expected), "{expected} in {kinds:?}");
         }
+        assert!(!kinds.iter().any(|k| k == "spaceship"), "a new game does not open with the crash: {kinds:?}");
         assert!(mode.caveland().things().iter().all(|(id, _)| entities.get(*id).is_some()));
     }
 
@@ -835,6 +853,24 @@ mod tests {
         let torch = s.edits().into_iter().find(|e| e.block != 0).expect("a block was placed");
         assert_eq!(Block::from_raw(torch.block).id(), caveland_sim::blocks::ids::TORCH);
         assert_eq!(s.world.get(torch.x, torch.y, torch.z), Block::from_raw(torch.block));
+    }
+
+    #[test]
+    fn lit_dynamite_is_burning_in_the_pack_and_lit_when_thrown() {
+        let mut s = Setup::new();
+        s.give(&[CollectibleType::Explosives]);
+        s.run(12);
+        assert_eq!(s.state_of(s.player)["burning"], json!(false));
+        s.act("use");
+        s.run(12);
+        assert_eq!(s.state_of(s.player)["burning"], json!(true), "the pack says a fuse burns");
+        s.sent.clear();
+        s.act("prepare_throw");
+        s.run(6);
+        s.act("throw");
+        s.run(6);
+        let things = s.sent.iter().rev().find_map(|m| if let ServerMsg::Things { things, .. } = m { Some(things.clone()) } else { None }).unwrap();
+        assert!(things.iter().any(|t| t.kind == "Explosives" && t.lit), "the thrown dynamite is lit: {things:?}");
     }
 
     #[test]
@@ -1008,6 +1044,7 @@ mod tests {
         let mut world = flat_world();
         let mut mode = CavelandMode::new(&mut world, 1);
         mode.configure("caveland", 1);
+        mode.intro = true;
         let mut entities = Entities::new();
         let (gx, gy) = to_iso(0, 0);
         let player = mode.spawn_player(&mut entities, &world, Vec3::new(gx, gy, 1.0));

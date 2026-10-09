@@ -2,7 +2,7 @@
 # Runs the game server and restarts it whenever its code changes (wurfel-server, wurfel-sim and
 # caveland-sim). Used by ./dev.sh, which only restarts the browser side by itself.
 #
-#   ./devserver.sh [wurfel-server arguments]     e.g.  ./devserver.sh --port 3000 --skip-intro
+#   ./devserver.sh [wurfel-server arguments]     e.g.  ./devserver.sh --port 3000 --intro
 #
 # A restart disconnects everybody (the world is kept: it is saved on shutdown), so the browser
 # shows "connection lost" and you pick the world again. A failed build prints the compiler

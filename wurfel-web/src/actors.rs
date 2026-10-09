@@ -216,7 +216,7 @@ mod tests {
     }
 
     fn thing(id: u32, kind: &str, pos: [f32; 3]) -> ThingState {
-        ThingState { id, kind: kind.into(), pos }
+        ThingState { id, kind: kind.into(), pos, lit: false }
     }
 
     #[test]

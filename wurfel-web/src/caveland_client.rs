@@ -51,6 +51,12 @@ pub struct CavelandClient {
     preview: Option<(PreviewKey, Vec<PreviewDot>)>,
     /// Where the interaction sign floats: the thing the use button would act on.
     interact_focus: Option<Vec3>,
+    /// Players whose jetpack burns, as the server last said.
+    jetpacks: HashSet<u32>,
+    /// Cells of the ovens that burn.
+    ovens: Vec<(i32, i32, i32)>,
+    /// Players with a lit explosive in the pack.
+    burning: HashSet<u32>,
 }
 
 impl CavelandClient {
@@ -66,18 +72,27 @@ impl CavelandClient {
             aiming: false,
             preview: None,
             interact_focus: None,
+            jetpacks: HashSet::new(),
+            ovens: Vec::new(),
+            burning: HashSet::new(),
         }
     }
 
     /// The happenings of an `events` message as effects. `ours` is where our player is.
     fn effects(happenings: Vec<Happening>, me: u32, ours: Vec3) -> Vec<Effect> {
         let mut out = Vec::new();
+        let mut extra = Vec::new();
         for happening in happenings {
             out.push(match happening {
                 // Our own jump already made its sound when we pressed the key.
                 Happening::Sound { name, pos } if name == "urfJump" && pos.distance(ours) < 2.0 => continue,
                 // The cart's rolling goes on until the server says it stops.
                 Happening::Sound { name, pos } if name == "wagon" => Effect::Loop { name, pos },
+                // A robot hit something: its hit sprite shows for 300 ms (`Robot.performAttack`).
+                Happening::Sound { name, pos } if name == "robotHit" => {
+                    extra.push(Effect::Flash { kind: "hit_flash", pos, seconds: 0.3 });
+                    Effect::Sound { name, pos }
+                }
                 Happening::Sound { name, pos } => Effect::Sound { name, pos },
                 Happening::SoundStopped { name } => Effect::StopLoop { name },
                 Happening::Teleported { entity, pos } if entity == me => Effect::PlaceLocalPlayer { pos, vel: Vec3::ZERO },
@@ -89,6 +104,9 @@ impl CavelandClient {
                 // The wreck burns (`ParticleType.FIRE`) and lights its surroundings.
                 Happening::ShipCrashed { pos } => Effect::Fire { pos },
                 Happening::Dust { pos } => Effect::Burst { pos, color: [0.6, 0.55, 0.5] },
+                Happening::HardHit { pos } => Effect::DirtKick { pos },
+                Happening::Shot { from, to } => Effect::Shot { from, to },
+                Happening::RobotDestroyed { pos } => Effect::RobotBroke { pos },
                 Happening::BlockDamaged { cell, health } => Effect::BlockDamaged { cell, health },
                 Happening::Explosion { pos, radius } => Effect::Blast { pos, radius },
                 Happening::Toast(text) => Effect::Hud { method: "toast", arg: Some(text) },
@@ -97,6 +115,7 @@ impl CavelandClient {
                 Happening::Died => Effect::Respawned { message: "You died. Back at the start.".into() },
             });
         }
+        out.extend(extra);
         out
     }
 }
@@ -113,6 +132,8 @@ impl ClientMode for CavelandClient {
                 let flags = parse_flags(data);
                 self.hidden = flags.iter().filter(|(_, f)| f.hidden).map(|(&id, _)| id).collect();
                 self.riding = flags.get(&me).is_some_and(|f| f.riding);
+                self.burning = flags.iter().filter(|(_, f)| f.burning).map(|(&id, _)| id).collect();
+                self.jetpacks = flags.iter().filter(|(_, f)| f.jetpack).map(|(&id, _)| id).collect();
                 parse_state(data, me).map_or_else(Vec::new, |state| hud("update", Some(hud_json(&state))))
             }
             // Private news (the broadcast reaches everybody; `to` names who it is for).
@@ -126,6 +147,11 @@ impl ClientMode for CavelandClient {
             }
             "interact_focus" if addressed_to(data, me) => {
                 self.interact_focus = parse_interact_focus(data);
+                Vec::new()
+            }
+            "ovens" => {
+                self.ovens = parse_power(data).into_iter().collect();
+                self.ovens.sort_unstable();
                 Vec::new()
             }
             "launchers" => {
@@ -177,6 +203,18 @@ impl ClientMode for CavelandClient {
 
     fn exhaust(&self, id: EntityId) -> bool {
         self.caveland.player(id).is_some_and(|p| p.jetpack_on)
+    }
+
+    fn exhausting(&self) -> Vec<u32> {
+        self.jetpacks.iter().copied().collect()
+    }
+
+    fn carriers_burning(&self) -> Vec<u32> {
+        self.burning.iter().copied().collect()
+    }
+
+    fn burning_cells(&self) -> Vec<(i32, i32, i32)> {
+        self.ovens.clone()
     }
 
     fn lights(&self, world: &World, things: &[ThingState]) -> Vec<PointLight> {
@@ -369,6 +407,10 @@ pub struct PlayerFlags {
     pub hidden: bool,
     /// Carried by a vehicle or ship: the server moves them, the client must not predict.
     pub riding: bool,
+    /// The jetpack burns.
+    pub jetpack: bool,
+    /// A lit explosive in the pack: the player throws sparks.
+    pub burning: bool,
 }
 
 /// `hidden` and `riding` of every player in a `state` message.
@@ -377,7 +419,7 @@ pub fn parse_flags(data: &Value) -> HashMap<u32, PlayerFlags> {
     for (id, entry) in data.as_object().into_iter().flatten() {
         let Ok(id) = id.parse::<u32>() else { continue };
         let flag = |key: &str| entry.get(key).and_then(Value::as_bool).unwrap_or(false);
-        out.insert(id, PlayerFlags { hidden: flag("hidden"), riding: flag("riding") });
+        out.insert(id, PlayerFlags { hidden: flag("hidden"), riding: flag("riding"), jetpack: flag("jetpack_on"), burning: flag("burning") });
     }
     out
 }
@@ -427,6 +469,22 @@ pub fn lamps(world: &World, powered: &HashSet<(i32, i32, i32)>, things: &[ThingS
             PointLight::new(Vec3::new(gx, gy, z as f32 + 0.7), Vec3::new(1.0, 0.8, 0.45), 6.0, 2.0)
         })
         .collect();
+    // The booster rails next to a powered cable glow magenta (`BoosterLogic`: radius 1, brightness 12).
+    let mut boosters = HashSet::new();
+    for &(x, y, z) in powered {
+        if world.get(x, y, z).id() != ids::POWER_CABLE {
+            continue;
+        }
+        for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+            if world.get(x + dx, y + dy, z).id() == ids::BOOSTER_RAILS {
+                boosters.insert((x + dx, y + dy, z));
+            }
+        }
+    }
+    lights.extend(boosters.into_iter().map(|(x, y, z)| {
+        let (gx, gy) = to_iso(x, y);
+        PointLight::new(Vec3::new(gx, gy, z as f32 + 0.25), Vec3::new(0.8, 0.0, 0.3), 1.0, 12.0)
+    }));
     lights.extend(things.iter().filter(|t| t.kind == "minecart").map(|t| {
         PointLight::new(Vec3::from(t.pos) + Vec3::new(0.0, 0.0, 0.8), Vec3::new(1.0, 0.9, 0.6), 4.0, 1.0)
     }));
@@ -456,6 +514,12 @@ pub fn hud_json(hud: &Hud) -> String {
 pub enum Happening {
     Sound { name: String, pos: Vec3 },
     Dust { pos: Vec3 },
+    /// A block that cannot be broken by hand was hit: dirt flies.
+    HardHit { pos: Vec3 },
+    /// A turret fired from one point to another.
+    Shot { from: Vec3, to: Vec3 },
+    /// A robot was destroyed.
+    RobotDestroyed { pos: Vec3 },
     /// A block was hit and still stands: the cell and its health left, for the cracks over it.
     BlockDamaged { cell: (i32, i32, i32), health: u8 },
     Explosion { pos: Vec3, radius: i32 },
@@ -494,7 +558,13 @@ pub fn parse_events(data: &Value, my_id: u32) -> Vec<Happening> {
         let text = |key: &str| event.get(key).and_then(Value::as_str).unwrap_or_default();
         let happening = match event.get("t").and_then(Value::as_str).unwrap_or_default() {
             "sound" => position(&event["pos"]).map(|pos| Happening::Sound { name: text("name").to_string(), pos }),
+            "dust" if event.get("health").is_none() => position(&event["pos"]).map(|pos| Happening::HardHit { pos }),
             "dust" => position(&event["pos"]).map(|pos| Happening::Dust { pos }),
+            "shot" => match (position(&event["from"]), position(&event["to"])) {
+                (Some(from), Some(to)) => Some(Happening::Shot { from, to }),
+                _ => None,
+            },
+            "robot_destroyed" => position(&event["pos"]).map(|pos| Happening::RobotDestroyed { pos }),
             "explosion" => position(&event["pos"]).map(|pos| Happening::Explosion { pos, radius: event.get("radius").and_then(Value::as_i64).unwrap_or(3) as i32 }),
             "damaged" if mine => Some(Happening::Hurt),
             "picked" if mine => Some(Happening::Toast(format!("Picked up {}", text("item")))),
@@ -707,10 +777,10 @@ mod tests {
         assert_ne!(thing_style("robot").color, thing_style("friendly_robot").color);
         assert!(thing_style("robot").height > thing_style("Torch").height, "robots are taller than items");
         let mut out = Vec::new();
-        push_thing(&mut out, &ThingState { id: 1, kind: "never-heard-of".into(), pos: [1.0, 2.0, 3.0] });
+        push_thing(&mut out, &ThingState { id: 1, kind: "never-heard-of".into(), pos: [1.0, 2.0, 3.0], lit: false });
         assert_eq!(out.len(), 30, "top and four sides, two triangles each");
         let mut again = Vec::new();
-        push_thing(&mut again, &ThingState { id: 1, kind: "never-heard-of".into(), pos: [1.0, 2.0, 3.0] });
+        push_thing(&mut again, &ThingState { id: 1, kind: "never-heard-of".into(), pos: [1.0, 2.0, 3.0], lit: false });
         assert_eq!(out.len(), again.len());
     }
 
@@ -781,7 +851,7 @@ mod tests {
                 Happening::Toast("Picked up Torch".into()),
                 Happening::Toast("Crafted Torch".into()),
                 Happening::Explosion { pos: Vec3::new(0.0, 0.0, 1.0), radius: 3 },
-                Happening::Dust { pos: Vec3::new(5.0, 5.0, 5.0) },
+                Happening::HardHit { pos: Vec3::new(5.0, 5.0, 5.0) },
                 Happening::Died,
             ]
         );
@@ -797,8 +867,8 @@ mod tests {
             "x": {"hidden": true},
         });
         let flags = parse_flags(&data);
-        assert_eq!(flags[&4], PlayerFlags { hidden: true, riding: true });
-        assert_eq!(flags[&5], PlayerFlags { hidden: false, riding: true });
+        assert_eq!(flags[&4], PlayerFlags { hidden: true, riding: true, jetpack: false, burning: false });
+        assert_eq!(flags[&5], PlayerFlags { hidden: false, riding: true, jetpack: false, burning: false });
         assert_eq!(flags[&6], PlayerFlags::default(), "an older server says nothing: nobody is hidden");
         assert_eq!(flags.len(), 3, "a key that is not a player id is skipped");
     }
@@ -863,8 +933,8 @@ mod tests {
             world.set(x, y, 1, Block::new(ids::TORCH, 0));
         }
         let powered = HashSet::from([(2, 3, 1), (6, 3, 1), (9, 9, 1)]); // (9,9,1) is a cable or turret: air here
-        let cart = ThingState { id: 1, kind: "minecart".into(), pos: [5.0, 5.0, 1.0] };
-        let rock = ThingState { id: 2, kind: "Wood".into(), pos: [1.0, 1.0, 1.0] };
+        let cart = ThingState { id: 1, kind: "minecart".into(), pos: [5.0, 5.0, 1.0], lit: false };
+        let rock = ThingState { id: 2, kind: "Wood".into(), pos: [1.0, 1.0, 1.0], lit: false };
         let lights = lamps(&world, &powered, &[cart, rock]);
         assert_eq!(lights.len(), 3, "two powered torches and one cart: {lights:?}");
         let (gx, gy) = to_iso(2, 3);

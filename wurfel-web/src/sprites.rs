@@ -292,6 +292,9 @@ pub fn entity_art(kind: &str) -> Option<EntityArt> {
         "lift_basket" => item(25),
         "spaceship" => item(80),
         "money" => item(20),
+        // Pictures the client makes up: a robot's hit and the fire of a burning oven.
+        "hit_flash" => item(33),
+        "oven_fire" => item(17),
         "minecart" => item(42),
         // The ids of `CollectibleType` in the Java game.
         "Rails" => item(16),
@@ -774,6 +777,24 @@ mod tests {
             let bottom = out.iter().map(|v| project(billboard_corner(v))[1]).fold(f32::MIN, f32::max);
             // a raised foot or a bob moves the lowest pixel of some frames up to a quarter of the body above the feet
             assert!((-20.0..=60.0).contains(&bottom), "frame {frame}: feet {bottom}px below the centre");
+        }
+    }
+}
+
+#[cfg(test)]
+mod fx_tests {
+    use super::*;
+
+    #[test]
+    fn the_made_up_pictures_and_robot_pieces_exist_in_the_atlas() {
+        let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/sprites/sprites.atlas")).unwrap();
+        let sprites = Sprites::new(crate::atlas::Atlas::parse(&text).unwrap());
+        for kind in ["hit_flash", "oven_fire"] {
+            let art = entity_art(kind).unwrap();
+            assert!(sprites.entity(art.id, art.value).is_some() || sprites.entity(art.id, 0).is_some(), "{kind}");
+        }
+        for id in [34, 35, 36] {
+            assert!(sprites.entity(id, 0).is_some(), "robot piece {id}");
         }
     }
 }

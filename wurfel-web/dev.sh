@@ -12,7 +12,7 @@
 # compile shows its errors as [server] lines and starts again when the next change is saved.
 #
 # NO_OPEN=1 ./dev.sh  starts without opening a browser tab.
-# SKIP_INTRO=1 ./dev.sh  Caveland story maps start on the ground instead of in the crashing spaceship.
+# INTRO=1 ./dev.sh       Caveland story maps start in the crashing spaceship (default: on the ground).
 cd "$(dirname "$0")"
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 
@@ -46,7 +46,7 @@ server_loop() {
       echo "[server] change detected, rebuilding"
       continue
     fi
-    (cd .. && exec "$bin" --port 3000 ${SKIP_INTRO:+--skip-intro}) > >(label) 2>&1 &
+    (cd .. && exec "$bin" --port 3000 ${INTRO:+--intro}) > >(label) 2>&1 &
     local pid=$!
     while kill -0 "$pid" 2>/dev/null && [ -z "$(changed_source)" ]; do sleep 1; done
     if kill -0 "$pid" 2>/dev/null; then

@@ -18,7 +18,7 @@
 #                      the two never write to the same world. Starts with the default map only.
 # BLUEGREEN_DIR=<dir>  where builds live (default ~/.wurfel-bluegreen), with its own cargo cache so
 #                      promoting never waits for, or blocks, your normal builds.
-# SKIP_INTRO=1         Caveland story maps start on the ground instead of in the spaceship.
+# INTRO=1              Caveland story maps start in the crashing spaceship (default: on the ground).
 # KEEP=5               how many old builds to keep.
 SELF=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
 cd "$(dirname "$SELF")/.." || exit 1
@@ -59,7 +59,7 @@ cmd_run() {
       continue
     fi
     echo "blue: starting $(label "$release")"
-    "$release/wurfel-server" --port "$BLUE_PORT" --maps-dir "$BLUE_MAPS" --static "$release/dist" ${SKIP_INTRO:+--skip-intro} &
+    "$release/wurfel-server" --port "$BLUE_PORT" --maps-dir "$BLUE_MAPS" --static "$release/dist" ${INTRO:+--intro} &
     pid=$!
     while kill -0 "$pid" 2>/dev/null && [ "$(current)" = "$release" ]; do sleep 1; done
     if kill -0 "$pid" 2>/dev/null; then
@@ -89,7 +89,7 @@ step() {
 smoke() { # start the new server on a spare port with empty maps, run the end-to-end script, stop it
   local port=$((BLUE_PORT + 1)) maps="$REL/smoke-maps" pid ok=1 i
   mkdir -p "$maps"
-  "$REL/wurfel-server" --port "$port" --maps-dir "$maps" --skip-intro >"$REL/smoke-server.log" 2>&1 &
+  "$REL/wurfel-server" --port "$port" --maps-dir "$maps" >"$REL/smoke-server.log" 2>&1 &
   pid=$!
   for i in $(seq 1 40); do curl -s -o /dev/null "http://127.0.0.1:$port/" && break; sleep 0.5; done
   node "$SRC/wurfel-server/smoke.mjs" "http://127.0.0.1:$port" && ok=0

@@ -789,7 +789,7 @@ mod tests {
     }
 
     fn thing(id: u32, pos: [f32; 3]) -> ThingState {
-        ThingState { id, kind: "Wood".into(), pos }
+        ThingState { id, kind: "Wood".into(), pos, lit: false }
     }
 
     #[test]

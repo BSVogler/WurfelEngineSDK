@@ -320,7 +320,7 @@ impl Game {
         }
         let mut things = self.things.clone();
         things.extend(self.balls.iter().filter_map(|&(id, _)| {
-            Some(ThingState { id, kind: BALL_KIND.to_string(), pos: self.entities.get(id)?.position.to_array() })
+            Some(ThingState { id, kind: BALL_KIND.to_string(), pos: self.entities.get(id)?.position.to_array(), lit: false })
         }));
         Some(ServerMsg::Things { tick: self.tick, things })
     }
@@ -380,7 +380,7 @@ impl Game {
             Ok(list) => {
                 for (kind, pos) in list.into_iter().take(MAX_EDITOR_THINGS) {
                     if EDITOR_THING_KINDS.contains(&kind.as_str()) && thing_position_is_valid(pos) {
-                        self.things.push(ThingState { id: self.next_thing, kind, pos });
+                        self.things.push(ThingState { id: self.next_thing, kind, pos, lit: false });
                         self.next_thing += 1;
                     }
                 }
@@ -677,7 +677,7 @@ impl Game {
         match msg {
             ClientMsg::SpawnThing { kind, pos } => {
                 if self.things.len() < MAX_EDITOR_THINGS && EDITOR_THING_KINDS.contains(&kind.as_str()) && reachable(self, pos) {
-                    self.things.push(ThingState { id: self.next_thing, kind, pos });
+                    self.things.push(ThingState { id: self.next_thing, kind, pos, lit: false });
                     self.next_thing += 1;
                 } else {
                     return;
@@ -1008,7 +1008,7 @@ mod tests {
         game.handle(plain, spawn("Wood", pos));
         assert!(game.drain_outbox().is_empty(), "only from the editor");
         assert!(game.handle(editor, spawn("Wood", pos)).is_none(), "the answer is the things message, not a reply");
-        assert_eq!(things_of(&mut game), vec![ThingState { id: 1, kind: "Wood".into(), pos }]);
+        assert_eq!(things_of(&mut game), vec![ThingState { id: 1, kind: "Wood".into(), pos, lit: false }]);
         assert!(game.drain_outbox().is_empty(), "sent once, then only about once a second");
 
         let moved = [pos[0] + 1.0, pos[1], pos[2]];
