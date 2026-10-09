@@ -2460,13 +2460,21 @@ fn animate_sea(s: &mut State, dt: f32) {
 fn start_frame_loop(state: Rc<RefCell<State>>) {
     let callback: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
     let next = callback.clone();
-    let mut last_frame = f64::NEG_INFINITY;
+    // When the next frame is due. A cap is kept on average by moving this on by one interval per frame, not by
+    // measuring from the last frame: on a 100 Hz display a 60 FPS cap measured that way drops every second
+    // callback (10 ms is too early, 20 ms is taken) and ends at 50.
+    let mut due = f64::NEG_INFINITY;
     *next.borrow_mut() = Some(Closure::new(move |now_ms: f64| {
         // `fpsLimit` from the menu: 0 is unlimited. Skip callbacks that arrive too early; the 1 ms slack
         // keeps a 60 FPS cap from dropping to 30 on a 60 Hz display whose callbacks jitter.
         let limit = state.borrow().console.fps_limit() as f64;
-        if limit < 1.0 || now_ms - last_frame >= 1000.0 / limit - 1.0 {
-            last_frame = now_ms;
+        let interval = 1000.0 / limit.max(1.0);
+        if limit < 1.0 {
+            due = now_ms;
+            frame(&mut state.borrow_mut(), now_ms);
+        } else if now_ms >= due - 1.0 {
+            // After a stall (or the first frame) start again from now instead of rushing to catch up.
+            due = if now_ms - due > interval { now_ms + interval } else { due + interval };
             frame(&mut state.borrow_mut(), now_ms);
         }
         request_animation_frame(callback.borrow().as_ref().unwrap());
