@@ -19,7 +19,8 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use wurfel_sim::block::id;
-use wurfel_sim::grid::{chunk_of, lower_left, lower_right};
+use glam::Vec3;
+use wurfel_sim::grid::{chunk_of, lower_left, lower_right, to_iso};
 use wurfel_sim::{Block, World, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z};
 
 use wurfel_sim::light::PointLight;
@@ -164,7 +165,14 @@ pub struct RenderStorage {
     /// The highest layer that is drawn (the editor's wheel, see [`RenderStorage::set_layer_limit`]);
     /// `None` draws them all.
     layer_limit: Option<i32>,
+    /// Where force waves are moving blocks: the centre in the ground frame and how far (blocks). Inside,
+    /// the blocks near the surface are meshed with all their sides (see [`MeshContext::exposed`]).
+    wave_zones: Vec<(Vec3, f32)>,
 }
+
+/// How many layers below the surface of a column show their covered sides while a wave moves it (a wave
+/// moves a column by less than one block, so what shows is a sliver of the top blocks).
+const EXPOSED_DEPTH: i32 = 3;
 
 /// Chunks from the middle to the edge of the render window of the fixed camera (3x3 chunks).
 pub const FIXED_WINDOW_RADIUS: i32 = 1;
@@ -401,6 +409,37 @@ impl RenderStorage {
         true
     }
 
+    /// Tell which areas force waves are moving blocks in. The chunks that are or were in such an area are
+    /// meshed again with all the sides of their surface blocks, or without once it is over. Returns whether
+    /// anything changed.
+    pub fn set_wave_zones(&mut self, zones: Vec<(Vec3, f32)>) -> bool {
+        if zones == self.wave_zones {
+            return false;
+        }
+        let old = std::mem::replace(&mut self.wave_zones, zones);
+        let near = |zones: &[(Vec3, f32)], chunk: (i32, i32)| {
+            // The middle of the chunk in the ground frame; a chunk reaches some 25 blocks from it.
+            let (gx, gy) = to_iso(chunk.0 * CHUNK_SIZE_X + CHUNK_SIZE_X / 2, chunk.1 * CHUNK_SIZE_Y + CHUNK_SIZE_Y / 2);
+            zones.iter().any(|(c, r)| ((c.x - gx).powi(2) + (c.y - gy).powi(2)).sqrt() <= r + 25.0)
+        };
+        for (&pos, chunk) in self.chunks.iter_mut() {
+            if near(&old, pos) || near(&self.wave_zones, pos) {
+                chunk.mesh_dirty = true;
+            }
+        }
+        true
+    }
+
+    /// Is the block at `(x, y, z)` in a force wave's area and near the surface of its column?
+    fn is_exposed(&self, x: i32, y: i32, z: i32) -> bool {
+        if self.wave_zones.is_empty() {
+            return false;
+        }
+        let (gx, gy) = to_iso(x, y);
+        let inside = self.wave_zones.iter().any(|(c, r)| ((c.x - gx).powi(2) + (c.y - gy).powi(2)).sqrt() <= *r);
+        inside && (1..=EXPOSED_DEPTH).any(|k| !self.is_opaque(x, y, z + k))
+    }
+
     /// All vertices of the window. Only chunks that changed are meshed again.
     pub fn vertices(&mut self) -> Vec<Vertex> {
         let dirty: Vec<(i32, i32)> = self.chunks.iter().filter(|(_, c)| c.mesh_dirty).map(|(&pos, _)| pos).collect();
@@ -408,7 +447,8 @@ impl RenderStorage {
             let mesh = {
                 let this = &*self;
                 let opaque = |x: i32, y: i32, z: i32| this.is_opaque(x, y, z);
-                let ctx = MeshContext { opaque: &opaque, lights: &this.static_lights, sprites: this.sprites.as_deref(), all_faces: this.all_faces, top: this.top_layer() };
+                let exposed = |x: i32, y: i32, z: i32| this.is_exposed(x, y, z);
+                let ctx = MeshContext { opaque: &opaque, lights: &this.static_lights, sprites: this.sprites.as_deref(), all_faces: this.all_faces, top: this.top_layer(), exposed: &exposed };
                 mesh::build_chunk(&this.chunks[&pos], &ctx)
             };
             let chunk = self.chunks.get_mut(&pos).expect("listed above");
@@ -443,6 +483,30 @@ mod tests {
         let mut p: Vec<_> = storage.chunks().map(|c| c.pos()).collect();
         p.sort_unstable();
         p
+    }
+
+    #[test]
+    fn in_a_wave_zone_the_covered_sides_of_the_surface_blocks_are_meshed_and_afterwards_not_any_more() {
+        // A solid 12 x 12 block of stone, four layers deep: nearly all sides are covered.
+        let mut cells = Vec::new();
+        for x in 0..12 {
+            for y in 0..12 {
+                for z in 0..4 {
+                    cells.push(((x, y, z), id::STONE));
+                }
+            }
+        }
+        let mut world = World::new(Blocks(cells));
+        let mut storage = RenderStorage::new();
+        storage.update(&mut world, (0, 0));
+        let plain = storage.vertices().len();
+        let (gx, gy) = to_iso(6, 6);
+        assert!(storage.set_wave_zones(vec![(Vec3::new(gx, gy, 1.0), 6.0)]));
+        assert!(!storage.set_wave_zones(storage.wave_zones.clone()), "the same zone changes nothing");
+        let during = storage.vertices().len();
+        assert!(during > plain, "the covered sides show while the wave moves the blocks: {plain} -> {during}");
+        assert!(storage.set_wave_zones(Vec::new()));
+        assert_eq!(storage.vertices().len(), plain, "back to the cheap mesh once it is over");
     }
 
     #[test]

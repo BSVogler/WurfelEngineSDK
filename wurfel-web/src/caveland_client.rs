@@ -107,6 +107,7 @@ impl CavelandClient {
                 Happening::HardHit { pos } => Effect::DirtKick { pos },
                 Happening::Shot { from, to } => Effect::Shot { from, to },
                 Happening::RobotDestroyed { pos } => Effect::RobotBroke { pos },
+                Happening::Shockwave { pos, radius, strength } => Effect::Shockwave { pos, radius, strength },
                 Happening::BlockDamaged { cell, health } => Effect::BlockDamaged { cell, health },
                 Happening::Explosion { pos, radius } => Effect::Blast { pos, radius },
                 Happening::Toast(text) => Effect::Hud { method: "toast", arg: Some(text) },
@@ -520,6 +521,8 @@ pub enum Happening {
     Shot { from: Vec3, to: Vec3 },
     /// A robot was destroyed.
     RobotDestroyed { pos: Vec3 },
+    /// A force wave started: the ground ripples.
+    Shockwave { pos: Vec3, radius: f32, strength: f32 },
     /// A block was hit and still stands: the cell and its health left, for the cracks over it.
     BlockDamaged { cell: (i32, i32, i32), health: u8 },
     Explosion { pos: Vec3, radius: i32 },
@@ -564,6 +567,11 @@ pub fn parse_events(data: &Value, my_id: u32) -> Vec<Happening> {
                 (Some(from), Some(to)) => Some(Happening::Shot { from, to }),
                 _ => None,
             },
+            "shockwave" => position(&event["pos"]).map(|pos| Happening::Shockwave {
+                pos,
+                radius: event.get("radius").and_then(Value::as_f64).unwrap_or(9.0) as f32,
+                strength: event.get("strength").and_then(Value::as_f64).unwrap_or(1.0) as f32,
+            }),
             "robot_destroyed" => position(&event["pos"]).map(|pos| Happening::RobotDestroyed { pos }),
             "explosion" => position(&event["pos"]).map(|pos| Happening::Explosion { pos, radius: event.get("radius").and_then(Value::as_i64).unwrap_or(3) as i32 }),
             "damaged" if mine => Some(Happening::Hurt),
@@ -1123,5 +1131,14 @@ mod mode_tests {
         assert!(!mode.exhaust(id));
         assert!(mode.commands().iter().any(|(name, _)| *name == "give"));
         assert_eq!(mode.key_action("f", true), Some(("attack", 0)));
+    }
+
+    #[test]
+    fn a_shockwave_event_becomes_a_ripple_effect() {
+        let data = json!([{"t": "shockwave", "pos": [3.0, 4.0, 1.0], "radius": 12.0, "strength": 1.5}, {"t": "shockwave", "pos": "nowhere"}]);
+        let happenings = parse_events(&data, 1);
+        assert_eq!(happenings, vec![Happening::Shockwave { pos: Vec3::new(3.0, 4.0, 1.0), radius: 12.0, strength: 1.5 }]);
+        let effects = CavelandClient::effects(happenings, 1, Vec3::ZERO);
+        assert!(matches!(effects[..], [Effect::Shockwave { radius, .. }] if radius == 12.0));
     }
 }

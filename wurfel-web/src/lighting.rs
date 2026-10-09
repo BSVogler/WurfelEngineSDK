@@ -21,6 +21,8 @@ use crate::mesh::FLAT_SHADES;
 
 /// How many moving point lights the shader handles at once.
 pub const MAX_POINT_LIGHTS: usize = 8;
+/// Force waves the terrain can ripple with at once.
+pub const MAX_WAVES: usize = 4;
 
 /// The CVar `ambientOcclusion` default: how dark a fully occluded vertex gets.
 pub const DEFAULT_AO_STRENGTH: f32 = 0.5;
@@ -70,6 +72,10 @@ pub struct Lighting {
     pub lights: [[f32; 4]; MAX_POINT_LIGHTS],
     /// rgb: colour, w: brightness.
     pub light_colors: [[f32; 4]; MAX_POINT_LIGHTS],
+    /// Force waves, `[x, y, front, radius]` (ground frame, blocks); a radius of 0 is an unused slot.
+    pub waves: [[f32; 4]; MAX_WAVES],
+    /// Of each wave: x the amplitude in blocks, y the half width of the ring (`Shockwave::shape`).
+    pub wave_shape: [[f32; 4]; MAX_WAVES],
 }
 
 impl Lighting {
@@ -108,6 +114,8 @@ impl Lighting {
             clouds: [0.0, 0.0, clouds::TILE_BLOCKS, clouds::HEIGHT],
             lights: [[0.0; 4]; MAX_POINT_LIGHTS],
             light_colors: [[0.0; 4]; MAX_POINT_LIGHTS],
+            waves: [[0.0; 4]; MAX_WAVES],
+            wave_shape: [[0.0; 4]; MAX_WAVES],
         };
         let used = lights.len().min(MAX_POINT_LIGHTS);
         uniform.misc[0] = used as f32;
@@ -154,6 +162,8 @@ pub struct LightingController {
     /// Time passes this many times faster than the Java day length (7.7 minutes). 0 stops the clock.
     pub time_scale: f32,
     dynamic: Vec<PointLight>,
+    /// The force waves that ripple the terrain, the newest [`MAX_WAVES`] of them.
+    waves: Vec<wurfel_sim::shockwave::Shockwave>,
 }
 
 impl Default for LightingController {
@@ -184,6 +194,7 @@ impl LightingController {
             cloud_offset: (0.0, 0.0),
             time_scale: 1.0,
             dynamic: Vec::new(),
+            waves: Vec::new(),
         };
         controller.apply_settings();
         controller
@@ -229,6 +240,11 @@ impl LightingController {
         self.dynamic.truncate(MAX_POINT_LIGHTS);
     }
 
+    /// The force waves that are spreading now; only the newest [`MAX_WAVES`] ripple the ground.
+    pub fn set_waves(&mut self, waves: &[wurfel_sim::shockwave::Shockwave]) {
+        self.waves = waves.iter().rev().take(MAX_WAVES).copied().collect();
+    }
+
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn dynamic_lights(&self) -> &[PointLight] {
         &self.dynamic
@@ -247,6 +263,11 @@ impl LightingController {
         if self.clouds && self.enabled {
             uniform.clouds[0] = self.cloud_time;
             uniform.clouds[1] = self.cloud_strength.clamp(0.0, 1.0);
+        }
+        for (i, wave) in self.waves.iter().enumerate() {
+            let (place, shape) = wave.shape();
+            uniform.waves[i] = place;
+            uniform.wave_shape[i] = shape;
         }
         if let Some(p) = self.local_light.filter(|p| p.is_finite()) {
             uniform.local_light = [p.x, p.y, p.z, 1.0];
@@ -294,7 +315,7 @@ mod tests {
 
     #[test]
     fn the_uniform_is_all_vec4_so_it_has_no_padding() {
-        assert_eq!(size_of::<Lighting>(), 17 * 16 + 2 * MAX_POINT_LIGHTS * 16);
+        assert_eq!(size_of::<Lighting>(), 17 * 16 + 2 * MAX_POINT_LIGHTS * 16 + 2 * MAX_WAVES * 16);
         assert_eq!(size_of::<Lighting>() % 16, 0, "uniform buffers want 16-byte multiples");
         for offset in [
             offset_of!(Lighting, ambient),
@@ -316,6 +337,8 @@ mod tests {
             offset_of!(Lighting, clouds),
             offset_of!(Lighting, lights),
             offset_of!(Lighting, light_colors),
+            offset_of!(Lighting, waves),
+            offset_of!(Lighting, wave_shape),
         ] {
             assert_eq!(offset % 16, 0);
         }
@@ -429,6 +452,8 @@ mod tests {
             ("clouds", offset_of!(Lighting, clouds)),
             ("lights", offset_of!(Lighting, lights)),
             ("light_colors", offset_of!(Lighting, light_colors)),
+            ("waves", offset_of!(Lighting, waves)),
+            ("wave_shape", offset_of!(Lighting, wave_shape)),
         ];
         let got: Vec<(&str, usize)> = members.iter().map(|(n, o)| (n.as_str(), *o as usize)).collect();
         assert_eq!(got, expected.to_vec(), "field order and offsets");
@@ -461,8 +486,8 @@ mod tests {
                 (location, components)
             })
             .collect();
-        // position (3 floats), colour (3), shade (2), baked point light (3), atlas uv (2), page (1), occlusion (1)
-        assert_eq!(formats, vec![(0, 3), (1, 3), (2, 2), (3, 3), (4, 2), (5, 1), (6, 1)]);
+        // position (3 floats), colour (3), shade (2), baked point light (3), atlas uv (2), page (1), occlusion (1), block centre (2)
+        assert_eq!(formats, vec![(0, 3), (1, 3), (2, 2), (3, 3), (4, 2), (5, 1), (6, 1), (7, 2)]);
         let floats: usize = formats.iter().map(|f| f.1).sum();
         assert_eq!(floats * 4, size_of::<Vertex>());
         assert_eq!(entry.function.arguments.len(), 1);

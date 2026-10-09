@@ -42,6 +42,8 @@ pub enum Effect {
     DirtKick { pos: Vec3 },
     /// A turret shot: the muzzle flash and the trail.
     Shot { from: Vec3, to: Vec3 },
+    /// A force wave: the ground ripples while it spreads. (What it does to bodies the server decides.)
+    Shockwave { pos: Vec3, radius: f32, strength: f32 },
     /// A robot fell apart.
     RobotBroke { pos: Vec3 },
     /// A block was hit and still stands, with the health it has left.

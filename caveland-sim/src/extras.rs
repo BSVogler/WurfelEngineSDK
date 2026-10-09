@@ -68,6 +68,8 @@ pub enum ExtraEvent {
     /// A player was thrown by a catapult or cannon (or told to fly by the server): where from and
     /// how fast. Clients run the same arc from this start.
     Launched { entity: EntityId, position: Vec3, velocity: Vec3 },
+    /// A force wave started: the ground ripples and things are shoved away from `position`.
+    Shockwave { position: Vec3, radius: f32, strength: f32 },
     /// The tutorial's guide moved on to a new step.
     TutorialStep { step: u8 },
     /// The robots of the end fight appeared.
@@ -128,6 +130,8 @@ pub(crate) struct Extras {
     pub scenario: Scenario,
     pub respawn: Option<Cell>,
     pub events: Vec<ExtraEvent>,
+    /// Force waves that are still spreading.
+    pub waves: Vec<(wurfel_sim::shockwave::Shockwave, HashSet<EntityId>)>,
     /// The teams of the flags on poles, kept when a flag entity is lost (a save keeps them).
     pub pole_teams: HashMap<Cell, Team>,
 }
@@ -845,6 +849,7 @@ impl Caveland {
         }
         self.update_turrets(entities, world, dt);
         self.update_launchers(entities, dt);
+        self.update_shockwaves(entities, dt);
         self.update_others(entities, world, dt);
         self.update_spiders(entities, world, dt);
         self.update_scenario(entities, world);

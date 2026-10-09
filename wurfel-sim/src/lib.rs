@@ -18,6 +18,7 @@ pub mod light;
 pub mod particle;
 pub mod player;
 pub mod protocol;
+pub mod shockwave;
 pub mod storage;
 pub mod world;
 

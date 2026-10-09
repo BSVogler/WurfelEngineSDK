@@ -10,15 +10,16 @@ use crate::collectible::{CollectibleType, Item};
 use crate::game::{cell_floor, Caveland, Cell};
 
 /// The commands and their manuals (`getCommandName`, `getManual`).
-pub const COMMANDS: [(&str, &str); 4] = [
+pub const COMMANDS: [(&str, &str); 5] = [
     ("give", "gives you a collectible\nParameters: [name of collectible]"),
     ("tpplayer", "teleports the player: <x> <y> <z> <id>"),
     ("portaltarget", "Sets the target of the portal.\nParameters: [x][y][z]"),
     ("place", "puts a finished machine down in front of you\nParameters: catapult | cannon"),
+    ("forcewave", "sends a force wave out from you: it ripples the ground and shoves everything away\nParameters: [strength, 1 is a dynamite blast]"),
 ];
 
 /// A command that was understood.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Command {
     Give(CollectibleType),
     /// Teleport the player with this number to a cell.
@@ -27,6 +28,8 @@ pub enum Command {
     PortalTarget(Cell),
     /// Put a finished machine (a block id) down in front of the player.
     Place(u8),
+    /// A force wave from the player, of this strength.
+    ForceWave(f32),
 }
 
 /// What running a command did.
@@ -72,6 +75,13 @@ pub fn parse(line: &str) -> Result<Command, String> {
             Some("cannon") => Ok(Command::Place(ids::CANNON)),
             _ => Err(manual("place")),
         },
+        "forcewave" => {
+            let strength = match tokens.next() {
+                Some(token) => token.parse::<f32>().ok().filter(|s| s.is_finite() && *s > 0.0 && *s <= 10.0).ok_or_else(|| manual("forcewave"))?,
+                None => 1.5,
+            };
+            Ok(Command::ForceWave(strength))
+        }
         other => Err(format!("unknown command '{other}'")),
     }
 }
@@ -110,6 +120,11 @@ impl Caveland {
             }
             Command::PortalTarget(cell) => Ok(CommandOutcome::PortalTarget(cell)),
             Command::Place(block) => Ok(CommandOutcome::Place(block)),
+            Command::ForceWave(strength) => {
+                let at = entities.get(caller).map(|e| e.position).ok_or_else(|| "you are not in the game".to_string())?;
+                self.shockwave(at, 9.0 * strength.sqrt(), strength);
+                Ok(CommandOutcome::Done("force wave"))
+            }
         }
     }
 }

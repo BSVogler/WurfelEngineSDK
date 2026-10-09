@@ -205,6 +205,7 @@ pub fn push_blade(out: &mut Vec<Vertex>, atlas: &crate::atlas::Atlas, region: &R
             uv: [u, v],
             layer: region.page as f32,
             occlusion: 0.0,
+            cell: crate::mesh::NO_CELL,
         }
     };
     let (a, b, c, d) = (vertex(left, bottom, u0, v1), vertex(right, bottom, u1, v1), vertex(right, top, u1, v0), vertex(left, top, u0, v0));

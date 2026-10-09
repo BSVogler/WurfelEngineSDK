@@ -44,12 +44,33 @@ pub struct Vertex {
     /// [`OCCLUSION_FLAG`] + 256 * this vertex's corner (0..=3, in the corner order of the face) + the
     /// four counts (0..=3) as 2 bits each, corner 0 in the lowest bits.
     pub occlusion: f32,
+    /// The ground centre `(x, y)` of the block this vertex is a corner of (see [`block_cell`]), so the force
+    /// wave can move a whole block by one amount. [`NO_CELL`] for a vertex that is not part of a block:
+    /// the shader then takes its own position.
+    pub cell: [f32; 2],
+}
+
+/// `Vertex::cell` of a vertex that is not a corner of a block.
+pub const NO_CELL: [f32; 2] = [-1.0e9, -1.0e9];
+
+/// The centre of the block that a face with these `corners` belongs to, in ground coordinates. A block's
+/// footprint is the unit square around its centre, so a face on its side lies half a block off it.
+pub fn block_cell(face: f32, corners: &[[f32; 3]; 4]) -> [f32; 2] {
+    let avg = |axis: usize| corners.iter().map(|c| c[axis]).sum::<f32>() / 4.0;
+    let (x, y) = (avg(0), avg(1));
+    match face.round() as i32 {
+        0 => [x, y - 0.5],  // left: on the +y side
+        2 => [x - 0.5, y],  // right: on the +x side
+        5 => [x, y + 0.5],  // back y: on the -y side
+        6 => [x + 0.5, y],  // back x: on the -x side
+        _ => [x, y],        // top, and markers over a block
+    }
 }
 
 impl Vertex {
     /// A vertex without a sprite.
     pub const fn flat(position: [f32; 3], color: [f32; 3], shade: [f32; 2], point: [f32; 3]) -> Self {
-        Vertex { position, color, shade, point, uv: [0.0; 2], layer: NO_SPRITE, occlusion: 0.0 }
+        Vertex { position, color, shade, point, uv: [0.0; 2], layer: NO_SPRITE, occlusion: 0.0, cell: NO_CELL }
     }
 }
 
@@ -91,10 +112,10 @@ pub const FLAT_SHADES: [f32; 3] = [0.78, 1.0, 0.58];
 
 #[cfg(target_arch = "wasm32")]
 impl Vertex {
-    /// The vertex buffer layout matching `shader.wgsl` (`@location(0..=6)`).
+    /// The vertex buffer layout matching `shader.wgsl` (`@location(0..=7)`).
     pub fn layout() -> wgpu::VertexBufferLayout<'static> {
-        const ATTRIBUTES: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
-            0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x3, 4 => Float32x2, 5 => Float32, 6 => Float32
+        const ATTRIBUTES: [wgpu::VertexAttribute; 8] = wgpu::vertex_attr_array![
+            0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x3, 4 => Float32x2, 5 => Float32, 6 => Float32, 7 => Float32x2
         ];
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as u64,
@@ -119,6 +140,9 @@ pub struct MeshContext<'a> {
     /// Also mesh the sides that look away from the fixed camera (`-x`, `-y`), so the free camera
     /// can look at the world from behind. Costs about a third more triangles.
     pub all_faces: bool,
+    /// Blocks that must be meshed with all their sides, even the ones a neighbour covers: while a force wave
+    /// moves the blocks around, the covered sides come to light. Blocks outside every wave answer false.
+    pub exposed: &'a dyn Fn(i32, i32, i32) -> bool,
 }
 
 /// Colour of a block, for things that break off it.
@@ -199,7 +223,12 @@ pub fn build_chunk(chunk: &RenderChunk, ctx: &MeshContext) -> Vec<Vertex> {
                 // free camera (the far slope of a hill), so it is only skipped for the fixed one.
                 // The upper half of a tree is an invisible obstacle (`CustomTree.TREETOPVALUE`).
                 let tree_top = cell.block.id() == wurfel_sim::block::id::TREE && cell.block.value() == 8;
-                if cell.block.is_air() || tree_top || (cell.is_fully_clipped() && !ctx.all_faces) {
+                // In a force wave the sides that a neighbour covers show too (the top stays covered by the
+                // block above, which moves with it).
+                let exposed = !cell.block.is_air() && (ctx.exposed)(x, y, z);
+                let clipping = if exposed { cell.clipping & CLIP_TOP } else { cell.clipping };
+                let fully_clipped = !exposed && cell.is_fully_clipped();
+                if cell.block.is_air() || tree_top || (fully_clipped && !ctx.all_faces) {
                     continue;
                 }
                 let look = ctx.sprites.and_then(|s| s.block(cell.block.id(), cell.block.value()).map(|look| (s, look)));
@@ -207,7 +236,7 @@ pub fn build_chunk(chunk: &RenderChunk, ctx: &MeshContext) -> Vec<Vertex> {
                 let at = (x, y, z);
                 if let Some((sprites, BlockLook::Single(index))) = look {
                     // A single picture (a tree, a torch...) standing on the cell.
-                    if cell.is_fully_clipped() {
+                    if fully_clipped {
                         continue;
                     }
                     let region = sprites.region(index);
@@ -227,7 +256,7 @@ pub fn build_chunk(chunk: &RenderChunk, ctx: &MeshContext) -> Vec<Vertex> {
                     };
                     Some(Sprite { atlas: &sprites.atlas, region: sprites.region(index) })
                 };
-                if cell.clipping & CLIP_TOP == 0 {
+                if clipping & CLIP_TOP == 0 {
                     // The Java cheap shadow under overhangs (`top_light`) stays part of the colour.
                     let shaded = color.map(|c| c * cell.top_light);
                     let corners = [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]];
@@ -239,11 +268,11 @@ pub fn build_chunk(chunk: &RenderChunk, ctx: &MeshContext) -> Vec<Vertex> {
                         }
                     }
                 }
-                if cell.clipping & CLIP_LEFT == 0 {
+                if clipping & CLIP_LEFT == 0 {
                     let corners = [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]];
                     lit_quad(&mut vertices, ctx, at, Face::Left, color, corners, sprite_of(Face::Left));
                 }
-                if cell.clipping & CLIP_RIGHT == 0 {
+                if clipping & CLIP_RIGHT == 0 {
                     let corners = [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]];
                     lit_quad(&mut vertices, ctx, at, Face::Right, color, corners, sprite_of(Face::Right));
                 }
@@ -252,7 +281,7 @@ pub fn build_chunk(chunk: &RenderChunk, ctx: &MeshContext) -> Vec<Vertex> {
                     // pictures of their opposite sides (a face's picture only depends on its shape).
                     let covered = |dx: f32, dy: f32| {
                         let (nx, ny) = from_iso(gx + dx, gy + dy);
-                        (ctx.opaque)(nx, ny, z)
+                        !exposed && (ctx.opaque)(nx, ny, z)
                     };
                     if !covered(0.0, -1.0) {
                         let corners = [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]];
@@ -420,6 +449,7 @@ fn quad(out: &mut Vec<Vertex>, face: f32, color: [f32; 3], corners: [[f32; 3]; 4
 fn quad_occluded(out: &mut Vec<Vertex>, face: f32, color: [f32; 3], corners: [[f32; 3]; 4], ao: [f32; 4], point: [[f32; 3]; 4], counts: Option<[u8; 4]>) {
     let vertex = |i: usize| {
         let mut v = Vertex::flat(corners[i], color, [face, ao[i]], point[i]);
+        v.cell = block_cell(face, &corners);
         if let Some(counts) = counts {
             v.occlusion = pack_occlusion(counts, i);
         }
@@ -448,6 +478,17 @@ mod tests {
     impl Generator for Single {
         fn generate(&self, x: i32, y: i32, z: i32) -> Block {
             if (x, y, z) == (5, 5, 0) { Block::new(id::STONE, 0) } else { Block::AIR }
+        }
+    }
+
+    #[test]
+    fn every_vertex_of_a_block_knows_the_same_block_centre() {
+        let mut world = World::new(Single);
+        let vertices = build(&mut world, (0, 0), (0, 0));
+        let (gx, gy) = wurfel_sim::grid::to_iso(5, 5);
+        assert!(!vertices.is_empty());
+        for v in &vertices {
+            assert_eq!(v.cell, [gx, gy], "face {} corner {:?}", v.shade[0], v.position);
         }
     }
 
@@ -553,7 +594,7 @@ mod tests {
 
     #[test]
     fn a_vertex_is_56_bytes_with_the_fields_the_shader_reads_in_order() {
-        assert_eq!(std::mem::size_of::<Vertex>(), 60);
+        assert_eq!(std::mem::size_of::<Vertex>(), 68);
         assert_eq!(std::mem::offset_of!(Vertex, uv), 44);
         assert_eq!(std::mem::offset_of!(Vertex, layer), 52);
         assert_eq!(std::mem::offset_of!(Vertex, position), 0);

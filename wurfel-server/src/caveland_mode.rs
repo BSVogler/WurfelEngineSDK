@@ -284,6 +284,9 @@ impl CavelandMode {
             ExtraEvent::Launched { entity, position, velocity } => {
                 happenings.push(json!({"t": "launched", "player": entity, "pos": pos(position), "vel": pos(velocity)}))
             }
+            ExtraEvent::Shockwave { position, radius, strength } => {
+                happenings.push(json!({"t": "shockwave", "pos": pos(position), "radius": round2(radius), "strength": round2(strength)}))
+            }
             ExtraEvent::TutorialStep { step } => happenings.push(json!({"t": "tutorial", "step": step})),
             ExtraEvent::EndFightStarted => happenings.push(json!({"t": "end_fight"})),
         }

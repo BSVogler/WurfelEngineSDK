@@ -225,6 +225,7 @@ pub fn billboard_biased(out: &mut Vec<Vertex>, atlas: &Atlas, region: &Region, a
         uv: [u, v],
         layer: region.page as f32,
         occlusion: 0.0,
+        cell: crate::mesh::NO_CELL,
     };
     let (a, b, c, d) = (
         vertex(left, bottom, u_left, v1),

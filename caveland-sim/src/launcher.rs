@@ -395,7 +395,7 @@ impl Caveland {
         true
     }
 
-    fn begin_launch(&mut self, entities: &mut Entities, id: EntityId, position: Option<Vec3>, velocity: Vec3) {
+    pub(crate) fn begin_launch(&mut self, entities: &mut Entities, id: EntityId, position: Option<Vec3>, velocity: Vec3) {
         let Some(entity) = entities.get_mut(id) else { return };
         if let Some(position) = position {
             entity.position = position;

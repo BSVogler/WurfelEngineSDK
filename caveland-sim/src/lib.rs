@@ -63,6 +63,7 @@ pub mod crafting;
 pub mod dialog;
 pub mod enemy;
 pub mod extras;
+pub mod shockwave;
 pub mod generator;
 pub mod game;
 pub mod lift;

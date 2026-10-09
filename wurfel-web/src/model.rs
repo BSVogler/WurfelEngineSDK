@@ -135,7 +135,7 @@ impl Model {
             let layer = if texture.is_some() { 0.0 } else { NO_SPRITE };
             out.extend(corners.iter().map(|c| {
                 let world = transform.transform_point3(Vec3::from(c.position));
-                Vertex { position: world.to_array(), color: c.color, shade: [FACE_UNLIT, 0.0], point: [0.0; 3], uv: c.uv, layer, occlusion: 0.0 }
+                Vertex { position: world.to_array(), color: c.color, shade: [FACE_UNLIT, 0.0], point: [0.0; 3], uv: c.uv, layer, occlusion: 0.0, cell: crate::mesh::NO_CELL }
             }));
             if out.len() > start {
                 draws.push(Draw { texture, vertices: start..out.len() });

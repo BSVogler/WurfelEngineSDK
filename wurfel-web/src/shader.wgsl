@@ -50,6 +50,8 @@ struct Lighting {
     clouds: vec4<f32>,       // x: seconds drifted, y: shadow strength (0 = off), z: blocks per repeat, w: cloud height
     lights: array<vec4<f32>, 8>,        // xyz: position (blocks), w: radius
     light_colors: array<vec4<f32>, 8>,  // rgb: colour, w: brightness
+    waves: array<vec4<f32>, 4>,         // force waves: xy: centre (ground frame), z: where the front is, w: radius (0 = unused)
+    wave_shape: array<vec4<f32>, 4>,    // x: amplitude in blocks, y: half width of the ring
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;
@@ -202,6 +204,8 @@ struct VertexIn {
     @location(5) layer: f32,         // atlas page, or -1: no sprite, show `color`
     // The ambient occlusion of the four corners of the face (mesh.rs `pack_occlusion`): 0 when it has none.
     @location(6) occlusion: f32,
+    // The ground centre of the block this vertex belongs to (mesh.rs `block_cell`); far negative when it is not part of one.
+    @location(7) cell: vec2<f32>,
 };
 
 struct VertexOut {
@@ -357,10 +361,35 @@ fn shade(v: VertexIn, seen: vec3<f32>, sun_share: ptr<function, f32>) -> vec3<f3
     return with_fog(max(color, vec3<f32>(0.0)), seen);
 }
 
+// How far the force waves move the ground at `xy`, in blocks: a ripple that rises ahead of each front and
+// sinks behind it. wurfel_sim::shockwave::Shockwave::lift is the reference.
+fn shockwave_lift(xy: vec2<f32>) -> f32 {
+    var lift = 0.0;
+    for (var i: u32 = 0u; i < 4u; i = i + 1u) {
+        let wave = lighting.waves[i];
+        if (wave.w > 0.0) {
+            let shape = lighting.wave_shape[i];
+            let d = length(xy - wave.xy);
+            let t = (d - wave.z) / shape.y;
+            if (abs(t) < 1.0) {
+                let window = cos(t * 1.5707963) * cos(t * 1.5707963);
+                lift = lift + shape.x * clamp(1.0 - d / wave.w, 0.0, 1.0) * window * sin(t * 3.1415927);
+            }
+        }
+    }
+    return lift;
+}
+
 @vertex
 fn vs_main(v: VertexIn) -> VertexOut {
     let face = i32(v.shade.x + 0.5);
     var p = view_pos(v.position);
+    // A block moves as a whole: every vertex of it is lifted by what the wave does at the block's centre.
+    var wave_at = v.cell;
+    if (wave_at.x < -1.0e8) {
+        wave_at = round(v.position.xy);
+    }
+    p.z = p.z + shockwave_lift(wave_at);
     if (face == 4 || face == 7) {
         p = billboard_pos(p, v.point.x, v.point.y, v.point.z);
     }

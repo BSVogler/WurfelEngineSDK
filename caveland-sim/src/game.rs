@@ -537,6 +537,9 @@ impl Caveland {
     /// (the blocks still are).
     fn explode_sparing(&mut self, world: &mut World, entities: &mut Entities, center: Vec3, radius: i32, damage: i32, spare_friends: bool) {
         self.events.push(GameEvent::Explosion { position: center, radius, damage });
+        // The blast is a force wave too: it ripples the ground and shoves everything around, the player
+        // included. A radius 3 blast is strength 1 and reaches three times its radius.
+        self.shockwave(center, radius as f32 * 3.0, radius as f32 / 3.0);
         self.events.push(GameEvent::Sound { name: "explosion", position: center });
         let r2 = (radius * radius) as f32;
         let origin = cell_of(center);

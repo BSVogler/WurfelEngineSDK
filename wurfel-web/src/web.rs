@@ -183,6 +183,8 @@ struct State {
     remote_jets: HashMap<u32, crate::particles::Jetpack>,
     /// Footstep dust: seconds until the next puff and where the player was, by player id.
     steps: HashMap<u32, (f32, Vec3)>,
+    /// Force waves that are spreading, for the ripple in the ground.
+    waves: Vec<wurfel_sim::shockwave::Shockwave>,
     /// The flashes of explosions: where, how long ago, and the blast radius.
     flares: Vec<(Vec3, f32, i32)>,
     /// Pictures that show for a moment (a robot's hit), with the seconds they have left.
@@ -663,15 +665,16 @@ async fn run() -> Result<(), String> {
         audio: Audio::new(),
         particles: wurfel_sim::particle::Particles::default(),
         emitters: Vec::new(),
-        jetpack: crate::particles::Jetpack::new(),
-        damaged: Default::default(),
         sparks: HashMap::new(),
         remote_jets: HashMap::new(),
         steps: HashMap::new(),
         oven_timer: 0.0,
+        waves: Vec::new(),
         flares: Vec::new(),
         flashes: Vec::new(),
         next_flash: 0,
+        jetpack: crate::particles::Jetpack::new(),
+        damaged: Default::default(),
         mode: None,
         things: Vec::new(),
         sound_loops: HashMap::new(),
@@ -1635,13 +1638,14 @@ fn reset_mode_state(s: &mut State) {
     // The server forgets the editor with the connection, so a new session starts outside it.
     s.editor.set_active(false);
     s.emitters.clear();
-    for (_, handle) in s.sound_loops.drain() {
-        s.audio.logic_mut().stop_loop(handle);
     s.sparks.clear();
     s.remote_jets.clear();
     s.flashes.clear();
     s.flares.clear();
+    s.waves.clear();
     s.steps.clear();
+    for (_, handle) in s.sound_loops.drain() {
+        s.audio.logic_mut().stop_loop(handle);
     }
 }
 
@@ -1683,16 +1687,22 @@ fn apply_effect(s: &mut State, effect: Effect) {
             s.particles.block_break(pos, [1.0, 0.55, 0.1]);
         }
         Effect::Burst { pos, color } => s.particles.block_break(pos, color),
-        Effect::BlockDamaged { cell, health } => {
-            s.world.set_block_health(cell.0, cell.1, cell.2, health);
         Effect::Flash { kind, pos, seconds } => {
             s.next_flash = s.next_flash.wrapping_add(1);
             let thing = ThingState { id: FX_ID_BASE + s.next_flash % 0x1000, kind: kind.to_string(), pos: pos.to_array(), lit: false };
             s.flashes.push((thing, seconds));
         }
+        Effect::Shockwave { pos, radius, strength } => {
+            s.waves.push(wurfel_sim::shockwave::Shockwave::new(pos, radius, strength));
+            if s.waves.len() > crate::lighting::MAX_WAVES {
+                s.waves.remove(0);
+            }
+        }
         Effect::DirtKick { pos } => s.particles.dirt_kick(pos),
         Effect::Shot { from, to } => s.particles.shot(from, to),
         Effect::RobotBroke { pos } => s.particles.robot_break(pos + Vec3::Z * 0.5),
+        Effect::BlockDamaged { cell, health } => {
+            s.world.set_block_health(cell.0, cell.1, cell.2, health);
             s.damaged.insert(cell, health);
         }
         Effect::Blast { pos, radius } => {
@@ -1700,13 +1710,13 @@ fn apply_effect(s: &mut State, effect: Effect) {
             s.shake.add(crate::shake::blast_amplitude(radius, distance), 350.0);
             s.particles.block_break(pos, [1.0, 0.55, 0.1]);
             s.particles.block_break(pos + Vec3::Z * 0.5, [0.3, 0.3, 0.3]);
-        }
-        Effect::Shake { amplitude, millis } => s.shake.add(amplitude, millis),
             s.particles.explosion(pos, radius);
             s.flares.push((pos + Vec3::Z * 0.5, 0.0, radius));
             if s.flares.len() > MAX_FLARES {
                 s.flares.remove(0);
             }
+        }
+        Effect::Shake { amplitude, millis } => s.shake.add(amplitude, millis),
         Effect::Announced { player, name, ok } => s.actors.announced(player, Some(player) == s.my_id, &name, ok),
         Effect::Respawned { message } => {
             show_banner(&message, Tone::Error);
@@ -2469,8 +2479,7 @@ fn pointer_screen(s: &State) -> Option<(f32, f32)> {
     Some((s.camera.center[0] + (px - s.config.width as f32 / 2.0) / s.camera.zoom, s.camera.center[1] + (py - s.config.height as f32 / 2.0) / s.camera.zoom))
 }
 
-/// What the camera looks at: our player, or in the editor the point the keys panned it to.
-fn camera_focus(s: &State) -> Option<Vec3> {
+
 /// Where the burning ovens' fires are.
 fn oven_fires(s: &State) -> Vec<Vec3> {
     s.mode
@@ -2485,6 +2494,8 @@ fn oven_fires(s: &State) -> Vec<Vec3> {
         .collect()
 }
 
+/// What the camera looks at: our player, or in the editor the point the keys panned it to.
+fn camera_focus(s: &State) -> Option<Vec3> {
     if let Some(hold) = s.console.camera_hold {
         return Some(hold);
     }
@@ -2653,8 +2664,6 @@ fn frame(s: &mut State, now_ms: f64) {
     for emitter in &mut s.emitters {
         emitter.update(dt, &mut s.particles);
     }
-    let burning = s.local_id.zip(s.mode.as_ref()).is_some_and(|(id, m)| m.exhaust(id));
-    let flame_at = if burning {
     // Lit dynamite sparks (`TFlint`) just above the item, lying in the world or carried; a thing that is
     // gone or burnt out loses its emitter. Carriers are keyed by their player id plus `CARRIER_SPARKS`.
     let mut burning: Vec<(u32, Vec3)> = s.things.iter().filter(|t| t.lit).map(|t| (t.id, Vec3::from(t.pos))).collect();
@@ -2681,13 +2690,13 @@ fn frame(s: &mut State, now_ms: f64) {
             emitter.update(dt, &mut s.particles);
         }
     }
+    let burning = s.local_id.zip(s.mode.as_ref()).is_some_and(|(id, m)| m.exhaust(id));
+    let flame_at = if burning {
         local_position(s).map(|feet| (feet, s.local_id.map_or([0.0, 1.0], |id| s.actors.facing(id))))
     } else {
         None
     };
     s.jetpack.update(dt, &mut s.particles, flame_at);
-    let focus = local_position(s).unwrap_or(Vec3::ZERO);
-    // The Java Camera's u_localLightPos: the one light the normal maps are lit with per pixel.
     // The other players' jetpacks burn where the server says, one flame pair each.
     let exhausting: HashSet<u32> = s.mode.as_ref().map(|m| m.exhausting().into_iter().collect()).unwrap_or_default();
     let others: Vec<(u32, Vec3)> = s.remotes.iter().map(|(&id, r)| (id, r.pos)).collect();
@@ -2744,6 +2753,17 @@ fn frame(s: &mut State, now_ms: f64) {
     // A burning fuse glows dimly and flickers; an explosion flashes bright and fades.
     let flicker = 0.8 + 0.2 * (s.atmo_time * 23.0).sin() * (s.atmo_time * 9.0).cos();
     glows.extend(fuse_at.into_iter().map(|pos| wurfel_sim::light::PointLight::new(pos, FUSE_GLOW_COLOR * flicker, FUSE_GLOW_RADIUS, 0.0)));
+    for wave in &mut s.waves {
+        wave.age += dt;
+    }
+    s.waves.retain(|w| !w.finished());
+    s.lighting.set_waves(&s.waves);
+    // While waves move the blocks, the sides that neighbours cover must be meshed: the chunks around are
+    // meshed again when a wave starts and once more when the last one is over.
+    let zones = s.waves.iter().map(|w| (w.center, w.radius + wurfel_sim::shockwave::WIDTH + 1.0)).collect();
+    if s.render.set_wave_zones(zones) {
+        s.remesh = true;
+    }
     for (_, age, _) in &mut s.flares {
         *age += dt;
     }
@@ -2752,6 +2772,8 @@ fn frame(s: &mut State, now_ms: f64) {
         let fade = (1.0 - age / FLARE_SECONDS).powf(1.5);
         wurfel_sim::light::PointLight::new(pos, FLARE_COLOR * fade, 6.0 + 2.5 * radius as f32, 4.0)
     }));
+    let focus = local_position(s).unwrap_or(Vec3::ZERO);
+    // The Java Camera's u_localLightPos: the one light the normal maps are lit with per pixel.
     s.lighting.local_light = local_position(s);
     let lamps = s.mode.as_ref().map(|m| m.lights(&s.world, &s.things)).unwrap_or_default();
     s.lighting.set_dynamic_lights(s.emitters.iter().filter_map(|e| e.light()).chain(s.jetpack.lights()).chain(s.remote_jets.values().flat_map(|j| j.lights()).collect::<Vec<_>>()).chain(lamps).chain(glows), focus);
@@ -3229,8 +3251,6 @@ fn upload_dynamic_mesh(s: &mut State, target: Option<Pick>) {
             }
         }
     }
-    let local = local_position(s);
-    if let Some(mode) = s.mode.as_mut() {
     // What the client makes up: the fire in burning ovens and the pictures that show for a moment.
     let fires: Vec<ThingState> = oven_fires(s)
         .into_iter()
@@ -3240,6 +3260,8 @@ fn upload_dynamic_mesh(s: &mut State, target: Option<Pick>) {
     for thing in fires.iter().chain(s.flashes.iter().map(|(t, _)| t)) {
         s.actors.push_thing(&mut vertices, thing);
     }
+    let local = local_position(s);
+    if let Some(mode) = s.mode.as_mut() {
         mode.push_overlays(&mut vertices, &s.world, local, s.render.sprites().map(|r| &**r));
     }
     // The thing the select tool holds: a frame on the ground around it.
